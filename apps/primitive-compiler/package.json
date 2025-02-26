@@ -1,0 +1,19 @@
+{
+  "name": "primitive-compiler",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@total-typescript/ts-reset": "^0.6.1",
+    "@types/dedent": "^0.7.2",
+    "dedent": "^1.5.3",
+    "tsx": "^4.19.2",
+    "type-fest": "^4.35.0"
+  }
+}
