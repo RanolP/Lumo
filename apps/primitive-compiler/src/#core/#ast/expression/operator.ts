@@ -15,7 +15,7 @@ export class PrefixOperator implements IAstNode {
 
 export const PrefixOperatorKind = Object.freeze({
   Not: 'Not',
-  Minus: 'Minus',
+  Negate: 'Negate',
 });
 export type PrefixOperatorKind =
   (typeof PrefixOperatorKind)[keyof typeof PrefixOperatorKind];

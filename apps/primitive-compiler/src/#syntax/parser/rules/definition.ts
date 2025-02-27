@@ -34,8 +34,8 @@ export const definitions = {
       astId,
     ),
   ).map(
-    ([_0, [name, _1, [body, _2]], astId]) =>
-      new EnumDefinition(astId, name, body?.[0] ?? []),
+    ([_0, [name, _1, [body, _2]], id]) =>
+      new EnumDefinition(id, name, body?.[0] ?? []),
   ),
 };
 

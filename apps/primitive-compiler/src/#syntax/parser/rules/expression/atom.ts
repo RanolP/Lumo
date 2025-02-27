@@ -11,9 +11,7 @@ export const atomExpression = rule(() => oneof('Expression', expressions.name));
 
 export const expressions = {
   name: rule(() =>
-    seq(identifier, astId).map(
-      ([ident, astId]) => new NameExpression(astId, ident),
-    ),
+    seq(identifier, astId).map(([ident, id]) => new NameExpression(id, ident)),
   ),
 };
 
@@ -21,7 +19,7 @@ const functionCallArgument = rule<functionCallArgument>(() =>
   oneof(
     'Function Argument',
     seq(token(TokenKind.KeywordMut), cut(seq(identifier, astId))).map(
-      ([_0, [ident, astId]]) => new MutName(astId, ident),
+      ([_0, [ident, id]]) => new MutName(id, ident),
     ),
   ),
 );

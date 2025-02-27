@@ -13,7 +13,8 @@ const source = dedent`
     S(Nat),
   }
 
-  !b + a * -x + y + !e * z + d
+  !b(q,z) + a * -x + y + !e * z + d
+  -f(x,-z(q))
 `;
 
 const tokens = Array.from(new Tokenizer(source));
