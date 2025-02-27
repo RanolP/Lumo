@@ -13,6 +13,7 @@
     "@total-typescript/ts-reset": "^0.6.1",
     "@types/dedent": "^0.7.2",
     "dedent": "^1.5.3",
+    "ts-pattern": "^5.6.2",
     "tsx": "^4.19.2",
     "type-fest": "^4.35.0"
   }

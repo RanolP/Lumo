@@ -13,6 +13,7 @@ const {
   ctx,
   withCtxMod,
   make,
+  failure,
   __Parser,
 } = parsecom<
   Token,
@@ -44,6 +45,7 @@ export {
   separatedList1,
   ctx,
   withCtxMod,
+  failure,
 };
 
 export const token = make.tag(

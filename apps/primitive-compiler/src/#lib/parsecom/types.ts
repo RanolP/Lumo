@@ -11,6 +11,8 @@ export interface InputSlice<TToken, TContext = {}> {
 
   readonly context: TContext;
 
+  readonly intoInner: TToken[];
+
   split1(): [TToken, (typeof this)['_TNextThis']];
 
   updateContext<T>(

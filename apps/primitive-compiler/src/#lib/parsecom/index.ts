@@ -187,7 +187,7 @@ export function parsecom<TToken, TContext extends {} = {}>({
       expectations: string,
       ...parsers: SeqParser<TSeq>
     ): Parser<Input, TSeq[number]> =>
-      makeParser((i: Input) => {
+      makeParser((i) => {
         for (const parser of parsers) {
           let result: unknown;
           [i, result] = opt(parser)(i);
@@ -201,6 +201,11 @@ export function parsecom<TToken, TContext extends {} = {}>({
           ParseErrorCode.Oneof,
           false,
         );
+      }),
+
+    failure: (message: string) =>
+      makeParser<never>((i) => {
+        throw new ParseError(message, i, ParseErrorCode.Failure, false);
       }),
 
     __Parser: <TOutput>() => null as unknown as Parser<Input, TOutput>,

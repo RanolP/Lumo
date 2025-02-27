@@ -11,9 +11,9 @@ export class EnumDefinition implements IAstNode {
   ) {}
 
   toString(): string {
-    return `Enum{#${this.id.handle}}(name=${
+    return `Enum{#${this.id.handle}}(\nname=${
       this.name
-    }, branches=[${this.branches.join(', ')}])`;
+    },\nbranches=[\n${this.branches.join(', ')}\n]\n)`;
   }
 }
 

@@ -4,9 +4,13 @@ import { AstId, IAstNode } from '../base';
 export class PrefixOperator implements IAstNode {
   constructor(
     readonly id: AstId,
-    readonly operators: PrefixOperatorKind[],
+    readonly op: PrefixOperatorKind,
     readonly expression: Expression,
   ) {}
+
+  toString(): string {
+    return `PrefixOp{#${this.id.handle}}(op=${this.op}, expr=${this.expression})`;
+  }
 }
 
 export const PrefixOperatorKind = Object.freeze({
@@ -23,6 +27,10 @@ export class InfixOperator implements IAstNode {
     readonly op: InfixOperatorKind,
     readonly rhs: Expression,
   ) {}
+
+  toString(): string {
+    return `InfixOp{#${this.id.handle}}(\nop=${this.op},\nlhs=${this.lhs},\nrhs=${this.rhs}\n)`;
+  }
 }
 
 export const InfixOperatorKind = Object.freeze({

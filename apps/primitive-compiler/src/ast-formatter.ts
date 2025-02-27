@@ -1,42 +1,25 @@
+import { match, P } from 'ts-pattern';
+
 export function formatAst(s: string) {
   let result = '';
 
-  let isSpan = false;
+  let prev: string | null = null;
 
   let indent = 0;
   for (const c of s) {
-    switch (c) {
-      case '(':
-      case '[':
-        if (result.endsWith('Span')) {
-          isSpan = true;
-        }
-        if (!isSpan) {
-          indent += 2;
-        }
-      case ',':
-        result += c;
-        if (!isSpan) {
-          result += '\n';
-          result += ' '.repeat(indent);
-        }
-        break;
-      case ')':
-      case ']':
-        if (!isSpan) {
-          indent -= 2;
-          result += '\n';
-          result += ' '.repeat(indent);
-        }
-        isSpan = false;
-        result += c;
-        break;
-      case ' ':
-        break;
-      default:
-        result += c;
-        break;
+    result += c;
+    match([prev, c] as const)
+      .with([P.union('(', '['), '\n'], () => {
+        indent += 2;
+      })
+      .with([P.union(')', ']'), '\n'], () => {
+        indent -= 2;
+      })
+      .otherwise(() => {});
+    if (c === '\n') {
+      result += ' '.repeat(Math.max(indent, 0));
     }
+    prev = c;
   }
 
   return result;

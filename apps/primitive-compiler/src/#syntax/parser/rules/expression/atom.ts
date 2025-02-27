@@ -1,4 +1,8 @@
-import { functionCallArgument, MutName } from '../../../../#core/#ast';
+import {
+  functionCallArgument,
+  MutName,
+  NameExpression,
+} from '../../../../#core/#ast';
 import { TokenKind } from '../../../common';
 import { cut, oneof, rule, seq, token } from '../../base';
 import { astId, identifier } from '../fragments';
@@ -6,7 +10,11 @@ import { astId, identifier } from '../fragments';
 export const atomExpression = rule(() => oneof('Expression', expressions.name));
 
 export const expressions = {
-  name: rule(() => seq(identifier, astId)),
+  name: rule(() =>
+    seq(identifier, astId).map(
+      ([ident, astId]) => new NameExpression(astId, ident),
+    ),
+  ),
 };
 
 const functionCallArgument = rule<functionCallArgument>(() =>

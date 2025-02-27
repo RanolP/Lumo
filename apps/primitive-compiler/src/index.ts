@@ -12,6 +12,8 @@ const source = dedent`
     O,
     S(Nat),
   }
+
+  !b + a * -x + y + !e * z + d
 `;
 
 const tokens = Array.from(new Tokenizer(source));
@@ -25,6 +27,11 @@ try {
     }),
   );
 
+  const restTokens = rest.intoInner;
+  if (restTokens.length > 0) {
+    console.log('Rest tokens:\n======\n' + restTokens.join('\n') + '\n=======');
+  }
+
   ast.forEach((item) => {
     console.log(formatAst(item.toString()));
   });
@@ -32,5 +39,7 @@ try {
   if (e instanceof ParseError && e.input instanceof ArrayInput) {
     console.error(e.message);
     console.log(e.input.intoInner);
+  } else {
+    throw e;
   }
 }

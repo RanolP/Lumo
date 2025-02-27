@@ -15,6 +15,7 @@ export const ParseErrorCode = Object.freeze({
   Expectation: 'Expectation',
   Oneof: 'Oneof',
   Eof: 'Eof',
+  Failure: 'Failure',
 });
 export type ParseErrorCode =
   (typeof ParseErrorCode)[keyof typeof ParseErrorCode];
