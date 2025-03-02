@@ -15,6 +15,12 @@ const source = dedent`
 
   !b(q,z) + a * -x + y + !e * z + d
   -f(x,-z(q))
+  {a;b;;;;c
+  d
+  e
+  f;g
+  h}
+  Nat.S(.S(.S(.O)))
 `;
 
 const tokens = Array.from(new Tokenizer(source));

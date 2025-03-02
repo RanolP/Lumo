@@ -1,0 +1,7 @@
+effect ZIO {
+  fn failure<Err>(err: Err) -> !
+  fn fatal() -> !
+} derives EffectAdtCapture {
+  failure => Failure(err),
+  fatal => Fatal,
+}

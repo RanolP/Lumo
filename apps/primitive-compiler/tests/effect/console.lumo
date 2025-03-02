@@ -1,0 +1,9 @@
+effect Console {
+  fn readChar() -> Char
+  fn write(message: String) -> Unit
+  fn flush()
+} derives EffectAdtCapture {
+  readChar => ReadChar(resume)
+  write => Write(message, resume)
+  flush => Flush(resume)
+}

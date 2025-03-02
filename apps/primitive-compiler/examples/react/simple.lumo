@@ -1,0 +1,19 @@
+fn CounterPresenter(record {
+  let count: s32,
+  let increment: fn(),
+  let decrement: fn(),
+}) => (
+  <div>
+    <p>$"Count: {count}"</p>
+    <button on.click=increment>"+1"</button>
+    <button on.click=decrement>"-1"</button>
+  </div>
+)
+
+fn CounterContainer() {
+  let count = state(0)
+  let increment = fn() => count.set(fn(prev) => prev + 1)
+  let decrement = fn() => count.set(fn(prev) => prev - 1)
+
+  <CounterPresenter count increment decrement />
+}

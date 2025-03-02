@@ -173,6 +173,10 @@ export function parsecom<TToken, TContext extends {} = {}>({
     opt,
 
     repeat0,
+    repeat1: <TItem>(item: Parser<Input, TItem>) =>
+      rule(() =>
+        seq(item, repeat0(item)).map(([first, rest]) => [first, ...rest]),
+      ),
     separatedList1: <TItem>(
       item: Parser<Input, TItem>,
       sep: Parser<Input, unknown>,
