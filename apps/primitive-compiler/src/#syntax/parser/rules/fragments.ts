@@ -1,6 +1,5 @@
-import { AstId } from '../../../#core/#ast/base';
-import { Identifier } from '../../../#core/#ast';
-import { TokenKind } from '../../common';
+import { AstId, Identifier, Path } from '@/#core/#ast/index.js';
+import { TokenKind } from '../../common/index.js';
 import {
   ctx,
   cut,
@@ -10,11 +9,17 @@ import {
   seq,
   token,
   withCtxMod,
-} from '../base';
-import { type } from './type';
+} from '../base.js';
+import { type } from './type.js';
 
 export const identifier = rule(() => token(TokenKind.Identifier)).map(
   (token) => new Identifier(token),
+);
+
+export const path = rule(() =>
+  separatedList1(identifier, token(TokenKind.PunctuationFullStop)).map(
+    (seguments) => new Path(seguments),
+  ),
 );
 
 export const tupleTypeBody = rule(() =>

@@ -1,29 +1,31 @@
 import '@total-typescript/ts-reset';
 
-import dedent from 'dedent';
-import { Tokenizer } from './#syntax';
-import { ArrayInput } from './#lib/parsecom';
-import { ParseError } from './#lib/parsecom/error';
-import { formatAst } from './ast-formatter';
-import { program } from './#syntax/parser';
+import { Token, Tokenizer, TokenKind } from './#syntax/index.js';
+import { ArrayInput } from './#lib/parsecom/index.js';
+import { ParseError } from './#lib/parsecom/error.js';
+import { formatAst } from './ast-formatter.js';
+import { program } from './#syntax/parser/index.js';
+import fs from 'node:fs/promises';
 
-const source = dedent`
-  enum Nat {
-    O,
-    S(Nat),
-  }
+const source = await fs.readFile('source.lumo', { encoding: 'utf-8' });
 
-  !b(q,z) + a * -x + y + !e * z + d
-  -f(x,-z(q))
-  {a;b;;;;c
-  d
-  e
-  f;g
-  h}
-  Nat.S(.S(.S(.O)))
-`;
+interface Line {
+  position: number;
+  tokens: Token[];
+}
 
 const tokens = Array.from(new Tokenizer(source));
+const lines: Line[] = [{ position: 0, tokens: [] }];
+for (const token of tokens) {
+  const lastLine = lines[lines.length - 1];
+  lastLine.tokens.push(token);
+  if (token.kind === TokenKind.SpaceVertical) {
+    lines.push({
+      position: lastLine.position + lastLine.tokens.length,
+      tokens: [],
+    });
+  }
+}
 // console.log(tokens.join('\n'));
 try {
   const [rest, ast] = program(
@@ -44,8 +46,24 @@ try {
   });
 } catch (e) {
   if (e instanceof ParseError && e.input instanceof ArrayInput) {
-    console.error(e.message);
-    console.log(e.input.intoInner);
+    const lineNo =
+      lines.length -
+      [...lines].reverse().findIndex((l) => l.position < e.input.position);
+    const line = lines[lineNo - 1];
+    const colNo = line.tokens
+      .slice(0, e.input.position - line.position)
+      .reduce((acc, token) => acc + token.content.length, 1);
+    console.log(`source.lumo:${lineNo}:${colNo} ${e.message}`);
+    const indentLength = lineNo.toString().length + 1;
+    console.log(`${''.padStart(indentLength)} | `);
+    console.log(
+      `${lineNo.toString().padStart(indentLength)} | ` +
+        line.tokens
+          .map((t) => t.content)
+          .join('')
+          .trim(),
+    );
+    console.log(`${''.padStart(indentLength)} | `);
   } else {
     throw e;
   }

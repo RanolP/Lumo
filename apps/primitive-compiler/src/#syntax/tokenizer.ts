@@ -1,16 +1,16 @@
-import { Span, Token, TokenKind } from './common';
+import { Span, Token, TokenKind } from './common/index.js';
 
 export class Tokenizer {
   private index = 0n;
   constructor(private source: string) {}
 
-  [Symbol.iterator] = function* (): Iterator<Token, void> {
+  *[Symbol.iterator](): Iterator<Token, void> {
     while (true) {
       const token = this.next();
       if (token == null) break;
       yield token;
     }
-  };
+  }
 
   next(): Token | null {
     return (
@@ -23,7 +23,7 @@ export class Tokenizer {
 
   private peek(): string | null {
     return this.index < this.source.length
-      ? this.source[this.index.toString()]
+      ? this.source[this.index.toString() as unknown as number]
       : null;
   }
 
@@ -127,6 +127,7 @@ export class Tokenizer {
     let kind: TokenKind =
       {
         enum: TokenKind.KeywordEnum,
+        fn: TokenKind.KeywordFn,
         mut: TokenKind.KeywordMut,
         struct: TokenKind.KeywordStruct,
       }[content] ?? TokenKind.Identifier;
@@ -154,7 +155,12 @@ export class Tokenizer {
       ':': { conclusion: TokenKind.PunctuationColon },
       ';': { conclusion: TokenKind.PunctuationSemicolon },
       '<': { conclusion: TokenKind.PunctuationLessThanSign },
-      '=': { conclusion: TokenKind.PunctuationEqualsSign },
+      '=': {
+        conclusion: TokenKind.PunctuationEqualsSign,
+        children: {
+          '>': { conclusion: TokenKind.PunctuationsFatArrow },
+        },
+      },
       '>': { conclusion: TokenKind.PunctuationGreaterThanSign },
       '?': { conclusion: TokenKind.PunctuationQuestionMark },
       '@': { conclusion: TokenKind.PunctuationCommercialAt },
@@ -176,9 +182,9 @@ export class Tokenizer {
     let lastSuccess: Token | null = null;
     let node = this.PunctuationsTrieRoot;
     let content = '';
-    let current = this.peek();
+    let current: string | null;
     while (
-      current != null &&
+      (current = this.peek()) != null &&
       node.children != null &&
       current in node.children
     ) {

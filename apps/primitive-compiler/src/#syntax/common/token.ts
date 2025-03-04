@@ -1,5 +1,5 @@
-import { Span } from './span';
-import { TokenKind } from './token-kind';
+import { Span } from './span.js';
+import { TokenKind } from './token-kind.js';
 
 const Token$ = Symbol('Token');
 export type Token = {

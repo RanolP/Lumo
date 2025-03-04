@@ -1,5 +1,5 @@
-import { ParseError, ParseErrorCode } from './error';
-import { InputSlice, ParseFn, Parser } from './types';
+import { ParseError, ParseErrorCode } from './error.js';
+import { InputSlice, ParseFn, Parser } from './types.js';
 import { UnknownArray } from 'type-fest';
 
 interface Config<TToken, TContext> {
@@ -14,9 +14,10 @@ export function parsecom<TToken, TContext extends {} = {}>({
     fn: ParseFn<Input, TOutput>,
   ): Parser<Input, TOutput> => {
     const self = Object.assign(fn, {
-      map: <U>(f: (output: TOutput) => U) => map(self, f),
-      flatMap: <U>(f: (output: TOutput) => Parser<Input, U>) =>
-        flatMap(self, f),
+      map: <U>(f: (output: TOutput) => U): Parser<Input, U> => map(self, f),
+      flatMap: <U>(
+        f: (output: TOutput) => Parser<Input, U>,
+      ): Parser<Input, U> => flatMap(self, f),
     });
     return self;
   };
@@ -216,5 +217,5 @@ export function parsecom<TToken, TContext extends {} = {}>({
   };
 }
 
-export { ArrayInput } from './input';
-export { Parser, InputSlice } from './types';
+export { ArrayInput } from './input.js';
+export type { Parser, InputSlice } from './types.js';

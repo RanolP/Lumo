@@ -6,20 +6,20 @@ export function formatAst(s: string) {
   let prev: string | null = null;
 
   let indent = 0;
-  for (const c of s) {
-    result += c;
-    match([prev, c] as const)
-      .with([P.union('(', '['), '\n'], () => {
+  for (const i of Array.from({ length: s.length }).map((_, idx) => idx)) {
+    result += s[i];
+    const slice = s.slice(Math.max(0, i - 1), Math.min(i + 2, s.length));
+    match([slice[0], slice[1], slice[2]])
+      .with([P.union('(', '['), '\n', P.any], () => {
         indent += 2;
       })
-      .with([P.union(')', ']'), '\n'], () => {
+      .with(P.union([P.any, '\n', P.union(')', ']')]), () => {
         indent -= 2;
       })
       .otherwise(() => {});
-    if (c === '\n') {
+    if (s[i] === '\n') {
       result += ' '.repeat(Math.max(indent, 0));
     }
-    prev = c;
   }
 
   return result;

@@ -1,8 +1,9 @@
-import { DefinitionNode } from './definition';
-import { Expression } from './expression';
+import { DefinitionNode } from './definition.js';
 
-export * from './definition';
-export * from './construct';
-export * from './expression';
+export * from './definition.js';
+export * from './construct.js';
+export * from './expression/index.js';
+export * from './type.js';
+export { AstId } from './base.js';
 
 export type AstNode = DefinitionNode;

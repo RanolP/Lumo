@@ -1,11 +1,11 @@
-import { atomExpression } from './atom';
+import { atomExpression } from './atom.js';
 import {
   InfixOperator,
   InfixOperatorKind,
   PrefixOperator,
   PrefixOperatorKind,
-} from '../../../../#core/#ast/expression/operator';
-import { TokenKind } from '../../../common';
+} from '@/#core/#ast/expression/operator.js';
+import { TokenKind } from '../../../common/index.js';
 import {
   ctx,
   cut,
@@ -19,9 +19,9 @@ import {
   seq,
   token,
   withCtxMod,
-} from '../../base';
-import { astId, identifier } from '../fragments';
-import { Expression, FunctionCall, MutName } from '../../../../#core/#ast';
+} from '../../base.js';
+import { astId, identifier } from '../fragments.js';
+import { Expression, FunctionCall, MutName } from '@/#core/#ast/index.js';
 
 export const exprBp: Parser<Expression> = rule<Expression>(() =>
   seq(

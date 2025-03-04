@@ -11,11 +11,12 @@ export interface InputSlice<TToken, TContext = {}> {
 
   readonly context: TContext;
 
+  readonly position: number;
   readonly intoInner: TToken[];
 
-  split1(): [TToken, (typeof this)['_TNextThis']];
+  split1(): [TToken, this['_TNextThis']];
 
   updateContext<T>(
     update: (context: TContext) => [TContext, T],
-  ): [T, (typeof this)['_TNextThis']];
+  ): [T, this['_TNextThis']];
 }

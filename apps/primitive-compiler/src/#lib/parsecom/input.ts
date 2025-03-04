@@ -1,26 +1,26 @@
-import { ParseError, ParseErrorCode } from './error';
-import { InputSlice } from './types';
+import { ParseError, ParseErrorCode } from './error.js';
+import { InputSlice } from './types.js';
 
 export class ArrayInput<TToken, TContext>
   implements InputSlice<TToken, TContext>
 {
-  _TNextThis: ArrayInput<TToken, TContext>;
+  _TNextThis: ArrayInput<TToken, TContext> = this;
 
   constructor(
     private array: TToken[],
     readonly context: TContext,
-    private begin: number = 0,
+    readonly position: number = 0,
   ) {}
 
   get intoInner(): TToken[] {
-    return this.array.slice(this.begin);
+    return this.array.slice(this.position);
   }
 
   split1(): [TToken, (typeof this)['_TNextThis']] {
-    if (this.begin < this.array.length) {
+    if (this.position < this.array.length) {
       return [
-        this.array[this.begin],
-        new ArrayInput(this.array, this.context, this.begin + 1),
+        this.array[this.position],
+        new ArrayInput(this.array, this.context, this.position + 1),
       ];
     } else {
       throw new ParseError('eof', this, ParseErrorCode.Expectation, false);
@@ -31,6 +31,6 @@ export class ArrayInput<TToken, TContext>
     update: (context: TContext) => [TContext, T],
   ): [T, (typeof this)['_TNextThis']] {
     const [nextContext, value] = update(this.context);
-    return [value, new ArrayInput(this.array, nextContext, this.begin)];
+    return [value, new ArrayInput(this.array, nextContext, this.position)];
   }
 }

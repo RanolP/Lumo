@@ -1,6 +1,6 @@
-import { Expression } from '.';
-import { AstId, IAstNode } from '../base';
-import { Identifier } from '../construct';
+import { Expression } from './index.js';
+import { AstId, IAstNode } from '../base.js';
+import { Identifier } from '../construct.js';
 
 export type functionCallArgument = Expression | MutName;
 
@@ -11,7 +11,7 @@ export class FunctionCall implements IAstNode {
     readonly args: functionCallArgument[],
   ) {}
 
-  toString() {
+  toString(): string {
     return `FunctionCall{#${this.id.handle}}(\nfn=${
       this.fn
     },\nargs=[\n${this.args.map((arg) => arg.toString()).join(',\n')}\n]\n)`;

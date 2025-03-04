@@ -1,5 +1,5 @@
-import { parsecom } from '../../#lib/parsecom';
-import { Token, TokenKind } from '../common';
+import { parsecom } from '@/#lib/parsecom/index.js';
+import { Token, TokenKind } from '../common/index.js';
 
 const {
   rule,

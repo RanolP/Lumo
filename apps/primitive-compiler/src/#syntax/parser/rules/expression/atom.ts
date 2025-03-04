@@ -3,19 +3,21 @@ import {
   functionCallArgument,
   MutName,
   NameExpression,
-} from '../../../../#core/#ast';
-import { TokenKind } from '../../../common';
+} from '@/#core/#ast/index.js';
+import { TokenKind } from '@/#syntax/common/index.js';
 import {
   cut,
   oneof,
+  opt,
+  repeat0,
   repeat1,
   rule,
   separatedList1,
   seq,
   token,
-} from '../../base';
-import { astId, identifier, withNewlineAsSemi } from '../fragments';
-import { expression } from '.';
+} from '../../base.js';
+import { astId, identifier, path, withNewlineAsSemi } from '../fragments.js';
+import { expression } from './index.js';
 
 export const atomExpression = rule(() =>
   oneof('Expression', expressions.name, expressions.block),
@@ -23,7 +25,7 @@ export const atomExpression = rule(() =>
 
 export const expressions = {
   name: rule(() =>
-    seq(identifier, astId).map(([ident, id]) => new NameExpression(id, ident)),
+    seq(path, astId).map(([path, id]) => new NameExpression(id, path)),
   ),
   block: rule(() =>
     seq(
@@ -31,23 +33,27 @@ export const expressions = {
       cut(
         withNewlineAsSemi(
           seq(
-            separatedList1(
-              expression,
-              repeat1(
-                oneof(
-                  'Separator',
-                  token(TokenKind.SpaceVertical),
-                  token(TokenKind.PunctuationSemicolon),
+            repeat0(token(TokenKind.SpaceVertical)),
+            opt(
+              separatedList1(
+                expression,
+                repeat1(
+                  oneof(
+                    'Separator',
+                    token(TokenKind.SpaceVertical),
+                    token(TokenKind.PunctuationSemicolon),
+                  ),
                 ),
               ),
             ),
+            repeat0(token(TokenKind.SpaceVertical)),
             token(TokenKind.PunctuationRightCurlyBracket),
           ),
         ),
       ),
       astId,
     ),
-  ).map(([_, [expressions], id]) => new Block(id, expressions)),
+  ).map(([_, expressions, id]) => new Block(id, expressions?.[1] ?? [])),
 };
 
 const functionCallArgument = rule<functionCallArgument>(() =>

@@ -1,3 +1,3 @@
-export { Token } from './token';
-export { Span } from './span';
-export { TokenKind } from './token-kind';
+export { Token } from './token.js';
+export { Span } from './span.js';
+export { TokenKind } from './token-kind.js';

@@ -1,4 +1,4 @@
-import { Token } from '../../#syntax';
+import { Token } from '../../#syntax/index.js';
 
 export class Identifier {
   constructor(readonly token: Token) {}
@@ -8,4 +8,12 @@ export class Identifier {
   }
 }
 
-export class Type {}
+export class Path {
+  constructor(readonly segments: Identifier[]) {}
+
+  toString(): string {
+    return `Path([${this.segments
+      .map((segment) => segment.toString())
+      .join('.')}])`;
+  }
+}

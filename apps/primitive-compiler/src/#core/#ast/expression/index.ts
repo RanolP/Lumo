@@ -1,9 +1,9 @@
-import { AstId, IAstNode } from '../base';
-import { Identifier } from '../construct';
-import { FunctionCall } from './function-call';
-import { InfixOperator, PrefixOperator } from './operator';
+import { AstId, IAstNode } from '../base.js';
+import { Path } from '../construct.js';
+import { FunctionCall } from './function-call.js';
+import { InfixOperator, PrefixOperator } from './operator.js';
 
-export * from './function-call';
+export * from './function-call.js';
 
 export type Expression =
   | FunctionCall
@@ -13,10 +13,10 @@ export type Expression =
   | Block;
 
 export class NameExpression implements IAstNode {
-  constructor(readonly id: AstId, readonly ident: Identifier) {}
+  constructor(readonly id: AstId, readonly path: Path) {}
 
   toString(): string {
-    return `Name{#${this.id.handle}}(ident=${this.ident})`;
+    return `Name{#${this.id.handle}}(path=${this.path})`;
   }
 }
 

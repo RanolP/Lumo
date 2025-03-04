@@ -1,5 +1,5 @@
-import { Expression } from '.';
-import { AstId, IAstNode } from '../base';
+import { Expression } from './index.js';
+import { AstId, IAstNode } from '../base.js';
 
 export class PrefixOperator implements IAstNode {
   constructor(

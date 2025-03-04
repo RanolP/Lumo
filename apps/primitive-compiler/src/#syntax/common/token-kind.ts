@@ -4,6 +4,7 @@ export const TokenKind = Object.freeze({
 
   Identifier: 'Identifier',
   KeywordEnum: 'KeywordEnum',
+  KeywordFn: 'KeywordFn',
   KeywordMut: 'KeywordMut',
   KeywordStruct: 'KeywordStruct',
 
@@ -35,5 +36,7 @@ export const TokenKind = Object.freeze({
   PunctuationRightParenthesis: 'PunctuationRightParenthesis',
   PunctuationRightSquareBracket: 'PunctuationRightSquareBracket',
   PunctuationRightCurlyBracket: 'PunctuationRightCurlyBracket',
+
+  PunctuationsFatArrow: 'PunctuationsFatArrow',
 });
 export type TokenKind = (typeof TokenKind)[keyof typeof TokenKind];
