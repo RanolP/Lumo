@@ -1,4 +1,4 @@
-import { PathType, TupleType, Type } from '@/#core/#ast/index.js';
+import { AstPathType, AstTupleType, AstType } from '@/#core/#ast/index.js';
 import { TokenKind } from '../../common/index.js';
 import {
   cut,
@@ -10,41 +10,43 @@ import {
   seq,
   token,
 } from '../base.js';
-import { astId, path } from './fragments.js';
+import { astId, path, spanning } from './fragments.js';
 
-export const type: Parser<Type> = rule(() =>
+export const type: Parser<AstType> = rule(() =>
   oneof('type', types.tuple, types.path),
 );
 
 const types = {
   tuple: rule(() =>
-    seq(
-      token(TokenKind.PunctuationLeftParenthesis),
-      cut(
-        seq(
-          opt(
-            seq(
-              type,
-              token(TokenKind.PunctuationComma),
-              opt(separatedList1(type, token(TokenKind.PunctuationComma))),
-              opt(token(TokenKind.PunctuationComma)),
+    spanning(
+      seq(
+        token(TokenKind.PunctuationLeftParenthesis),
+        cut(
+          seq(
+            opt(
+              seq(
+                type,
+                token(TokenKind.PunctuationComma),
+                opt(separatedList1(type, token(TokenKind.PunctuationComma))),
+                opt(token(TokenKind.PunctuationComma)),
+              ),
             ),
+            token(TokenKind.PunctuationRightParenthesis),
           ),
-          token(TokenKind.PunctuationRightParenthesis),
         ),
+        astId,
       ),
-      astId,
     ),
-  ).map(([_0, [body, _1], id]) => {
-    let types: Type[] = [];
+  ).map(([[_0, [body, _1], id], span]) => {
+    let types: AstType[] = [];
     if (body != null) {
       const [ty, _2, repeat, _3] = body;
       types = [ty, ...(repeat ?? [])];
     }
 
-    return new TupleType(id, types);
+    return new AstTupleType(id, span, types);
   }),
-  path: rule(() => seq(path, astId)).map(
-    ([path, id]) => new PathType(id, path),
+  path: rule(() => spanning(seq(path, astId))).map(
+    ([[path, id], span]) => new AstPathType(id, span, path),
   ),
 };

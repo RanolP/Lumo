@@ -2,7 +2,7 @@
   "name": "primitive-compiler",
   "type": "module",
   "scripts": {
-    "start": "rolldown -c rolldown.config.ts; node dist/index.js",
+    "start": "rolldown -c rolldown.config.ts && node dist/index.js",
     "check:type": "tsc --noEmit"
   },
   "keywords": [],

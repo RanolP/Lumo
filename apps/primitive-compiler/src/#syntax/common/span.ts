@@ -24,4 +24,15 @@ function make(
     __tag$: Span$,
   };
 }
-export const Span = { make };
+export const Span = {
+  make,
+  wrapping: (...spans: Span[]): Span =>
+    spans.slice(1).reduce(
+      (acc, span) =>
+        Span.make({
+          begin: acc.begin < span.begin ? acc.begin : span.begin,
+          end: acc.end > span.end ? acc.end : span.end,
+        }),
+      spans[0],
+    ),
+};

@@ -5,7 +5,7 @@ import {
   PrefixOperator,
   PrefixOperatorKind,
 } from '@/#core/#ast/expression/operator.js';
-import { TokenKind } from '../../../common/index.js';
+import { Span, TokenKind } from '../../../common/index.js';
 import {
   ctx,
   cut,
@@ -20,20 +20,21 @@ import {
   token,
   withCtxMod,
 } from '../../base.js';
-import { astId, identifier } from '../fragments.js';
+import { astId, identifier, spanning } from '../fragments.js';
 import { Expression, FunctionCall, MutName } from '@/#core/#ast/index.js';
 
 export const exprBp: Parser<Expression> = rule<Expression>(() =>
   seq(
     oneof(
       'Operator Expression Left Hand Side',
-      prefixOperatorKind.flatMap((op) => {
+      spanning(prefixOperatorKind).flatMap(([op, span]) => {
         const [_, rightBp] = getPrefixBindingPower(op);
         return withCtxMod(
           'minimumBindingPower',
           rightBp,
         )(seq(exprBp, astId)).map(
-          ([expr, id]) => new PrefixOperator(id, op, expr),
+          ([expr, id]) =>
+            new PrefixOperator(id, Span.wrapping(span, expr.span), op, expr),
         );
       }),
       atomExpression,
@@ -60,10 +61,16 @@ export const exprBp: Parser<Expression> = rule<Expression>(() =>
           return withCtxMod(
             'minimumBindingPower',
             rightBp,
-          )(seq(exprBp, astId)).map(
-            ([rhs, id]) =>
+          )(spanning(seq(exprBp, astId))).map(
+            ([[rhs, id], span]) =>
               (lhs: Expression) =>
-                new InfixOperator(id, lhs, op, rhs),
+                new InfixOperator(
+                  id,
+                  Span.wrapping(lhs.span, span),
+                  lhs,
+                  op,
+                  rhs,
+                ),
           );
         }),
       ),
@@ -144,21 +151,32 @@ function getPostfixProcessor(
           'newlineAsSemi',
           false,
         )(
-          seq(
-            separatedList1(
-              withCtxMod(
-                'minimumBindingPower',
-                0,
-              )(oneof('mut name or value', mutName, exprBp)),
-              token(TokenKind.PunctuationComma),
+          spanning(
+            seq(
+              opt(
+                seq(
+                  separatedList1(
+                    withCtxMod(
+                      'minimumBindingPower',
+                      0,
+                    )(oneof('mut name or value', mutName, exprBp)),
+                    token(TokenKind.PunctuationComma),
+                  ),
+                  opt(token(TokenKind.PunctuationComma)),
+                ),
+              ),
+              token(TokenKind.PunctuationRightParenthesis),
+              astId,
             ),
-            opt(token(TokenKind.PunctuationComma)),
-            token(TokenKind.PunctuationRightParenthesis),
-            astId,
           ).map(
-            ([args, _0, _1, id]) =>
+            ([[args, _0, id], span]) =>
               (fn: Expression) =>
-                new FunctionCall(id, fn, args),
+                new FunctionCall(
+                  id,
+                  Span.wrapping(fn.span, span),
+                  fn,
+                  args?.[0] ?? [],
+                ),
           ),
         ),
       );
@@ -168,7 +186,7 @@ function getPostfixProcessor(
 }
 
 const mutName = rule(() =>
-  seq(token(TokenKind.KeywordMut), identifier, astId),
-).map(([_, ident, id]) => new MutName(id, ident));
+  spanning(seq(token(TokenKind.KeywordMut), identifier, astId)),
+).map(([[_, ident, id], span]) => new MutName(id, span, ident));
 
 type FullPostfixOperatorKind = { kind: 'FunctionCall' } | { kind: 'Index' };

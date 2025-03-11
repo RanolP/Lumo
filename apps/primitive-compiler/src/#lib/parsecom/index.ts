@@ -171,6 +171,14 @@ export function parsecom<TToken, TContext extends {} = {}>({
         ),
 
     takeIf,
+    peek: (): Parser<Input, TToken> =>
+      makeParser((i) => {
+        const [_, token] = takeIf(
+          () => true,
+          () => '',
+        )(i);
+        return [i, token] as const;
+      }),
     opt,
 
     repeat0,

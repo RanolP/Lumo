@@ -10,6 +10,11 @@ export class Tokenizer {
       if (token == null) break;
       yield token;
     }
+    yield Token.make({
+      content: '\0',
+      kind: TokenKind.Eof,
+      span: Span.make({ begin: this.index, end: this.index }),
+    });
   }
 
   next(): Token | null {
@@ -68,11 +73,12 @@ export class Tokenizer {
 
     if (content.length === 0) return null;
 
-    return Token.make({
+    const token = Token.make({
       content,
       kind: TokenKind.SpaceHorizotanl,
       span: Span.make({ begin, end: this.index }),
     });
+    return token;
   }
 
   VERTICAL_SPACE = [

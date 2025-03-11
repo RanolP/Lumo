@@ -6,6 +6,12 @@ import { ParseError } from './#lib/parsecom/error.js';
 import { formatAst } from './ast-formatter.js';
 import { program } from './#syntax/parser/index.js';
 import fs from 'node:fs/promises';
+import { TypeScope } from './#core/#type/index.js';
+import { EnumDefinition, FunctionDefinition } from './#core/#ast/definition.js';
+import { infer, visit } from './#type/index.js';
+import { TypingError } from './#core/#type/error.js';
+import { TypeVar } from './#core/#type/variants.js';
+import { match } from 'ts-pattern';
 
 const source = await fs.readFile('source.lumo', { encoding: 'utf-8' });
 
@@ -41,30 +47,115 @@ try {
     console.log('Rest tokens:\n======\n' + restTokens.join('\n') + '\n=======');
   }
 
-  ast.forEach((item) => {
-    console.log(formatAst(item.toString()));
-  });
+  // ast.forEach((node) => {
+  //   console.log(formatAst(node.toString()));
+  // });
+
+  const scope = new TypeScope();
+  const expressions = [];
+  for (const node of ast) {
+    if (node instanceof EnumDefinition || node instanceof FunctionDefinition) {
+      visit(scope, node);
+    } else {
+      expressions.push(node);
+    }
+  }
+  for (const expr of expressions) {
+    try {
+      const ty = infer(scope, expr);
+      const exprStr = formatAst(expr.toString());
+      console.log(`${exprStr} :: ${ty}`);
+      if (ty instanceof TypeVar) {
+        console.log(
+          `${' '.repeat(exprStr.split('\n').at(-1)!.length)} == ${scope.lookup(
+            ty.path,
+          )}`,
+        );
+      }
+    } catch (e) {
+      handleError(e);
+    }
+  }
 } catch (e) {
+  handleError(e);
+}
+
+function handleError(e: unknown) {
   if (e instanceof ParseError && e.input instanceof ArrayInput) {
-    const lineNo =
-      lines.length -
-      [...lines].reverse().findIndex((l) => l.position < e.input.position);
-    const line = lines[lineNo - 1];
-    const colNo = line.tokens
-      .slice(0, e.input.position - line.position)
-      .reduce((acc, token) => acc + token.content.length, 1);
-    console.log(`source.lumo:${lineNo}:${colNo} ${e.message}`);
-    const indentLength = lineNo.toString().length + 1;
-    console.log(`${''.padStart(indentLength)} | `);
-    console.log(
-      `${lineNo.toString().padStart(indentLength)} | ` +
-        line.tokens
-          .map((t) => t.content)
-          .join('')
-          .trim(),
+    reportDiagnostic(
+      e.message,
+      {
+        kind: 'position',
+        position: e.input.position,
+      },
+      (e.input as ArrayInput<Token, unknown>).intoInner.at(e.input.position)
+        ?.content.length ?? 1,
     );
-    console.log(`${''.padStart(indentLength)} | `);
+  } else if (e instanceof TypingError) {
+    if (e.node == null) {
+      console.error(e.message);
+    } else {
+      reportDiagnostic(
+        formatAst(e.message),
+        {
+          kind: 'bytes-index',
+          byteIndex: e.node.span.begin,
+        },
+        Number(e.node.span.end - e.node.span.begin),
+      );
+    }
   } else {
     throw e;
   }
+}
+
+function reportDiagnostic(
+  message: string,
+  lookup:
+    | { kind: 'position'; position: number }
+    | { kind: 'bytes-index'; byteIndex: bigint },
+  width: number,
+) {
+  const lineNo =
+    lines.length -
+    [...lines].reverse().findIndex((l) =>
+      match(lookup)
+        .with({ kind: 'position' }, ({ position }) => l.position < position)
+        .with(
+          { kind: 'bytes-index' },
+          ({ byteIndex }) => l.tokens[0].span.begin < byteIndex,
+        )
+        .exhaustive(),
+    );
+  const line = lines[lineNo - 1];
+  const colNo = match(lookup)
+    .with({ kind: 'position' }, ({ position }) =>
+      line.tokens
+        .slice(0, position - line.position)
+        .reduce((acc, token) => acc + token.content.length, 1),
+    )
+    .with(
+      { kind: 'bytes-index' },
+      ({ byteIndex }) => byteIndex - line.tokens[0].span.begin,
+    )
+    .exhaustive();
+
+  const prefix = `source.lumo:${lineNo}:${colNo} `;
+  console.error(
+    `${prefix}${message
+      .split('\n')
+      .map((v, i) => (i === 0 ? v : `${' '.repeat(prefix.length)}${v}`))
+      .join('\n')}`,
+  );
+  const indentLength = lineNo.toString().length + 1;
+  console.error(`${''.padStart(indentLength)} | `);
+  console.error(
+    `${lineNo.toString().padStart(indentLength)} | ` +
+      line.tokens
+        .map((t) => t.content)
+        .join('')
+        .trim(),
+  );
+  console.error(`${''.padStart(indentLength)} |${' '.repeat(Number(colNo))}^`);
+  console.error(`${''.padStart(indentLength)} | `);
 }

@@ -1,13 +1,15 @@
+import { Span } from '@/#syntax/index.js';
 import { AstId, IAstNode } from './base.js';
 import { Identifier, Expression } from './index.js';
 import { BasePattern } from './pattern.js';
-import { Type } from './type.js';
+import { AstType } from './type.js';
 
-export type DefinitionNode = EnumDefinition;
+export type DefinitionNode = EnumDefinition | FunctionDefinition;
 
 export class EnumDefinition implements IAstNode {
   constructor(
     readonly id: AstId,
+    readonly span: Span,
     readonly name: Identifier,
     readonly branches: EnumBranch[],
   ) {}
@@ -19,8 +21,19 @@ export class EnumDefinition implements IAstNode {
   }
 }
 
-export class EnumBranch {
-  constructor(readonly name: Identifier) {}
+export class EnumBranch implements IAstNode {
+  constructor(
+    readonly id: AstId,
+    readonly span: Span,
+    readonly name: Identifier,
+    readonly body:
+      | { readonly kind: 'tuple'; readonly types: { readonly type: AstType }[] }
+      | {
+          readonly kind: 'struct';
+          readonly types: { readonly name: string; readonly type: AstType }[];
+        }
+      | null = null,
+  ) {}
 
   toString(): string {
     return `EnumBranch(name=${this.name})`;
@@ -30,9 +43,10 @@ export class EnumBranch {
 export class FunctionDefinition implements IAstNode {
   constructor(
     readonly id: AstId,
+    readonly span: Span,
     readonly name: Identifier,
     readonly parameters: FunctionParameter[],
-    readonly returnType: Type | null,
+    readonly returnType: AstType | null,
     readonly body: Expression,
   ) {}
 
@@ -48,8 +62,9 @@ export class FunctionDefinition implements IAstNode {
 export class FunctionParameter implements IAstNode {
   constructor(
     readonly id: AstId,
+    readonly span: Span,
     readonly pattern: BasePattern | Identifier,
-    readonly type?: Type,
+    readonly type?: AstType,
   ) {}
 
   toString(): string {

@@ -12,6 +12,7 @@ import { TokenKind } from '../../common/index.js';
 import {
   astId,
   identifier,
+  spanning,
   tupleTypeBody,
   withoutNewlineAsSemi,
 } from './fragments.js';
@@ -29,65 +30,72 @@ export const definition = rule(() =>
 );
 
 const enumRule = rule(() =>
-  seq(
-    token(TokenKind.KeywordEnum),
-    cut(
-      seq(
-        identifier,
-        token(TokenKind.PunctuationLeftCurlyBracket),
-        withoutNewlineAsSemi(
-          seq(
-            opt(
-              seq(
-                separatedList1(enumBranch, token(TokenKind.PunctuationComma)),
-                opt(token(TokenKind.PunctuationComma)),
+  spanning(
+    seq(
+      token(TokenKind.KeywordEnum),
+      cut(
+        seq(
+          identifier,
+          token(TokenKind.PunctuationLeftCurlyBracket),
+          withoutNewlineAsSemi(
+            seq(
+              opt(
+                seq(
+                  separatedList1(enumBranch, token(TokenKind.PunctuationComma)),
+                  opt(token(TokenKind.PunctuationComma)),
+                ),
               ),
+              token(TokenKind.PunctuationRightCurlyBracket),
             ),
-            token(TokenKind.PunctuationRightCurlyBracket),
           ),
         ),
       ),
+      astId,
     ),
-    astId,
   ),
 ).map(
-  ([_0, [name, _1, [body, _2]], id]) =>
-    new EnumDefinition(id, name, body?.[0] ?? []),
+  ([[_0, [name, _1, [body, _2]], id], span]) =>
+    new EnumDefinition(id, span, name, body?.[0] ?? []),
 );
 
 const enumBranch = rule(() =>
-  seq(identifier, opt(oneof('enum branch body', tupleTypeBody))),
-).map(([name, body]) => new EnumBranch(name));
+  spanning(
+    seq(identifier, opt(oneof('enum branch body', tupleTypeBody)), astId),
+  ),
+).map(([[name, body, id], span]) => new EnumBranch(id, span, name, body));
 
 const fn = rule(() =>
-  seq(
-    token(TokenKind.KeywordFn),
-    cut(
-      seq(
-        identifier,
-        token(TokenKind.PunctuationLeftParenthesis),
-        opt(
-          seq(
-            separatedList1(fnParam, token(TokenKind.PunctuationComma)),
-            opt(token(TokenKind.PunctuationComma)),
+  spanning(
+    seq(
+      token(TokenKind.KeywordFn),
+      cut(
+        seq(
+          identifier,
+          token(TokenKind.PunctuationLeftParenthesis),
+          opt(
+            seq(
+              separatedList1(fnParam, token(TokenKind.PunctuationComma)),
+              opt(token(TokenKind.PunctuationComma)),
+            ),
           ),
-        ),
-        token(TokenKind.PunctuationRightParenthesis),
-        opt(seq(token(TokenKind.PunctuationColon), type)),
-        oneof(
-          'Function Body',
-          seq(token(TokenKind.PunctuationsFatArrow), expression).map(
-            ([_, expr]) => expr,
+          token(TokenKind.PunctuationRightParenthesis),
+          opt(seq(token(TokenKind.PunctuationColon), type)),
+          oneof(
+            'Function Body',
+            seq(token(TokenKind.PunctuationsFatArrow), expression).map(
+              ([_, expr]) => expr,
+            ),
+            expressions.block,
           ),
-          expressions.block,
         ),
       ),
+      astId,
     ),
-    astId,
   ),
-).map(([_0, [name, _1, params, _2, returnType, body], id]) => {
+).map(([[_0, [name, _1, params, _2, returnType, body], id], span]) => {
   return new FunctionDefinition(
     id,
+    span,
     name,
     params?.[0] ?? [],
     returnType?.[1] ?? null,
@@ -96,8 +104,14 @@ const fn = rule(() =>
 });
 
 const fnParam = rule(() =>
-  seq(fnParamPattern, opt(seq(token(TokenKind.PunctuationColon), type)), astId),
-).map(([pat, ty, id]) => new FunctionParameter(id, pat, ty?.[1]));
+  spanning(
+    seq(
+      fnParamPattern,
+      opt(seq(token(TokenKind.PunctuationColon), type)),
+      astId,
+    ),
+  ),
+).map(([[pat, ty, id], span]) => new FunctionParameter(id, span, pat, ty?.[1]));
 
 const fnParamPattern = rule(() =>
   oneof('Function Parameter Pattern', identifier),

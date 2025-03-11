@@ -1,19 +1,23 @@
+fn unit() {}
+
 enum Nat {
   zero,
   succ(Nat),
 }
 
-!b(q,z) + a * -x + y + !e * z + d
--f(x,-z(q))
-{a;b;;;;c
-d
-e
-f;g
-h}
-Nat.succ(Nat.succ(Nat.succ(Nat.zero)))
-
-fn zero() => Nat.zero
-
-fn main() {
-  Nat.zero
+enum List {
+  nil,
+  cons(Nat, List),
 }
+
+
+Nat.zero
+Nat.succ
+Nat.succ(Nat.zero)
+
+List.nil
+List.cons(Nat.zero, List.nil)
+
+Nat.succ(Nat.succ(Nat.zero))
+Nat.succ(unit())
+Nat.succ(List.cons(Nat.zero, List.nil))

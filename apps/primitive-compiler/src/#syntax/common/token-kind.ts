@@ -1,6 +1,7 @@
 export const TokenKind = Object.freeze({
   SpaceHorizotanl: 'SpaceHorizontanl',
   SpaceVertical: 'SpaceVertical',
+  Eof: 'Eof',
 
   Identifier: 'Identifier',
   KeywordEnum: 'KeywordEnum',

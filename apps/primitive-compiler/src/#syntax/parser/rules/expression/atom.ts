@@ -16,7 +16,13 @@ import {
   seq,
   token,
 } from '../../base.js';
-import { astId, identifier, path, withNewlineAsSemi } from '../fragments.js';
+import {
+  astId,
+  identifier,
+  path,
+  spanning,
+  withNewlineAsSemi,
+} from '../fragments.js';
 import { expression } from './index.js';
 
 export const atomExpression = rule(() =>
@@ -25,42 +31,49 @@ export const atomExpression = rule(() =>
 
 export const expressions = {
   name: rule(() =>
-    seq(path, astId).map(([path, id]) => new NameExpression(id, path)),
+    spanning(seq(path, astId)).map(
+      ([[path, id], span]) => new NameExpression(id, span, path),
+    ),
   ),
   block: rule(() =>
-    seq(
-      token(TokenKind.PunctuationLeftCurlyBracket),
-      cut(
-        withNewlineAsSemi(
-          seq(
-            repeat0(token(TokenKind.SpaceVertical)),
-            opt(
-              separatedList1(
-                expression,
-                repeat1(
-                  oneof(
-                    'Separator',
-                    token(TokenKind.SpaceVertical),
-                    token(TokenKind.PunctuationSemicolon),
+    spanning(
+      seq(
+        token(TokenKind.PunctuationLeftCurlyBracket),
+        cut(
+          withNewlineAsSemi(
+            seq(
+              repeat0(token(TokenKind.SpaceVertical)),
+              opt(
+                separatedList1(
+                  expression,
+                  repeat1(
+                    oneof(
+                      'Separator',
+                      token(TokenKind.SpaceVertical),
+                      token(TokenKind.PunctuationSemicolon),
+                    ),
                   ),
                 ),
               ),
+              repeat0(token(TokenKind.SpaceVertical)),
+              token(TokenKind.PunctuationRightCurlyBracket),
             ),
-            repeat0(token(TokenKind.SpaceVertical)),
-            token(TokenKind.PunctuationRightCurlyBracket),
           ),
         ),
+        astId,
       ),
-      astId,
     ),
-  ).map(([_, expressions, id]) => new Block(id, expressions?.[1] ?? [])),
+  ).map(
+    ([[_, expressions, id], span]) =>
+      new Block(id, span, expressions?.[1] ?? []),
+  ),
 };
 
 const functionCallArgument = rule<functionCallArgument>(() =>
   oneof(
     'Function Argument',
-    seq(token(TokenKind.KeywordMut), cut(seq(identifier, astId))).map(
-      ([_0, [ident, id]]) => new MutName(id, ident),
+    spanning(seq(token(TokenKind.KeywordMut), cut(seq(identifier, astId)))).map(
+      ([[_0, [ident, id]], span]) => new MutName(id, span, ident),
     ),
   ),
 );

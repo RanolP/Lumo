@@ -4,6 +4,7 @@ import { Token, TokenKind } from '../common/index.js';
 const {
   rule,
   takeIf,
+  peek,
   opt,
   cut,
   seq,
@@ -38,6 +39,7 @@ const {
 export {
   rule,
   takeIf,
+  peek,
   opt,
   cut,
   seq,

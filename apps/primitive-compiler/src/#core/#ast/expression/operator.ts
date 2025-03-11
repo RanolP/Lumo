@@ -1,9 +1,11 @@
 import { Expression } from './index.js';
 import { AstId, IAstNode } from '../base.js';
+import { Span } from '@/#syntax/index.js';
 
 export class PrefixOperator implements IAstNode {
   constructor(
     readonly id: AstId,
+    readonly span: Span,
     readonly op: PrefixOperatorKind,
     readonly expression: Expression,
   ) {}
@@ -23,6 +25,7 @@ export type PrefixOperatorKind =
 export class InfixOperator implements IAstNode {
   constructor(
     readonly id: AstId,
+    readonly span: Span,
     readonly lhs: Expression,
     readonly op: InfixOperatorKind,
     readonly rhs: Expression,
