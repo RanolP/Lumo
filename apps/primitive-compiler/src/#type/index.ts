@@ -9,6 +9,7 @@ import {
   FunctionCall,
   FunctionDefinition,
   Identifier,
+  Match,
   MutName,
   NameExpression,
   Path,
@@ -27,62 +28,63 @@ import {
 import { match, P } from 'ts-pattern';
 import { TypingError } from '../#core/#type/error.js';
 
-function eq(scope: TypeScope, a: Type, b: Type): boolean {
-  const aNorm = normalizeType(scope, a);
-  const bNorm = normalizeType(scope, b);
+function isSubtypeOf(
+  scope: TypeScope,
+  subtype: Type,
+  supertype: Type,
+): boolean {
+  const subtypeNorm = normalizeType(scope, subtype);
+  const supertypeNorm = normalizeType(scope, supertype);
 
-  function check(left: Type, right: Type): boolean {
-    // const lca = scope.findLca(left, right);
-    // console.log(`LCA(${left}, ${right}) = [${lca.join(', ')}]`);
-    // if (lca.some((x) => eq(scope, x, right))) {
-    //   return true;
-    // }
-    return (
-      match([left, right])
-        .with(
-          [P.instanceOf(Constructor), P.instanceOf(Constructor)],
-          ([l, r]): boolean =>
-            l.tag === r.tag &&
-            match([l, r])
-              .with(
-                [
-                  { items: { kind: 'positional' } },
-                  { items: { kind: 'positional' } },
-                ],
-                ([l, r]): boolean => {
-                  if (l.items.types.length !== r.items.types.length)
-                    return false;
-                  for (let i = 0; i < l.items.types.length; i++) {
-                    if (
-                      !eq(scope, l.items.types[i].type, r.items.types[i].type)
+  // const lca = scope.findLca(left, right);
+  // console.log(`LCA(${left}, ${right}) = [${lca.join(', ')}]`);
+  // if (lca.some((x) => eq(scope, x, right))) {
+  //   return true;
+  // }
+  return (
+    match([subtypeNorm, supertypeNorm])
+      .with(
+        [P.instanceOf(Constructor), P.instanceOf(Constructor)],
+        ([l, r]): boolean =>
+          l.folded === r.folded &&
+          l.tag === r.tag &&
+          match([l, r])
+            .with(
+              [
+                { items: { kind: 'positional' } },
+                { items: { kind: 'positional' } },
+              ],
+              ([l, r]): boolean => {
+                if (l.items.types.length !== r.items.types.length) return false;
+                for (let i = 0; i < l.items.types.length; i++) {
+                  if (
+                    !isSubtypeOf(
+                      scope,
+                      l.items.types[i].type,
+                      r.items.types[i].type,
                     )
-                      return false;
-                  }
-                  return true;
-                },
-              )
-              .otherwise(() => false),
-        )
-        .with(
-          [P.instanceOf(Sum), P.instanceOf(Sum)],
-          ([l, r]): boolean =>
-            Array.from(l.items).every((i) => r.items.has(i)) &&
-            Array.from(r.items).every((i) => l.items.has(i)),
-        )
-        .with([P.instanceOf(Sum), P.any], ([l, r]): boolean =>
-          Array.from(l.items).some((x) => eq(scope, x, r)),
-        )
-        // @ts-ignore
-        .with([P.instanceOf(Recursion), P.instanceOf(Recursion)], ([l, r]) => {
-          return eq(scope, l.then, r.then);
-        })
-        .otherwise((): boolean => {
-          return false;
-        })
-    );
-  }
-
-  return check(aNorm, bNorm) || check(bNorm, aNorm);
+                  )
+                    return false;
+                }
+                return true;
+              },
+            )
+            .otherwise(() => false),
+      )
+      .with([P.instanceOf(Sum), P.instanceOf(Sum)], ([l, r]): boolean =>
+        Array.from(l.items).every((i) => r.items.has(i)),
+      )
+      .with([P.any, P.instanceOf(Sum)], ([l, r]): boolean =>
+        Array.from(r.items).some((x) => isSubtypeOf(scope, l, x)),
+      )
+      // @ts-ignore
+      .with([P.instanceOf(Recursion), P.instanceOf(Recursion)], ([l, r]) => {
+        return isSubtypeOf(scope, l.then, r.then);
+      })
+      .otherwise((): boolean => {
+        return false;
+      })
+  );
 }
 
 export function check(
@@ -98,7 +100,7 @@ export function check(
     .otherwise((e) => {
       // Sub<==
       const inferred = infer(scope, e);
-      return eq(scope, inferred, type);
+      return isSubtypeOf(scope, inferred, type);
     });
 }
 
@@ -206,6 +208,9 @@ export function infer(scope: TypeScope, e: Expression): Type {
       }
       return lastType;
     })
+    .with(P.instanceOf(Match), (e): Type => {
+      throw new TypingError('Not implemented yet', e);
+    })
     .otherwise(() => {
       throw new TypingError(`Cannot infer expression`, e);
     });
@@ -225,7 +230,8 @@ export function visit(scope: TypeScope, def: DefinitionNode) {
               () =>
                 new Constructor(
                   branch.id,
-                  `${def.name.token.content}.${branch.name.token.content}`,
+                  def.name.token.content,
+                  branch.name.token.content,
                   { kind: 'positional', types: [] },
                 ),
             )
@@ -238,7 +244,8 @@ export function visit(scope: TypeScope, def: DefinitionNode) {
                 new Path([def.name]),
                 new Constructor(
                   branch.id,
-                  `${def.name.token.content}.${branch.name.token.content}`,
+                  def.name.token.content,
+                  branch.name.token.content,
                   {
                     kind: 'positional',
                     types: typesMapped.map((type) => ({ type })),
@@ -261,7 +268,7 @@ export function visit(scope: TypeScope, def: DefinitionNode) {
       );
       for (const [branch, constructor] of constructors) {
         const enumBodyScope = scope.createChild(branch);
-        enumBodyScope.add(def.name, new TypeVar(def.id, new Path([def.name])));
+        enumBodyScope.add(def.name, enumItself);
 
         const name = new Path([def.name, branch.name]);
 
@@ -277,7 +284,7 @@ export function visit(scope: TypeScope, def: DefinitionNode) {
             })
             .with({ kind: 'struct' }, () => {
               throw new TypingError(
-                `Named tuple in enum is not supported yet`,
+                `Struct form enum variant is not supported yet`,
                 branch,
               );
             })

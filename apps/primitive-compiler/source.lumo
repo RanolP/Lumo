@@ -1,23 +1,14 @@
-fn unit() {}
-
 enum Nat {
   zero,
   succ(Nat),
 }
 
-enum List {
-  nil,
-  cons(Nat, List),
+enum MaybeInt {
+  nothing,
+  just(Nat),
 }
 
-
-Nat.zero
-Nat.succ
-Nat.succ(Nat.zero)
-
-List.nil
-List.cons(Nat.zero, List.nil)
-
-Nat.succ(Nat.succ(Nat.zero))
-Nat.succ(unit())
-Nat.succ(List.cons(Nat.zero, List.nil))
+match Nat.succ(Nat.succ(Nat.zero)) {
+  Nat.zero => MaybeInt.nothing,
+  Nat.succ(let n) => MaybeInt.just(n),
+}

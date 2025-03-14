@@ -23,7 +23,7 @@ export const spanning = <TOutput>(parser: Parser<TOutput>) =>
     ).map(([begin, value, end]) => [value, Span.make({ begin, end })] as const),
   );
 
-export const identifier = rule(() => token(TokenKind.Identifier)).map(
+export const identifier = rule(() => token(TokenKind.IdentifierIdentifier)).map(
   (token) => new Identifier(token),
 );
 

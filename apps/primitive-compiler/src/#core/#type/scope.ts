@@ -86,9 +86,7 @@ function extractKey(
 ): string | number {
   return match(keyable)
     .with(P.instanceOf(Identifier), (ident) => ident.token.content)
-    .with(P.instanceOf(Path), (path) =>
-      path.segments.map((segment) => extractKey(segment)).join('.'),
-    )
+    .with(P.instanceOf(Path), (path) => path.display)
     .with(P.instanceOf(MutName), (name) => extractKey(name.ident))
     .with(P.instanceOf(NameExpression), (expr) => extractKey(expr.path))
     .otherwise((expr) => expr.id.handle);

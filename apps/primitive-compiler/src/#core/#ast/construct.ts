@@ -19,9 +19,11 @@ export class Path {
     return Span.wrapping(...this.segments.map((segment) => segment.span));
   }
 
+  get display(): string {
+    return this.segments.map((ident) => ident.token.content).join('.');
+  }
+
   toString(): string {
-    return `Path([${this.segments
-      .map((segment) => segment.toString())
-      .join('.')}])`;
+    return `Path([${this.display}])`;
   }
 }

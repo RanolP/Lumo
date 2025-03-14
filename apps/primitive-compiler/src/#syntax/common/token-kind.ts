@@ -3,9 +3,13 @@ export const TokenKind = Object.freeze({
   SpaceVertical: 'SpaceVertical',
   Eof: 'Eof',
 
-  Identifier: 'Identifier',
+  IdentifierIdentifier: 'IdentifierIdentifier',
+  IdentifierUnderscore: 'IdentifierUnderscore',
+
   KeywordEnum: 'KeywordEnum',
   KeywordFn: 'KeywordFn',
+  KeywordLet: 'KeywordLet',
+  KeywordMatch: 'KeywordMatch',
   KeywordMut: 'KeywordMut',
   KeywordStruct: 'KeywordStruct',
 

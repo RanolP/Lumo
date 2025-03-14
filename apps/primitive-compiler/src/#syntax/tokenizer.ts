@@ -115,7 +115,7 @@ export class Tokenizer {
     }
   }
 
-  ID_Start = /^\p{ID_Start}$/u;
+  ID_Start = /^[\p{ID_Start}_]$/u;
   ID_Continue = /^\p{ID_Continue}$/u;
   private nextIdentifierOrKeyword(): Token | null {
     const begin = this.index;
@@ -134,9 +134,12 @@ export class Tokenizer {
       {
         enum: TokenKind.KeywordEnum,
         fn: TokenKind.KeywordFn,
+        let: TokenKind.KeywordLet,
+        match: TokenKind.KeywordMatch,
         mut: TokenKind.KeywordMut,
         struct: TokenKind.KeywordStruct,
-      }[content] ?? TokenKind.Identifier;
+        _: TokenKind.IdentifierUnderscore,
+      }[content] ?? TokenKind.IdentifierIdentifier;
 
     return Token.make({
       content,

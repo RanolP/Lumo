@@ -3,7 +3,9 @@ import { AstId, IAstNode } from '../base.js';
 import { Path } from '../construct.js';
 import { FunctionCall } from './function-call.js';
 import { InfixOperator, PrefixOperator } from './operator.js';
+import { Match } from './match.js';
 
+export * from './match.js';
 export * from './function-call.js';
 
 export type Expression =
@@ -11,7 +13,8 @@ export type Expression =
   | NameExpression
   | PrefixOperator
   | InfixOperator
-  | Block;
+  | Block
+  | Match;
 
 export class NameExpression implements IAstNode {
   constructor(readonly id: AstId, readonly span: Span, readonly path: Path) {}

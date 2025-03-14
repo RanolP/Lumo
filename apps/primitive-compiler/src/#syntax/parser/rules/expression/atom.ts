@@ -24,9 +24,10 @@ import {
   withNewlineAsSemi,
 } from '../fragments.js';
 import { expression } from './index.js';
+import { matchExpr } from './match.js';
 
 export const atomExpression = rule(() =>
-  oneof('Expression', expressions.name, expressions.block),
+  oneof('Expression', expressions.name, expressions.block, matchExpr),
 );
 
 export const expressions = {

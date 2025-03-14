@@ -36,7 +36,7 @@ export class TypeVar implements IType {
   constructor(readonly origin: AstId, readonly path: Path) {}
 
   toString(): string {
-    return `${this.path.segments.map((s) => s.token.content).join('.')}`;
+    return `${this.path.display}`;
   }
 
   id(scope: TypeScope): string {
@@ -137,21 +137,18 @@ export class Recursion implements IType {
   ) {}
 
   id(scope: TypeScope): string {
-    return `μ ${this.name.segments
-      .map((s) => s.token.content)
-      .join('.')}, ${this.then.id(scope)}`;
+    return `μ ${this.name.display}, ${this.then.id(scope)}`;
   }
 
   toString(): string {
-    return `μ ${this.name.segments
-      .map((s) => s.token.content)
-      .join('.')}, ${this.then.toString()}`;
+    return `μ ${this.name.display}, ${this.then.toString()}`;
   }
 }
 
 export class Constructor implements IType {
   constructor(
     readonly origin: AstId | null,
+    readonly folded: string,
     readonly tag: string,
     readonly items:
       | { kind: 'positional'; types: { type: Type }[] }

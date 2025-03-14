@@ -1,7 +1,7 @@
 import { Span } from '@/#syntax/index.js';
 import { AstId, IAstNode } from './base.js';
 import { Identifier, Expression } from './index.js';
-import { BasePattern } from './pattern.js';
+import { Pattern } from './pattern.js';
 import { AstType } from './type.js';
 
 export type DefinitionNode = EnumDefinition | FunctionDefinition;
@@ -63,7 +63,7 @@ export class FunctionParameter implements IAstNode {
   constructor(
     readonly id: AstId,
     readonly span: Span,
-    readonly pattern: BasePattern | Identifier,
+    readonly pattern: Pattern | Identifier,
     readonly type?: AstType,
   ) {}
 

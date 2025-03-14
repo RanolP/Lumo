@@ -99,7 +99,7 @@ function handleError(e: unknown) {
         formatAst(e.message),
         {
           kind: 'bytes-index',
-          byteIndex: e.node.span.begin,
+          byteIndex: e.node.span.begin + 1n,
         },
         Number(e.node.span.end - e.node.span.begin),
       );
