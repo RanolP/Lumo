@@ -12,18 +12,6 @@ type DecisionTreeNode = {
   [tag: string]: DecisionTreeNode;
   [NAME_BINDING]?: DecisionTreeNode;
 };
-function stringifyType(ty: ExprType): string {
-  switch (ty.kind) {
-    case 'Constructor':
-      return ty.tag;
-    case 'TypeVar':
-      return ty.name;
-    case 'Sum':
-      return `(${ty.items.map(stringifyType).join('+')})`;
-    case 'Tuple':
-      return `${ty.items.map(stringifyType).join('×')}`;
-  }
-}
 function appendPatternToTree(
   root: DecisionTreeNode,
   pattern: Pattern,
@@ -49,62 +37,70 @@ function appendPatternToTree(
       });
     }
     case 'NameBinding': {
-      root[NAME_BINDING] = {};
-      return root[NAME_BINDING];
+      if (!(NAME_BINDING in root)) {
+        root[NAME_BINDING] = {};
+      }
+      return root[NAME_BINDING]!;
     }
   }
 }
+
+type Ctx = [DecisionTreeNode, string[]];
 function findUncoveredCase(
-  tree: DecisionTreeNode,
+  [tree, typePrefixes]: Ctx,
   exprType: ExprType,
-): [DecisionTreeNode[], string | null] {
+): [Ctx[], string[] | null] {
   if (exprType.kind === 'Tuple') {
     if (exprType.items.length === 0) {
-      return [[tree], null];
+      return [[[tree, typePrefixes]], null];
     }
     const [head, ...tail] = exprType.items;
-    const [next, err] = findUncoveredCase(tree, head);
+    const [next, err] = findUncoveredCase([tree, typePrefixes], head);
     if (err != null) return [[], err];
-    return next.reduce<[DecisionTreeNode[], string | null]>(
-      ([oldNodes, err], node) => {
+    return next.reduce<[Ctx[], string[] | null]>(
+      ([oldCtxs, err], ctx) => {
         if (err) return [[], err];
-        const [newNodes, newErr] = findUncoveredCase(node, {
+        const [newCtxs, newErr] = findUncoveredCase(ctx, {
           kind: 'Tuple',
           items: tail,
         });
-        if (newErr != null) return [[], stringifyType(head) + '×' + newErr];
-        return [[...oldNodes, ...newNodes], null];
+        if (newErr != null)
+          return [[], [...(newCtxs[0]?.[1] ?? []), ...newErr]];
+        return [[...oldCtxs, ...newCtxs], null];
       },
       [[], null],
     );
   }
-  if (NAME_BINDING in tree) return [[tree[NAME_BINDING]!], null];
+  if (NAME_BINDING in tree)
+    return [[[tree[NAME_BINDING]!, [...typePrefixes, '_']]], null];
   switch (exprType.kind) {
     case 'Sum': {
-      return exprType.items.reduce<[DecisionTreeNode[], string | null]>(
-        ([oldNodes, err], ty) => {
+      return exprType.items.reduce<[Ctx[], string[] | null]>(
+        ([oldCtxs, err], ty) => {
           if (err) return [[], err];
-          if (!(ty.tag in tree)) return [[], ty.tag];
-          const [newNodes, newErr] = findUncoveredCase(tree, ty);
+          const [newCtxs, newErr] = findUncoveredCase([tree, typePrefixes], ty);
           if (newErr) return [[], newErr];
-          return [[...oldNodes, ...newNodes], null];
+          return [[...oldCtxs, ...newCtxs], null];
         },
         [[], null],
       );
     }
     case 'Constructor': {
       if (!(exprType.tag in tree)) {
-        return [[], stringifyType(exprType)];
+        return [[], [...typePrefixes, exprType.tag]];
       }
-      const [nodes, err] = findUncoveredCase(tree[exprType.tag], {
-        kind: 'Tuple',
-        items: exprType.arguments,
-      });
-      if (err) return [[], exprType.tag + '×' + err];
+      const [nodes, err] = findUncoveredCase(
+        [tree[exprType.tag], [...typePrefixes, exprType.tag]],
+        {
+          kind: 'Tuple',
+          items: exprType.arguments,
+        },
+      );
+      if (err) return [[], err];
       return [nodes, null];
     }
     case 'TypeVar': {
-      return [[], exprType.name];
+      return [[], [...typePrefixes, exprType.name]];
     }
   }
 }
@@ -176,11 +172,9 @@ appendPatternToTree(root, Tuple.match(Maybe.nothing, Maybe.just(Let('b'))));
 appendPatternToTree(root, Tuple.match(Maybe.just(Let('a')), Maybe.nothing));
 appendPatternToTree(root, Tuple.match(Maybe.nothing, Maybe.nothing));
 
-// console.log('root {\n', debugTree(root, 4), '}');
-
 console.log(
   findUncoveredCase(
-    root,
+    [root, []],
     Tuple.of(Maybe.of(TypeRef('Int')), Maybe.of(TypeRef('Int'))),
   )[1],
 );
