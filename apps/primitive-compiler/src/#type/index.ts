@@ -218,16 +218,17 @@ export function infer(scope: TypeScope, e: Expression): Type {
         node.addMatchArm(arm.pattern);
       }
 
-      match(node.findMissingPattern(scope, infer(scope, e.expr), []))
-        .with({ kind: 'continue' }, () => {
+      return match(node.findMissingPattern(scope, infer(scope, e.expr), []))
+        .with({ kind: 'ok' }, (): Type => {
           throw new TypingError('Unify is all you need', e);
         })
-        .with({ kind: 'error' }, ({ errorCase }) => {
+        .with({ kind: 'error' }, ({ errorCase }): Type => {
           throw new TypingError(
             `Uncovered pattern: ${formatPatternPath(errorCase)}`,
             e,
           );
-        });
+        })
+        .exhaustive();
     })
     .otherwise(() => {
       throw new TypingError(`Cannot infer expression`, e);
