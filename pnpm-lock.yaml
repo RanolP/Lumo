@@ -9,6 +9,10 @@ importers:
   .: {}
 
   apps/primitive-compiler:
+    dependencies:
+      true-myth:
+        specifier: ^8.5.0
+        version: 8.5.0
     devDependencies:
       '@total-typescript/ts-reset':
         specifier: ^0.6.1
@@ -309,6 +313,10 @@ packages:
       '@babel/runtime':
         optional: true
 
+  true-myth@8.5.0:
+    resolution: {integrity: sha512-EkMeamfavFmcWk7K5daj9V90uQM3A4RVSiWqvhAKvdNqjsagXnTuR3+h4x8NZlo2APBqLSLxt2K7/mktP789MA==}
+    engines: {node: 18.* || >= 20.*}
+
   ts-pattern@5.6.2:
     resolution: {integrity: sha512-d4IxJUXROL5NCa3amvMg6VQW2HVtZYmUTPfvVtO7zJWGYLJ+mry9v2OmYm+z67aniQoQ8/yFNadiEwtNS9qQiw==}
 
@@ -552,6 +560,8 @@ snapshots:
       '@rolldown/binding-win32-x64-msvc': 1.0.0-beta.3
     transitivePeerDependencies:
       - typescript
+
+  true-myth@8.5.0: {}
 
   ts-pattern@5.6.2: {}
 

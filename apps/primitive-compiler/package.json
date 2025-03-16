@@ -18,5 +18,8 @@
     "tsx": "^4.19.2",
     "type-fest": "^4.35.0",
     "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "true-myth": "^8.5.0"
   }
 }
