@@ -8,7 +8,9 @@ enum MaybeInt {
   just(Nat),
 }
 
-match Nat.succ(Nat.succ(Nat.zero)) {
-  Nat.zero => MaybeInt.nothing,
-  Nat.succ(let n) => MaybeInt.just(n),
+fn subtract_1(n: Nat) {
+  match n {
+    Nat.zero => MaybeInt.nothing,
+    Nat.succ(let n) => MaybeInt.just(n),
+  }
 }

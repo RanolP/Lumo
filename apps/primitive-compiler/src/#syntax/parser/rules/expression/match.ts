@@ -18,23 +18,28 @@ export const matchExpr = rule(() =>
   spanning(
     seq(
       token(TokenKind.KeywordMatch),
-      cut(
-        seq(
-          expression,
-          token(TokenKind.PunctuationLeftCurlyBracket),
-          withCtxMod(
-            'newlineAsSemi',
-            false,
-          )(
-            opt(
-              seq(
-                separatedList1(matchArm, token(TokenKind.PunctuationComma)),
-                opt(token(TokenKind.PunctuationComma)),
+      withCtxMod(
+        'newlineAsSemi',
+        false,
+      )(
+        cut(
+          seq(
+            expression,
+            token(TokenKind.PunctuationLeftCurlyBracket),
+            withCtxMod(
+              'newlineAsSemi',
+              false,
+            )(
+              opt(
+                seq(
+                  separatedList1(matchArm, token(TokenKind.PunctuationComma)),
+                  opt(token(TokenKind.PunctuationComma)),
+                ),
               ),
             ),
+            token(TokenKind.PunctuationRightCurlyBracket),
+            astId,
           ),
-          token(TokenKind.PunctuationRightCurlyBracket),
-          astId,
         ),
       ),
     ),

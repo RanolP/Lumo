@@ -27,6 +27,10 @@ import {
 } from '@/#core/#type/index.js';
 import { match, P } from 'ts-pattern';
 import { TypingError } from '../#core/#type/error.js';
+import {
+  formatPatternPath,
+  PatternDecisionTree,
+} from './pattern-decision-tree.js';
 
 function isSubtypeOf(
   scope: TypeScope,
@@ -209,7 +213,21 @@ export function infer(scope: TypeScope, e: Expression): Type {
       return lastType;
     })
     .with(P.instanceOf(Match), (e): Type => {
-      throw new TypingError('Not implemented yet', e);
+      const node = new PatternDecisionTree(e.id, e.span);
+      for (const arm of e.arms) {
+        node.addMatchArm(arm.pattern);
+      }
+
+      match(node.findMissingPattern(scope, infer(scope, e.expr), []))
+        .with({ kind: 'continue' }, () => {
+          throw new TypingError('Unify is all you need', e);
+        })
+        .with({ kind: 'error' }, ({ errorCase }) => {
+          throw new TypingError(
+            `Uncovered pattern: ${formatPatternPath(errorCase)}`,
+            e,
+          );
+        });
     })
     .otherwise(() => {
       throw new TypingError(`Cannot infer expression`, e);

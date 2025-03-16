@@ -24,12 +24,13 @@ const tokens = Array.from(new Tokenizer(source));
 const lines: Line[] = [{ position: 0, tokens: [] }];
 for (const token of tokens) {
   const lastLine = lines[lines.length - 1];
-  lastLine.tokens.push(token);
   if (token.kind === TokenKind.SpaceVertical) {
     lines.push({
       position: lastLine.position + lastLine.tokens.length,
       tokens: [],
     });
+  } else {
+    lastLine.tokens.push(token);
   }
 }
 // console.log(tokens.join('\n'));
@@ -151,10 +152,7 @@ function reportDiagnostic(
   console.error(`${''.padStart(indentLength)} | `);
   console.error(
     `${lineNo.toString().padStart(indentLength)} | ` +
-      line.tokens
-        .map((t) => t.content)
-        .join('')
-        .trim(),
+      line.tokens.map((t) => t.content).join(''),
   );
   console.error(`${''.padStart(indentLength)} |${' '.repeat(Number(colNo))}^`);
   console.error(`${''.padStart(indentLength)} | `);
