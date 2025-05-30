@@ -10,8 +10,12 @@ import { TypeScope } from './#core/#type/index.js';
 import { EnumDefinition, FunctionDefinition } from './#core/#ast/definition.js';
 import { infer, visit } from './#type/index.js';
 import { TypingError } from './#core/#type/error.js';
-import { TypeVar } from './#core/#type/variants.js';
 import { match } from 'ts-pattern';
+import { ExprStmt, TsAst } from './#lib/simple-ts-ast/index.js';
+import { compile, compileExpr } from './#compile/index.js';
+import { generateTs } from './#compile/generate-ts.js';
+import process from 'node:process';
+import { CompileContext } from './#compile/compile-context.js';
 
 const source = await fs.readFile('source.lumo', { encoding: 'utf-8' });
 
@@ -46,6 +50,7 @@ try {
   const restTokens = rest.intoInner;
   if (restTokens.length > 0) {
     console.log('Rest tokens:\n======\n' + restTokens.join('\n') + '\n=======');
+    process.exit(1);
   }
 
   // ast.forEach((node) => {
@@ -61,22 +66,35 @@ try {
       expressions.push(node);
     }
   }
-  for (const expr of expressions) {
-    try {
-      const ty = infer(scope, expr);
-      const exprStr = formatAst(expr.toString());
-      console.log(`${exprStr} :: ${ty}`);
-      if (ty instanceof TypeVar) {
-        console.log(
-          `${' '.repeat(exprStr.split('\n').at(-1)!.length)} == ${scope.lookup(
-            ty.path,
-          )}`,
-        );
-      }
-    } catch (e) {
-      handleError(e);
+  // for (const expr of expressions) {
+  //   try {
+  //     const ty = infer(scope, expr);
+  //     const exprStr = formatAst(expr.toString());
+  //     console.log(`${exprStr} :: ${ty}`);
+  //     if (ty instanceof TypeVar) {
+  //       console.log(
+  //         `${' '.repeat(exprStr.split('\n').at(-1)!.length)} == ${scope.lookup(
+  //           ty.path,
+  //         )}`,
+  //       );
+  //     }
+  //   } catch (e) {
+  //     handleError(e);
+  //   }
+  // }
+
+  const ctx = new CompileContext(scope);
+  let result: TsAst[] = [];
+  for (const node of ast) {
+    if (node instanceof EnumDefinition || node instanceof FunctionDefinition) {
+      result.push(compile(ctx, node));
+    } else {
+      result.push(new ExprStmt(compileExpr(ctx, node)));
     }
   }
+
+  const code = generateTs(result);
+  console.log(code);
 } catch (e) {
   handleError(e);
 }

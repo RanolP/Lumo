@@ -1,0 +1,10 @@
+[package]
+name = "liblumoc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+
+lumo-core.workspace = true
+lumo-syntax.workspace = true

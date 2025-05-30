@@ -1,0 +1,26 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/liblumoc",
+    "crates/lumo-core",
+    "crates/lumo-syntax",
+    "crates/lumoc",
+    "crates/ts-simple-ast",
+    "crates/winnow-pratt",
+]
+
+[workspace.dependencies]
+serde = { version = "^1", features = ["derive"] }
+thiserror = "^2"
+eyre = "^0.6"
+
+# Internal Packages
+liblumoc = { path = "./crates/liblumoc" }
+ts-simple-ast = { path = "./crates/ts-simple-ast" }
+lumo-core = { path = "./crates/lumo-core" }
+lumo-syntax = { path = "./crates/lumo-syntax" }
+
+# Internal X Packages
+
+# Rust only Packages
+winnow-pratt = { path = "./crates/winnow-pratt" }

@@ -21,11 +21,27 @@ export class Quantification implements IType {
   constructor(
     readonly origin: AstId,
     readonly name: string,
-    readonly then: Type,
+    readonly then: any, // Type
   ) {}
 
   id(): string {
     return `∀${this.name}.`;
+  }
+
+  replace(path: Path, withTy: Type): Type {
+    return new Quantification(
+      this.origin,
+      this.name,
+      this.then.replace(path, withTy),
+    );
+  }
+
+  equals(other: Type): boolean {
+    return (
+      other instanceof Quantification &&
+      this.name === other.name &&
+      this.then.equals(other.then)
+    );
   }
 }
 
@@ -41,6 +57,14 @@ export class TypeVar implements IType {
 
   id(scope: TypeScope): string {
     return `${this.toString()}`;
+  }
+
+  replace(path: Path, withTy: Type): Type {
+    return this.path.equals(path) ? withTy : this;
+  }
+
+  equals(other: Type): boolean {
+    return other instanceof TypeVar && this.path.equals(other.path);
   }
 }
 
@@ -59,6 +83,19 @@ export class TypeApplication implements IType {
 
   id(scope: TypeScope): string {
     return `${this.type.id(scope)}(${this.argument.id(scope)})`;
+  }
+
+  replace(path: Path, withTy: Type): Type {
+    return new TypeApplication(
+      this.origin,
+      this.type.replace(path, withTy),
+      this.argument.replace(path, withTy),
+    );
+  }
+
+  equals(other: Type): boolean {
+    if (!(other instanceof TypeApplication)) return false;
+    return this.type.equals(other.type) && this.argument.equals(other.argument);
   }
 }
 
@@ -81,14 +118,34 @@ export class Lambda implements IType {
   toString(): string {
     return `(${this.parameters.join(', ')}) => ${this.returning}`;
   }
+
+  replace(path: Path, withTy: Type): Type {
+    return new Lambda(
+      this.origin,
+      this.parameters.map((ty) => ty.replace(path, withTy)),
+      this.returning.replace(path, withTy),
+    );
+  }
+
+  equals(other: Type): boolean {
+    if (!(other instanceof Lambda)) return false;
+    if (this.parameters.length !== other.parameters.length) return false;
+    if (!this.returning.equals(other.returning)) return false;
+    for (let i = 0; i < this.parameters.length; i++) {
+      if (!this.parameters[i].equals(other.parameters[i])) return false;
+    }
+    return true;
+  }
 }
 
 /**
  * A | B | C | ... | Z
  */
 export class Sum implements IType {
+  static never: Type = new Sum(null, []);
+
   readonly items: Set<Type>;
-  constructor(readonly origin: AstId, items: Type[]) {
+  constructor(readonly origin: AstId | null, items: Type[]) {
     this.items = new Set(items);
   }
 
@@ -105,13 +162,32 @@ export class Sum implements IType {
           .map((ty) => `| ${ty}`)
           .join('\n')}\n}`;
   }
+
+  replace(path: Path, withTy: Type): Type {
+    return new Sum(
+      this.origin,
+      Array.from(this.items).map((ty) => ty.replace(path, withTy)),
+    );
+  }
+
+  equals(other: Type): boolean {
+    if (!(other instanceof Sum)) return false;
+    if (this.items.size !== other.items.size) return false;
+    const otherItems = Array.from(other.items);
+    for (const ty of this.items) {
+      if (otherItems.every((otherTy) => !ty.equals(otherTy))) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 /**
  * (A, B, C, ..., Z)
  */
 export class Prod implements IType {
-  static unit = new Prod(null, []);
+  static unit: Type = new Prod(null, []);
 
   constructor(readonly origin: AstId | null, readonly types: Type[]) {}
 
@@ -124,6 +200,22 @@ export class Prod implements IType {
       ? `(${this.types.join(', ')})`
       : `(\n${this.types.join(',\n')}\n)`;
   }
+
+  replace(path: Path, withTy: Type): Type {
+    return new Prod(
+      this.origin,
+      this.types.map((ty) => ty.replace(path, withTy)),
+    );
+  }
+
+  equals(other: Type): boolean {
+    if (!(other instanceof Prod)) return false;
+    if (this.types.length !== other.types.length) return false;
+    for (let i = 0; i < this.types.length; i++) {
+      if (!this.types[i].equals(other.types[i])) return false;
+    }
+    return true;
+  }
 }
 
 /**
@@ -133,7 +225,7 @@ export class Recursion implements IType {
   constructor(
     readonly origin: AstId,
     readonly name: Path,
-    readonly then: Type,
+    readonly then: any, // Type
   ) {}
 
   id(scope: TypeScope): string {
@@ -143,12 +235,32 @@ export class Recursion implements IType {
   toString(): string {
     return `μ ${this.name.display}, ${this.then.toString()}`;
   }
+
+  unfold(): Type {
+    return (this.then as IType).replace(this.name, this.then);
+  }
+
+  replace(path: Path, withTy: Type): Type {
+    return new Recursion(
+      this.origin,
+      this.name,
+      this.then.replace(path, withTy),
+    );
+  }
+
+  equals(other: Type): boolean {
+    return (
+      other instanceof Recursion &&
+      this.name.equals(other.name) &&
+      this.then.equals(other.then)
+    );
+  }
 }
 
 export class Constructor implements IType {
   constructor(
-    readonly origin: AstId | null,
-    readonly folded: string,
+    readonly origin: AstId,
+    readonly folded: Identifier,
     readonly tag: string,
     readonly items:
       | { kind: 'positional'; types: { type: Type }[] }
@@ -192,9 +304,44 @@ export class Constructor implements IType {
               .join(',\n')}\n}`;
     }
   }
+
+  replace(path: Path, withTy: Type): Constructor {
+    return new Constructor(
+      this.origin,
+      this.folded,
+      this.tag,
+      match(this.items)
+        .with({ kind: 'named' }, ({ types }) => ({
+          kind: 'named' as const,
+          types: types.map(({ name, type }) => ({
+            name,
+            type: type.replace(path, withTy),
+          })),
+        }))
+        .with({ kind: 'positional' }, ({ types }) => ({
+          kind: 'positional' as const,
+          types: types.map(
+            ({ type }) =>
+              ({
+                type: type.replace(path, withTy),
+              } as const),
+          ),
+        }))
+        .exhaustive(),
+    );
+  }
+
+  equals(other: Type): boolean {
+    if (!(other instanceof Constructor)) return false;
+    if (!this.folded.equals(other.folded)) return false;
+    if (this.tag !== other.tag) return false;
+    return true;
+  }
 }
 
 interface IType {
   readonly origin: AstId | null;
   id(scope: TypeScope): string;
+  replace(path: Path, withTy: Type): Type;
+  equals(other: Type): boolean;
 }

@@ -4,6 +4,8 @@ import {
   AstType,
   Block,
   DefinitionNode,
+  DestructuringPattern,
+  DiscardPattern,
   EnumDefinition,
   Expression,
   FunctionCall,
@@ -11,8 +13,10 @@ import {
   Identifier,
   Match,
   MutName,
+  NameBindPattern,
   NameExpression,
   Path,
+  Pattern,
 } from '@/#core/#ast/index.js';
 import {
   Constructor,
@@ -31,12 +35,19 @@ import {
   formatPatternPath,
   PatternDecisionTree,
 } from './pattern-decision-tree.js';
+import { unify } from './unify.js';
 
 function isSubtypeOf(
   scope: TypeScope,
   subtype: Type,
   supertype: Type,
+  goals: [Type, Type][] = [],
 ): boolean {
+  // recursion
+  if (goals.some(([l, r]) => l.equals(subtype) && r.equals(supertype))) {
+    return true;
+  }
+  const newGoals: [Type, Type][] = [...goals, [subtype, supertype]];
   const subtypeNorm = normalizeType(scope, subtype);
   const supertypeNorm = normalizeType(scope, supertype);
 
@@ -45,50 +56,51 @@ function isSubtypeOf(
   // if (lca.some((x) => eq(scope, x, right))) {
   //   return true;
   // }
-  return (
-    match([subtypeNorm, supertypeNorm])
-      .with(
-        [P.instanceOf(Constructor), P.instanceOf(Constructor)],
-        ([l, r]): boolean =>
-          l.folded === r.folded &&
-          l.tag === r.tag &&
-          match([l, r])
-            .with(
-              [
-                { items: { kind: 'positional' } },
-                { items: { kind: 'positional' } },
-              ],
-              ([l, r]): boolean => {
-                if (l.items.types.length !== r.items.types.length) return false;
-                for (let i = 0; i < l.items.types.length; i++) {
-                  if (
-                    !isSubtypeOf(
-                      scope,
-                      l.items.types[i].type,
-                      r.items.types[i].type,
-                    )
+  return match([subtypeNorm, supertypeNorm])
+    .with(
+      [P.instanceOf(Constructor), P.instanceOf(Constructor)],
+      ([l, r]): boolean =>
+        l.folded === r.folded &&
+        l.tag === r.tag &&
+        match([l, r])
+          .with(
+            [
+              { items: { kind: 'positional' } },
+              { items: { kind: 'positional' } },
+            ],
+            ([l, r]): boolean => {
+              if (l.items.types.length !== r.items.types.length) return false;
+              for (let i = 0; i < l.items.types.length; i++) {
+                if (
+                  !isSubtypeOf(
+                    scope,
+                    l.items.types[i].type,
+                    r.items.types[i].type,
+                    newGoals,
                   )
-                    return false;
-                }
-                return true;
-              },
-            )
-            .otherwise(() => false),
-      )
-      .with([P.instanceOf(Sum), P.instanceOf(Sum)], ([l, r]): boolean =>
-        Array.from(l.items).every((i) => r.items.has(i)),
-      )
-      .with([P.any, P.instanceOf(Sum)], ([l, r]): boolean =>
-        Array.from(r.items).some((x) => isSubtypeOf(scope, l, x)),
-      )
-      // @ts-ignore
-      .with([P.instanceOf(Recursion), P.instanceOf(Recursion)], ([l, r]) => {
-        return isSubtypeOf(scope, l.then, r.then);
-      })
-      .otherwise((): boolean => {
-        return false;
-      })
-  );
+                )
+                  return false;
+              }
+              return true;
+            },
+          )
+          .otherwise(() => false),
+    )
+    .with([P.any, P.instanceOf(Recursion)], ([l, r]): boolean =>
+      isSubtypeOf(scope, l, r.unfold(), newGoals),
+    )
+    .with([P.instanceOf(Recursion), P.any], ([l, r]): boolean =>
+      isSubtypeOf(scope, l.unfold(), r, newGoals),
+    )
+    .with([P.instanceOf(Sum), P.instanceOf(Sum)], ([l, r]): boolean =>
+      Array.from(l.items).every((i) => isSubtypeOf(scope, i, r, newGoals)),
+    )
+    .with([P.any, P.instanceOf(Sum)], ([l, r]): boolean =>
+      Array.from(r.items).some((x) => isSubtypeOf(scope, l, x, newGoals)),
+    )
+    .otherwise((): boolean => {
+      return subtypeNorm.equals(supertypeNorm);
+    });
 }
 
 export function check(
@@ -128,7 +140,6 @@ export function infer(scope: TypeScope, e: Expression): Type {
             }),
           )
           .with(P.instanceOf(Recursion), (rec): Conversion => {
-            callScope.add(rec.name, rec.foldedForm);
             return {
               type: rec.then,
               description: 'recursion unwrap',
@@ -152,7 +163,7 @@ export function infer(scope: TypeScope, e: Expression): Type {
           for (let i = 0; i < e.args.length; i++) {
             if (!check(scope, e.args[i], fnType.parameters[i])) {
               throw new TypingError(
-                `Parameter type ${fnType.parameters[i].id(
+                `Parameter type ${normalizeType(scope, fnType.parameters[i]).id(
                   scope,
                 )} is not compatible with argument type ${match(e.args[i])
                   .with(
@@ -161,7 +172,7 @@ export function infer(scope: TypeScope, e: Expression): Type {
                   )
                   .otherwise((arg) => {
                     try {
-                      return infer(scope, arg);
+                      return normalizeType(scope, infer(scope, arg)).id(scope);
                     } catch {
                       `unknown type`;
                     }
@@ -213,14 +224,58 @@ export function infer(scope: TypeScope, e: Expression): Type {
       return lastType;
     })
     .with(P.instanceOf(Match), (e): Type => {
+      const exprTy = infer(scope, e.expr);
+
       const node = new PatternDecisionTree(e.id, e.span);
       for (const arm of e.arms) {
         node.addMatchArm(arm.pattern);
       }
 
       return node.findMissingPattern(scope, infer(scope, e.expr)).match({
-        Ok(value) {
-          throw new TypingError('Unify is all you need', e);
+        Ok(_) {
+          let result: Type = Sum.never;
+
+          for (const arm of e.arms) {
+            const armScope = scope.createChild(arm);
+            const introducePatternVars = (pat: Pattern, ty: Type) => {
+              match(pat)
+                .with(P.instanceOf(DestructuringPattern), (pat) => {
+                  match(pat.matches)
+                    .with({ type: 'tuple' }, ({ items }) => {
+                      let ctor = scope.lookupCtor(pat.destructor.display, arm);
+                      if (ctor.items.kind !== 'positional') {
+                        throw new TypingError(
+                          `Expected positional destructuring but it was not`,
+                          pat,
+                        );
+                      }
+                      if (ctor.items.types.length !== items.length) {
+                        throw new Error(
+                          `Expected ${ctor.items.types.length} items to destruct but got ${items.length}`,
+                        );
+                      }
+                      for (let i = 0; i < items.length; i++) {
+                        introducePatternVars(
+                          items[i],
+                          ctor.items.types[i].type,
+                        );
+                      }
+                    })
+                    .exhaustive();
+                })
+                .with(P.instanceOf(NameBindPattern), (pat) => {
+                  armScope.add(pat.name, ty);
+                })
+                .with(P.instanceOf(DiscardPattern), () => {})
+                .exhaustive();
+            };
+
+            introducePatternVars(arm.pattern, exprTy);
+
+            result = unify(armScope, result, infer(armScope, arm.body));
+          }
+
+          return result;
         },
         Err(errorCase) {
           throw new TypingError(
@@ -249,7 +304,7 @@ export function visit(scope: TypeScope, def: DefinitionNode) {
               () =>
                 new Constructor(
                   branch.id,
-                  def.name.token.content,
+                  def.name,
                   branch.name.token.content,
                   { kind: 'positional', types: [] },
                 ),
@@ -258,18 +313,14 @@ export function visit(scope: TypeScope, def: DefinitionNode) {
               const typesMapped = types.map(({ type }) =>
                 astTypeToType(branchScope, type),
               );
-              return new Recursion(
+              return new Constructor(
                 branch.id,
-                new Path([def.name]),
-                new Constructor(
-                  branch.id,
-                  def.name.token.content,
-                  branch.name.token.content,
-                  {
-                    kind: 'positional',
-                    types: typesMapped.map((type) => ({ type })),
-                  },
-                ),
+                def.name,
+                branch.name.token.content,
+                {
+                  kind: 'positional',
+                  types: typesMapped.map((type) => ({ type })),
+                },
               );
             })
             .with({ kind: 'struct' }, () => {
@@ -281,11 +332,19 @@ export function visit(scope: TypeScope, def: DefinitionNode) {
             .exhaustive(),
         ] as const;
       });
-      const enumItself = new Sum(
+      const enumItself = new Recursion(
         def.id,
-        constructors.map(([_branch, ty]) => ty),
+        new Path([def.name]),
+        new Sum(
+          def.id,
+          constructors.map(([_branch, ty]) => ty),
+        ),
       );
       for (const [branch, constructor] of constructors) {
+        scope.addCtor(
+          new Path([def.name, branch.name]).display,
+          constructor.replace(new Path([def.name]), enumItself),
+        );
         const enumBodyScope = scope.createChild(branch);
         enumBodyScope.add(def.name, enumItself);
 
@@ -362,7 +421,3 @@ function astTypeToType(scope: TypeScope, ast: AstType): Type {
     })
     .exhaustive();
 }
-
-const inlineError = (e: unknown): never => {
-  throw e;
-};

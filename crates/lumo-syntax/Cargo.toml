@@ -1,0 +1,10 @@
+[package]
+name = "lumo-syntax"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lumo-core.workspace = true
+unicode-ident = "1.0.18"
+winnow = "0.7.10"
+winnow-pratt.workspace = true

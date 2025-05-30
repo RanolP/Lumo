@@ -1,0 +1,22 @@
+enum Nat {
+  zero,
+  succ(Nat);
+}
+
+enum MaybeNat {
+  none
+  some(Nat)
+}
+
+fn sub1(n: Nat): MaybeNat {
+  match n {
+    .zero => .none
+    .succ(let n) => .some(n)
+  }
+}
+
+fn main() {}
+
+fn add(a: Nat, b: Nat): Nat
+fn add(a, .zero       ) => a
+fn add(a, .succ(let b)) => add(.succ(a), b)

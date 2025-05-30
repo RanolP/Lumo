@@ -82,57 +82,85 @@ export class PatternDecisionTree {
   findMissingPattern(
     scope: TypeScope,
     type: Type | { kind: 'tuple'; items: Type[] },
-    visitChild: (node: PatternDecisionTree) => MissingPatternResult = () =>
-      Result.ok(),
   ): MissingPatternResult {
     return match(type)
       .with({ kind: 'tuple' }, ({ items }): MissingPatternResult => {
-        if (items.length === 0) return Result.ok();
+        if (items.length === 0) return Result.ok({ continue: (f) => f(this) });
         const [head, ...tails] = items;
 
-        return this.findMissingPattern(scope, head, (node) =>
-          node.findMissingPattern(
-            scope,
-            { kind: 'tuple', items: tails },
-            visitChild,
-          ),
-        );
+        return this.findMissingPattern(scope, head).match({
+          Ok(result): MissingPatternResult {
+            return result.continue((child) =>
+              child
+                .findMissingPattern(scope, {
+                  kind: 'tuple',
+                  items: tails,
+                })
+                .mapErr((e) => [{ kind: 'simple', value: '_' }, ...e]),
+            );
+          },
+          Err(error): MissingPatternResult {
+            return Result.err([
+              ...error,
+              ...tails.map(
+                (ty): PatternItem => ({
+                  kind: 'simple',
+                  value: ty.id(scope),
+                }),
+              ),
+            ]);
+          },
+        });
       })
       .with(P.instanceOf(Quantification), (q) =>
-        this.findMissingPattern(scope, q.then, visitChild),
+        this.findMissingPattern(scope, q.then),
       )
       .with(P.instanceOf(Recursion), (r) =>
-        this.findMissingPattern(scope, r.then, visitChild),
+        this.findMissingPattern(scope, r.then),
       )
-      .with(
-        P.instanceOf(Sum),
-        (s): MissingPatternResult =>
-          Array.from(s.items).reduce<MissingPatternResult>(
-            (acc, curr): MissingPatternResult =>
-              acc.and(this.findMissingPattern(scope, curr, visitChild)),
-            Result.ok(),
-          ),
-      )
+      .with(P.instanceOf(Sum), (s): MissingPatternResult => {
+        const [head, ...tails] = Array.from(s.items).map((ty) =>
+          this.findMissingPattern(scope, ty),
+        );
+
+        return tails.reduce<MissingPatternResult>(
+          (acc, curr): MissingPatternResult =>
+            acc.andThen((f) =>
+              curr.andThen((g) =>
+                Result.ok({
+                  continue: (visitChild) =>
+                    f.continue(visitChild).and(g.continue(visitChild)),
+                }),
+              ),
+            ),
+          head,
+        );
+      })
       .with(P.instanceOf(Constructor), (c): MissingPatternResult => {
         const skip1Node = this.children.get('Skip+1');
         if (skip1Node)
-          return visitChild(skip1Node).mapErr((e) => [
-            { kind: 'simple', value: '_' },
-            ...e,
-          ]);
+          return Result.ok({
+            continue: (visitChild) =>
+              visitChild(skip1Node).mapErr((e) => [
+                { kind: 'simple', value: '_' },
+                ...e,
+              ]),
+          });
 
-        const node = this.children.get(`Destructor+${c.folded}.${c.tag}`);
+        const node = this.children.get(
+          `Destructor+${c.folded.token.content}.${c.tag}`,
+        );
         if (!node)
           return Result.err([
             {
               kind: 'tag',
-              tag: `${c.folded}.${c.tag}`,
+              tag: `${c.folded.token.content}.${c.tag}`,
               paramsCount: c.items.types.length,
             },
-            ...Array.from({ length: c.items.types.length }).map(
-              (): PatternItem => ({
+            ...c.items.types.map(
+              ({ type }): PatternItem => ({
                 kind: 'simple',
-                value: '_',
+                value: type.id(scope),
               }),
             ),
           ]);
@@ -141,18 +169,14 @@ export class PatternDecisionTree {
             { kind: 'positional' },
             ({ types }): MissingPatternResult =>
               node
-                .findMissingPattern(
-                  scope,
-                  {
-                    kind: 'tuple',
-                    items: types.map(({ type }) => type),
-                  },
-                  visitChild,
-                )
+                .findMissingPattern(scope, {
+                  kind: 'tuple',
+                  items: types.map(({ type }) => type),
+                })
                 .mapErr((e) => [
                   {
                     kind: 'tag',
-                    tag: `${c.folded}.${c.tag}`,
+                    tag: `${c.folded.token.content}.${c.tag}`,
                     paramsCount: types.length,
                   },
                   ...e,
@@ -169,15 +193,18 @@ export class PatternDecisionTree {
       .with(
         P.instanceOf(TypeVar),
         (v): MissingPatternResult =>
-          this.findMissingPattern(scope, normalizeType(scope, v), visitChild),
+          this.findMissingPattern(scope, normalizeType(scope, v)),
       )
       .otherwise((type): MissingPatternResult => {
         const skip1Node = this.children.get('Skip+1');
         if (skip1Node)
-          return visitChild(skip1Node).mapErr((e) => [
-            { kind: 'simple', value: '_' },
-            ...e,
-          ]);
+          return Result.ok({
+            continue: (visitChild) =>
+              visitChild(skip1Node).mapErr((e) => [
+                { kind: 'simple', value: '_' },
+                ...e,
+              ]),
+          });
 
         return Result.err([{ kind: 'simple', value: type.id(scope) }]);
       });
@@ -188,16 +215,40 @@ type PatternPath = PatternItem[];
 type PatternItem =
   | { kind: 'tag'; tag: string; paramsCount: number }
   | { kind: 'simple'; value: string };
-type MissingPatternResult = Result<Unit, PatternPath>;
+type MissingPatternResult = Result<
+  {
+    continue(
+      visitChild: (tree: PatternDecisionTree) => MissingPatternResult,
+    ): MissingPatternResult;
+  },
+  PatternPath
+>;
 
 export function formatPatternPath(path: PatternPath): string {
   let result = '';
   const ctorStack: number[] = [];
+  let skipComma = true;
   for (const item of path) {
+    while (true) {
+      const last = ctorStack.pop();
+      if (last == null) break;
+
+      if (last === 0) {
+        result += ')';
+      } else {
+        ctorStack.push(last - 1);
+        break;
+      }
+    }
+    if (!skipComma) result += ', ';
+    skipComma = false;
     switch (item.kind) {
       case 'tag':
         result += item.tag;
-        result += '(';
+        if (item.paramsCount > 0) {
+          result += '(';
+        }
+        skipComma = true;
         if (item.paramsCount > 0) {
           ctorStack.push(item.paramsCount);
         }
@@ -205,15 +256,6 @@ export function formatPatternPath(path: PatternPath): string {
       case 'simple':
         result += item.value;
         break;
-    }
-
-    const last = ctorStack.pop();
-    if (last != null) {
-      if (last === 0) {
-        result += ')';
-      } else {
-        ctorStack.push(last - 1);
-      }
     }
   }
   if (ctorStack.pop() == 0) {
