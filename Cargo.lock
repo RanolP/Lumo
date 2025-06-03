@@ -79,6 +79,7 @@ dependencies = [
  "annotate-snippets",
  "eyre",
  "liblumoc",
+ "lumo-core",
  "lumo-syntax",
  "ron",
  "serde",

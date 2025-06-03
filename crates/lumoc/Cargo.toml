@@ -10,5 +10,6 @@ eyre.workspace = true
 
 liblumoc.workspace = true
 lumo-syntax.workspace = true
+lumo-core.workspace = true
 
 annotate-snippets = "0.11.5"

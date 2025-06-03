@@ -42,8 +42,7 @@ pub struct FunctionParameterNode {
 
 #[derive(Clone, Debug)]
 pub enum FunctionParameterPatternNode {
-    Value(IdentifierNode),
-    LetBind(IdentifierNode),
+    Bind(IdentifierNode),
     MutBind(IdentifierNode),
     SimplePattern(SimplePatternNode),
 }

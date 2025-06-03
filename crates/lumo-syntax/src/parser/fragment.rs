@@ -27,7 +27,7 @@ pub fn path(i: &mut Input) -> Result<WithId<Spanned<PathNode>>> {
 
 pub fn pat_fn(i: &mut Input) -> Result<WithId<Spanned<FunctionParameterPatternNode>>> {
     alt((
-        identifier.map(|ident| ident.map_deep(FunctionParameterPatternNode::Value)),
+        identifier.map(|ident| ident.map_deep(FunctionParameterPatternNode::Bind)),
         pat_simple.map(|node| node.map_deep(FunctionParameterPatternNode::SimplePattern)),
     ))
     .parse_next(i)
