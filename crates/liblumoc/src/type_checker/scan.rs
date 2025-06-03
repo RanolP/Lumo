@@ -98,8 +98,21 @@ pub fn scan(items: &[WithId<Spanned<ItemNode>>]) -> Result<Scope, InferError> {
             }
             1 => {
                 let core_definition = core_definitions[0];
-                let ty = scope.assign(&core_definition.name.0.content, SimpleType::variable());
-                // TODO constrain to core definition
+                let mut arg_types = Vec::new();
+                for param in &core_definition.parameters {
+                    arg_types.push(transform_syntax_type(
+                        &mut scope,
+                        &param.ty.as_ref().expect("always Some"),
+                    )?);
+                }
+                let ret = match &core_definition.return_type {
+                    Some(ty) => transform_syntax_type(&mut scope, &ty)?,
+                    None => SimpleTypeRef::UNIT,
+                };
+                scope.assign(
+                    &core_definition.name.0.content,
+                    SimpleType::Function(arg_types, ret),
+                );
             }
             2.. => {
                 return Err(InferError::new(format!(

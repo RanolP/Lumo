@@ -14,7 +14,11 @@ impl Scope {
             // 0 -> Unit Type (`()`)
             id: 1,
             name_map: Default::default(),
-            type_map: Default::default(),
+            type_map: {
+                let mut map = HashMap::new();
+                map.insert(0, SimpleType::Tuple(Vec::new()));
+                map
+            },
         }
     }
 

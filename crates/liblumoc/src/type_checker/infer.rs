@@ -11,8 +11,16 @@ pub fn infer_item(scope: &mut Scope, term: &ItemNode) -> Result<SimpleTypeRef, I
     match term {
         ItemNode::DeclEnumNode(decl_enum_node) => Ok(scope
             .get_ref(&decl_enum_node.name.0.content)
-            .expect("there must be enum declared from scan")),
+            .expect("enum declared from scan")),
         ItemNode::DeclFunctionNode(decl_function_node) => {
+            let ty_ref = scope
+                .get_ref(&decl_function_node.name.0.content)
+                .expect("function declared from scan");
+            let Some(SimpleType::Function(arg_types, ret)) = scope.get(ty_ref.clone()).cloned()
+            else {
+                panic!("Function is not typed as function");
+            };
+
             let mut params: Vec<SimpleTypeRef> = Vec::new();
             for param in &decl_function_node.parameters {
                 match &**param.pattern {
@@ -35,13 +43,12 @@ pub fn infer_item(scope: &mut Scope, term: &ItemNode) -> Result<SimpleTypeRef, I
                 }
             }
 
-            let ret = scope.put(SimpleType::variable());
             if let Some(body) = &decl_function_node.body {
                 let body = infer_expr(scope, &body)?;
-                constrain(scope, ret.clone(), body, HashSet::new())?;
+                constrain(scope, body, ret, HashSet::new())?;
             }
 
-            Ok(scope.put(SimpleType::Function(params, ret)))
+            Ok(ty_ref)
         }
     }
 }
@@ -167,6 +174,9 @@ pub fn constrain(
     mut cache: HashSet<(SimpleTypeRef, SimpleTypeRef)>,
 ) -> Result<(), InferError> {
     if cache.contains(&(lhs.clone(), rhs.clone())) {
+        return Ok(());
+    }
+    if lhs == rhs {
         return Ok(());
     }
     cache.insert((lhs.clone(), rhs.clone()));

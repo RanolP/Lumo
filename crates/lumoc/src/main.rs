@@ -2,8 +2,7 @@ use std::fmt::{self, Debug};
 
 use annotate_snippets::{Level, Renderer, Snippet};
 use eyre::eyre;
-use liblumoc::{Scope, infer_item, scan};
-use lumo_core::{SimpleType, SimpleTypeRef};
+use liblumoc::{Scope, coalesce_type, infer_item, scan};
 use lumo_syntax::{parse, tokenize};
 
 const DEBUG_TOKENS: bool = false;
@@ -83,7 +82,7 @@ fn main() -> eyre::Result<()> {
             println!(
                 "{} : {:#?}",
                 item.representative_name(),
-                DebugType(&scope, ty)
+                coalesce_type(&scope, ty)
             );
         }
     }
@@ -96,57 +95,8 @@ impl Debug for DebugScope<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut dbg = f.debug_struct("Scope");
         for (name, ty) in self.0.entries() {
-            dbg.field(&name, &DebugType(self.0, ty.clone()));
+            dbg.field(&name, &coalesce_type(self.0, ty.clone()));
         }
         dbg.finish()
-    }
-}
-
-struct DebugType<'a>(&'a Scope, SimpleTypeRef);
-
-impl Debug for DebugType<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let Some(ty) = self.0.get(self.1.clone()) else {
-            return Ok(());
-        };
-        match ty {
-            SimpleType::Variable(variable_state) => {
-                struct Bound<'a>(&'a Scope, &'a Vec<SimpleTypeRef>);
-                impl Debug for Bound<'_> {
-                    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                        let mut tuple = f.debug_tuple("Bound");
-                        for e in self.1 {
-                            tuple.field(&DebugType(self.0, e.clone()));
-                        }
-                        tuple.finish()
-                    }
-                }
-                let mut map = f.debug_struct(&format!("<#{}>", self.1.0));
-                if !variable_state.lower_bounds.is_empty() {
-                    map.field("lower_bounds", &Bound(self.0, &variable_state.lower_bounds));
-                }
-                if !variable_state.upper_bounds.is_empty() {
-                    map.field("upper_bounds", &Bound(self.0, &variable_state.upper_bounds));
-                }
-                map.finish()
-            }
-            SimpleType::Primitive(name) => f.write_str(name),
-            SimpleType::VariantTag { root, variant } => {
-                write!(f, "{}.{}", &root.0.content, variant.0.content)
-            }
-            SimpleType::Function(args, ret) => {
-                let mut tuple = f.debug_tuple("fn");
-                for arg in args {
-                    tuple.field(&DebugType(self.0, arg.clone()));
-                }
-                tuple.finish()?;
-                f.write_str(" => ")?;
-                if f.alternate() {
-                    write!(f, "{:#?}", DebugType(self.0, ret.clone()))
-                } else {
-                    write!(f, "{:?}", DebugType(self.0, ret.clone()))
-                }
-            }
-        }
     }
 }
