@@ -1,11 +1,22 @@
 use crate::Spanned;
 
-use super::{ExpressionNode, IdentifierNode, SimplePatternNode, TypeNode, WithId};
+use super::{ExpressionNode, IdentifierNode, PatternNode, TypeNode, WithId};
 
 #[derive(Clone, Debug)]
 pub enum ItemNode {
     DeclEnumNode(DeclEnumNode),
     DeclFunctionNode(DeclFunctionNode),
+}
+
+impl ItemNode {
+    pub fn representative_name(&self) -> String {
+        match self {
+            ItemNode::DeclEnumNode(decl_enum_node) => (**decl_enum_node.name).0.content.clone(),
+            ItemNode::DeclFunctionNode(decl_function_node) => {
+                (**decl_function_node.name).0.content.clone()
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -44,5 +55,5 @@ pub struct FunctionParameterNode {
 pub enum FunctionParameterPatternNode {
     Bind(IdentifierNode),
     MutBind(IdentifierNode),
-    SimplePattern(SimplePatternNode),
+    SimplePattern(PatternNode),
 }

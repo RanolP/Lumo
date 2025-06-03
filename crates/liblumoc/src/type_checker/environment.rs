@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
 use lumo_core::{IdentifierNode, SimpleType, SimpleTypeRef};
 
@@ -23,10 +23,13 @@ impl Scope {
         self.type_map.insert(self.id, ty);
         SimpleTypeRef(self.id)
     }
-    pub fn assign(&mut self, name: IdentifierNode, ty: SimpleType) -> SimpleTypeRef {
+    pub fn assign(&mut self, name: &String, ty: SimpleType) -> SimpleTypeRef {
         let ty_ref = self.put(ty);
-        self.name_map.insert(name.0.content, ty_ref.clone());
+        self.name_map.insert(name.clone(), ty_ref.clone());
         ty_ref
+    }
+    pub fn assign_alias(&mut self, name: &String, ty: SimpleTypeRef) {
+        self.name_map.insert(name.clone(), ty);
     }
     pub fn get(&self, ty_ref: SimpleTypeRef) -> Option<&SimpleType> {
         self.type_map.get(&ty_ref.0)
@@ -41,7 +44,11 @@ impl Scope {
         self.type_map
             .get_disjoint_mut(ty_ref_arr.map(|ty_ref| &ty_ref.0))
     }
-    pub fn by_name(&self, ident: &IdentifierNode) -> Option<SimpleTypeRef> {
-        self.name_map.get(&ident.0.content).cloned()
+    pub fn get_ref(&self, name: &String) -> Option<SimpleTypeRef> {
+        self.name_map.get(name).cloned()
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = (&String, &SimpleTypeRef)> {
+        self.name_map.iter()
     }
 }

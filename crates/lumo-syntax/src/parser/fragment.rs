@@ -1,10 +1,10 @@
 use lumo_core::{
     DestructuringBodyNode, DestructuringTagNode, FunctionParameterPatternNode, IdentifierNode,
-    PathNode, PatternNode, SimplePatternNode, Spanned, TokenKind, WithId,
+    PathNode, PatternNode, Spanned, TokenKind, WithId,
 };
 use winnow::{
     Parser,
-    combinator::{alt, cut_err, empty, preceded, repeat, separated, seq, terminated},
+    combinator::{alt, cut_err, empty, preceded, separated, seq, terminated},
 };
 
 use crate::{with_node_id, with_span, without_block};
@@ -34,24 +34,24 @@ pub fn pat_fn(i: &mut Input) -> Result<WithId<Spanned<FunctionParameterPatternNo
 }
 
 pub fn pat(i: &mut Input) -> Result<WithId<Spanned<PatternNode>>> {
-    alt((
-        with_span!(
-            preceded(token(TokenKind::KeywordLet), identifier)
-                .map(|ident| ident.map(PatternNode::NameBind))
-        )
-        .map(|e| e.transpose()),
-        pat_simple.map(|node| node.map_deep(PatternNode::SimplePattern)),
-    ))
+    alt((pat_name_let, pat_simple)).parse_next(i)
+}
+
+fn pat_name_let(i: &mut Input) -> Result<WithId<Spanned<PatternNode>>> {
+    (with_span!(preceded(
+        token(TokenKind::KeywordLet),
+        identifier.map(|e| e.map(PatternNode::NameBind))
+    )))
+    .map(|e| e.transpose())
     .parse_next(i)
 }
 
-pub fn pat_simple(i: &mut Input) -> Result<WithId<Spanned<SimplePatternNode>>> {
+pub fn pat_simple(i: &mut Input) -> Result<WithId<Spanned<PatternNode>>> {
     alt((
         with_node_id!(
-            token(TokenKind::IdentifierUnderscore)
-                .map(|token| token.map(SimplePatternNode::Discard))
+            token(TokenKind::IdentifierUnderscore).map(|token| token.map(PatternNode::Discard))
         ),
-        with_node_id!(with_span!(seq!(SimplePatternNode::TaggedDestructuring(
+        with_node_id!(with_span!(seq!(PatternNode::TaggedDestructuring(
             destructuring_tag,
             destructuring_body
         )))),

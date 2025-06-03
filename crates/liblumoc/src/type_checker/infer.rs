@@ -1,21 +1,28 @@
 use std::{collections::HashSet, iter::once};
 
 use lumo_core::{
-    ExpressionNode, FunctionCallArgumentNode, FunctionParameterPatternNode, ItemNode, SimpleType,
-    SimpleTypeRef,
+    DestructuringBodyNode, ExpressionNode, FunctionCallArgumentNode, FunctionParameterPatternNode,
+    ItemNode, PatternNode, PostfixOperatorKind, SimpleType, SimpleTypeRef,
 };
 
-use crate::type_checker::{environment::Scope, error::InferError};
+use crate::type_checker::{environment::Scope, error::InferError, syntax::transform_syntax_type};
 
 pub fn infer_item(scope: &mut Scope, term: &ItemNode) -> Result<SimpleTypeRef, InferError> {
     match term {
-        ItemNode::DeclEnumNode(decl_enum_node) => Ok(scope.put(SimpleType::Todo)),
+        ItemNode::DeclEnumNode(decl_enum_node) => Ok(scope
+            .get_ref(&decl_enum_node.name.0.content)
+            .expect("there must be enum declared from scan")),
         ItemNode::DeclFunctionNode(decl_function_node) => {
-            let mut params = Vec::new();
+            let mut params: Vec<SimpleTypeRef> = Vec::new();
             for param in &decl_function_node.parameters {
                 match &**param.pattern {
                     FunctionParameterPatternNode::Bind(name) => {
-                        params.push(scope.assign(name.clone(), SimpleType::variable()));
+                        let ty = scope.assign(&name.0.content, SimpleType::variable());
+                        if let Some(rhs) = &param.ty {
+                            let rhs = transform_syntax_type(scope, &rhs)?;
+                            constrain(scope, ty.clone(), rhs, HashSet::new())?;
+                        }
+                        params.push(ty);
                     }
                     FunctionParameterPatternNode::MutBind(identifier_node) => {
                         return Err(InferError::new(format!(
@@ -23,16 +30,7 @@ pub fn infer_item(scope: &mut Scope, term: &ItemNode) -> Result<SimpleTypeRef, I
                         )));
                     }
                     FunctionParameterPatternNode::SimplePattern(simple_pattern_node) => {
-                        match simple_pattern_node {
-                            lumo_core::SimplePatternNode::Discard(_) => {
-                                params.push(scope.put(SimpleType::variable()));
-                            }
-                            lumo_core::SimplePatternNode::TaggedDestructuring(_, _) => {
-                                return Err(InferError::new(format!(
-                                    "destructuring pattern is not supported yet"
-                                )));
-                            }
-                        }
+                        params.push(infer_pat(scope, simple_pattern_node.clone())?);
                     }
                 }
             }
@@ -45,6 +43,27 @@ pub fn infer_item(scope: &mut Scope, term: &ItemNode) -> Result<SimpleTypeRef, I
 
             Ok(scope.put(SimpleType::Function(params, ret)))
         }
+    }
+}
+
+pub fn infer_pat(scope: &mut Scope, pat: PatternNode) -> Result<SimpleTypeRef, InferError> {
+    match pat {
+        PatternNode::NameBind(name) => Ok(scope.assign(&name.0.content, SimpleType::variable())),
+        PatternNode::Discard(..) => Ok(scope.put(SimpleType::variable())),
+        PatternNode::TaggedDestructuring(tag, body) => match &**body {
+            DestructuringBodyNode::None => Ok(scope.put(SimpleType::variable())),
+            DestructuringBodyNode::Positional(items) => {
+                // TODO: utilize tag
+                let result = scope.put(SimpleType::variable());
+                for item in items {
+                    infer_pat(scope, PatternNode::clone(&item))?;
+                }
+                Ok(result)
+            }
+            DestructuringBodyNode::Named(items) => Err(InferError::new(format!(
+                "named destructuring pattern is not supported yet"
+            ))),
+        },
     }
 }
 
@@ -86,12 +105,45 @@ pub fn infer_expr(scope: &mut Scope, term: &ExpressionNode) -> Result<SimpleType
 
             Ok(ret)
         }
-        ExpressionNode::PrefixOperator(prefix_operator_node) => todo!(),
-        ExpressionNode::InfixOperator(infix_operator_node) => todo!(),
-        ExpressionNode::PostfixOperator(postfix_operator_node) => todo!(),
-        ExpressionNode::Name(name_node) => scope.by_name(&name_node.0).ok_or(InferError::new(
-            format!("There is no `{}` in scope", &name_node.0.0.content),
+        ExpressionNode::PrefixOperator(prefix_operator_node) => Err(InferError::new(
+            "prefix operator is not implemented yet".to_owned(),
         )),
+        ExpressionNode::InfixOperator(infix_operator_node) => Err(InferError::new(
+            "infix operator is not implemented yet".to_owned(),
+        )),
+        ExpressionNode::PostfixOperator(postfix_operator_node) => {
+            let expr = infer_expr(scope, &postfix_operator_node.expr)?;
+            match &**postfix_operator_node.kind {
+                PostfixOperatorKind::FieldAccess(_) => {
+                    return Err(InferError::new(
+                        "field access is not implemented yet".to_owned(),
+                    ));
+                }
+                PostfixOperatorKind::FunctionCall(items) => {
+                    let ret = scope.put(SimpleType::variable());
+                    let mut arg_types = Vec::new();
+                    for arg in items {
+                        arg_types.push(infer_expr(scope, arg)?);
+                    }
+                    let fn_ty = scope.put(SimpleType::Function(arg_types, ret.clone()));
+                    constrain(scope, expr, fn_ty, HashSet::new())?;
+                    Ok(ret)
+                }
+                PostfixOperatorKind::Index(items) => {
+                    return Err(InferError::new(
+                        "index operator is not implemented yet".to_owned(),
+                    ));
+                }
+            }
+        }
+        ExpressionNode::Name(name_node) => {
+            scope
+                .get_ref(&name_node.0.0.content)
+                .ok_or(InferError::new(format!(
+                    "There is no `{}` in scope",
+                    &name_node.0.0.content
+                )))
+        }
         ExpressionNode::Block(block_node) => {
             let mut result = SimpleTypeRef::UNIT;
             for ty in &block_node.0 {
@@ -99,11 +151,16 @@ pub fn infer_expr(scope: &mut Scope, term: &ExpressionNode) -> Result<SimpleType
             }
             Ok(result)
         }
-        ExpressionNode::EnumVariant(enum_variant_node) => todo!(),
+        ExpressionNode::EnumVariant(enum_variant_node) => {
+            Ok(scope.put(SimpleType::variable()))
+            // return Err(InferError::new(
+            //     "enum variant is not implemented yet".to_owned(),
+            // ));
+        }
     }
 }
 
-fn constrain(
+pub fn constrain(
     scope: &mut Scope,
     lhs: SimpleTypeRef,
     rhs: SimpleTypeRef,

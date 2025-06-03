@@ -15,6 +15,12 @@ use crate::Spanned;
 #[derive(Clone)]
 pub struct WithId<T>(usize, T);
 
+impl<T> WithId<Spanned<T>> {
+    pub fn transpose(self) -> Spanned<WithId<T>> {
+        self.1.map(|v| WithId(self.0, v))
+    }
+}
+
 impl<T> WithId<T> {
     pub fn new(id: usize, value: T) -> Self {
         WithId(id, value)
@@ -29,6 +35,10 @@ impl<T> WithId<T> {
         F: FnOnce(T) -> U,
     {
         WithId(self.0, f(self.1))
+    }
+
+    pub fn inner(self) -> T {
+        self.1
     }
 }
 

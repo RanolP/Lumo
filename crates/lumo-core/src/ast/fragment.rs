@@ -17,11 +17,6 @@ pub enum TypeNode {
 #[derive(Clone, Debug)]
 pub enum PatternNode {
     NameBind(Spanned<IdentifierNode>),
-    SimplePattern(SimplePatternNode),
-}
-
-#[derive(Clone, Debug)]
-pub enum SimplePatternNode {
     Discard(Token),
     TaggedDestructuring(
         WithId<Spanned<DestructuringTagNode>>,

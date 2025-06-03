@@ -1,3 +1,5 @@
+use crate::{IdentifierNode, Spanned, WithId};
+
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct SimpleTypeRef(pub usize);
 
@@ -9,9 +11,11 @@ impl SimpleTypeRef {
 pub enum SimpleType {
     Variable(VariableState),
     Primitive(String),
+    VariantTag {
+        root: WithId<Spanned<IdentifierNode>>,
+        variant: WithId<Spanned<IdentifierNode>>,
+    },
     Function(Vec<SimpleTypeRef>, SimpleTypeRef),
-
-    Todo,
 }
 
 impl SimpleType {
