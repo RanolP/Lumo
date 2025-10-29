@@ -1,0 +1,21 @@
+{
+  "name": "lumoc",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.18.1",
+  "devDependencies": {
+    "tsx": "catalog:",
+    "type-fest": "^5.1.0"
+  },
+  "dependencies": {
+    "handsum": "^0.1.1"
+  }
+}
