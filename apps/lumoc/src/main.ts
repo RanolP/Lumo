@@ -1,8 +1,9 @@
 import { formatParens } from './shared/fmt';
-import { Value } from './features/syntax/value';
+import { Value } from './features/ast/value';
 import { TypeC, TypeV } from './features/type';
 import { Typer } from './features/typer';
 import { dsl } from './features/dsl';
+import { Lexer } from './features/syntax/lexer';
 
 const unit = (() => {
   const t = TypeV.Record({}).freshRefined();
@@ -40,6 +41,18 @@ const nat = (() => {
     },
   };
 })();
+
+console.log(
+  Lexer.lex(
+    `
+enum Nat {
+  zero
+  succ(Nat)
+}
+fn main() {}
+`.trim(),
+  ),
+);
 
 const RICH_FORMAT = true;
 const fmt = RICH_FORMAT ? formatParens : (source: string) => source;

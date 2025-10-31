@@ -1,6 +1,6 @@
 import { formatParens } from '../shared/fmt';
-import { Computation, TypedComputation } from './syntax/computation';
-import { TypedValue, Value } from './syntax/value';
+import { Computation, TypedComputation } from './ast/computation';
+import { TypedValue, Value } from './ast/value';
 import { RefinedTypeV, TypeC } from './type';
 
 export class Typer {

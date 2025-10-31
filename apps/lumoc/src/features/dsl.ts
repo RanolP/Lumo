@@ -1,5 +1,5 @@
-import { Computation } from './syntax/computation';
-import { Value } from './syntax/value';
+import { Computation } from './ast/computation';
+import { Value } from './ast/value';
 
 export const dsl = {
   lambda(variable: string, body: (value: Value) => Computation): Computation {

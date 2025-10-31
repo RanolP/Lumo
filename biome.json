@@ -7,13 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "ignore": [
-      "node_modules",
-      "dist",
-      ".next",
-      "coverage",
-      ".turbo"
-    ]
+    "ignore": ["node_modules", "dist", ".next", "coverage", ".turbo"]
   },
   "formatter": {
     "enabled": true,
@@ -46,10 +40,10 @@
   },
   "javascript": {
     "formatter": {
-      "quoteStyle": "double",
+      "quoteStyle": "single",
       "jsxQuoteStyle": "double",
       "quoteProperties": "asNeeded",
-      "trailingCommas": "es5",
+      "trailingCommas": "all",
       "semicolons": "asNeeded",
       "arrowParentheses": "asNeeded",
       "bracketSpacing": true,

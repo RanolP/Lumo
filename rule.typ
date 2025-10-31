@@ -93,16 +93,16 @@ The calculus has four judgements (two for value and computation, two for infer a
 
 
   $
-    () /
-    (Gamma judge.v "record" { dots, i = A_i, dots } check Pi_(i in I) A_i)
+    (dots.c quad Gamma judge.v x_i check A_i quad dots.c) /
+    (Gamma judge.v "record" { dots, i = x_i, dots } check Pi_(i in I) A_i)
     "Record"
   $
 
   #colbreak()
 
   $
-    () /
-    (Gamma judge.v j" "{ dots, i = A_i, dots} check j Pi_(i in I) A_i)
+    (dots.c quad Gamma judge.v x_i check A_i quad dots.c) /
+    (Gamma judge.v j" "{ dots, i = x_i, dots} check j Pi_(i in I) A_i)
     "Variant"
   $
 
@@ -164,6 +164,10 @@ The calculus has four judgements (two for value and computation, two for infer a
   $
 ]
 
+== Bibliography
+
+- Call by Push value
+- Bidirectional Typing
 
 == Appendix
 
@@ -184,4 +188,3 @@ $
 $
   (f : A -> underline(B) quad x : A) / (f(x) : underline(B)) "FunApp"#super("Function Application")
 $
-

@@ -12,10 +12,13 @@
   "license": "ISC",
   "packageManager": "pnpm@10.18.1",
   "devDependencies": {
+    "@types/regexp.escape": "^2.0.0",
     "tsx": "catalog:",
     "type-fest": "^5.1.0"
   },
   "dependencies": {
-    "handsum": "^0.1.1"
+    "arkregex": "^0.0.2",
+    "handsum": "^0.1.1",
+    "regexp.escape": "^2.0.1"
   }
 }
