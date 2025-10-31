@@ -6,6 +6,12 @@
 #let check = text(fill: blue)[$arrow.l.double$]
 #let synth = text(fill: red)[$arrow.r.double$]
 
+#let rule(premises, conclusion, name) = {
+  $
+    #premises / #conclusion italic(#name)
+  $
+}
+
 = Lumo
 
 == Types
@@ -43,125 +49,113 @@ The calculus has four judgements (two for value and computation, two for infer a
 == Terms and Big-step semantics
 
 #columns[
-  $
-    (Gamma judge.v x check A) /
-    (Gamma judge.v (x : A) synth A)
-    "Annotate"
-  $
+  #rule[
+    $Gamma judge.v x check A$
+  ][
+    $Gamma judge.v (x : A) synth A$
+  ][Annotate]
 
-  $
-    (Gamma judge.v x check (mu X. A)[X |-> mu X.A]) /
-    (Gamma judge.v"roll" x check mu X.A)
-    "Roll"
-  $
+  #rule[
+    $Gamma judge.v x check (mu X. A)[X |-> mu X.A]$
+  ][
+    $Gamma judge.v"roll" x check mu X.A$
+  ][Roll]
 
-  $
-    () /
-    ("TODO")
-    "Unroll"
-  $
+  #rule[
+  ][
+    TODO
+  ][Unroll]
 
-  $
-    (Gamma judge.v v check A_(i^prime)) /
-    (Gamma judge.v "inj"_(i^prime) v check Sigma_(i in {i^prime, I}) (dots, i^prime |-> A_(i^prime), dots))
-    "Injection"
-  $
+  #rule[
+    $Gamma judge.v v check A_(i^prime)$
+  ][
+    $Gamma judge.v "inj"_(i^prime) v check Sigma_(i in {i^prime, I}) (dots, i^prime |-> A_(i^prime), dots)$
+  ][Injection]
 
-  $
-    () /
-    ("TODO")
-    "Variable"
-  $
+  #rule[
+  ][
+    TODO
+  ][Variable]
 
-  $
-    (Gamma judge.c M check underline(B)) /
-    (Gamma judge.v "thunk" M check "thunk" underline(B))
-    "Thunk"
-  $
+  #rule[
+    $Gamma judge.c M check underline(B)$
+  ][
+    $Gamma judge.v "thunk" M check "thunk" underline(B)$
+  ][Thunk]
 
-  $
-    () /
-    ("TODO")
-    "TyAbs"_V
-  $
+  #rule[
+  ][
+    TODO
+  ][$"TyAbs"_V$]
 
-  $
-    () /
-    ("TODO")
-    "TyAbs"_C
-  $
+  #rule[
+  ][
+    TODO
+  ][$"TyAbs"_C$]
 
 
-  $
-    (dots.c quad Gamma judge.v x_i check A_i quad dots.c) /
-    (Gamma judge.v "record" { dots, i = x_i, dots } check Pi_(i in I) A_i)
-    "Record"
-  $
+  #rule[
+    $dots.c quad Gamma judge.v x_i check A_i quad dots.c$
+  ][
+    $Gamma judge.v "record" { dots, i = x_i, dots } check Pi_(i in I) A_i$
+  ][Record]
 
   #colbreak()
 
-  $
-    (dots.c quad Gamma judge.v x_i check A_i quad dots.c) /
-    (Gamma judge.v j" "{ dots, i = x_i, dots} check j Pi_(i in I) A_i)
-    "Variant"
-  $
+  #rule[
+    $dots.c quad Gamma judge.v x_i check A_i quad dots.c$
+  ][
+    $Gamma judge.v j" "{ dots, i = x_i, dots} check j Pi_(i in I) A_i$
+  ][Variant]
 
 
-  $
-    (Gamma judge.v x check A) /
-    (Gamma judge.c "return" x check "produce" A)
-    "Return"
-  $
+  #rule[
+    $Gamma judge.v x check A$
+  ][
+    $Gamma judge.c "return" x check "produce" A$
+  ][Return]
 
-  $
-    () /
-    ("TODO")
-    "Force"
-  $
+  #rule[
+  ][
+    TODO
+  ][Force]
 
-  $
-    () /
-    ("TODO")
-    "Apply"
-  $
+  #rule[
+  ][
+    TODO
+  ][Apply]
 
-  $
-    (Gamma, x : A judge.c M check underline(B)) /
-    (Gamma judge.c lambda x. M check A -> underline(B))
-    "Lambda"
-  $
+  #rule[
+    $Gamma, x : A judge.c M check underline(B)$
+  ][
+    $Gamma judge.c lambda x. M check A -> underline(B)$
+  ][Lambda]
 
-  $
-    () /
-    ("TODO")
-    "Sequence"
-  $
+  #rule[
+  ][
+    TODO
+  ][Sequence]
 
 
-  $
-    () /
-    ("TODO")
-    "TyApp"_V
-  $
+  #rule[
+  ][
+    TODO
+  ][$"TyApp"_V$]
 
+  #rule[
+  ][
+    TODO
+  ][$"TyApp"_C$]
 
-  $
-    () /
-    ("TODO")
-    "TyApp"_C
-  $
+  #rule[
+  ][
+    TODO
+  ][Projection]
 
-  $
-    () /
-    ("TODO")
-    "Projection"
-  $
-
-  $
-    () /
-    ("TODO")
-    "Match"
-  $
+  #rule[
+  ][
+    TODO
+  ][Match]
 ]
 
 == Bibliography
@@ -175,16 +169,22 @@ The calculus has four judgements (two for value and computation, two for infer a
 
 Inference rules have following form.
 
-$
-  "Premises" / "Conclusion" "RuleName"
-$
+#rule[
+  Premises
+][
+  Conclusion
+][RuleName]
 
 Let's become familiar with inference rules by reading examples below:
 
-$
-  (a = 1 quad b = 2) / (a + b = 3) "Add"
-$
+#rule[
+  $a = 1 quad b = 2$
+][
+  $a + b = 3$
+][Add]
 
-$
-  (f : A -> underline(B) quad x : A) / (f(x) : underline(B)) "FunApp"#super("Function Application")
-$
+#rule[
+  $f : A -> underline(B) quad x : A$
+][
+  $f(x) : underline(B)$
+][FunApp#super[Function Application]]
