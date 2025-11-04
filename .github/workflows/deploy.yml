@@ -44,13 +44,18 @@ jobs:
       - name: Build PDF
         run: typst compile formalization.typ index.pdf --input version="${{ steps.version.outputs.version }}"
 
+      - name: Setup Pages directory
+        run: |
+          mkdir -p pages
+          mv index.pdf pages/
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: index.pdf
+          path: pages
 
   deploy:
     environment:
