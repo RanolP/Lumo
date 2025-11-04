@@ -1,4 +1,4 @@
-export function lexer() {
+export function lexer<TTokenSet>() {
   const rules: Array<{
     pattern: RegExp;
     transform: (groups: Record<string, string>) => unknown;
@@ -29,7 +29,6 @@ export function lexer() {
       const result = [];
       let match: Record<string, string> | undefined;
       while ((match = fullRegexp.exec(src)?.groups)) {
-        console.log(match);
         const { MalssiLexer__rest: rest, ...groups } = match;
         const entries = Object.entries(groups)
           .filter(([key]) => key.startsWith('MalssiLexer__'))
@@ -55,20 +54,20 @@ export function lexer() {
       );
       return this;
     },
-  } as Lexer;
+  } as Lexer<TTokenSet>;
 }
 
 export interface Lexer<TTokenSet = never> {
   lex(src: string): TTokenSet[];
 
-  rule: <TToken>(
+  rule: (
     pattern: RegExp,
-    transform: (groups: Record<string, string>) => TToken,
-  ) => Lexer<TTokenSet | TToken>;
+    transform: (groups: Record<string, string>) => TTokenSet,
+  ) => Lexer<TTokenSet>;
 
   ruleset: <
-    TRules extends [RegExp, (groups: Record<string, string>) => unknown][],
+    TRules extends [RegExp, (groups: Record<string, string>) => TTokenSet][],
   >(
     rules: TRules,
-  ) => Lexer<TTokenSet | TRules[number][1]>;
+  ) => Lexer<TTokenSet>;
 }

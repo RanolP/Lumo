@@ -9,6 +9,8 @@ const Keywords = {
 
 const Punctuations = {
   single: {
+    Comma: ',',
+    Colon: ':',
     LeftParenthesis: '(',
     RightParenthesis: ')',
     LeftCurlyBracket: '{',
@@ -39,7 +41,7 @@ type TToken = {
 export type Token = Handsum<TToken>;
 export const Token = handsum<TToken>({});
 
-export const Lexer = lexer()
+export const Lexer = lexer<Token>()
   .rule(/(?<content>[ \t]+)/, ({ content }) => Token.HorizontalSpace(content!))
   .rule(/(?<content>\r\n|[\r\n])+/, ({ content }) =>
     Token.VerticalSpace(content!),

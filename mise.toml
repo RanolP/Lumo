@@ -1,0 +1,4 @@
+[tools]
+node = "latest"
+typst = "latest"
+pnpm = "latest"

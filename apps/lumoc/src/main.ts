@@ -4,6 +4,11 @@ import { TypeC, TypeV } from './features/type';
 import { Typer } from './features/typer';
 import { dsl } from './features/dsl';
 import { Lexer } from './features/syntax/lexer';
+import { program } from './features/syntax/parser';
+import {
+  createArrayInput,
+  createContextfulInput,
+} from './vendors/malssi/parser/input';
 
 const unit = (() => {
   const t = TypeV.Record({}).freshRefined();
@@ -42,17 +47,23 @@ const nat = (() => {
   };
 })();
 
-console.log(
-  Lexer.lex(
-    `
-enum Nat {
-  zero
-  succ(Nat)
-}
-fn main() {}
-`.trim(),
-  ),
+const tokens = Lexer.lex(
+  `
+    enum Nat {
+      zero,
+      succ { n : Nat },
+    }
+  `,
 );
+// console.log(tokens);
+const items = program.run(
+  createContextfulInput({ isBlock: false, id: 0 })(createArrayInput(tokens)),
+);
+for (const item of items) {
+  console.log(formatParens(item.display()));
+}
+
+console.log();
 
 const RICH_FORMAT = true;
 const fmt = RICH_FORMAT ? formatParens : (source: string) => source;
@@ -87,5 +98,4 @@ for (const exprFn of [
   );
   const typer = Typer.create().with('nat', nat.t);
   const typed = typer.infer_v(expr);
-  console.log();
 }

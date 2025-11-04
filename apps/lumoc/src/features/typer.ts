@@ -27,18 +27,14 @@ export class Typer {
     return this;
   }
 
-  resolve(ty: RefinedTypeV): RefinedTypeV {
-    if (ty.handle.Variable) {
-      const [name] = ty.handle.Variable;
-      if (this.#scope[name]) {
-        return ty.sub(name, this.resolve(this.#scope[name]));
-      }
-      if (this.#parent) {
-        return this.#parent.resolve(ty);
-      }
-      throw new UndefinedTypeError(name);
+  resolve(name: string): RefinedTypeV {
+    if (name in this.#scope) {
+      return this.#scope[name]!;
     }
-    return ty;
+    if (this.#parent) {
+      return this.#parent.resolve(name);
+    }
+    throw new UnknownVariableError(name);
   }
 
   infer_v(value: Value): TypedValue {
@@ -46,6 +42,10 @@ export class Typer {
     return value.match({
       Annotate(target, type) {
         return that.check_v(target, type);
+      },
+      Variable(name) {
+        const ty = that.resolve(name);
+        return TypedValue.Variable(name, { type: ty });
       },
       _() {
         throw new ValueInferenceFailureError(value);
@@ -135,9 +135,8 @@ export class Typer {
     }
 
     const inferred = this.infer_v(value);
-    const resolved = this.resolve(type);
-    if (!inferred.getType().equals(resolved)) {
-      throw new ValueTypeMismatchError(inferred, resolved);
+    if (!inferred.getType().equals(type)) {
+      throw new ValueTypeMismatchError(inferred, type);
     }
     return inferred;
   }
@@ -259,9 +258,9 @@ export class SumMissingTagError extends Error {
   }
 }
 
-export class UndefinedTypeError extends Error {
+export class UnknownVariableError extends Error {
   constructor(name: string) {
-    super(`Undefined type: ${name}`);
-    this.name = 'UndefinedTypeError';
+    super(`Unknown variable: ${name}`);
+    this.name = 'UnknownVariableError';
   }
 }

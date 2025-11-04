@@ -40,6 +40,10 @@ interface TComputation<TImplKey extends ImplKind> {
     body: ComputationF<TImplKey>,
     meta: MetaOf<TImplKey>,
   ): ComputationF<TImplKey>;
+  With(
+    bundle: Record<string, ComputationF<TImplKey>>,
+    meta: MetaOf<TImplKey>,
+  ): ComputationF<TImplKey>;
   Sequence(
     left: ComputationF<TImplKey>,
     name: string,
@@ -90,6 +94,11 @@ export const Computation = handsum<
       Lambda(name, _1, meta) {
         return `λ${name}.${_1.display()}`;
       },
+      With(bundle, meta) {
+        return `λ⟨${Object.entries(bundle)
+          .map(([tag, body]) => `${tag}. ${body.display()}`)
+          .join(',')}⟩`;
+      },
       Sequence(_0, _1, _2, meta) {
         return _0.display();
       },
@@ -131,6 +140,11 @@ export const TypedComputation = handsum<
       Lambda(name, _1, meta) {
         return `λ${name}.${_1.display()}`;
       },
+      With(bundle, meta) {
+        return `λ⟨${Object.entries(bundle)
+          .map(([tag, body]) => `${tag}. ${body.display()}`)
+          .join(',')}⟩`;
+      },
       Sequence(_0, _1, _2, meta) {
         return _0.display();
       },
@@ -160,6 +174,9 @@ export const TypedComputation = handsum<
         return meta.type;
       },
       Lambda(_0, _1, meta) {
+        return meta.type;
+      },
+      With(_0, meta) {
         return meta.type;
       },
       Sequence(_0, _1, _2, meta) {
