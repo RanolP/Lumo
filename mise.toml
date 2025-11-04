@@ -2,3 +2,5 @@
 node = "latest"
 typst = "latest"
 pnpm = "latest"
+actionlint = "latest"
+shellcheck = "latest"

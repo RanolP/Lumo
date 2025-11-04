@@ -21,12 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v3
         with:
-          mise_version: latest
+          version: 2025.11.2
 
       - name: Install tools
         run: mise install
@@ -34,39 +34,33 @@ jobs:
       - name: Extract version info
         id: version
         run: |
+          #!/usr/bin/env bash
+          set -euo pipefail
           LUMOC_VERSION=$(jq -r '.version' apps/lumoc/package.json)
           COMMIT_HASH=$(git log -1 --pretty=format:%h formalization.typ)
           VERSION="${LUMOC_VERSION}-${COMMIT_HASH}"
-          echo "lumoc_version=$LUMOC_VERSION" >> $GITHUB_OUTPUT
-          echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          {
+            echo "lumoc_version=$LUMOC_VERSION"
+            echo "commit_hash=$COMMIT_HASH"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build PDF
         run: typst compile formalization.typ index.pdf --input version="${{ steps.version.outputs.version }}"
 
       - name: Setup Pages directory
         run: |
+          #!/usr/bin/env bash
+          set -euo pipefail
           mkdir -p pages
           mv index.pdf pages/
-          cat > pages/index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=index.pdf">
-    <title>Redirecting to PDF</title>
-</head>
-<body>
-    <p>Redirecting to <a href="index.pdf">index.pdf</a>...</p>
-</body>
-</html>
-EOF
+          printf '<!DOCTYPE html>\n<html>\n<head>\n    <meta charset="UTF-8">\n    <meta http-equiv="refresh" content="0; url=index.pdf">\n    <title>Redirecting to PDF</title>\n</head>\n<body>\n    <p>Redirecting to <a href="index.pdf">index.pdf</a>...</p>\n</body>\n</html>\n' > pages/index.html
 
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: pages
 
