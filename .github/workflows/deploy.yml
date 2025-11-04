@@ -48,6 +48,19 @@ jobs:
         run: |
           mkdir -p pages
           mv index.pdf pages/
+          cat > pages/index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="0; url=index.pdf">
+    <title>Redirecting to PDF</title>
+</head>
+<body>
+    <p>Redirecting to <a href="index.pdf">index.pdf</a>...</p>
+</body>
+</html>
+EOF
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

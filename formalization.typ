@@ -27,7 +27,7 @@
 }
 
 #let version = sys.inputs.at("version", default: "0.0.0-DRAFT")
-#outline(title: [Formalization of Lumo Language v#version])
+#outline(title: [Formalization of Lumo Language v#version (#datetime.today().display("[year]-[month]-[day]"))])
 
 = Introduction
 
