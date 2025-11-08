@@ -16,6 +16,7 @@ interface TValueImplSet {
       inject(this: ValueF<'untyped'>, tag: string): ValueF<'untyped'>;
       ret(this: ValueF<'untyped'>): ComputationF<'untyped'>;
       force(this: ValueF<'untyped'>): ComputationF<'untyped'>;
+      select(this: ValueF<'untyped'>, name: string): ComputationF<'untyped'>;
     };
   };
   typed: {
@@ -130,6 +131,9 @@ export const Value = handsum<
   },
   force(): Computation {
     return Computation.Force(this);
+  },
+  select(name: string): Computation {
+    return Computation.Projection(this, name);
   },
 });
 

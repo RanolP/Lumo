@@ -9,6 +9,8 @@ import {
   createArrayInput,
   createContextfulInput,
 } from './vendors/malssi/parser/input';
+import { Computation } from './features/ast/computation';
+import { freshName } from './shared/name';
 
 const unit = (() => {
   const t = TypeV.Record({}).freshRefined();
@@ -16,12 +18,13 @@ const unit = (() => {
   return { t, v };
 })();
 const nat = (() => {
+  const recursionName = freshName();
   const zero_t = TypeV.Variant('nat/zero', {}).freshRefined();
   const succ_t = TypeV.Variant('nat/succ', {
-    0: TypeV.Variable('X').freshRefined(),
+    0: TypeV.Variable(recursionName).freshRefined(),
   }).freshRefined();
   const t = TypeV.Recursive(
-    'X',
+    recursionName,
     TypeV.Sum({
       'nat/zero': zero_t,
       'nat/succ': succ_t,
@@ -32,15 +35,51 @@ const nat = (() => {
     t,
     zero: {
       t: zero_t,
+      tag: 'nat/zero',
       v: Value.Variant('nat/zero', {}).inject('nat/zero').roll().annotate(t),
     },
     succ: {
       t: succ_t,
+      tag: 'nat/succ',
       v: (expr: Value) =>
         Value.Variant('nat/succ', {
           0: expr,
         })
           .inject('nat/succ')
+          .roll()
+          .annotate(t),
+    },
+  };
+})();
+const maybe_nat = (() => {
+  const recursionName = freshName();
+  const nothing_t = TypeV.Variant('maybe_nat/nothing', {}).freshRefined();
+  const just_t = TypeV.Variant('maybe_nat/just', {
+    value: nat.t,
+  }).freshRefined();
+  const t = TypeV.Recursive(
+    recursionName,
+    TypeV.Sum({
+      'maybe_nat/nothing': nothing_t,
+      'maybe_nat/just': just_t,
+    }).freshRefined(),
+  ).freshRefined();
+  return {
+    t,
+    nothing: {
+      t: nothing_t,
+      tag: 'maybe_nat/nothing',
+      v: Value.Variant('maybe_nat/nothing', {})
+        .inject('maybe_nat/nothing')
+        .roll()
+        .annotate(t),
+    },
+    just: {
+      t: just_t,
+      tag: 'maybe_nat/just',
+      v: (expr: Value) =>
+        Value.Variant('maybe_nat/just', { value: expr })
+          .inject('maybe_nat/just')
           .roll()
           .annotate(t),
     },
@@ -59,11 +98,11 @@ const tokens = Lexer.lex(
 const items = program.run(
   createContextfulInput({ isBlock: false, id: 0 })(createArrayInput(tokens)),
 );
-for (const item of items) {
-  console.log(formatParens(item.display()));
-}
+// for (const item of items) {
+//   console.log(formatParens(item.display()));
+// }
 
-console.log();
+// console.log();
 
 const RICH_FORMAT = true;
 const fmt = RICH_FORMAT ? formatParens : (source: string) => source;
@@ -82,13 +121,40 @@ for (const exprFn of [
     return nat.succ.v(nat.succ.v(nat.zero.v));
   },
   function () {
-    return nat.zero.v.annotate(TypeV.Variable('nat').freshRefined());
+    return maybe_nat.nothing.v;
+  },
+  function () {
+    return maybe_nat.just.v(nat.zero.v);
+  },
+  function () {
+    return maybe_nat.just.v(nat.succ.v(nat.zero.v));
   },
   function () {
     return dsl
       .lambda('x', (x) => unit.v.ret())
       .thunk()
       .annotate(TypeC.Arrow(unit.t, unit.t.comput()).thunk().freshRefined());
+  },
+  function () {
+    return dsl
+      .lambda('x', (x) =>
+        Computation.Match(Value.Unroll(x), {
+          [nat.zero.tag]: [
+            'x',
+            maybe_nat.nothing.v.ret().annotate(maybe_nat.t.comput()),
+          ],
+          [nat.succ.tag]: [
+            'x',
+            dsl.bind(x.select('0'), 'y', (y) =>
+              maybe_nat.just.v(y).ret().annotate(maybe_nat.t.comput()),
+            ),
+          ],
+        }),
+      )
+      .thunk()
+      .annotate(
+        TypeC.Arrow(nat.t, maybe_nat.t.comput()).thunk().freshRefined(),
+      );
   },
 ]) {
   const exprRaw = exprFn.toString();

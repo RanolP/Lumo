@@ -11,6 +11,10 @@ interface TComputationImplSet {
     meta: void;
     impl: IComputationCommon<'untyped'> & {
       thunk(this: ComputationF<'untyped'>): ValueF<'untyped'>;
+      annotate(
+        this: ComputationF<'untyped'>,
+        type: TypeC,
+      ): ComputationF<'untyped'>;
     };
   };
   typed: {
@@ -22,6 +26,11 @@ interface TComputationImplSet {
 }
 type MetaOf<TImplKey extends ImplKind> = TComputationImplSet[TImplKey]['meta'];
 interface TComputation<TImplKey extends ImplKind> {
+  Annotate(
+    target: ComputationF<TImplKey>,
+    type: TypeC,
+    meta: MetaOf<TImplKey>,
+  ): ComputationF<TImplKey>;
   Return(
     value: ValueF<TImplKey>,
     meta: MetaOf<TImplKey>,
@@ -67,7 +76,7 @@ interface TComputation<TImplKey extends ImplKind> {
   ): ComputationF<TImplKey>;
   Match(
     value: ValueF<TImplKey>,
-    branches: Record<string, ComputationF<TImplKey>>,
+    branches: Record<string, [string, ComputationF<TImplKey>]>,
     meta: MetaOf<TImplKey>,
   ): ComputationF<TImplKey>;
 }
@@ -82,14 +91,17 @@ export const Computation = handsum<
 >({
   display(): string {
     return this.match({
+      Annotate(_0, _1, meta) {
+        return `(${_0.display()}) ⇐ ${_1.display()}`;
+      },
       Return(_0, meta) {
-        return _0.display();
+        return `return(${_0.display()})`;
       },
       Force(_0, meta) {
-        return _0.display();
+        return `force(${_0.display()})`;
       },
       Apply(_0, _1, meta) {
-        return _0.display();
+        return `(${_0.display()}).apply(${_1.display()})`;
       },
       Lambda(name, _1, meta) {
         return `λ${name}.${_1.display()}`;
@@ -100,21 +112,26 @@ export const Computation = handsum<
           .join(',')}⟩`;
       },
       Sequence(_0, _1, _2, meta) {
-        return _0.display();
+        return `let ${_1} = ${_0.display()} in ${_2.display()}`;
       },
       TyAppV(_0, _1, meta) {
-        return _0.display();
+        return `(${_0.display()})[${_1.display()}]`;
       },
       TyAppC(_0, _1, meta) {
-        return _0.display();
+        return `(${_0.display()})[${_1.display()}: effect]`;
       },
       Projection(_0, _1, meta) {
-        return _0.display();
+        return `(${_0.display()}).${_1}`;
       },
       Match(_0, _1, meta) {
-        return _0.display();
+        return `match(${_0.display()}) {${Object.entries(_1)
+          .map(([key, body]) => `${key} => ${body.display()}`)
+          .join(',')}}`;
       },
     });
+  },
+  annotate(type: TypeC): Computation {
+    return Computation.Annotate(this, type);
   },
   thunk() {
     return Value.Thunk(this);
@@ -128,6 +145,9 @@ export const TypedComputation = handsum<
 >({
   display(): string {
     return this.match({
+      Annotate(_0, _1, meta) {
+        return `(${_0.display()}) ⇐ ${_1.display()}`;
+      },
       Return(_0, meta) {
         return _0.display();
       },
@@ -164,6 +184,9 @@ export const TypedComputation = handsum<
   },
   getType(): TypeC {
     return this.match({
+      Annotate(_0, _1, meta) {
+        return meta.type;
+      },
       Return(_0, meta) {
         return meta.type;
       },

@@ -1,7 +1,9 @@
 import { formatParens } from '../shared/fmt';
+import { freshName } from '../shared/name';
 import { Computation, TypedComputation } from './ast/computation';
 import { TypedValue, Value } from './ast/value';
-import { RefinedTypeV, TypeC } from './type';
+import { RefinedTypeV, TypeC, TypeV } from './type';
+import { apply, unify_c } from './unify';
 
 export class Typer {
   readonly #parent: Typer | undefined;
@@ -46,6 +48,16 @@ export class Typer {
       Variable(name) {
         const ty = that.resolve(name);
         return TypedValue.Variable(name, { type: ty });
+      },
+      Unroll(value) {
+        const typedValue = that.infer_v(value);
+        const ty = typedValue.getType();
+        if (!ty.handle.Recursive) {
+          throw new UnrollOnWrongTypeError(ty);
+        }
+        return TypedValue.Unroll(typedValue, {
+          type: ty.unroll(),
+        });
       },
       _() {
         throw new ValueInferenceFailureError(value);
@@ -142,7 +154,74 @@ export class Typer {
   }
 
   infer_c(computation: Computation): TypedComputation {
+    const that = this;
     return computation.match({
+      Annotate(target, type) {
+        return that.check_c(target, type);
+      },
+      Sequence(left, name, right) {
+        const typedLeft = that.infer_c(left);
+        const tyLeft = typedLeft.getType();
+        if (!tyLeft.Produce) {
+          throw new SequenceOnWrongTypeError(tyLeft);
+        }
+        const typedRight = that
+          .makeSubscope()
+          .with(name, tyLeft.Produce[0])
+          .infer_c(right);
+        return TypedComputation.Sequence(typedLeft, name, typedRight, {
+          type: typedRight.getType(),
+        });
+      },
+      Projection(value, key) {
+        const typedValue = that.infer_v(value);
+        return typedValue.getType().handle.match({
+          Record(entries) {
+            if (!(key in entries)) {
+              throw new RecordMissingKeyError(key);
+            }
+            return TypedComputation.Projection(typedValue, key, {
+              type: entries[key]!.comput(),
+            });
+          },
+          Variant(_0, entries) {
+            if (!(key in entries)) {
+              throw new VariantMissingKeyError(key);
+            }
+            return TypedComputation.Projection(typedValue, key, {
+              type: entries[key]!.comput(),
+            });
+          },
+          _() {
+            throw new ComputationInferenceFailureError(computation);
+          },
+        });
+      },
+      Match(value, branches) {
+        const typedValue = that.infer_v(value);
+        const ty = typedValue.getType();
+        if (!ty.handle.Sum) {
+          throw new MatchOnWrongTypeError(ty);
+        }
+        const [entries] = ty.handle.Sum;
+        const resultingType = TypeV.Variable(freshName()).freshRefined();
+        let subs = {};
+        const typedArms: Record<string, [string, TypedComputation]> = {};
+        for (const [key, [name, body]] of Object.entries(branches)) {
+          if (!entries[key]) {
+            throw new UnknownMatchArmError(key);
+          }
+          const comput = that
+            .makeSubscope()
+            .with(name, entries[key])
+            .infer_c(body);
+          subs = unify_c(subs, resultingType.comput(), comput.getType());
+          typedArms[key] = [name, comput];
+        }
+        return TypedComputation.Match(typedValue, typedArms, {
+          type: apply(subs, resultingType).comput(),
+        });
+      },
       _() {
         throw new ComputationInferenceFailureError(computation);
       },
@@ -262,5 +341,32 @@ export class UnknownVariableError extends Error {
   constructor(name: string) {
     super(`Unknown variable: ${name}`);
     this.name = 'UnknownVariableError';
+  }
+}
+
+export class UnrollOnWrongTypeError extends Error {
+  constructor(type: RefinedTypeV) {
+    super(`Unroll on wrong type: ${type.display()}`);
+    this.name = 'UnrollOnWrongTypeError';
+  }
+}
+
+export class MatchOnWrongTypeError extends Error {
+  constructor(type: RefinedTypeV) {
+    super(`Match on wrong type: ${type.display()}`);
+    this.name = 'MatchOnWrongTypeError';
+  }
+}
+
+export class SequenceOnWrongTypeError extends Error {
+  constructor(type: TypeC) {
+    super(`Sequence on wrong type: ${type.display()}`);
+    this.name = 'SequenceOnWrongTypeError';
+  }
+}
+export class UnknownMatchArmError extends Error {
+  constructor(arm: string) {
+    super(`Unknown match arm: ${arm}`);
+    this.name = 'UnknownMatchArmError';
   }
 }

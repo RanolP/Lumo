@@ -1,4 +1,4 @@
-
+// Global Settings
 #show smallcaps: set text(font: "New Computer Modern")
 #set heading(numbering: "1.")
 #set par(first-line-indent: 1em)
@@ -56,6 +56,32 @@ Our goal is to compile the Lumo source code into the C or JavaScript code.
 
 Next we'll define the source language terms and its translation with denotational semantics using inference rules.
 
+First, we'll visit terms solely.
+
+== Terms
+
+$
+  italic("Item") ::= & "Enum" thick n thick { thick dots, thick i |->tau_i, thick dots thick } & quad italic("Define-Enum") \
+  \
+$
+
+
+== Type Assignment
+
+Every item emits a type assignment in the scope. Note that rhe assignments can be hoisted in the scope and can be shared into subscopes.
+
+We have two namespaces: the type ($n_t$) and the material, either a value or computation ($n_m$).
+There may be conflicting names in the user's perspective, but in the compiler's perspective, they are distinct, because the type and the material are stored in distinct namespaces.
+
+#rule[$X_t in.not Gamma_t$][$
+  Gamma tack.r & "Enum" thick n thick { thick dots, v_i |-> tau_i, dots thick } emits { \
+               & quad n_t ::= mu X_t. Sigma_((i in I)) tau_i [n:=X_t] \
+               & quad n_m ::= lambda chevron.l thick dots, thick i. tau_i -> n_t, thick dots thick chevron.r \
+               & }
+$][Define-Enum]
+
+== Semantics
+
 #definition(title: "Elaboration")[
   $Gamma tack.r e arrow.squiggly.r e^prime$ means in the context $Gamma$, the expression $e$ elaborates to $e^prime$.
   For example, $Gamma tack.r 1 + 2 emits 3$ means that the syntax 1 + 2 should be compiled into 3.
@@ -72,6 +98,11 @@ Next we'll define the source language terms and its translation with denotationa
 
   means that when the premises are true, the conclusion must be true by the rule named as Rule-Name.
 ]
+
+
+#columns[]
+
+= LIR(Lumo Intermediate Representation)
 
 This document describes a intermediate representation of the Lumo programming language, which is a functional programming language built upon modern Algebraic Effects and efficient memory management powered by Linear Resource Calculus($lambda^1$) by Perceus.
 

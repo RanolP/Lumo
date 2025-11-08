@@ -179,8 +179,8 @@ export class RefinedTypeV {
         Thunk(body) {
           return TypeV.Thunk(body.sub(name, type));
         },
-        Recursive(name, body) {
-          return TypeV.Recursive(name, body.sub(name, type));
+        Recursive(innerName, body) {
+          return TypeV.Recursive(innerName, body.sub(name, type));
         },
         Variable(innerName) {
           return innerName === name ? type.handle : TypeV.Variable(innerName);

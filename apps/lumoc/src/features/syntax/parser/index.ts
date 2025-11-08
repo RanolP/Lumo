@@ -83,4 +83,4 @@ const def = {
     ]),
 };
 
-export const program = def.enum;
+export const program = def.enum.repeat().map((items) => items.flat());
