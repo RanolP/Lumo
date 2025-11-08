@@ -131,24 +131,22 @@ for (const exprFn of [
   },
   function () {
     return dsl
-      .lambda('x', (x) => unit.v.ret())
+      .lambda((x) => unit.v.ret())
       .thunk()
       .annotate(TypeC.Arrow(unit.t, unit.t.comput()).thunk().freshRefined());
   },
   function () {
     return dsl
-      .lambda('x', (x) =>
+      .lambda((x) =>
         Computation.Match(Value.Unroll(x), {
-          [nat.zero.tag]: [
-            'x',
+          [nat.zero.tag]: dsl.matchArm((x) =>
             maybe_nat.nothing.v.ret().annotate(maybe_nat.t.comput()),
-          ],
-          [nat.succ.tag]: [
-            'x',
+          ),
+          [nat.succ.tag]: dsl.matchArm((x) =>
             dsl.bind(x.select('0'), 'y', (y) =>
               maybe_nat.just.v(y).ret().annotate(maybe_nat.t.comput()),
             ),
-          ],
+          ),
         }),
       )
       .thunk()
