@@ -12,6 +12,7 @@ interface TValueImplSet {
     meta: void;
     impl: IValueCommon<'untyped'> & {
       annotate(this: ValueF<'untyped'>, ty: RefinedTypeV): ValueF<'untyped'>;
+      unroll(this: ValueF<'untyped'>): ValueF<'untyped'>;
       roll(this: ValueF<'untyped'>): ValueF<'untyped'>;
       inject(this: ValueF<'untyped'>, tag: string): ValueF<'untyped'>;
       ret(this: ValueF<'untyped'>): ComputationF<'untyped'>;
@@ -88,13 +89,13 @@ export const Value = handsum<
         return decorate(`inj_${JSON.stringify(tag)}(${expr.display()})`, meta);
       },
       Variable(name, meta) {
-        return decorate(`var(${name})`, meta);
+        return decorate(`var_${name}`, meta);
       },
       Thunk(body, meta) {
         return decorate(`thunk(${body.display()})`, meta);
       },
       TyAbsV(name, body, meta) {
-        return decorate(`tyAbsV(${name}, ${body.display()})`, meta);
+        return decorate(`forall ${name}. (${body.display()})`, meta);
       },
       TyAbsC(name, body, meta) {
         return decorate(`tyAbsC(${name}, ${body.display()})`, meta);
@@ -119,6 +120,9 @@ export const Value = handsum<
   },
   annotate(ty: RefinedTypeV): Value {
     return Value.Annotate(this, ty);
+  },
+  unroll(): Value {
+    return Value.Unroll(this);
   },
   roll(): Value {
     return Value.Roll(this);
@@ -158,7 +162,7 @@ export const TypedValue = handsum<
         return decorate(`inj_${JSON.stringify(tag)}(${expr.display()})`, meta);
       },
       Variable(name, meta) {
-        return decorate(`var(${name})`, meta);
+        return decorate(`var_${name}`, meta);
       },
       Thunk(body, meta) {
         return decorate(`thunk(${body.display()})`, meta);

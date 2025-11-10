@@ -3,11 +3,12 @@ import { freshName } from '../shared/name';
 import { Computation, TypedComputation } from './ast/computation';
 import { TypedValue, Value } from './ast/value';
 import { RefinedTypeV, TypeC, TypeV } from './type';
-import { apply, unify_c } from './unify';
+import { apply, unify_c, unify_v } from './unify';
 
 export class Typer {
   readonly #parent: Typer | undefined;
-  readonly #scope: Record<string, RefinedTypeV> = {};
+  readonly #sub_v: Record<string, RefinedTypeV> = {};
+  readonly #sub_t_v: Record<string, RefinedTypeV> = {};
 
   static create(): Typer {
     return new Typer();
@@ -21,20 +22,38 @@ export class Typer {
     return new Typer(this);
   }
 
-  with(name: string, type: RefinedTypeV): this {
-    if (name in this.#scope) {
+  with_v(name: string, type: RefinedTypeV): this {
+    if (name in this.#sub_v) {
       throw new NameConflictError(name);
     }
-    this.#scope[name] = type;
+    this.#sub_v[name] = type;
     return this;
   }
 
-  resolve(name: string): RefinedTypeV {
-    if (name in this.#scope) {
-      return this.#scope[name]!;
+  with_t_v(name: string, type: RefinedTypeV): this {
+    if (name in this.#sub_t_v) {
+      throw new NameConflictError(name);
+    }
+    this.#sub_t_v[name] = type;
+    return this;
+  }
+
+  resolve_v(name: string): RefinedTypeV {
+    if (name in this.#sub_v) {
+      return this.#sub_v[name]!;
     }
     if (this.#parent) {
-      return this.#parent.resolve(name);
+      return this.#parent.resolve_v(name);
+    }
+    throw new UnknownVariableError(name);
+  }
+
+  resolve_t_v(name: string): RefinedTypeV {
+    if (name in this.#sub_t_v) {
+      return this.#sub_t_v[name]!;
+    }
+    if (this.#parent) {
+      return this.#parent.resolve_t_v(name);
     }
     throw new UnknownVariableError(name);
   }
@@ -46,7 +65,7 @@ export class Typer {
         return that.check_v(target, type);
       },
       Variable(name) {
-        const ty = that.resolve(name);
+        const ty = that.resolve_v(name);
         return TypedValue.Variable(name, { type: ty });
       },
       Unroll(value) {
@@ -146,6 +165,17 @@ export class Typer {
       );
     }
 
+    if (value.TyAbsV && type.handle.TyAbsV) {
+      const [name, body] = value.TyAbsV;
+      const [nameTy, bodyTy] = type.handle.TyAbsV;
+
+      const typedBody = this.makeSubscope().check_v(
+        body,
+        bodyTy.sub(nameTy, TypeV.Variable(name).freshRefined()),
+      );
+      return TypedValue.TyAbsV(name, typedBody, { type });
+    }
+
     const inferred = this.infer_v(value);
     if (!inferred.getType().equals(type)) {
       throw new ValueTypeMismatchError(inferred, type);
@@ -167,7 +197,7 @@ export class Typer {
         }
         const typedRight = that
           .makeSubscope()
-          .with(name, tyLeft.Produce[0])
+          .with_v(name, tyLeft.Produce[0])
           .infer_c(right);
         return TypedComputation.Sequence(typedLeft, name, typedRight, {
           type: typedRight.getType(),
@@ -213,13 +243,42 @@ export class Typer {
           }
           const comput = that
             .makeSubscope()
-            .with(name, entries[key])
+            .with_v(name, entries[key])
             .infer_c(body);
           subs = unify_c(subs, resultingType.comput(), comput.getType());
           typedArms[key] = [name, comput];
         }
         return TypedComputation.Match(typedValue, typedArms, {
           type: apply(subs, resultingType).comput(),
+        });
+      },
+      Apply(fn, param) {
+        const typedFn = that.infer_c(fn);
+        const ty = typedFn.getType();
+        if (!ty.Arrow) {
+          throw new ApplyOnWrongTypeError(ty);
+        }
+        const typedParam = that.check_v(param, ty.Arrow[0]);
+        return TypedComputation.Apply(typedFn, typedParam, {
+          type: ty.Arrow[1],
+        });
+      },
+      Force(value) {
+        const typedValue = that.infer_v(value);
+        const ty = typedValue.getType();
+        if (!ty.handle.Thunk) {
+          throw new ForceOnWrongTypeError(ty);
+        }
+        return TypedComputation.Force(typedValue, {
+          type: ty.handle.Thunk[0],
+        });
+      },
+      TyAppV(body, ty) {
+        const typedBody = that.infer_v(body);
+        if (!typedBody.TyAbsV) throw new TyAppVOnWrongTypeError(body);
+        const [name, inner] = typedBody.TyAbsV;
+        return TypedComputation.TyAppV(typedBody, ty, {
+          type: typedBody.getType().sub(name, ty).comput(),
         });
       },
       _() {
@@ -234,7 +293,7 @@ export class Typer {
       const [paramTy, bodyTy] = type.Arrow;
       return TypedComputation.Lambda(
         name,
-        this.makeSubscope().with(name, paramTy).check_c(body, bodyTy),
+        this.makeSubscope().with_v(name, paramTy).check_c(body, bodyTy),
         { type },
       );
     }
@@ -368,5 +427,26 @@ export class UnknownMatchArmError extends Error {
   constructor(arm: string) {
     super(`Unknown match arm: ${arm}`);
     this.name = 'UnknownMatchArmError';
+  }
+}
+
+export class ApplyOnWrongTypeError extends Error {
+  constructor(type: TypeC) {
+    super(`Apply on wrong type: ${type.display()}`);
+    this.name = 'ApplyOnWrongTypeError';
+  }
+}
+
+export class ForceOnWrongTypeError extends Error {
+  constructor(type: RefinedTypeV) {
+    super(`Force on wrong type: ${type.display()}`);
+    this.name = 'ForceOnWrongTypeError';
+  }
+}
+
+export class TyAppVOnWrongTypeError extends Error {
+  constructor(body: Value) {
+    super(`TyAppV on wrong type: ${body.display()}`);
+    this.name = 'TyAppVOnWrongTypeError';
   }
 }

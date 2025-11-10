@@ -40,8 +40,8 @@ interface TComputation<TImplKey extends ImplKind> {
     meta: MetaOf<TImplKey>,
   ): ComputationF<TImplKey>;
   Apply(
+    fn: ComputationF<TImplKey>,
     param: ValueF<TImplKey>,
-    fn: ValueF<TImplKey>,
     meta: MetaOf<TImplKey>,
   ): ComputationF<TImplKey>;
   Lambda(
@@ -125,7 +125,7 @@ export const Computation = handsum<
       },
       Match(_0, _1, meta) {
         return `match(${_0.display()}) {${Object.entries(_1)
-          .map(([key, body]) => `${key} => ${body.display()}`)
+          .map(([key, [v, body]]) => `${key} as ${v} => ${body.display()}`)
           .join(',')}}`;
       },
     });

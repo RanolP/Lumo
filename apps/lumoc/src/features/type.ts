@@ -1,4 +1,5 @@
 import { Handsum, handsum } from 'handsum';
+import { freshName } from '../shared/name';
 
 export interface TTypeV {
   Sum(entries: Record<string, RefinedTypeV>): TypeV;
@@ -7,6 +8,7 @@ export interface TTypeV {
   Thunk(handle: TypeC): TypeV;
   Recursive(name: string, body: RefinedTypeV): TypeV;
   Variable(name: string): TypeV;
+  TyAbsV(name: string, body: RefinedTypeV): TypeV;
 }
 export interface ITypeV {
   freshRefined(this: TypeV): RefinedTypeV;
@@ -45,6 +47,9 @@ export const TypeV = handsum<TTypeV, ITypeV>({
       },
       Variable(name) {
         return `var_${JSON.stringify(name)}`;
+      },
+      TyAbsV(name, body) {
+        return `forall ${name}. (${body.display()})`;
       },
     });
   },
@@ -116,13 +121,19 @@ export const TypeV = handsum<TTypeV, ITypeV>({
       return this.Thunk[0].equals(other.Thunk[0]);
     }
     if (this.Recursive && other.Recursive) {
-      return (
-        this.Recursive[0] === other.Recursive[0] &&
-        this.Recursive[1].equals(other.Recursive[1])
-      );
+      const [thisName, thisBody] = this.Recursive;
+      const [otherName, otherBody] = other.Recursive;
+      const name = freshName();
+
+      return thisBody
+        .sub(thisName, TypeV.Variable(name).freshRefined())
+        .equals(otherBody.sub(otherName, TypeV.Variable(name).freshRefined()));
     }
     if (this.Variable && other.Variable) {
       return this.Variable[0] === other.Variable[0];
+    }
+    if (this.TyAbsV && other.TyAbsV) {
+      throw new Error('todo');
     }
     return false;
   },
@@ -185,6 +196,9 @@ export class RefinedTypeV {
         Variable(innerName) {
           return innerName === name ? type.handle : TypeV.Variable(innerName);
         },
+        TyAbsV(innerName, body) {
+          return TypeV.TyAbsV(innerName, body.sub(name, type));
+        },
       }),
     );
   }
@@ -222,7 +236,9 @@ export const TypeC = handsum<TTypeC, ITypeC>({
   display(): string {
     return this.match({
       Produce(handle, effects) {
-        return `produce(${handle.display()}, ${Object.entries(effects)
+        return `produce(${handle.display()}${
+          Object.entries(effects).length > 0 ? ', ' : ''
+        }${Object.entries(effects)
           .map(([key, value]) => `${key}: ${value.display()}`)
           .join(',')})`;
       },
@@ -232,7 +248,7 @@ export const TypeC = handsum<TTypeC, ITypeC>({
           .join(',')})`;
       },
       Arrow(param, body) {
-        return `arrow(${param.display()}, ${body.display()})`;
+        return `(${param.display()}) -> (${body.display()})`;
       },
     });
   },
