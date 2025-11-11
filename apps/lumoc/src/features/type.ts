@@ -46,7 +46,7 @@ export const TypeV = handsum<TTypeV, ITypeV>({
         return `μ${name}. (${body.display()})`;
       },
       Variable(name) {
-        return `var_${JSON.stringify(name)}`;
+        return name;
       },
       TyAbsV(name, body) {
         return `forall ${name}. (${body.display()})`;
@@ -123,7 +123,7 @@ export const TypeV = handsum<TTypeV, ITypeV>({
     if (this.Recursive && other.Recursive) {
       const [thisName, thisBody] = this.Recursive;
       const [otherName, otherBody] = other.Recursive;
-      const name = freshName();
+      const name = freshName('ty');
 
       return thisBody
         .sub(thisName, TypeV.Variable(name).freshRefined())

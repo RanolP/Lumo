@@ -89,7 +89,7 @@ export const Value = handsum<
         return decorate(`inj_${JSON.stringify(tag)}(${expr.display()})`, meta);
       },
       Variable(name, meta) {
-        return decorate(`var_${name}`, meta);
+        return decorate(name, meta);
       },
       Thunk(body, meta) {
         return decorate(`thunk(${body.display()})`, meta);
@@ -162,7 +162,7 @@ export const TypedValue = handsum<
         return decorate(`inj_${JSON.stringify(tag)}(${expr.display()})`, meta);
       },
       Variable(name, meta) {
-        return decorate(`var_${name}`, meta);
+        return decorate(name, meta);
       },
       Thunk(body, meta) {
         return decorate(`thunk(${body.display()})`, meta);

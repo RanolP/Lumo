@@ -234,7 +234,7 @@ export class Typer {
           throw new MatchOnWrongTypeError(ty);
         }
         const [entries] = ty.handle.Sum;
-        const resultingType = TypeV.Variable(freshName()).freshRefined();
+        const resultingType = TypeV.Variable(freshName('ty')).freshRefined();
         let subs = {};
         const typedArms: Record<string, [string, TypedComputation]> = {};
         for (const [key, [name, body]] of Object.entries(branches)) {
@@ -278,7 +278,7 @@ export class Typer {
         if (!typedBody.TyAbsV) throw new TyAppVOnWrongTypeError(body);
         const [name, inner] = typedBody.TyAbsV;
         return TypedComputation.TyAppV(typedBody, ty, {
-          type: typedBody.getType().sub(name, ty).comput(),
+          type: inner.getType().sub(name, ty).comput(),
         });
       },
       _() {

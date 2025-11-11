@@ -18,7 +18,7 @@ const unit = (() => {
   return { t, v };
 })();
 const nat = (() => {
-  const recursionName = freshName();
+  const recursionName = freshName('ty');
   const zero_t = TypeV.Variant('nat/zero', {}).freshRefined();
   const succ_t = TypeV.Variant('nat/succ', {
     0: TypeV.Variable(recursionName).freshRefined(),
@@ -52,7 +52,7 @@ const nat = (() => {
   };
 })();
 const bool = (() => {
-  const recursionName = freshName();
+  const recursionName = freshName('ty');
   const true_t = TypeV.Variant('bool/true', {}).freshRefined();
   const false_t = TypeV.Variant('bool/false', {}).freshRefined();
   const t = TypeV.Recursive(
@@ -81,7 +81,7 @@ const bool = (() => {
   };
 })();
 const maybe_nat = (() => {
-  const recursionName = freshName();
+  const recursionName = freshName('ty');
   const nothing_t = TypeV.Variant('maybe_nat/nothing', {}).freshRefined();
   const just_t = TypeV.Variant('maybe_nat/just', {
     value: nat.t,
@@ -116,7 +116,7 @@ const maybe_nat = (() => {
 })();
 
 const Y = dsl.v
-  .forall_v((A) =>
+  .forall((A) =>
     dsl.c
       .lambda((f) =>
         dsl.c.bind(
@@ -132,7 +132,7 @@ const Y = dsl.v
               TypeC.Produce(
                 TypeV.Thunk(
                   TypeC.Arrow(
-                    dsl.t.recurse_v((x) =>
+                    dsl.t.recurse((x) =>
                       TypeV.Thunk(TypeC.Arrow(x, A.comput())).freshRefined(),
                     ),
                     A.comput(),
@@ -148,7 +148,7 @@ const Y = dsl.v
                 g
                   .roll()
                   .annotate(
-                    dsl.t.recurse_v((X) =>
+                    dsl.t.recurse((X) =>
                       TypeV.Thunk(TypeC.Arrow(X, A.comput())).freshRefined(),
                     ),
                   ),
@@ -160,7 +160,7 @@ const Y = dsl.v
       .thunk(),
   )
   .annotate(
-    dsl.t.forall_v((A) =>
+    dsl.t.forall((A) =>
       TypeV.Thunk(
         TypeC.Arrow(
           TypeV.Thunk(TypeC.Arrow(A, A.comput())).freshRefined(),
@@ -242,19 +242,18 @@ for (const exprFn of [
     return Y;
   },
   function () {
-    return Computation.Apply(
-      Computation.TyAppV(Y, TypeV.Record({}).freshRefined()),
-      dsl.c
-        .lambda((m) =>
-          dsl.c.bind(m.force(), (n) =>
-            Value.Record({})
-              .ret()
-              .annotate(TypeV.Record({}).freshRefined().comput()),
-          ),
-        )
-        .thunk()
-        .annotate(TypeV.Record({}).freshRefined()),
-    )
+    return dsl.c
+      .bind(Computation.TyAppV(Y, TypeV.Record({}).freshRefined()), (Y_prime) =>
+        Computation.Apply(
+          Y_prime.force(),
+          dsl.c
+            .lambda((m) => unit.v.ret())
+            .thunk()
+            .annotate(
+              TypeC.Arrow(unit.t, unit.t.comput()).thunk().freshRefined(),
+            ),
+        ),
+      )
       .thunk()
       .annotate(
         TypeV.Record({}).freshRefined().comput().thunk().freshRefined(),
@@ -263,10 +262,10 @@ for (const exprFn of [
 ]) {
   const exprRaw = exprFn.toString();
   const expr = exprFn();
-  // console.log(
-  //   `src: ${exprRaw.replace(/^function\(\)\{return /, '').replace(/\}$/, '')}`,
-  // );
-  console.log('src: ', fmt(expr.display()));
+  console.log(
+    `src: ${exprRaw.replace(/^function\(\)\{return /, '').replace(/\}$/, '')}`,
+  );
+  // console.log('src: ', fmt(expr.display()));
   const typer = Typer.create().with_v('nat', nat.t);
   const typed = typer.infer_v(expr);
 }

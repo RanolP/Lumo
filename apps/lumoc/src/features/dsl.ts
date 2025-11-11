@@ -5,8 +5,8 @@ import { RefinedTypeV, TypeV } from './type';
 
 export const dsl = {
   v: {
-    forall_v(body: (value: RefinedTypeV) => Value): Value {
-      const variable = freshName();
+    forall(body: (value: RefinedTypeV) => Value): Value {
+      const variable = freshName('ty');
       return Value.TyAbsV(
         variable,
         body(TypeV.Variable(variable).freshRefined()),
@@ -15,14 +15,14 @@ export const dsl = {
   },
   c: {
     lambda(body: (value: Value) => Computation): Computation {
-      const variable = freshName();
+      const variable = freshName('val');
       return Computation.Lambda(variable, body(Value.Variable(variable)));
     },
     bind(
       computation: Computation,
       body: (value: Value) => Computation,
     ): Computation {
-      const name = freshName();
+      const name = freshName('val');
       return Computation.Sequence(
         computation,
         name,
@@ -31,15 +31,15 @@ export const dsl = {
     },
   },
   t: {
-    recurse_v(body: (value: RefinedTypeV) => RefinedTypeV): RefinedTypeV {
-      const variable = freshName();
+    recurse(body: (value: RefinedTypeV) => RefinedTypeV): RefinedTypeV {
+      const variable = freshName('ty');
       return TypeV.Recursive(
         variable,
         body(TypeV.Variable(variable).freshRefined()),
       ).freshRefined();
     },
-    forall_v(body: (value: RefinedTypeV) => RefinedTypeV): RefinedTypeV {
-      const variable = freshName();
+    forall(body: (value: RefinedTypeV) => RefinedTypeV): RefinedTypeV {
+      const variable = freshName('ty');
       return TypeV.TyAbsV(
         variable,
         body(TypeV.Variable(variable).freshRefined()),
@@ -48,7 +48,7 @@ export const dsl = {
   },
   f: {
     matchArm(f: (value: Value) => Computation): [string, Computation] {
-      const variable = freshName();
+      const variable = freshName('val');
       return [variable, f(Value.Variable(variable))];
     },
   },
