@@ -261,6 +261,20 @@ export class Typer {
           type: ty.Arrow[1],
         });
       },
+      Resolve(bundle, tag) {
+        const typedBundle = that.infer_c(bundle);
+        const ty = typedBundle.getType();
+        if (!ty.With) {
+          throw new ResolveOnWrongTypeError(ty);
+        }
+        const [bundleEntries] = ty.With;
+        if (!(tag in bundleEntries)) {
+          throw new ResolveMissingTagError(tag);
+        }
+        return TypedComputation.Resolve(typedBundle, tag, {
+          type: bundleEntries[tag]!,
+        });
+      },
       Force(value) {
         const typedValue = that.infer_v(value);
         const ty = typedValue.getType();
@@ -479,5 +493,19 @@ export class TyAppVOnWrongTypeError extends Error {
   constructor(body: Value) {
     super(`TyAppV on wrong type: ${body.display()}`);
     this.name = 'TyAppVOnWrongTypeError';
+  }
+}
+
+export class ResolveOnWrongTypeError extends Error {
+  constructor(type: TypeC) {
+    super(`Resolve on wrong type: ${type.display()}`);
+    this.name = 'ResolveOnWrongTypeError';
+  }
+}
+
+export class ResolveMissingTagError extends Error {
+  constructor(tag: string) {
+    super(`Resolve missing tag: ${tag}`);
+    this.name = 'ResolveMissingTagError';
   }
 }

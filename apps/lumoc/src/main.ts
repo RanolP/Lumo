@@ -243,8 +243,10 @@ for (const exprFn of [
   },
   function () {
     const isEvenT = TypeC.Arrow(nat.t, bool.t.comput());
+    const isOddT = TypeC.Arrow(nat.t, bool.t.comput());
     const moduleType = TypeC.With({
       isEven: isEvenT,
+      isOdd: isOddT,
     })
       .thunk()
       .freshRefined();
@@ -256,8 +258,39 @@ for (const exprFn of [
             .lambda((m) =>
               Computation.With({
                 isEven: dsl.c
-                  .lambda(() => bool.false.v.ret())
+                  .lambda((v) =>
+                    Computation.Match(v.unroll(), {
+                      [nat.zero.tag]: dsl.f.matchArm((v) =>
+                        bool.true.v.ret().annotate(dsl.t.var().comput()),
+                      ),
+                      [nat.succ.tag]: dsl.f.matchArm((v) =>
+                        dsl.c.bind(v.select('0'), (n) =>
+                          Computation.Apply(
+                            Computation.Resolve(m.force(), 'isOdd'),
+                            n,
+                          ),
+                        ),
+                      ),
+                    }),
+                  )
                   .annotate(isEvenT),
+                isOdd: dsl.c
+                  .lambda((v) =>
+                    Computation.Match(v.unroll(), {
+                      [nat.zero.tag]: dsl.f.matchArm((v) =>
+                        bool.false.v.ret().annotate(dsl.t.var().comput()),
+                      ),
+                      [nat.succ.tag]: dsl.f.matchArm((v) =>
+                        dsl.c.bind(v.select('0'), (n) =>
+                          Computation.Apply(
+                            Computation.Resolve(m.force(), 'isEven'),
+                            n,
+                          ),
+                        ),
+                      ),
+                    }),
+                  )
+                  .annotate(isOddT),
               })
                 .thunk()
                 .ret(),
