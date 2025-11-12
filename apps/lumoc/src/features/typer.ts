@@ -177,9 +177,7 @@ export class Typer {
     }
 
     const inferred = this.infer_v(value);
-    if (!inferred.getType().equals(type)) {
-      throw new ValueTypeMismatchError(inferred, type);
-    }
+    unify_v({}, inferred.getType(), type);
     return inferred;
   }
 
@@ -303,10 +301,29 @@ export class Typer {
       return TypedComputation.Return(this.check_v(value, handle), { type });
     }
 
-    const inferred = this.infer_c(computation);
-    if (!inferred.getType().equals(type)) {
-      throw new ComputationTypeMismatchError(inferred, type);
+    if (computation.With && type.With) {
+      const [bundle] = computation.With;
+      const [typeBundle] = type.With;
+      let result: Record<string, TypedComputation> = {};
+      for (const key of new Set([
+        ...Object.keys(bundle),
+        ...Object.keys(typeBundle),
+      ])) {
+        const bundleValue = bundle[key];
+        const typeValue = typeBundle[key];
+        if (!bundleValue) {
+          throw new WithExtraKeyError(key);
+        }
+        if (!typeValue) {
+          throw new WithMissingKeyError(key);
+        }
+        result[key] = this.check_c(bundleValue, typeValue);
+      }
+      return TypedComputation.With(result, { type });
     }
+
+    const inferred = this.infer_c(computation);
+    unify_c({}, inferred.getType(), type);
     return inferred;
   }
 }
@@ -358,6 +375,20 @@ export class RecordMissingKeyError extends Error {
   constructor(key: string) {
     super(`Record missing key: ${key}`);
     this.name = 'RecordMissingKeyError';
+  }
+}
+
+export class WithExtraKeyError extends Error {
+  constructor(key: string) {
+    super(`With extra key: ${key}`);
+    this.name = 'WithExtraKeyError';
+  }
+}
+
+export class WithMissingKeyError extends Error {
+  constructor(key: string) {
+    super(`With missing key: ${key}`);
+    this.name = 'WithMissingKeyError';
   }
 }
 

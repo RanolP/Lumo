@@ -1,5 +1,4 @@
 import { Handsum, handsum } from 'handsum';
-import { freshName } from '../shared/name';
 
 export interface TTypeV {
   Sum(entries: Record<string, RefinedTypeV>): TypeV;
@@ -14,8 +13,6 @@ export interface ITypeV {
   freshRefined(this: TypeV): RefinedTypeV;
 
   display(this: TypeV): string;
-
-  equals(this: TypeV, other: TypeV | null | undefined): boolean;
 }
 export type TypeV = Handsum<TTypeV, ITypeV>;
 export const TypeV = handsum<TTypeV, ITypeV>({
@@ -52,90 +49,6 @@ export const TypeV = handsum<TTypeV, ITypeV>({
         return `forall ${name}. (${body.display()})`;
       },
     });
-  },
-  equals(other: TypeV | null | undefined): boolean {
-    if (!other) {
-      return false;
-    }
-    if (this.Sum && other.Sum) {
-      const [thisEntries] = this.Sum;
-      const [otherEntries] = other.Sum;
-      const keys = new Set([
-        ...Object.keys(thisEntries),
-        ...Object.keys(otherEntries),
-      ]);
-      for (const key of keys) {
-        const thisValue = thisEntries[key];
-        const otherValue = otherEntries[key];
-        if (!thisValue || !otherValue) {
-          return false;
-        }
-        if (!thisValue.equals(otherValue)) {
-          return false;
-        }
-      }
-      return true;
-    }
-    if (this.Record && other.Record) {
-      const [thisEntries] = this.Record;
-      const [otherEntries] = other.Record;
-      const keys = new Set([
-        ...Object.keys(thisEntries),
-        ...Object.keys(otherEntries),
-      ]);
-      for (const key of keys) {
-        const thisFieldTy = thisEntries[key];
-        const otherFieldTy = otherEntries[key];
-        if (!thisFieldTy || !otherFieldTy) {
-          return false;
-        }
-        if (!thisFieldTy.equals(otherFieldTy)) {
-          return false;
-        }
-      }
-      return true;
-    }
-    if (this.Variant && other.Variant) {
-      const [thisTag, thisEntries] = this.Variant;
-      const [otherTag, otherEntries] = other.Variant;
-      if (thisTag !== otherTag) {
-        return false;
-      }
-      const keys = new Set([
-        ...Object.keys(thisEntries),
-        ...Object.keys(otherEntries),
-      ]);
-      for (const key of keys) {
-        const thisValue = thisEntries[key];
-        const otherValue = otherEntries[key];
-        if (!thisValue || !otherValue) {
-          return false;
-        }
-        if (!thisValue.equals(otherValue)) {
-          return false;
-        }
-      }
-      return true;
-    }
-    if (this.Thunk && other.Thunk) {
-      return this.Thunk[0].equals(other.Thunk[0]);
-    }
-    if (this.Recursive && other.Recursive) {
-      const [thisName, thisBody] = this.Recursive;
-      const [otherName, otherBody] = other.Recursive;
-      const name = freshName('ty');
-
-      return thisBody
-        .sub(thisName, TypeV.Variable(name).freshRefined())
-        .equals(otherBody.sub(otherName, TypeV.Variable(name).freshRefined()));
-    }
-    if (this.Variable && other.Variable) {
-      return this.Variable[0] === other.Variable[0];
-    }
-    if (this.TyAbsV && other.TyAbsV) {
-      throw new Error('todo');
-    }
-    return false;
   },
 });
 
@@ -211,10 +124,6 @@ export class RefinedTypeV {
     return body.sub(name, this);
   }
 
-  equals(other: RefinedTypeV | null | undefined): boolean {
-    return this.handle.equals(other?.handle);
-  }
-
   comput(): TypeC {
     return TypeC.Produce(this, {});
   }
@@ -228,7 +137,6 @@ interface TTypeC {
 interface ITypeC {
   display(this: TypeC): string;
   sub(this: TypeC, name: string, type: RefinedTypeV): TypeC;
-  equals(this: TypeC, other: TypeC | null | undefined): boolean;
   thunk(this: TypeC): TypeV;
 }
 export type TypeC = Handsum<TTypeC, ITypeC>;
@@ -270,45 +178,6 @@ export const TypeC = handsum<TTypeC, ITypeC>({
       },
       Arrow(param, body) {
         return TypeC.Arrow(param.sub(name, type), body.sub(name, type));
-      },
-    });
-  },
-
-  equals(other: TypeC | null | undefined): boolean {
-    return this.match({
-      Produce(handle, effects) {
-        if (!other?.Produce) {
-          return false;
-        }
-        const [otherHandle, otherEffects] = other.Produce;
-        if (!handle.equals(otherHandle)) {
-          return false;
-        }
-        return Array.from(
-          new Set([...Object.keys(effects), ...Object.keys(otherEffects)]),
-        ).every((key) => {
-          const thisValue = effects[key];
-          const otherValue = otherEffects[key];
-          return thisValue && thisValue.equals(otherValue);
-        });
-      },
-      With(bundle) {
-        if (!other?.With) {
-          return false;
-        }
-        const [otherBundle] = other.With;
-        return Object.keys(bundle).every((key) => {
-          const thisValue = bundle[key];
-          const otherValue = otherBundle[key];
-          return thisValue && thisValue.equals(otherValue);
-        });
-      },
-      Arrow(param, body) {
-        if (!other?.Arrow) {
-          return false;
-        }
-        const [otherParam, otherBody] = other.Arrow;
-        return param.equals(otherParam) && body.equals(otherBody);
       },
     });
   },

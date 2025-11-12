@@ -242,22 +242,36 @@ for (const exprFn of [
     return Y;
   },
   function () {
+    const isEvenT = TypeC.Arrow(nat.t, bool.t.comput());
+    const moduleType = TypeC.With({
+      isEven: isEvenT,
+    })
+      .thunk()
+      .freshRefined();
     return dsl.c
-      .bind(Computation.TyAppV(Y, TypeV.Record({}).freshRefined()), (Y_prime) =>
+      .bind(Computation.TyAppV(Y, moduleType), (Y_prime) =>
         Computation.Apply(
           Y_prime.force(),
           dsl.c
-            .lambda((m) => unit.v.ret())
+            .lambda((m) =>
+              Computation.With({
+                isEven: dsl.c
+                  .lambda(() => bool.false.v.ret())
+                  .annotate(isEvenT),
+              })
+                .thunk()
+                .ret(),
+            )
             .thunk()
             .annotate(
-              TypeC.Arrow(unit.t, unit.t.comput()).thunk().freshRefined(),
+              TypeC.Arrow(moduleType, moduleType.comput())
+                .thunk()
+                .freshRefined(),
             ),
         ),
       )
       .thunk()
-      .annotate(
-        TypeV.Record({}).freshRefined().comput().thunk().freshRefined(),
-      );
+      .annotate(moduleType.comput().thunk().freshRefined());
   },
 ]) {
   const exprRaw = exprFn.toString();

@@ -31,6 +31,10 @@ export const dsl = {
     },
   },
   t: {
+    var(): RefinedTypeV {
+      const variable = freshName('ty');
+      return TypeV.Variable(variable).freshRefined();
+    },
     recurse(body: (value: RefinedTypeV) => RefinedTypeV): RefinedTypeV {
       const variable = freshName('ty');
       return TypeV.Recursive(
