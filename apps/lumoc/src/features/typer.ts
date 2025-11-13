@@ -309,10 +309,10 @@ export class Typer {
         { type },
       );
     }
-    if (computation.Return && type.Produce) {
-      const [value] = computation.Return;
+    if (computation.Produce && type.Produce) {
+      const [value] = computation.Produce;
       const [handle] = type.Produce;
-      return TypedComputation.Return(this.check_v(value, handle), { type });
+      return TypedComputation.Produce(this.check_v(value, handle), { type });
     }
 
     if (computation.With && type.With) {

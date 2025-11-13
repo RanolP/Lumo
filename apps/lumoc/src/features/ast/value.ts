@@ -15,7 +15,7 @@ interface TValueImplSet {
       unroll(this: ValueF<'untyped'>): ValueF<'untyped'>;
       roll(this: ValueF<'untyped'>): ValueF<'untyped'>;
       inject(this: ValueF<'untyped'>, tag: string): ValueF<'untyped'>;
-      ret(this: ValueF<'untyped'>): ComputationF<'untyped'>;
+      produce(this: ValueF<'untyped'>): ComputationF<'untyped'>;
       force(this: ValueF<'untyped'>): ComputationF<'untyped'>;
       select(this: ValueF<'untyped'>, name: string): ComputationF<'untyped'>;
     };
@@ -104,7 +104,7 @@ export const Value = handsum<
         return decorate(
           `record {${Object.entries(entries)
             .map(([key, value]) => `${key}: ${value.display()}`)
-            .join(',')}}`,
+            .join(', ')}}`,
           meta,
         );
       },
@@ -112,7 +112,7 @@ export const Value = handsum<
         return decorate(
           `variant[${tag}] {${Object.entries(entries)
             .map(([key, value]) => `${key}: ${value.display()}`)
-            .join(',')}}`,
+            .join(', ')}}`,
           meta,
         );
       },
@@ -130,8 +130,8 @@ export const Value = handsum<
   inject(tag: string): Value {
     return Value.Injection(tag, this);
   },
-  ret(): Computation {
-    return Computation.Return(this);
+  produce(): Computation {
+    return Computation.Produce(this);
   },
   force(): Computation {
     return Computation.Force(this);
@@ -177,7 +177,7 @@ export const TypedValue = handsum<
         return decorate(
           `record {${Object.entries(entries)
             .map(([key, value]) => `${key}: ${value.display()}`)
-            .join(',')}}`,
+            .join(', ')}}`,
           meta,
         );
       },
@@ -185,7 +185,7 @@ export const TypedValue = handsum<
         return decorate(
           `variant[${tag}] {${Object.entries(entries)
             .map(([key, value]) => `${key}: ${value.display()}`)
-            .join(',')}}`,
+            .join(', ')}}`,
           meta,
         );
       },

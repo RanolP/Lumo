@@ -31,7 +31,7 @@ interface TComputation<TImplKey extends ImplKind> {
     type: TypeC,
     meta: MetaOf<TImplKey>,
   ): ComputationF<TImplKey>;
-  Return(
+  Produce(
     value: ValueF<TImplKey>,
     meta: MetaOf<TImplKey>,
   ): ComputationF<TImplKey>;
@@ -99,8 +99,8 @@ export const Computation = handsum<
       Annotate(_0, _1, meta) {
         return `(${_0.display()}) ⇐ ${_1.display()}`;
       },
-      Return(_0, meta) {
-        return `return(${_0.display()})`;
+      Produce(_0, meta) {
+        return `produce(${_0.display()})`;
       },
       Force(_0, meta) {
         return `force(${_0.display()})`;
@@ -112,15 +112,15 @@ export const Computation = handsum<
         return `resolve(${_0.display()}, ${JSON.stringify(_1)})`;
       },
       Lambda(name, _1, meta) {
-        return `λ${name}.${_1.display()}`;
+        return `λ${name}. ${_1.display()}`;
       },
       With(bundle, meta) {
         return `λ⟨${Object.entries(bundle)
           .map(([tag, body]) => `${tag}. ${body.display()}`)
-          .join(',')}⟩`;
+          .join(', ')}⟩`;
       },
       Sequence(_0, _1, _2, meta) {
-        return `let ${_1} = ${_0.display()} in ${_2.display()}`;
+        return `${_1} <- ${_0.display()}; ${_2.display()}`;
       },
       TyAppV(_0, _1, meta) {
         return `(${_0.display()})[${_1.display()}]`;
@@ -134,7 +134,7 @@ export const Computation = handsum<
       Match(_0, _1, meta) {
         return `match(${_0.display()}) {${Object.entries(_1)
           .map(([key, [v, body]]) => `${key} as ${v} => ${body.display()}`)
-          .join(',')}}`;
+          .join(', ')}}`;
       },
     });
   },
@@ -156,7 +156,7 @@ export const TypedComputation = handsum<
       Annotate(_0, _1, meta) {
         return `(${_0.display()}) ⇐ ${_1.display()}`;
       },
-      Return(_0, meta) {
+      Produce(_0, meta) {
         return _0.display();
       },
       Force(_0, meta) {
@@ -174,7 +174,7 @@ export const TypedComputation = handsum<
       With(bundle, meta) {
         return `λ⟨${Object.entries(bundle)
           .map(([tag, body]) => `${tag}. ${body.display()}`)
-          .join(',')}⟩`;
+          .join(', ')}⟩`;
       },
       Sequence(_0, _1, _2, meta) {
         return _0.display();
@@ -198,7 +198,7 @@ export const TypedComputation = handsum<
       Annotate(_0, _1, meta) {
         return meta.type;
       },
-      Return(_0, meta) {
+      Produce(_0, meta) {
         return meta.type;
       },
       Force(_0, meta) {

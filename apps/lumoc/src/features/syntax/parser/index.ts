@@ -73,7 +73,7 @@ const def = {
           Object.fromEntries(
             items.map((item) => [
               item.name,
-              Computation.Return(
+              Computation.Produce(
                 Value.Variant(item.name, {}).inject(item.name).roll(),
               ),
             ]),

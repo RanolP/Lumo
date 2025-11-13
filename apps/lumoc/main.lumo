@@ -1,0 +1,35 @@
+type Never = ∑()
+
+type Unit = μX. ∑(
+    `Unit/unit: `Unit/unit {},
+)
+
+type Bool = μX. ∑(
+    `Bool/true: `Bool/true {},
+    `Bool/false: `Bool/false {},
+)
+
+type Nat = μX. ∑(
+    `Nat/zero: `Nat/zero {},
+    `Nat/succ: `Nat/succ { value: X },
+)
+
+
+type Maybe = ∀T. μX. ∑(
+    `Maybe/none: `Maybe/none {},
+    `Maybe/some: `Maybe/some { value: X },
+)
+
+type List = ∀T. μX. ∑(
+    `List/nil: `List/nil {},
+    `List/cons: `List/cons { head: T, tail: X }
+)
+
+
+fixpoint <- (
+    fn[A](f: thunk (A -> produce A)): produce A =>
+        produce f
+);
+(force fixpoint)(thunk (fn(m: _): produce Unit =>
+    produce Unit
+))

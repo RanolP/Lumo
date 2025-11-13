@@ -24,17 +24,17 @@ export const TypeV = handsum<TTypeV, ITypeV>({
       Sum(entries) {
         return `∑(${Object.entries(entries)
           .map(([key, value]) => `${key}: ${value.display()}`)
-          .join(',')})`;
+          .join(', ')})`;
       },
       Record(entries) {
         return `record {${Object.entries(entries)
           .map(([key, value]) => `${key}: ${value.display()}`)
-          .join(',')}}`;
+          .join(', ')}}`;
       },
       Variant(tag, entries) {
         return `variant[${tag}] {${Object.entries(entries)
           .map(([key, value]) => `${key}: ${value.display()}`)
-          .join(',')}}`;
+          .join(', ')}}`;
       },
       Thunk(body) {
         return `thunk(${body.display()})`;
@@ -148,15 +148,15 @@ export const TypeC = handsum<TTypeC, ITypeC>({
           Object.entries(effects).length > 0 ? ', ' : ''
         }${Object.entries(effects)
           .map(([key, value]) => `${key}: ${value.display()}`)
-          .join(',')})`;
+          .join(', ')})`;
       },
       With(bundle) {
         return `with(${Object.entries(bundle)
           .map(([key, value]) => `${key}: ${value.display()}`)
-          .join(',')})`;
+          .join(', ')})`;
       },
       Arrow(param, body) {
-        return `(${param.display()}) -> (${body.display()})`;
+        return `(${param.display()}) -> ${body.display()}`;
       },
     });
   },

@@ -1,5 +1,5 @@
 import { Input } from './input';
-import { Simplify, UnionToIntersection } from 'type-fest';
+import { Simplify } from 'type-fest';
 import { ParseError } from './errors';
 
 function implParser<
@@ -8,9 +8,11 @@ function implParser<
   const CaptureName extends string | undefined,
 >({
   run,
+  label,
   captureName,
 }: {
   run: (input: TInput) => TOutput;
+  label: string | undefined;
   captureName: CaptureName;
 }): Parser<TInput, TOutput, CaptureName> {
   const self = {
@@ -21,14 +23,24 @@ function implParser<
     ): Parser<TInput, UOutput, CaptureName> {
       return implParser({
         run: (input) => f(run(input)),
+        label,
         captureName,
       });
     },
     capture<TName extends string>(name: TName): Parser<TInput, TOutput, TName> {
-      return implParser({ run, captureName: name });
+      return implParser({ run, label, captureName: name });
     },
     void(): Parser<TInput, void, CaptureName> {
       return self.map(() => undefined);
+    },
+    labeled(label: string): Parser<TInput, TOutput, CaptureName> {
+      return implParser({
+        run: (input) => {
+          return run(input);
+        },
+        label,
+        captureName,
+      });
     },
     opt(): Parser<TInput, TOutput | undefined, CaptureName> {
       return implParser({
@@ -41,11 +53,12 @@ function implParser<
             throw error;
           }
         },
+        label,
         captureName,
       });
     },
     or<UOutput>(
-      other: Parser<TInput, UOutput, CaptureName>,
+      other: Parser<TInput, UOutput, unknown>,
     ): Parser<TInput, TOutput | UOutput, CaptureName> {
       return implParser({
         run: (input) => {
@@ -57,6 +70,7 @@ function implParser<
             throw error;
           }
         },
+        label,
         captureName,
       });
     },
@@ -81,6 +95,7 @@ function implParser<
           }
           return results;
         },
+        label,
         captureName,
       });
     },
@@ -110,6 +125,7 @@ function implParser<
             throw e;
           }
         },
+        label,
         captureName,
       });
     },
@@ -118,21 +134,36 @@ function implParser<
 }
 
 export const malssi = <TInput extends Input>() =>
-  Object.assign(<TOutput>(f: () => Parser<TInput, TOutput, void>) => f(), {
-    raw: <TOutput>(
-      f: (i: ReturnType<TInput['checkpoint']>[0]) => TOutput,
-    ): Parser<TInput, TOutput, void> =>
-      implParser({
-        run: (i) => {
-          const [inst, apply] = i.checkpoint();
-          const result = f(inst);
-          apply();
+  Object.assign(
+    <TOutput>(
+      f: () => Parser<TInput, TOutput, void>,
+    ): Parser<TInput, TOutput, void> => {
+      return implParser({
+        run: (input) => {
+          const result = f().run(input);
           return result;
         },
+        label: undefined,
         captureName: undefined,
-      }),
-    seq: _seq<TInput>(),
-  });
+      });
+    },
+    {
+      raw: <TOutput>(
+        f: (i: ReturnType<TInput['checkpoint']>[0]) => TOutput,
+      ): Parser<TInput, TOutput, void> =>
+        implParser({
+          run: (i) => {
+            const [inst, apply] = i.checkpoint();
+            const result = f(inst);
+            apply();
+            return result;
+          },
+          label: undefined,
+          captureName: undefined,
+        }),
+      seq: _seq<TInput>(),
+    },
+  );
 
 const _seq =
   <TInput extends Input>() =>
@@ -163,11 +194,13 @@ const _seq =
           throw e;
         }
       },
+      label: undefined,
       captureName: undefined,
     });
 
 export type Parser<TInput extends Input, TOutput, CaptureName> = Simplify<
   {
+    '~label'?: string;
     '~capture': CaptureName;
 
     run(input: TInput): TOutput;
@@ -176,7 +209,7 @@ export type Parser<TInput extends Input, TOutput, CaptureName> = Simplify<
     ): Parser<TInput, UOutput, CaptureName>;
     opt(): Parser<TInput, TOutput | undefined, CaptureName>;
     or<UOutput>(
-      other: Parser<TInput, UOutput, CaptureName>,
+      other: Parser<TInput, UOutput, unknown>,
     ): Parser<TInput, TOutput | UOutput, CaptureName>;
     repeat(min?: number, max?: number): Parser<TInput, TOutput[], CaptureName>;
     sepBy(
@@ -184,6 +217,7 @@ export type Parser<TInput extends Input, TOutput, CaptureName> = Simplify<
       min?: number,
       max?: number,
     ): Parser<TInput, TOutput[], CaptureName>;
+    labeled(label: string): Parser<TInput, TOutput, CaptureName>;
   } & ([CaptureName] extends [void]
     ? {
         capture<TName extends string>(
