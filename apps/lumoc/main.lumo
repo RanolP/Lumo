@@ -38,6 +38,6 @@ fixpoint <- (
     }
 );
 fixpoint_ <- fixpoint[Unit];
-(force fixpoint_)(thunk (fn(m: _): produce _ {
-    `Unit/unit {} : Unit
+(force fixpoint_)(thunk (fn(m: _): _ {
+    `Unit/unit {}
 }))
