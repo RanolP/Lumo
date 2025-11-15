@@ -27,9 +27,17 @@ type List = ∀T. μX. ∑(
 
 
 fixpoint <- (
-    fn[A](f: thunk (A -> produce A)): produce A =>
-        produce f
+    fn[A](f: thunk (A -> produce A)): produce A {
+        g <- produce (thunk (
+            fn(x: μX. thunk (X -> produce A)): produce A {
+                ret <- (force unroll x)(x);
+                (force f)(ret)
+            }
+        ));
+        (force g)(roll g)
+    }
 );
-(force fixpoint)(thunk (fn(m: _): produce Unit =>
-    produce Unit
-))
+fixpoint_ <- fixpoint[Unit];
+(force fixpoint_)(thunk (fn(m: _): produce _ {
+    `Unit/unit {} : Unit
+}))

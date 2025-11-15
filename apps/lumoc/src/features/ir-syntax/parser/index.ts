@@ -1,4 +1,3 @@
-import { freshName } from '../../../shared/name';
 import { Parser } from '../../../vendors/malssi/parser';
 import { Computation } from '../../ast/computation';
 import { Value } from '../../ast/value';
@@ -34,6 +33,11 @@ var ty_c = parser(
         parser
           .seq(tok.kw.Produce, ty_v.capture('type'))
           .map(({ type }) => TypeC.Produce(type, {})),
+      )
+      .or(
+        parser
+          .seq(tok.punct.underscore, ctx.freshId.capture('id'))
+          .map(({ id }) => TypeC.Variable(`#${id}`)),
       ),
 );
 
@@ -117,6 +121,11 @@ var ty_v = parser(
         parser
           .seq(tok.punct.underscore, ctx.freshId.capture('id'))
           .map(({ id }) => TypeV.Variable(`#${id}`).freshRefined()),
+      )
+      .or(
+        parser
+          .seq(tok.punct.underscore, ctx.freshId.capture('id'))
+          .map(({ id }) => TypeV.Variable(`#${id}`).freshRefined()),
       ),
 );
 
@@ -144,16 +153,59 @@ var expr_v = parser(
       )
       .or(
         parser
-          .seq(tok.kw.Thunk, expr_c.capture('expr'))
-          .map(({ expr }) => Value.Thunk(expr)),
+          .seq(tok.kw.Thunk, expr_c.capture('expr'), ctx.freshId.capture('id'))
+          .map(({ expr, id }) =>
+            Value.Annotate(
+              Value.Thunk(expr),
+              TypeV.Thunk(TypeC.Variable(`#${id}`)).freshRefined(),
+            ),
+          ),
+      )
+      .or(
+        parser
+          .seq(tok.kw.Unroll, expr_v.capture('expr'))
+          .map(({ expr }) => Value.Unroll(expr)),
+      )
+      .or(
+        parser
+          .seq(
+            tok.Tag.capture('tag'),
+            tok.punct.curly.l,
+            parser
+              .seq(
+                tok.Ident.capture('name'),
+                tok.punct.colon,
+                expr_v.capture('value'),
+              )
+              .sepBy(tok.punct.comma)
+              .capture('entries'),
+            tok.punct.comma.opt(),
+            tok.punct.curly.r,
+          )
+          .map(({ tag, entries }) =>
+            Value.Injection(
+              tag,
+              Value.Variant(
+                tag,
+                Object.fromEntries(
+                  entries.map(({ name, value }) => [name, value]),
+                ),
+              ),
+            ),
+          ),
       ),
 );
 
 var expr_c_base = parser(
   (): Parser<ParserInput, Computation, void | undefined> =>
     parser
-      .seq(tok.kw.Produce, expr_v.capture('value'))
-      .map(({ value }) => Computation.Produce(value))
+      .seq(tok.kw.Produce, expr_v.capture('value'), ctx.freshId.capture('id'))
+      .map(({ value, id }) =>
+        Computation.Annotate(
+          Computation.Produce(value),
+          TypeC.Produce(TypeV.Variable(`#${id}`).freshRefined(), {}),
+        ),
+      )
       .or(
         parser
           .seq(
@@ -177,7 +229,35 @@ var expr_c_base = parser(
           .seq(tok.punct.paren.l, expr_c.capture('expr'), tok.punct.paren.r)
           .map(({ expr }) => expr),
       )
-      .or(fn),
+      .or(fn)
+      .or(
+        parser
+          .seq(
+            expr_v.capture('base'),
+            tok.punct.square.l,
+            parser
+              .seq(ty_v.capture('type'), ctx.freshId.capture('id'))
+              .sepBy(tok.punct.comma)
+              .capture('types'),
+            tok.punct.comma.opt(),
+            tok.punct.square.r,
+            ctx.freshId.capture('exprId'),
+          )
+          .map(({ base, types, exprId }) =>
+            types.reduce(
+              (result, type) =>
+                Computation.Sequence(
+                  result,
+                  `#${type.id}`,
+                  Computation.TyAppV(base, type.type),
+                ),
+              Computation.Annotate(
+                Computation.Produce(base),
+                TypeC.Produce(TypeV.Variable(`#${exprId}`).freshRefined(), {}),
+              ),
+            ),
+          ),
+      ),
 );
 
 var expr_c = parser(() =>
@@ -214,7 +294,10 @@ var fn = parser
     parser
       .seq(
         tok.punct.square.l,
-        tok.Ident.sepBy(tok.punct.comma).capture('items'),
+        parser
+          .seq(tok.Ident.capture('name'), ctx.freshId.capture('id'))
+          .sepBy(tok.punct.comma)
+          .capture('items'),
         tok.punct.comma.opt(),
         tok.punct.square.r,
       )
@@ -223,37 +306,55 @@ var fn = parser
       .capture('typeParams'),
     tok.punct.paren.l,
     parser
-      .seq(tok.Ident.capture('name'), tok.punct.colon, ty_v.capture('type'))
+      .seq(
+        tok.Ident.capture('name'),
+        tok.punct.colon,
+        ty_v.capture('type'),
+        ctx.freshId.capture('id'),
+      )
       .sepBy(tok.punct.comma)
       .capture('params'),
     tok.punct.comma.opt(),
     tok.punct.paren.r,
     tok.punct.colon,
     ty_c.capture('returnType'),
-    tok.punct.fatArrow,
+    tok.punct.curly.l,
     expr_c.capture('body'),
+    tok.punct.curly.r,
+    ctx.freshId.capture('exprId1'),
+    ctx.freshId.capture('exprId2'),
   )
-  .map(({ typeParams = [], params, returnType, body }) => {
-    const expr = typeParams.reduceRight(
-      (result, name) =>
-        Computation.Produce(Value.TyAbsV(name, Value.Thunk(result))),
-      params.reduceRight(
-        (result, param) => Computation.Lambda(param.name, result),
-        body,
-      ),
-    );
-    const ty = typeParams.reduceRight(
-      (result, name) =>
-        TypeC.Produce(
-          TypeV.TyAbsV(name, TypeV.Thunk(result).freshRefined()).freshRefined(),
-          {},
+  .map(({ typeParams = [], params, returnType, body, exprId1, exprId2 }) => {
+    const base = params.reduceRight(
+      (result, param) =>
+        Computation.Annotate(
+          Computation.Lambda(param.name, result),
+          TypeC.Arrow(param.type, TypeC.Variable(`#${param.id}`)),
         ),
-      params.reduceRight(
-        (result, param) => TypeC.Arrow(param.type, result),
-        returnType,
-      ),
+      Computation.Annotate(body, returnType),
     );
-    return expr.annotate(ty);
+    if (typeParams.length === 0) {
+      return base;
+    }
+    return Computation.Annotate(
+      Computation.Produce(
+        typeParams.reduceRight(
+          (result, { name, id }) =>
+            Value.Annotate(
+              Value.TyAbsV(name, result),
+              TypeV.TyAbsV(
+                name,
+                TypeV.Variable(`#${id}`).freshRefined(),
+              ).freshRefined(),
+            ),
+          Value.Annotate(
+            Value.Thunk(base),
+            TypeV.Thunk(TypeC.Variable(`#${exprId1}`)).freshRefined(),
+          ),
+        ),
+      ),
+      TypeC.Produce(TypeV.Variable(`#${exprId2}`).freshRefined(), {}),
+    );
   });
 
 export const program = parser(() =>

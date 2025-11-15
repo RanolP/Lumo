@@ -120,7 +120,7 @@ export const Computation = handsum<
           .join(', ')}⟩`;
       },
       Sequence(_0, _1, _2, meta) {
-        return `${_1} <- ${_0.display()}; ${_2.display()}`;
+        return `${_1} <- (${_0.display()}); ${_2.display()}`;
       },
       TyAppV(_0, _1, meta) {
         return `(${_0.display()})[${_1.display()}]`;

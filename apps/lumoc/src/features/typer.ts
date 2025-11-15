@@ -3,12 +3,18 @@ import { freshName } from '../shared/name';
 import { Computation, TypedComputation } from './ast/computation';
 import { TypedValue, Value } from './ast/value';
 import { RefinedTypeV, TypeC, TypeV } from './type';
-import { apply, unify_c, unify_v } from './unify';
+import { apply_c, apply_v, ProofObligations, unify_c, unify_v } from './unify';
 
 export class Typer {
   readonly #parent: Typer | undefined;
   readonly #sub_v: Record<string, RefinedTypeV> = {};
-  readonly #sub_t_v: Record<string, RefinedTypeV> = {};
+
+  /**
+   * @TODO
+   *
+   * Use Algorithm W instead of Algorithm J
+   */
+  #obligations: ProofObligations = { v: {}, c: {} };
 
   static create(): Typer {
     return new Typer();
@@ -30,14 +36,6 @@ export class Typer {
     return this;
   }
 
-  with_t_v(name: string, type: RefinedTypeV): this {
-    if (name in this.#sub_t_v) {
-      throw new NameConflictError(name);
-    }
-    this.#sub_t_v[name] = type;
-    return this;
-  }
-
   resolve_v(name: string): RefinedTypeV {
     if (name in this.#sub_v) {
       return this.#sub_v[name]!;
@@ -48,14 +46,38 @@ export class Typer {
     throw new UnknownVariableError(name);
   }
 
-  resolve_t_v(name: string): RefinedTypeV {
-    if (name in this.#sub_t_v) {
-      return this.#sub_t_v[name]!;
-    }
+  unify_v(a: RefinedTypeV, b: RefinedTypeV): this {
     if (this.#parent) {
-      return this.#parent.resolve_t_v(name);
+      this.#parent.unify_v(a, b);
+    } else {
+      this.#obligations = unify_v(this.#obligations, a, b);
     }
-    throw new UnknownVariableError(name);
+    return this;
+  }
+
+  unify_c(a: TypeC, b: TypeC): this {
+    if (this.#parent) {
+      this.#parent.unify_c(a, b);
+    } else {
+      this.#obligations = unify_c(this.#obligations, a, b);
+    }
+    return this;
+  }
+
+  apply_v(ty: RefinedTypeV): RefinedTypeV {
+    if (this.#parent) {
+      return this.#parent.apply_v(ty);
+    } else {
+      return apply_v(this.#obligations, ty);
+    }
+  }
+
+  apply_c(ty: TypeC): TypeC {
+    if (this.#parent) {
+      return this.#parent.apply_c(ty);
+    } else {
+      return apply_c(this.#obligations, ty);
+    }
   }
 
   infer_v(value: Value): TypedValue {
@@ -177,7 +199,7 @@ export class Typer {
     }
 
     const inferred = this.infer_v(value);
-    unify_v({}, inferred.getType(), type);
+    this.unify_v(inferred.getType(), type);
     return inferred;
   }
 
@@ -233,7 +255,6 @@ export class Typer {
         }
         const [entries] = ty.handle.Sum;
         const resultingType = TypeV.Variable(freshName('ty')).freshRefined();
-        let subs = {};
         const typedArms: Record<string, [string, TypedComputation]> = {};
         for (const [key, [name, body]] of Object.entries(branches)) {
           if (!entries[key]) {
@@ -243,16 +264,16 @@ export class Typer {
             .makeSubscope()
             .with_v(name, entries[key])
             .infer_c(body);
-          subs = unify_c(subs, resultingType.comput(), comput.getType());
+          that.unify_c(resultingType.comput(), comput.getType());
           typedArms[key] = [name, comput];
         }
         return TypedComputation.Match(typedValue, typedArms, {
-          type: apply(subs, resultingType).comput(),
+          type: that.apply_v(resultingType).comput(),
         });
       },
       Apply(fn, param) {
         const typedFn = that.infer_c(fn);
-        const ty = typedFn.getType();
+        const ty = that.apply_c(typedFn.getType());
         if (!ty.Arrow) {
           throw new ApplyOnWrongTypeError(ty);
         }
@@ -277,7 +298,7 @@ export class Typer {
       },
       Force(value) {
         const typedValue = that.infer_v(value);
-        const ty = typedValue.getType();
+        const ty = that.apply_v(typedValue.getType());
         if (!ty.handle.Thunk) {
           throw new ForceOnWrongTypeError(ty);
         }
@@ -287,10 +308,11 @@ export class Typer {
       },
       TyAppV(body, ty) {
         const typedBody = that.infer_v(body);
-        if (!typedBody.TyAbsV) throw new TyAppVOnWrongTypeError(body);
-        const [name, inner] = typedBody.TyAbsV;
+        const bodyTy = that.apply_v(typedBody.getType());
+        if (!bodyTy.handle.TyAbsV) throw new TyAppVOnWrongTypeError(body);
+        const [name, inner] = bodyTy.handle.TyAbsV;
         return TypedComputation.TyAppV(typedBody, ty, {
-          type: inner.getType().sub(name, ty).comput(),
+          type: that.apply_v(inner).sub(name, ty).comput(),
         });
       },
       _() {
@@ -337,7 +359,7 @@ export class Typer {
     }
 
     const inferred = this.infer_c(computation);
-    unify_c({}, inferred.getType(), type);
+    this.unify_c(inferred.getType(), type);
     return inferred;
   }
 }

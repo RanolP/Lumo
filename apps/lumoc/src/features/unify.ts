@@ -1,49 +1,61 @@
 import { formatParens } from '../shared/fmt';
 import { RefinedTypeV, TypeC, TypeV } from './type';
 
+export interface ProofObligations {
+  v: Record<string, RefinedTypeV>;
+  c: Record<string, TypeC>;
+}
+
 function isBottomType(type: TypeV): boolean {
   return !!type.Sum && Object.keys(type.Sum[0]).length === 0;
 }
 
 export function unify_v(
-  subs: Record<string, RefinedTypeV>,
+  obligations: ProofObligations,
   _a: RefinedTypeV,
   _b: RefinedTypeV,
   boundVariables: Record<string, string> = {},
-): Record<string, RefinedTypeV> {
-  const a = apply(subs, _a);
-  const b = apply(subs, _b);
+): ProofObligations {
+  const a = apply_v(obligations, _a);
+  const b = apply_v(obligations, _b);
   if (isBottomType(a.handle) || isBottomType(b.handle)) {
-    return subs;
+    return obligations;
   }
   if (
     a.handle.Variable &&
     a.handle.Variable[0] in boundVariables &&
     boundVariables[a.handle.Variable[0]] === b.handle.Variable?.[0]
   ) {
-    return subs;
+    return obligations;
   }
   if (
     b.handle.Variable &&
     b.handle.Variable[0] in boundVariables &&
     boundVariables[b.handle.Variable[0]] === a.handle.Variable?.[0]
   ) {
-    return subs;
+    return obligations;
   }
   if (a.handle.Variable) {
-    return { ...subs, [a.handle.Variable[0]]: b };
+    return {
+      ...obligations,
+      v: { ...obligations.v, [a.handle.Variable[0]]: b },
+    };
   }
   if (b.handle.Variable) {
-    return { ...subs, [b.handle.Variable[0]]: a };
+    return {
+      ...obligations,
+      v: { ...obligations.v, [b.handle.Variable[0]]: a },
+    };
   }
   return a.handle.match({
-    Recursive(aname, aBody) {
+    Recursive(aName, aBody) {
       if (!b.handle.Recursive) throw new ValueUnificationFailureError(a, b);
       const [bName, bBody] = b.handle.Recursive;
-      return unify_v(subs, aBody, bBody, {
+
+      return unify_v(obligations, aBody, bBody, {
         ...boundVariables,
-        [aname]: bName,
-        [bName]: aname,
+        [aName]: bName,
+        [bName]: aName,
       });
     },
     Record(entries) {
@@ -58,14 +70,14 @@ export function unify_v(
         if (!aEntry || !bEntry) {
           throw new ValueUnificationFailureError(a, b);
         }
-        subs = unify_v(subs, aEntry, bEntry, boundVariables);
+        obligations = unify_v(obligations, aEntry, bEntry, boundVariables);
       }
-      return subs;
+      return obligations;
     },
-    Thunk(handle) {
+    Thunk(aHandle) {
       if (!b.handle.Thunk) throw new ValueUnificationFailureError(a, b);
       const [bHandle] = b.handle.Thunk;
-      return unify_c(subs, handle, bHandle, boundVariables);
+      return unify_c(obligations, aHandle, bHandle, boundVariables);
     },
     Sum(aEntries) {
       if (!b.handle.Sum) throw new ValueUnificationFailureError(a, b);
@@ -79,9 +91,9 @@ export function unify_v(
         if (!aEntry || !bEntry) {
           throw new ValueUnificationFailureError(a, b);
         }
-        subs = unify_v(subs, aEntry, bEntry, boundVariables);
+        obligations = unify_v(obligations, aEntry, bEntry, boundVariables);
       }
-      return subs;
+      return obligations;
     },
     Variant(tag, entries) {
       if (!b.handle.Variant) throw new ValueUnificationFailureError(a, b);
@@ -96,9 +108,9 @@ export function unify_v(
         if (!aEntry || !bEntry) {
           throw new ValueUnificationFailureError(a, b);
         }
-        subs = unify_v(subs, aEntry, bEntry, boundVariables);
+        obligations = unify_v(obligations, aEntry, bEntry, boundVariables);
       }
-      return subs;
+      return obligations;
     },
     _() {
       throw new ValueUnificationFailureError(a, b);
@@ -107,21 +119,45 @@ export function unify_v(
 }
 
 export function unify_c(
-  subs: Record<string, RefinedTypeV>,
-  a: TypeC,
-  b: TypeC,
+  obligations: ProofObligations,
+  _a: TypeC,
+  _b: TypeC,
   boundVariables: Record<string, string> = {},
-): Record<string, RefinedTypeV> {
+): ProofObligations {
+  const a = apply_c(obligations, _a);
+  const b = apply_c(obligations, _b);
+
+  if (
+    a.Variable &&
+    a.Variable[0] in boundVariables &&
+    boundVariables[a.Variable[0]] === b.Variable?.[0]
+  ) {
+    return obligations;
+  }
+  if (
+    b.Variable &&
+    b.Variable[0] in boundVariables &&
+    boundVariables[b.Variable[0]] === a.Variable?.[0]
+  ) {
+    return obligations;
+  }
+  if (a.Variable) {
+    return { ...obligations, c: { ...obligations.c, [a.Variable[0]]: b } };
+  }
+  if (b.Variable) {
+    return { ...obligations, c: { ...obligations.c, [b.Variable[0]]: a } };
+  }
+
   return a.match({
     Arrow(_0, body) {
       if (!b.Arrow) throw new ComputationUnificationFailureError(a, b);
       const [_1, bBody] = b.Arrow;
-      return unify_c(subs, body, bBody, boundVariables);
+      return unify_c(obligations, body, bBody, boundVariables);
     },
     Produce(aHandle) {
       if (!b.Produce) throw new ComputationUnificationFailureError(a, b);
       const [bHandle] = b.Produce;
-      return unify_v(subs, aHandle, bHandle, boundVariables);
+      return unify_v(obligations, aHandle, bHandle, boundVariables);
     },
     With(bundle) {
       if (!b.With) throw new ComputationUnificationFailureError(a, b);
@@ -135,18 +171,23 @@ export function unify_c(
         if (!aValue || !bValue) {
           throw new ComputationUnificationFailureError(a, b);
         }
-        subs = unify_c(subs, aValue, bValue, boundVariables);
+        obligations = unify_c(obligations, aValue, bValue, boundVariables);
       }
-      return subs;
+      return obligations;
     },
   });
 }
 
-export function apply(
-  subs: Record<string, RefinedTypeV>,
+export function apply_v(
+  obligations: ProofObligations,
   ty: RefinedTypeV,
 ): RefinedTypeV {
-  const resolved = ty.handle.Variable && subs[ty.handle.Variable[0]];
+  const resolved = ty.handle.Variable && obligations.v[ty.handle.Variable[0]];
+  return resolved ?? ty;
+}
+
+export function apply_c(obligations: ProofObligations, ty: TypeC): TypeC {
+  const resolved = ty.Variable && obligations.c[ty.Variable[0]];
   return resolved ?? ty;
 }
 

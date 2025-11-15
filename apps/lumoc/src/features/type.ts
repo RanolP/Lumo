@@ -133,6 +133,7 @@ interface TTypeC {
   Produce(handle: RefinedTypeV, effects: Record<string, TypeC>): TypeC;
   With(bundle: Record<string, TypeC>): TypeC;
   Arrow(param: RefinedTypeV, body: TypeC): TypeC;
+  Variable(name: string): TypeC;
 }
 interface ITypeC {
   display(this: TypeC): string;
@@ -158,6 +159,9 @@ export const TypeC = handsum<TTypeC, ITypeC>({
       Arrow(param, body) {
         return `(${param.display()}) -> ${body.display()}`;
       },
+      Variable(name) {
+        return name;
+      },
     });
   },
 
@@ -178,6 +182,9 @@ export const TypeC = handsum<TTypeC, ITypeC>({
       },
       Arrow(param, body) {
         return TypeC.Arrow(param.sub(name, type), body.sub(name, type));
+      },
+      Variable(name) {
+        return TypeC.Variable(name);
       },
     });
   },
