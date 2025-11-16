@@ -8,13 +8,26 @@ import {
   createContextfulInput,
 } from './vendors/malssi/parser/input';
 import fs from 'node:fs/promises';
+import process from 'node:process';
 
 const source = await fs.readFile('./main.lumo', 'utf-8');
 const tokens = IrLexer.lex(source);
 
-const result = program.run(
-  createContextfulInput({ isBlock: false, id: 0 })(createArrayInput(tokens)),
+const input = createContextfulInput({ isBlock: false, id: 0 })(
+  createArrayInput(tokens),
 );
+const result = program.run(input);
+if (
+  input.leftoverTokens.length > 0 &&
+  input.leftoverTokens.some((t) => !t.VerticalSpace && !t.HorizontalSpace)
+) {
+  console.error(
+    `parse error on ${input.leftoverTokens
+      .map((token) => token.display())
+      .join('')}`,
+  );
+  process.exit(1);
+}
 
 for (const { name, type } of result.typedefs) {
   console.log(`type ${name} = ${type.display()}`);

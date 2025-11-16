@@ -92,7 +92,7 @@ export class Typer {
       },
       Unroll(value) {
         const typedValue = that.infer_v(value);
-        const ty = typedValue.getType();
+        const ty = that.apply_v(typedValue.getType());
         if (!ty.handle.Recursive) {
           throw new UnrollOnWrongTypeError(ty);
         }
@@ -106,7 +106,9 @@ export class Typer {
     });
   }
 
-  check_v(value: Value, type: RefinedTypeV): TypedValue {
+  check_v(value: Value, _type: RefinedTypeV): TypedValue {
+    const type = this.apply_v(_type);
+
     if (value.Record && type.handle.Record) {
       const [valueEntries] = value.Record;
       const [typeEntries] = type.handle.Record;
@@ -255,6 +257,7 @@ export class Typer {
         }
         const [entries] = ty.handle.Sum;
         const resultingType = TypeV.Variable(freshName('ty')).freshRefined();
+        const unusedTags = new Set(Object.keys(entries));
         const typedArms: Record<string, [string, TypedComputation]> = {};
         for (const [key, [name, body]] of Object.entries(branches)) {
           if (!entries[key]) {
@@ -266,6 +269,10 @@ export class Typer {
             .infer_c(body);
           that.unify_c(resultingType.comput(), comput.getType());
           typedArms[key] = [name, comput];
+          unusedTags.delete(key);
+        }
+        if (unusedTags.size > 0) {
+          throw new MatchUnusedTagsError(Array.from(unusedTags));
         }
         return TypedComputation.Match(typedValue, typedArms, {
           type: that.apply_v(resultingType).comput(),
@@ -494,6 +501,13 @@ export class UnknownMatchArmError extends Error {
   constructor(arm: string) {
     super(`Unknown match arm: ${arm}`);
     this.name = 'UnknownMatchArmError';
+  }
+}
+
+export class MatchUnusedTagsError extends Error {
+  constructor(tags: string[]) {
+    super(`Match unused tags: ${tags.join(', ')}`);
+    this.name = 'MatchUnusedTagsError';
   }
 }
 

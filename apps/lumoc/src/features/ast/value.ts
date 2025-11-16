@@ -98,7 +98,7 @@ export const Value = handsum<
         return decorate(`forall ${name}. (${body.display()})`, meta);
       },
       TyAbsC(name, body, meta) {
-        return decorate(`tyAbsC(${name}, ${body.display()})`, meta);
+        return decorate(`forall ${name}: eff. (${body.display()})`, meta);
       },
       Record(entries, meta) {
         return decorate(
@@ -168,10 +168,10 @@ export const TypedValue = handsum<
         return decorate(`thunk(${body.display()})`, meta);
       },
       TyAbsV(name, body, meta) {
-        return decorate(`tyAbsV(${name}, ${body.display()})`, meta);
+        return decorate(`forall ${name}. (${body.display()})`, meta);
       },
       TyAbsC(name, body, meta) {
-        return decorate(`tyAbsC(${name}, ${body.display()})`, meta);
+        return decorate(`forall ${name}: eff. (${body.display()})`, meta);
       },
       Record(entries, meta) {
         return decorate(

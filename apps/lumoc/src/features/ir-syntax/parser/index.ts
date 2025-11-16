@@ -38,6 +38,28 @@ var ty_c = parser(
         parser
           .seq(tok.punct.underscore, ctx.freshId.capture('id'))
           .map(({ id }) => TypeC.Variable(`#${id}`)),
+      )
+      .or(
+        parser
+          .seq(
+            tok.kw.Bundle,
+            tok.punct.curly.l,
+            parser
+              .seq(
+                tok.Tag.capture('name'),
+                tok.punct.colon,
+                ty_c.capture('type'),
+              )
+              .sepBy(tok.punct.comma)
+              .capture('entries'),
+            tok.punct.comma.opt(),
+            tok.punct.curly.r,
+          )
+          .map(({ entries }) =>
+            TypeC.With(
+              Object.fromEntries(entries.map(({ name, type }) => [name, type])),
+            ),
+          ),
       ),
 );
 
@@ -138,7 +160,7 @@ const typedef = parser(() =>
   ),
 );
 
-var expr_v = parser(
+var expr_v_base = parser(
   (): Parser<ParserInput, Value, void | undefined> =>
     tok.Ident.map((name) => Value.Variable(name))
       .or(
@@ -193,6 +215,26 @@ var expr_v = parser(
               ),
             ),
           ),
+      ),
+);
+
+var expr_v = parser(
+  (): Parser<ParserInput, Value, void | undefined> =>
+    parser
+      .seq(
+        expr_v_base.capture('base'),
+        parser
+          .seq(tok.punct.colon, ty_v.capture('type'))
+          .map(
+            ({ type }) =>
+              (base: Value) =>
+                Value.Annotate(base, type),
+          )
+          .repeat()
+          .capture('transforms'),
+      )
+      .map(({ base, transforms }) =>
+        transforms.reduce((result, transform) => transform(result), base),
       ),
 );
 
@@ -257,6 +299,78 @@ var expr_c_base = parser(
               ),
             ),
           ),
+      )
+      .or(
+        parser
+          .seq(
+            tok.kw.Bundle,
+            tok.punct.curly.l,
+            parser
+              .seq(
+                tok.Tag.capture('name'),
+                tok.punct.fatArrow,
+                expr_c.capture('value'),
+                ctx.freshId.capture('id'),
+              )
+              .sepBy(tok.punct.comma)
+              .capture('entries'),
+            tok.punct.comma.opt(),
+            tok.punct.curly.r,
+          )
+          .map(({ entries }) =>
+            Computation.Annotate(
+              Computation.With(
+                Object.fromEntries(
+                  entries.map(({ name, value }) => [name, value]),
+                ),
+              ),
+              TypeC.With(
+                Object.fromEntries(
+                  entries.map(({ name, id }) => [
+                    name,
+                    TypeC.Variable(`#${id}`),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+      )
+      .or(
+        parser
+          .seq(
+            tok.kw.Match,
+            expr_v.capture('value'),
+            tok.punct.curly.l,
+            parser
+              .seq(
+                tok.Tag.capture('tag'),
+                tok.kw.As,
+                tok.Ident.capture('name'),
+                tok.punct.fatArrow,
+                expr_c.capture('body'),
+              )
+              .sepBy(tok.punct.comma)
+              .capture('branches'),
+            tok.punct.comma.opt(),
+            tok.punct.curly.r,
+          )
+          .map(({ value, branches }) =>
+            Computation.Match(
+              value,
+              Object.fromEntries(
+                branches.map(({ tag, name, body }) => [tag, [name, body]]),
+              ),
+            ),
+          ),
+      )
+      .or(
+        parser
+          .seq(
+            expr_v.capture('value'),
+            tok.punct.fullStop,
+            tok.Ident.capture('name'),
+          )
+          .map(({ value, name }) => Computation.Projection(value, name)),
       ),
 );
 
@@ -278,6 +392,11 @@ var expr_c = parser(() =>
                 (result, value) => Computation.Apply(result, value),
                 base,
               ),
+        )
+        .or(
+          tok.Tag.map(
+            (tag) => (base: Computation) => Computation.Resolve(base, tag),
+          ),
         )
         .repeat()
         .capture('transforms'),

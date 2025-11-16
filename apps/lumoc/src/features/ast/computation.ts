@@ -112,7 +112,7 @@ export const Computation = handsum<
         return `resolve(${_0.display()}, ${JSON.stringify(_1)})`;
       },
       Lambda(name, _1, meta) {
-        return `λ${name}. ${_1.display()}`;
+        return `λ${name}. (${_1.display()})`;
       },
       With(bundle, meta) {
         return `λ⟨${Object.entries(bundle)
@@ -169,7 +169,7 @@ export const TypedComputation = handsum<
         return `resolve(${_0.display()}, ${JSON.stringify(_1)})`;
       },
       Lambda(name, _1, meta) {
-        return `λ${name}.${_1.display()}`;
+        return `λ${name}. (${_1.display()})`;
       },
       With(bundle, meta) {
         return `λ⟨${Object.entries(bundle)

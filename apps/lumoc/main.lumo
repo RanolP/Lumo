@@ -25,6 +25,11 @@ type List = ∀T. μX. ∑(
     `List/cons: `List/cons { head: T, tail: X }
 )
 
+type Module = thunk bundle {
+    `isEven: Nat -> produce Bool,
+    `isOdd: Nat -> produce Bool,
+}
+
 
 fixpoint <- (
     fn[A](f: thunk (A -> produce A)): produce A {
@@ -37,7 +42,20 @@ fixpoint <- (
         (force g)(roll g)
     }
 );
-fixpoint_ <- fixpoint[Unit];
-(force fixpoint_)(thunk (fn(m: _): _ {
-    `Unit/unit {}
+fixpoint_ <- fixpoint[Module];
+(force fixpoint_)(thunk (fn(m: Module): produce Module {
+    produce thunk bundle {
+        `isEven => fn(n: Nat): produce Bool {
+            match unroll n {
+                `Nat/zero as n => produce (roll `Bool/true {}) : Bool,
+                `Nat/succ as n => v <- n.value; ((force m) `isOdd)(v),
+            }
+        },
+        `isOdd => fn(n: Nat): produce Bool {
+            match unroll n {
+                `Nat/zero as n => produce (roll `Bool/false {}) : Bool,
+                `Nat/succ as n => v <- n.value; ((force m) `isEven)(v),
+            }
+        },
+    }
 }))

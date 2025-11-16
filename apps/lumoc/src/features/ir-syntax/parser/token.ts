@@ -29,6 +29,9 @@ export const tok = {
     Force: expectToken(`'force'`, (token) => token.KeywordForce).void(),
     Roll: expectToken(`'roll'`, (token) => token.KeywordRoll).void(),
     Unroll: expectToken(`'unroll'`, (token) => token.KeywordUnroll).void(),
+    Bundle: expectToken(`'bundle'`, (token) => token.KeywordBundle).void(),
+    Match: expectToken(`'match'`, (token) => token.KeywordMatch).void(),
+    As: expectToken(`'as'`, (token) => token.KeywordAs).void(),
   },
   punct: {
     sum: expectToken(`'∑'`, (token) => token.PunctuationSum).void(),
@@ -38,7 +41,10 @@ export const tok = {
     comma: expectToken(`','`, (token) => token.PunctuationComma).void(),
     fullStop: expectToken(`'.'`, (token) => token.PunctuationFullStop).void(),
     colon: expectToken(`':'`, (token) => token.PunctuationColon).void(),
-    underscore: expectToken(`'_'`, (token) => token.PunctuationUnderscore).void(),
+    underscore: expectToken(
+      `'_'`,
+      (token) => token.PunctuationUnderscore,
+    ).void(),
 
     reverseSolidus: expectToken(
       `'\\'`,

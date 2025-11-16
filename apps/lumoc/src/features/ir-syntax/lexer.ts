@@ -12,6 +12,9 @@ const Keywords = {
   Force: 'force',
   Roll: 'roll',
   Unroll: 'unroll',
+  Bundle: 'bundle',
+  Match: 'match',
+  As: 'as',
 } as const;
 
 const Punctuations = {
@@ -58,8 +61,37 @@ type TToken = {
     content: string,
   ) => Token;
 };
-export type Token = Handsum<TToken>;
-export const Token = handsum<TToken>({});
+interface IToken {
+  display(this: Token): string;
+}
+export type Token = Handsum<TToken, IToken>;
+export const Token = handsum<TToken, IToken>({
+  display() {
+    const kw = Object.keys(Keywords)
+      .map((key) => this[`Keyword${key as keyof typeof Keywords}`])
+      .find((key) => key !== undefined);
+    if (kw) return kw[0];
+    const punctSingle = Object.keys(Punctuations.single)
+      .map(
+        (key) => this[`Punctuation${key as keyof typeof Punctuations.single}`],
+      )
+      .find((key) => key !== undefined);
+    if (punctSingle) return punctSingle[0];
+    const punctSequence = Object.keys(Punctuations.sequence)
+      .map(
+        (key) =>
+          this[`Punctuations${key as keyof typeof Punctuations.sequence}`],
+      )
+      .find((key) => key !== undefined);
+    if (punctSequence) return punctSequence[0];
+    if (this.HorizontalSpace) return this.HorizontalSpace[0];
+    if (this.VerticalSpace) return this.VerticalSpace[0];
+    if (this.Identifier) return this.Identifier[0];
+    if (this.Tag) return `\`${this.Tag[0]}`;
+
+    throw new Error('Invalid token');
+  },
+});
 
 export const IrLexer = lexer<Token>()
   .rule(/(?<content>[ \t]+)/, ({ content }) => Token.HorizontalSpace(content!))
