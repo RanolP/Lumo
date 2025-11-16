@@ -24,6 +24,8 @@ export function formatParens(source: string): string {
                     ? 1
                     : Parens.close.includes(ch)
                     ? -1
+                    : ch === ','
+                    ? NaN
                     : 0) as number,
               )
               .reduce((acc, curr) => acc + curr, 0) === 0
@@ -52,6 +54,8 @@ export function formatParens(source: string): string {
                     ? 1
                     : Parens.close.includes(ch)
                     ? -1
+                    : ch === ','
+                    ? NaN
                     : 0) as number,
               )
               .reduce((acc, curr) => acc + curr, 0) === 0
@@ -72,6 +76,7 @@ export function formatParens(source: string): string {
       result += c;
       result += '\n';
       result += '  '.repeat(indentDepth);
+    } else if (c === ' ' && source.at(i - 1) === ',') {
     } else {
       result += c;
     }
