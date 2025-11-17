@@ -1,7 +1,7 @@
-import { handsum, Handsum } from 'handsum';
+import { handsum, type Handsum } from 'handsum';
 import { RefinedTypeV } from '../type';
-import { ImplKind } from './common';
-import { Computation, ComputationF } from './computation';
+import { type ImplKind } from './common';
+import { Computation, type ComputationF } from './computation';
 
 interface IValueCommon<TImplKey extends ImplKind> {
   decorate?: (content: string, data: MetaOf<TImplKey>) => string;

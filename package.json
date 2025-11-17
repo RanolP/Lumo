@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "pnpm -F=lumoc start"
+    "start": "pnpm -F=lumoc start",
+    "check:types": "pnpm -F=lumoc check:types"
   },
   "keywords": [],
   "author": "",

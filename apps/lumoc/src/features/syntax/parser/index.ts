@@ -1,8 +1,8 @@
-import { Parser } from '../../../vendors/malssi/parser';
+import type { Parser } from '../../../vendors/malssi/parser';
 import { Computation } from '../../ast/computation';
 import { Value } from '../../ast/value';
 import { RefinedTypeV, TypeC, TypeV } from '../../type';
-import { ctx, parser, ParserInput } from './base';
+import { ctx, parser, type ParserInput } from './base';
 import { tok } from './token';
 
 var ty_c = parser(

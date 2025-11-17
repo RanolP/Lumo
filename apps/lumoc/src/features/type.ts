@@ -1,4 +1,4 @@
-import { Handsum, handsum } from 'handsum';
+import { type Handsum, handsum } from 'handsum';
 
 export interface TTypeV {
   Sum(entries: Record<string, RefinedTypeV>): TypeV;

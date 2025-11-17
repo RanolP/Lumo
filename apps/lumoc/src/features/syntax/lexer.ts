@@ -1,4 +1,4 @@
-import { handsum, Handsum } from 'handsum';
+import { handsum, type Handsum } from 'handsum';
 import { lexer } from '../../vendors/malssi/lexer';
 import escape from 'regexp.escape';
 

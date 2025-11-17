@@ -1,5 +1,5 @@
-import { Input } from './input';
-import { Simplify } from 'type-fest';
+import type { Input } from './input';
+import type { Simplify } from 'type-fest';
 import { ParseError } from './errors';
 
 function implParser<

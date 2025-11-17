@@ -1,7 +1,7 @@
-import { handsum, Handsum } from 'handsum';
-import { RefinedTypeV, TypeC } from '../type';
-import { ImplKind } from './common';
-import { Value, ValueF } from './value';
+import { handsum, type Handsum } from 'handsum';
+import { RefinedTypeV, type TypeC } from '../type';
+import { type ImplKind } from './common';
+import { Value, type ValueF } from './value';
 
 interface IComputationCommon<TImplKey extends ImplKind> {
   display(this: ComputationF<TImplKey>): string;

@@ -1,7 +1,7 @@
 import { malssi } from '../../../vendors/malssi/parser';
 import {
-  ContextfulInput,
-  ArrayInput,
+  type ContextfulInput,
+  type ArrayInput,
 } from '../../../vendors/malssi/parser/input';
 import { Token } from '../lexer';
 

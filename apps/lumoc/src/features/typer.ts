@@ -3,7 +3,13 @@ import { freshName } from '../shared/name';
 import { Computation, TypedComputation } from './ast/computation';
 import { TypedValue, Value } from './ast/value';
 import { RefinedTypeV, TypeC, TypeV } from './type';
-import { apply_c, apply_v, ProofObligations, unify_c, unify_v } from './unify';
+import {
+  apply_c,
+  apply_v,
+  type ProofObligations,
+  unify_c,
+  unify_v,
+} from './unify';
 
 export class Typer {
   readonly #parent: Typer | undefined;
