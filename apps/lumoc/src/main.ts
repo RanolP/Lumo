@@ -1,5 +1,5 @@
-import { IrLexer } from './features/ir-syntax/lexer';
-import { program } from './features/ir-syntax/parser';
+import { IrLexer } from './features/syntax/lexer';
+import { program } from './features/syntax/parser';
 import { TypeV } from './features/type';
 import { Typer } from './features/typer';
 import { formatParens } from './shared/fmt';

@@ -213,7 +213,7 @@ export class Typer {
       },
       Sequence(left, name, right) {
         const typedLeft = that.infer_c(left);
-        const tyLeft = typedLeft.getType();
+        const tyLeft = that.apply_c(typedLeft.getType());
         if (!tyLeft.Produce) {
           throw new SequenceOnWrongTypeError(tyLeft);
         }
@@ -291,7 +291,7 @@ export class Typer {
       },
       Resolve(bundle, tag) {
         const typedBundle = that.infer_c(bundle);
-        const ty = typedBundle.getType();
+        const ty = that.apply_c(typedBundle.getType());
         if (!ty.With) {
           throw new ResolveOnWrongTypeError(ty);
         }
