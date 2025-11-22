@@ -1,9 +1,10 @@
 import { handsum, type Handsum } from 'handsum';
 import { RefinedTypeV, type TypeC } from '../type';
 import { type ImplKind } from './common';
-import { Value, type ValueF } from './value';
+import { TypedValue, Value, type ValueF } from './value';
 
 interface IComputationCommon<TImplKey extends ImplKind> {
+  decorate?: (content: string, data: MetaOf<TImplKey>) => string;
   display(this: ComputationF<TImplKey>): string;
 }
 interface TComputationImplSet {
@@ -21,6 +22,11 @@ interface TComputationImplSet {
     meta: { type: TypeC };
     impl: IComputationCommon<'typed'> & {
       getType(this: ComputationF<'typed'>): TypeC;
+      sub_v(
+        this: ComputationF<'typed'>,
+        name: string,
+        value: ValueF<'typed'>,
+      ): ComputationF<'typed'>;
     };
   };
 }
@@ -95,46 +101,53 @@ export const Computation = handsum<
   TComputationImplSet['untyped']['impl']
 >({
   display(): string {
+    const decorate = this.decorate ?? ((content, _) => content);
     return this.match({
       Annotate(_0, _1, meta) {
-        return `(${_0.display()}) ⇐ ${_1.display()}`;
+        return decorate(`(${_0.display()}) ⇐ ${_1.display()}`, meta);
       },
       Produce(_0, meta) {
-        return `produce(${_0.display()})`;
+        return decorate(`produce(${_0.display()})`, meta);
       },
       Force(_0, meta) {
-        return `force(${_0.display()})`;
+        return decorate(`force(${_0.display()})`, meta);
       },
       Apply(_0, _1, meta) {
-        return `(${_0.display()}).apply(${_1.display()})`;
+        return decorate(`(${_0.display()}).apply(${_1.display()})`, meta);
       },
       Resolve(_0, _1, meta) {
-        return `resolve(${_0.display()}, ${JSON.stringify(_1)})`;
+        return decorate(`(${_0.display()}) \`${_1}`, meta);
       },
       Lambda(name, _1, meta) {
-        return `λ${name}. (${_1.display()})`;
+        return decorate(`λ${name}. (${_1.display()})`, meta);
       },
       With(bundle, meta) {
-        return `λ⟨${Object.entries(bundle)
-          .map(([tag, body]) => `${tag}. ${body.display()}`)
-          .join(', ')}⟩`;
+        return decorate(
+          `λ⟨${Object.entries(bundle)
+            .map(([tag, body]) => `${tag}. ${body.display()}`)
+            .join(', ')}⟩`,
+          meta,
+        );
       },
       Sequence(_0, _1, _2, meta) {
-        return `${_1} <- (${_0.display()}); ${_2.display()}`;
+        return decorate(`${_1} <- (${_0.display()}); ${_2.display()}`, meta);
       },
       TyAppV(_0, _1, meta) {
-        return `(${_0.display()})[${_1.display()}]`;
+        return decorate(`(${_0.display()})[${_1.display()}]`, meta);
       },
       TyAppC(_0, _1, meta) {
-        return `(${_0.display()})[${_1.display()}: effect]`;
+        return decorate(`(${_0.display()})[${_1.display()}: effect]`, meta);
       },
       Projection(_0, _1, meta) {
-        return `(${_0.display()}).${_1}`;
+        return decorate(`(${_0.display()}).${_1}`, meta);
       },
       Match(_0, _1, meta) {
-        return `match(${_0.display()}) {${Object.entries(_1)
-          .map(([key, [v, body]]) => `${key} as ${v} => ${body.display()}`)
-          .join(', ')}}`;
+        return decorate(
+          `match(${_0.display()}) {${Object.entries(_1)
+            .map(([key, [v, body]]) => `${key} as ${v} => ${body.display()}`)
+            .join(', ')}}`,
+          meta,
+        );
       },
     });
   },
@@ -151,45 +164,57 @@ export const TypedComputation = handsum<
   TComputation<'typed'>,
   TComputationImplSet['typed']['impl']
 >({
+  decorate(content, data) {
+    return `(${content}): ${data.type.display()}`;
+  },
   display(): string {
+    const decorate = this.decorate ?? ((content, _) => content);
     return this.match({
       Annotate(_0, _1, meta) {
-        return `(${_0.display()}) ⇐ ${_1.display()}`;
+        return decorate(`(${_0.display()}) ⇐ ${_1.display()}`, meta);
       },
       Produce(_0, meta) {
-        return _0.display();
+        return decorate(`produce(${_0.display()})`, meta);
       },
       Force(_0, meta) {
-        return _0.display();
+        return decorate(`force(${_0.display()})`, meta);
       },
       Apply(_0, _1, meta) {
-        return _0.display();
+        return decorate(`(${_0.display()}).apply(${_1.display()})`, meta);
       },
       Resolve(_0, _1, meta) {
-        return `resolve(${_0.display()}, ${JSON.stringify(_1)})`;
+        return decorate(`(${_0.display()}) \`${_1}`, meta);
       },
       Lambda(name, _1, meta) {
-        return `λ${name}. (${_1.display()})`;
+        return decorate(`λ${name}. (${_1.display()})`, meta);
       },
       With(bundle, meta) {
-        return `λ⟨${Object.entries(bundle)
-          .map(([tag, body]) => `${tag}. ${body.display()}`)
-          .join(', ')}⟩`;
+        return decorate(
+          `λ⟨${Object.entries(bundle)
+            .map(([tag, body]) => `${tag}. ${body.display()}`)
+            .join(', ')}⟩`,
+          meta,
+        );
       },
       Sequence(_0, _1, _2, meta) {
-        return _0.display();
+        return decorate(`${_1} <- (${_0.display()}); ${_2.display()}`, meta);
       },
       TyAppV(_0, _1, meta) {
-        return _0.display();
+        return decorate(`(${_0.display()})[${_1.display()}]`, meta);
       },
       TyAppC(_0, _1, meta) {
-        return _0.display();
+        return decorate(`(${_0.display()})[${_1.display()}: effect]`, meta);
       },
       Projection(_0, _1, meta) {
-        return _0.display();
+        return decorate(`(${_0.display()}).${_1}`, meta);
       },
       Match(_0, _1, meta) {
-        return _0.display();
+        return decorate(
+          `match(${_0.display()}) {${Object.entries(_1)
+            .map(([key, [v, body]]) => `${key} as ${v} => ${body.display()}`)
+            .join(', ')}}`,
+          meta,
+        );
       },
     });
   },
@@ -230,6 +255,63 @@ export const TypedComputation = handsum<
       },
       Match(_0, _1, meta) {
         return meta.type;
+      },
+    });
+  },
+  sub_v(name: string, value: TypedValue): TypedComputation {
+    return this.match({
+      Annotate(_0, _1, meta) {
+        return TypedComputation.Annotate(_0.sub_v(name, value), _1, meta);
+      },
+      Produce(_0, meta) {
+        return TypedComputation.Produce(_0.sub_v(name, value), meta);
+      },
+      Force(_0, meta) {
+        return TypedComputation.Force(_0.sub_v(name, value), meta);
+      },
+      Apply(_0, _1, meta) {
+        return TypedComputation.Apply(
+          _0.sub_v(name, value),
+          _1.sub_v(name, value),
+          meta,
+        );
+      },
+      Resolve(_0, _1, meta) {
+        return TypedComputation.Resolve(_0.sub_v(name, value), _1, meta);
+      },
+      Lambda(_0, _1, meta) {
+        return TypedComputation.Lambda(_0, _1.sub_v(name, value), meta);
+      },
+      With(_0, meta) {
+        return TypedComputation.With(
+          Object.fromEntries(
+            Object.entries(_0).map(([key, target]) => [
+              key,
+              target.sub_v(name, value),
+            ]),
+          ),
+          meta,
+        );
+      },
+      Sequence(_0, _1, _2, meta) {
+        return TypedComputation.Sequence(
+          _0.sub_v(name, value),
+          _1,
+          _2.sub_v(name, value),
+          meta,
+        );
+      },
+      TyAppV(_0, _1, meta) {
+        return TypedComputation.TyAppV(_0.sub_v(name, value), _1, meta);
+      },
+      TyAppC(_0, _1, meta) {
+        return TypedComputation.TyAppC(_0.sub_v(name, value), _1, meta);
+      },
+      Projection(_0, _1, meta) {
+        return TypedComputation.Projection(_0.sub_v(name, value), _1, meta);
+      },
+      Match(_0, _1, meta) {
+        return TypedComputation.Match(_0.sub_v(name, value), _1, meta);
       },
     });
   },

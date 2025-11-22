@@ -24,6 +24,11 @@ interface TValueImplSet {
     meta: { type: RefinedTypeV };
     impl: IValueCommon<'typed'> & {
       getType(this: ValueF<'typed'>): RefinedTypeV;
+      sub_v(
+        this: ValueF<'typed'>,
+        name: string,
+        value: ValueF<'typed'>,
+      ): ValueF<'typed'>;
     };
   };
 }
@@ -192,7 +197,7 @@ export const TypedValue = handsum<
     });
   },
   decorate(content, data) {
-    return `${content}: ${data.type.display()}`;
+    return `(${content}): ${data.type.display()}`;
   },
   getType(): RefinedTypeV {
     return this.match({
@@ -225,6 +230,57 @@ export const TypedValue = handsum<
       },
       Variant(_0, _1, meta) {
         return meta.type;
+      },
+    });
+  },
+  sub_v(name, value): TypedValue {
+    return this.match({
+      Annotate(_0, _1, meta) {
+        return TypedValue.Annotate(_0.sub_v(name, value), _1, meta);
+      },
+      Roll(_0, meta) {
+        return TypedValue.Roll(_0.sub_v(name, value), meta);
+      },
+      Unroll(_0, meta) {
+        return TypedValue.Unroll(_0.sub_v(name, value), meta);
+      },
+      Injection(_0, _1, meta) {
+        return TypedValue.Injection(_0, _1.sub_v(name, value), meta);
+      },
+      Variable(_0, meta) {
+        return name === _0 ? value : TypedValue.Variable(_0, meta);
+      },
+      Thunk(_0, meta) {
+        return TypedValue.Thunk(_0.sub_v(name, value), meta);
+      },
+      TyAbsV(_0, _1, meta) {
+        return TypedValue.TyAbsV(_0, _1.sub_v(name, value), meta);
+      },
+      TyAbsC(_0, _1, meta) {
+        return TypedValue.TyAbsC(_0, _1.sub_v(name, value), meta);
+      },
+      Record(_0, meta) {
+        return TypedValue.Record(
+          Object.fromEntries(
+            Object.entries(_0).map(([key, target]) => [
+              key,
+              target.sub_v(name, value),
+            ]),
+          ),
+          meta,
+        );
+      },
+      Variant(_0, _1, meta) {
+        return TypedValue.Variant(
+          _0,
+          Object.fromEntries(
+            Object.entries(_1).map(([key, target]) => [
+              key,
+              target.sub_v(name, value),
+            ]),
+          ),
+          meta,
+        );
       },
     });
   },

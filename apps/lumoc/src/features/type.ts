@@ -1,4 +1,5 @@
 import { type Handsum, handsum } from 'handsum';
+import { Hasher } from '../vendors/malssi/hasher';
 
 export interface TTypeV {
   Sum(entries: Record<string, RefinedTypeV>): TypeV;
@@ -13,6 +14,10 @@ export interface ITypeV {
   freshRefined(this: TypeV): RefinedTypeV;
 
   display(this: TypeV): string;
+
+  vars(this: TypeV): Set<string>;
+
+  hashCode(this: TypeV, idx?: number): number;
 }
 export type TypeV = Handsum<TTypeV, ITypeV>;
 export const TypeV = handsum<TTypeV, ITypeV>({
@@ -50,6 +55,91 @@ export const TypeV = handsum<TTypeV, ITypeV>({
       },
     });
   },
+  vars() {
+    return this.match({
+      Sum(entries) {
+        return new Set(
+          ...Object.values(entries).map((entry) => entry.handle.vars()),
+        );
+      },
+      Record(entries) {
+        return new Set(
+          ...Object.values(entries).map((entry) => entry.handle.vars()),
+        );
+      },
+      Variant(tag, entries) {
+        return new Set(
+          ...Object.values(entries).map((entry) => entry.handle.vars()),
+        );
+      },
+      Thunk(body) {
+        return body.vars();
+      },
+      Recursive(name, body) {
+        return new Set([name, ...body.handle.vars()]);
+      },
+      Variable(name) {
+        return new Set([name]);
+      },
+      TyAbsV(name, body) {
+        return new Set([name, ...body.handle.vars()]);
+      },
+    });
+  },
+  hashCode(this: TypeV, idx: number = 0): number {
+    return this.match({
+      Sum(entries) {
+        const hasher = new Hasher().with('TypeV.Sum');
+        for (const [key, value] of Object.entries(entries)) {
+          hasher.with(key).with(value.hashCode(idx));
+        }
+        return hasher.result();
+      },
+      Record(entries) {
+        const hasher = new Hasher().with('TypeV.Record');
+        for (const [key, value] of Object.entries(entries)) {
+          hasher.with(key).with(value.hashCode(idx));
+        }
+        return hasher.result();
+      },
+      Variant(tag, entries) {
+        const hasher = new Hasher().with('TypeV.Variant').with(tag);
+        for (const [key, value] of Object.entries(entries)) {
+          hasher.with(key).with(value.hashCode(idx));
+        }
+        return hasher.result();
+      },
+      Thunk(body) {
+        return new Hasher()
+          .with('TypeV.Thunk')
+          .with(body.hashCode(idx))
+          .result();
+      },
+      Recursive(name, body) {
+        return new Hasher()
+          .with('TypeV.Recursive')
+          .with(
+            body
+              .sub_v(name, TypeV.Variable(`#${idx}`).freshRefined())
+              .hashCode(idx + 1),
+          )
+          .result();
+      },
+      Variable(name) {
+        return new Hasher().with('TypeV.Variable').with(name).result();
+      },
+      TyAbsV(name, body) {
+        return new Hasher()
+          .with('TypeV.TyAbsV')
+          .with(
+            body
+              .sub_v(name, TypeV.Variable(`#${idx}`).freshRefined())
+              .hashCode(idx + 1),
+          )
+          .result();
+      },
+    });
+  },
 });
 
 /**
@@ -66,7 +156,7 @@ export class RefinedTypeV {
     return new RefinedTypeV(fn(this.handle));
   }
 
-  sub(name: string, type: RefinedTypeV): RefinedTypeV {
+  sub_v(name: string, type: RefinedTypeV): RefinedTypeV {
     return this.map((handle) =>
       handle.match({
         Sum(entries) {
@@ -74,7 +164,7 @@ export class RefinedTypeV {
             Object.fromEntries(
               Object.entries(entries).map(([key, value]) => [
                 key,
-                value.sub(name, type),
+                value.sub_v(name, type),
               ]),
             ),
           );
@@ -84,7 +174,7 @@ export class RefinedTypeV {
             Object.fromEntries(
               Object.entries(entries).map(([key, value]) => [
                 key,
-                value.sub(name, type),
+                value.sub_v(name, type),
               ]),
             ),
           );
@@ -95,7 +185,7 @@ export class RefinedTypeV {
             Object.fromEntries(
               Object.entries(entries).map(([key, value]) => [
                 key,
-                value.sub(name, type),
+                value.sub_v(name, type),
               ]),
             ),
           );
@@ -104,13 +194,13 @@ export class RefinedTypeV {
           return TypeV.Thunk(body.sub(name, type));
         },
         Recursive(innerName, body) {
-          return TypeV.Recursive(innerName, body.sub(name, type));
+          return TypeV.Recursive(innerName, body.sub_v(name, type));
         },
         Variable(innerName) {
           return innerName === name ? type.handle : TypeV.Variable(innerName);
         },
         TyAbsV(innerName, body) {
-          return TypeV.TyAbsV(innerName, body.sub(name, type));
+          return TypeV.TyAbsV(innerName, body.sub_v(name, type));
         },
       }),
     );
@@ -121,11 +211,15 @@ export class RefinedTypeV {
       return this;
     }
     const [name, body] = this.handle.Recursive;
-    return body.sub(name, this);
+    return body.sub_v(name, this);
   }
 
   comput(): TypeC {
     return TypeC.Produce(this, {});
+  }
+
+  hashCode(this: RefinedTypeV, idx: number = 0): number {
+    return this.handle.hashCode(idx);
   }
 }
 
@@ -139,6 +233,8 @@ interface ITypeC {
   display(this: TypeC): string;
   sub(this: TypeC, name: string, type: RefinedTypeV): TypeC;
   thunk(this: TypeC): TypeV;
+  vars(this: TypeC): Set<string>;
+  hashCode(this: TypeC, idx?: number): number;
 }
 export type TypeC = Handsum<TTypeC, ITypeC>;
 export const TypeC = handsum<TTypeC, ITypeC>({
@@ -168,7 +264,7 @@ export const TypeC = handsum<TTypeC, ITypeC>({
   sub(name: string, type: RefinedTypeV): TypeC {
     return this.match({
       Produce(handle, effects) {
-        return TypeC.Produce(handle.sub(name, type), effects);
+        return TypeC.Produce(handle.sub_v(name, type), effects);
       },
       With(bundle) {
         return TypeC.With(
@@ -181,7 +277,7 @@ export const TypeC = handsum<TTypeC, ITypeC>({
         );
       },
       Arrow(param, body) {
-        return TypeC.Arrow(param.sub(name, type), body.sub(name, type));
+        return TypeC.Arrow(param.sub_v(name, type), body.sub(name, type));
       },
       Variable(name) {
         return TypeC.Variable(name);
@@ -191,5 +287,55 @@ export const TypeC = handsum<TTypeC, ITypeC>({
 
   thunk(): TypeV {
     return TypeV.Thunk(this);
+  },
+
+  vars(): Set<string> {
+    return this.match({
+      Produce(handle, effects) {
+        return new Set(
+          ...handle.handle.vars(),
+          ...Object.values(effects).map((value) => value.vars()),
+        );
+      },
+      With(bundle) {
+        return new Set(...Object.values(bundle).map((value) => value.vars()));
+      },
+      Arrow(param, body) {
+        return new Set([...param.handle.vars(), ...body.vars()]);
+      },
+      Variable(name) {
+        return new Set([name]);
+      },
+    });
+  },
+
+  hashCode(this: TypeC, idx: number = 0): number {
+    return this.match({
+      Produce(handle, effects) {
+        const hasher = new Hasher().with('TypeC.Produce');
+        hasher.with(handle);
+        for (const [key, value] of Object.entries(effects)) {
+          hasher.with(key).with(value.hashCode(idx));
+        }
+        return hasher.result();
+      },
+      With(bundle) {
+        const hasher = new Hasher().with('TypeC.With');
+        for (const [key, value] of Object.entries(bundle)) {
+          hasher.with(key).with(value.hashCode(idx));
+        }
+        return hasher.result();
+      },
+      Arrow(param, body) {
+        return new Hasher()
+          .with('TypeC.Arrow')
+          .with(param.hashCode(idx))
+          .with(body.hashCode(idx))
+          .result();
+      },
+      Variable(name) {
+        return new Hasher().with('TypeC.Variable').with(name).result();
+      },
+    });
   },
 });

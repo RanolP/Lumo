@@ -90,11 +90,11 @@ export class Typer {
     const that = this;
     return value.match({
       Annotate(target, type) {
-        return that.check_v(target, type);
+        return that.check_v(target, that.apply_v(type));
       },
       Variable(name) {
         const ty = that.resolve_v(name);
-        return TypedValue.Variable(name, { type: ty });
+        return TypedValue.Variable(name, { type: that.apply_v(ty) });
       },
       Unroll(value) {
         const typedValue = that.infer_v(value);
@@ -103,7 +103,7 @@ export class Typer {
           throw new UnrollOnWrongTypeError(ty);
         }
         return TypedValue.Unroll(typedValue, {
-          type: ty.unroll(),
+          type: that.apply_v(ty.unroll()),
         });
       },
       _() {
@@ -114,6 +114,7 @@ export class Typer {
 
   check_v(value: Value, _type: RefinedTypeV): TypedValue {
     const type = this.apply_v(_type);
+    const that = this;
 
     if (value.Record && type.handle.Record) {
       const [valueEntries] = value.Record;
@@ -138,7 +139,18 @@ export class Typer {
             return [key, this.check_v(valueEntry, typeEntry)];
           }),
         ),
-        { type },
+        {
+          type: type.map(() =>
+            TypeV.Record(
+              Object.fromEntries(
+                Object.entries(typeEntries).map(([key, value]) => [
+                  key,
+                  that.apply_v(value),
+                ]),
+              ),
+            ),
+          ),
+        },
       );
     }
     if (value.Variant && type.handle.Variant) {
@@ -167,13 +179,29 @@ export class Typer {
             return [key, this.check_v(valueEntry, typeEntry)];
           }),
         ),
-        { type },
+        {
+          type: type.map(() =>
+            TypeV.Variant(
+              valueTag,
+              Object.fromEntries(
+                Object.entries(typeEntries).map(([key, value]) => [
+                  key,
+                  that.apply_v(value),
+                ]),
+              ),
+            ),
+          ),
+        },
       );
     }
 
     if (value.Roll && type.handle.Recursive) {
       const [valueRoll] = value.Roll;
-      return TypedValue.Roll(this.check_v(valueRoll, type.unroll()), { type });
+      const [name, body] = type.handle.Recursive;
+      const typedValue = this.check_v(valueRoll, type.unroll());
+      return TypedValue.Roll(typedValue, {
+        type: type.map(() => TypeV.Recursive(name, typedValue.getType())),
+      });
     }
 
     if (value.Injection && type.handle.Sum) {
@@ -183,16 +211,24 @@ export class Typer {
       if (!expected) {
         throw new SumMissingTagError(valueTag);
       }
-      return TypedValue.Injection(valueTag, this.check_v(valueExpr, expected), {
-        type,
+      const typedValue = this.check_v(valueExpr, expected);
+      return TypedValue.Injection(valueTag, typedValue, {
+        type: type.map(() =>
+          TypeV.Sum({
+            ...tyEntries,
+            [valueTag]: typedValue.getType(),
+          }),
+        ),
       });
     }
 
     if (value.Thunk && type.handle.Thunk) {
-      return TypedValue.Thunk(
-        this.check_c(value.Thunk[0], type.handle.Thunk[0]),
-        { type },
-      );
+      const [valueThunk] = value.Thunk;
+      const [thunkType] = type.handle.Thunk;
+      const typedThunk = this.check_c(valueThunk, thunkType);
+      return TypedValue.Thunk(typedThunk, {
+        type: type.map(() => TypeV.Thunk(that.apply_c(typedThunk.getType()))),
+      });
     }
 
     if (value.TyAbsV && type.handle.TyAbsV) {
@@ -201,9 +237,13 @@ export class Typer {
 
       const typedBody = this.makeSubscope().check_v(
         body,
-        bodyTy.sub(nameTy, TypeV.Variable(name).freshRefined()),
+        bodyTy.sub_v(nameTy, TypeV.Variable(name).freshRefined()),
       );
-      return TypedValue.TyAbsV(name, typedBody, { type });
+      return TypedValue.TyAbsV(name, typedBody, {
+        type: type.map(() =>
+          TypeV.TyAbsV(nameTy, that.apply_v(typedBody.getType())),
+        ),
+      });
     }
 
     const inferred = this.infer_v(value);
@@ -215,7 +255,7 @@ export class Typer {
     const that = this;
     return computation.match({
       Annotate(target, type) {
-        return that.check_c(target, type);
+        return that.check_c(target, that.apply_c(type));
       },
       Sequence(left, name, right) {
         const typedLeft = that.infer_c(left);
@@ -228,7 +268,7 @@ export class Typer {
           .with_v(name, tyLeft.Produce[0])
           .infer_c(right);
         return TypedComputation.Sequence(typedLeft, name, typedRight, {
-          type: typedRight.getType(),
+          type: that.apply_c(typedRight.getType()),
         });
       },
       Projection(value, key) {
@@ -239,7 +279,7 @@ export class Typer {
               throw new RecordMissingKeyError(key);
             }
             return TypedComputation.Projection(typedValue, key, {
-              type: entries[key]!.comput(),
+              type: TypeC.Produce(that.apply_v(entries[key]!), {}),
             });
           },
           Variant(_0, entries) {
@@ -247,7 +287,7 @@ export class Typer {
               throw new VariantMissingKeyError(key);
             }
             return TypedComputation.Projection(typedValue, key, {
-              type: entries[key]!.comput(),
+              type: that.apply_v(entries[key]!).comput(),
             });
           },
           _() {
@@ -262,7 +302,7 @@ export class Typer {
           throw new MatchOnWrongTypeError(ty);
         }
         const [entries] = ty.handle.Sum;
-        const resultingType = TypeV.Variable(freshName('ty')).freshRefined();
+        const resultingType = TypeC.Variable(freshName('ty'));
         const unusedTags = new Set(Object.keys(entries));
         const typedArms: Record<string, [string, TypedComputation]> = {};
         for (const [key, [name, body]] of Object.entries(branches)) {
@@ -273,7 +313,7 @@ export class Typer {
             .makeSubscope()
             .with_v(name, entries[key])
             .infer_c(body);
-          that.unify_c(resultingType.comput(), comput.getType());
+          that.unify_c(resultingType, comput.getType());
           typedArms[key] = [name, comput];
           unusedTags.delete(key);
         }
@@ -281,7 +321,7 @@ export class Typer {
           throw new MatchUnusedTagsError(Array.from(unusedTags));
         }
         return TypedComputation.Match(typedValue, typedArms, {
-          type: that.apply_v(resultingType).comput(),
+          type: that.apply_c(resultingType),
         });
       },
       Apply(fn, param) {
@@ -292,7 +332,7 @@ export class Typer {
         }
         const typedParam = that.check_v(param, ty.Arrow[0]);
         return TypedComputation.Apply(typedFn, typedParam, {
-          type: ty.Arrow[1],
+          type: that.apply_c(ty.Arrow[1]),
         });
       },
       Resolve(bundle, tag) {
@@ -306,7 +346,7 @@ export class Typer {
           throw new ResolveMissingTagError(tag);
         }
         return TypedComputation.Resolve(typedBundle, tag, {
-          type: bundleEntries[tag]!,
+          type: that.apply_c(bundleEntries[tag]!),
         });
       },
       Force(value) {
@@ -316,16 +356,17 @@ export class Typer {
           throw new ForceOnWrongTypeError(ty);
         }
         return TypedComputation.Force(typedValue, {
-          type: ty.handle.Thunk[0],
+          type: that.apply_c(ty.handle.Thunk[0]),
         });
       },
       TyAppV(body, ty) {
         const typedBody = that.infer_v(body);
         const bodyTy = that.apply_v(typedBody.getType());
+        const appliedTy = that.apply_v(ty);
         if (!bodyTy.handle.TyAbsV) throw new TyAppVOnWrongTypeError(body);
         const [name, inner] = bodyTy.handle.TyAbsV;
-        return TypedComputation.TyAppV(typedBody, ty, {
-          type: that.apply_v(inner).sub(name, ty).comput(),
+        return TypedComputation.TyAppV(typedBody, appliedTy, {
+          type: that.apply_v(inner).sub_v(name, appliedTy).comput(),
         });
       },
       _() {
@@ -334,20 +375,26 @@ export class Typer {
     });
   }
 
-  check_c(computation: Computation, type: TypeC): TypedComputation {
+  check_c(computation: Computation, _type: TypeC): TypedComputation {
+    const type = this.apply_c(_type);
+    const that = this;
+
     if (computation.Lambda && type.Arrow) {
       const [name, body] = computation.Lambda;
       const [paramTy, bodyTy] = type.Arrow;
       return TypedComputation.Lambda(
         name,
         this.makeSubscope().with_v(name, paramTy).check_c(body, bodyTy),
-        { type },
+        { type: TypeC.Arrow(that.apply_v(paramTy), that.apply_c(bodyTy)) },
       );
     }
     if (computation.Produce && type.Produce) {
       const [value] = computation.Produce;
-      const [handle] = type.Produce;
-      return TypedComputation.Produce(this.check_v(value, handle), { type });
+      const [handle, effects] = type.Produce;
+      const typedValue = this.check_v(value, handle);
+      return TypedComputation.Produce(typedValue, {
+        type: TypeC.Produce(that.apply_v(typedValue.getType()), effects),
+      });
     }
 
     if (computation.With && type.With) {
@@ -366,9 +413,18 @@ export class Typer {
         if (!typeValue) {
           throw new WithMissingKeyError(key);
         }
-        result[key] = this.check_c(bundleValue, typeValue);
+        result[key] = that.check_c(bundleValue, typeValue);
       }
-      return TypedComputation.With(result, { type });
+      return TypedComputation.With(result, {
+        type: TypeC.With(
+          Object.fromEntries(
+            Object.entries(result).map(([key, value]) => [
+              key,
+              that.apply_c(value.getType()),
+            ]),
+          ),
+        ),
+      });
     }
 
     const inferred = this.infer_c(computation);

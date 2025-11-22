@@ -1,7 +1,9 @@
+import { TsLoweringContext } from './features/codegen/ts/lowering';
 import { IrLexer } from './features/syntax/lexer';
 import { program } from './features/syntax/parser';
 import { TypeV } from './features/type';
 import { Typer } from './features/typer';
+import { emitExpr } from './lib/simple-ts-ast/emit';
 import { formatParens } from './shared/fmt';
 import {
   createArrayInput,
@@ -33,7 +35,7 @@ for (const { name, type } of result.typedefs) {
   console.log(`type ${name} = ${type.display()}`);
 }
 
-console.log(formatParens(result.main.display()));
+// console.log(formatParens(result.main.display()));
 
 const typer = Typer.create();
 
@@ -43,4 +45,32 @@ for (const { name, type } of result.typedefs) {
 
 const typedMain = typer.infer_c(result.main);
 
+console.log('======================');
 console.log(formatParens(typedMain.display()));
+console.log('======================');
+
+const loweringContext = new TsLoweringContext();
+for (const { name, type } of result.typedefs) {
+  loweringContext.lower_t_v(type, [], {
+    text: name,
+    onRaw: () => {},
+    onNumbered: () => {
+      throw new Error('never fails');
+    },
+  });
+}
+const tsMain = loweringContext.lower_c(typedMain, []);
+const tsSource = `
+const STD_TAG = Symbol('Lumo/tag');
+
+const std = {
+  Never: (): never => { throw new Error('Never') },
+};
+
+${loweringContext.emitTsTypes()}
+
+const LumoModule = ${formatParens(emitExpr(tsMain))}
+`;
+
+await fs.mkdir('./dist', { recursive: true });
+await fs.writeFile('./dist/out.ts', tsSource);
