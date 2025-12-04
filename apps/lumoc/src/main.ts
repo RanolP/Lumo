@@ -1,10 +1,12 @@
 import { TsLoweringContext } from './features/codegen/ts/lowering';
 import { IrLexer } from './features/syntax/lexer';
 import { program } from './features/syntax/parser';
+import type { ParserInput } from './features/syntax/parser/base';
 import { TypeV } from './features/type';
 import { Typer } from './features/typer';
 import { emitExpr } from './lib/simple-ts-ast/emit';
 import { formatParens } from './shared/fmt';
+import { ParseError } from './vendors/malssi/parser/errors';
 import {
   createArrayInput,
   createContextfulInput,
@@ -18,7 +20,17 @@ const tokens = IrLexer.lex(source);
 const input = createContextfulInput({ isBlock: false, id: 0 })(
   createArrayInput(tokens),
 );
-const result = program.run(input);
+let result;
+try {
+  result = program.run(input);
+} catch (e) {
+  if (e instanceof ParseError) {
+    console.error(
+      (e.input as ParserInput).leftoverTokens.map((t) => t.display()).join(''),
+    );
+  }
+  throw e;
+}
 if (
   input.leftoverTokens.length > 0 &&
   input.leftoverTokens.some((t) => !t.VerticalSpace && !t.HorizontalSpace)
@@ -31,15 +43,15 @@ if (
   process.exit(1);
 }
 
-for (const { name, type } of result.typedefs) {
+for (const [name, type] of result.typedefs) {
   console.log(`type ${name} = ${type.display()}`);
 }
 
-// console.log(formatParens(result.main.display()));
+console.log(formatParens(result.main.display()));
 
 const typer = Typer.create();
 
-for (const { name, type } of result.typedefs) {
+for (const [name, type] of result.typedefs) {
   typer.unify_v(type, TypeV.Variable(name).freshRefined());
 }
 
@@ -50,7 +62,7 @@ console.log(formatParens(typedMain.display()));
 console.log('======================');
 
 const loweringContext = new TsLoweringContext();
-for (const { name, type } of result.typedefs) {
+for (const [name, type] of result.typedefs) {
   loweringContext.lower_t_v(type, [], {
     text: name,
     onRaw: () => {},

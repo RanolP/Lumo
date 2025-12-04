@@ -71,6 +71,16 @@ export class Typer {
   }
 
   apply_v(ty: RefinedTypeV): RefinedTypeV {
+    if (ty.handle.TyAppV) {
+      let [body, type] = ty.handle.TyAppV;
+      body = this.apply_v(body);
+      type = this.apply_v(type);
+      if (!body.handle.TyAbsV) {
+        throw new Error('TODO[E0001]: You made wrong type');
+      }
+      const [name, target] = body.handle.TyAbsV;
+      return this.apply_v(target.sub_v(name, type));
+    }
     if (this.#parent) {
       return this.#parent.apply_v(ty);
     } else {
@@ -367,6 +377,16 @@ export class Typer {
         const [name, inner] = bodyTy.handle.TyAbsV;
         return TypedComputation.TyAppV(typedBody, appliedTy, {
           type: that.apply_v(inner).sub_v(name, appliedTy).comput(),
+        });
+      },
+      Def(name, comput, ty, right) {
+        const scope = that
+          .makeSubscope()
+          .with_v(name, TypeV.Thunk(ty).freshRefined());
+        const typedComput = scope.check_c(comput, ty);
+        const typedRight = scope.infer_c(right);
+        return TypedComputation.Def(name, typedComput, ty, typedRight, {
+          type: that.apply_c(typedRight.getType()),
         });
       },
       _() {

@@ -9,6 +9,7 @@ export interface TTypeV {
   Recursive(name: string, body: RefinedTypeV): TypeV;
   Variable(name: string): TypeV;
   TyAbsV(name: string, body: RefinedTypeV): TypeV;
+  TyAppV(body: RefinedTypeV, type: RefinedTypeV): TypeV;
 }
 export interface ITypeV {
   freshRefined(this: TypeV): RefinedTypeV;
@@ -53,6 +54,9 @@ export const TypeV = handsum<TTypeV, ITypeV>({
       TyAbsV(name, body) {
         return `forall ${name}. (${body.display()})`;
       },
+      TyAppV(body, type) {
+        return `${body.display()}[${type.display()}]`;
+      },
     });
   },
   vars() {
@@ -83,6 +87,9 @@ export const TypeV = handsum<TTypeV, ITypeV>({
       },
       TyAbsV(name, body) {
         return new Set([name, ...body.handle.vars()]);
+      },
+      TyAppV(body, type) {
+        return new Set([...body.handle.vars(), ...type.handle.vars()]);
       },
     });
   },
@@ -136,6 +143,13 @@ export const TypeV = handsum<TTypeV, ITypeV>({
               .sub_v(name, TypeV.Variable(`#${idx}`).freshRefined())
               .hashCode(idx + 1),
           )
+          .result();
+      },
+      TyAppV(body, type) {
+        return new Hasher()
+          .with('TypeV.TyAppV')
+          .with(body.hashCode(idx))
+          .with(type.hashCode(idx))
           .result();
       },
     });
@@ -201,6 +215,9 @@ export class RefinedTypeV {
         },
         TyAbsV(innerName, body) {
           return TypeV.TyAbsV(innerName, body.sub_v(name, type));
+        },
+        TyAppV(body, type) {
+          return TypeV.TyAppV(body.sub_v(name, type), type.sub_v(name, type));
         },
       }),
     );

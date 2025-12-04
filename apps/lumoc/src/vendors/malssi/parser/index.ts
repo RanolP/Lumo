@@ -1,6 +1,6 @@
 import type { Input } from './input';
 import type { Simplify } from 'type-fest';
-import { ParseError } from './errors';
+import { ExpectedError, OneOfError, ParseError } from './errors';
 
 function implParser<
   TInput extends Input,
@@ -17,6 +17,7 @@ function implParser<
 }): Parser<TInput, TOutput, CaptureName> {
   const self = {
     '~capture': captureName,
+    '~label': label,
     run: run,
     map<UOutput>(
       f: (output: TOutput) => UOutput,
@@ -49,23 +50,6 @@ function implParser<
             return run(input);
           } catch (error) {
             if (error instanceof ParseError) return undefined;
-
-            throw error;
-          }
-        },
-        label,
-        captureName,
-      });
-    },
-    or<UOutput>(
-      other: Parser<TInput, UOutput, unknown>,
-    ): Parser<TInput, TOutput | UOutput, CaptureName> {
-      return implParser({
-        run: (input) => {
-          try {
-            return run(input);
-          } catch (error) {
-            if (error instanceof ParseError) return other.run(input);
 
             throw error;
           }
@@ -162,6 +146,64 @@ export const malssi = <TInput extends Input>() =>
           captureName: undefined,
         }),
       seq: _seq<TInput>(),
+      oneOf<TOutput>(
+        ...parsers: Parser<TInput, TOutput, unknown>[]
+      ): Parser<TInput, TOutput, void | undefined> {
+        return implParser({
+          run: (input) => {
+            for (const parser of parsers) {
+              try {
+                const result = parser.run(input);
+                if (result !== undefined) return result;
+                throw new ParseError(input, 'no parser succeeded');
+              } catch (error) {
+                if (error instanceof ParseError && !error.input.cut) continue;
+
+                throw error;
+              }
+            }
+            throw new OneOfError(
+              input,
+              parsers.map((p) => p['~label'] ?? 'unknown'),
+            );
+          },
+          label: `one of ${parsers
+            .map((p) => p['~label'] ?? 'unknown')
+            .join(', ')}`,
+          captureName: undefined,
+        });
+      },
+      cut: implParser<Input, void, undefined>({
+        run: (input) => {
+          input.cut = true;
+        },
+        label: 'cut',
+        captureName: undefined,
+      }),
+      uncut: implParser<Input, void, undefined>({
+        run: (input) => {
+          input.cut = false;
+        },
+        label: 'uncut',
+        captureName: undefined,
+      }),
+      noop: implParser<Input, void, undefined>({
+        run: () => {},
+        label: 'noop',
+        captureName: undefined,
+      }),
+      if: <TOutput>(
+        condition: Boolean,
+        then: Parser<TInput, TOutput, void>,
+        otherwise: Parser<TInput, TOutput, void>,
+      ): Parser<TInput, TOutput, void> =>
+        implParser({
+          run: (input) => {
+            return condition ? then.run(input) : otherwise.run(input);
+          },
+          label: undefined,
+          captureName: undefined,
+        }),
     },
   );
 
@@ -198,7 +240,11 @@ const _seq =
       captureName: undefined,
     });
 
-export type Parser<TInput extends Input, TOutput, CaptureName> = Simplify<
+export type Parser<
+  TInput extends Input,
+  TOutput,
+  CaptureName = undefined,
+> = Simplify<
   {
     '~label'?: string;
     '~capture': CaptureName;
@@ -208,9 +254,6 @@ export type Parser<TInput extends Input, TOutput, CaptureName> = Simplify<
       f: (output: TOutput) => UOutput,
     ): Parser<TInput, UOutput, CaptureName>;
     opt(): Parser<TInput, TOutput | undefined, CaptureName>;
-    or<UOutput>(
-      other: Parser<TInput, UOutput, unknown>,
-    ): Parser<TInput, TOutput | UOutput, CaptureName>;
     repeat(min?: number, max?: number): Parser<TInput, TOutput[], CaptureName>;
     sepBy(
       parser: Parser<TInput, any, void>,

@@ -1,4 +1,4 @@
-import { Key, TsExpr, TsType } from '../../../lib/simple-ts-ast';
+import { Key, TsExpr, TsStatement, TsType } from '../../../lib/simple-ts-ast';
 import type { Computation, TypedComputation } from '../../ast/computation';
 import { TypedValue, Value } from '../../ast/value';
 import { TypeV, type RefinedTypeV, type TypeC } from '../../type';
@@ -175,12 +175,10 @@ export class TsLoweringContext {
         ]);
       },
       TyAbsV(name, body) {
-        return TsExpr.Lambda(
-          [],
-          [name],
-          null,
-          that.lower_v(body, [...typeCaptures, name]),
-        );
+        return TsExpr.Lambda([], [name], null, {
+          kind: 'expr',
+          expr: that.lower_v(body, [...typeCaptures, name]),
+        });
       },
       _() {
         throw new TodoError(
@@ -207,16 +205,19 @@ export class TsLoweringContext {
         }
         return TsExpr.Apply(
           TsExpr.Lambda(
-            [{ name: newName, type: that.lower_t_c(meta.type, typeCaptures) }],
+            [{ name: newName, type: that.lower_t_v(paramType, typeCaptures) }],
             [],
             null,
-            that.lower_c(
-              right.sub_v(
-                name,
-                TypedValue.Variable(newName, { type: paramType }),
+            {
+              kind: 'expr',
+              expr: that.lower_c(
+                right.sub_v(
+                  name,
+                  TypedValue.Variable(newName, { type: paramType }),
+                ),
+                typeCaptures,
               ),
-              typeCaptures,
-            ),
+            },
           ),
           [that.lower_c(left, typeCaptures)],
         );
@@ -251,17 +252,19 @@ export class TsLoweringContext {
             [{ name: newName }],
             [],
             that.lower_t_c(body.getType(), typeCaptures),
-            that.lower_c(
-              /**
-               * @TODO
-               * suspicious
-               */
-              body.sub_v(
-                param,
-                TypedValue.Variable(newName, { type: paramType }),
-              ),
-              typeCaptures,
-            ),
+            {
+              kind: 'expr',
+              expr: that
+                .lower_c(
+                  /**
+                   * @TODO
+                   * suspicious
+                   */
+                  body,
+                  typeCaptures,
+                )
+                .sub(param, TsExpr.Variable(newName)),
+            },
           ),
           that.lower_t_c(meta.type, typeCaptures),
         );
@@ -285,46 +288,50 @@ export class TsLoweringContext {
           throw new Error('never fails');
         }
         return TsExpr.Apply(
-          TsExpr.Lambda(
-            [{ name: cbvName }],
-            [],
-            null,
-            Object.entries(branches).reduce((result, [key, [name, body]]) => {
-              const newName = `_${that.#id++}`;
-              return TsExpr.Ternary(
-                TsExpr.Equals(
-                  TsExpr.FieldAccess(
-                    TsExpr.Variable(cbvName),
-                    Key.sym('Lumo/tag'),
-                  ),
-                  TsExpr.StringLiteral(key),
-                ),
-                TsExpr.Apply(
-                  TsExpr.Lambda(
-                    [
-                      {
-                        name: newName,
-                        type: that.lower_t_v(ty[key]!, typeCaptures),
-                      },
-                    ],
-                    [],
-                    null,
-                    that.lower_c(
-                      body.sub_v(
-                        name,
-                        TypedValue.Variable(newName, {
-                          type: TypeV.Variable(newName).freshRefined(),
-                        }),
-                      ),
-                      typeCaptures,
+          TsExpr.Lambda([{ name: cbvName }], [], null, {
+            kind: 'expr',
+            expr: Object.entries(branches).reduce(
+              (result, [key, [name, body]]) => {
+                const newName = `_${that.#id++}`;
+                return TsExpr.Ternary(
+                  TsExpr.Equals(
+                    TsExpr.FieldAccess(
+                      TsExpr.Variable(cbvName),
+                      Key.sym('Lumo/tag'),
                     ),
+                    TsExpr.StringLiteral(key),
                   ),
-                  [TsExpr.Variable(cbvName)],
-                ),
-                result,
-              );
-            }, TsExpr.Never()),
-          ),
+                  TsExpr.Apply(
+                    TsExpr.Lambda(
+                      [
+                        {
+                          name: newName,
+                          type: that.lower_t_v(ty[key]!, typeCaptures),
+                        },
+                      ],
+                      [],
+                      null,
+                      {
+                        kind: 'expr',
+                        expr: that.lower_c(
+                          body.sub_v(
+                            name,
+                            TypedValue.Variable(newName, {
+                              type: TypeV.Variable(newName).freshRefined(),
+                            }),
+                          ),
+                          typeCaptures,
+                        ),
+                      },
+                    ),
+                    [TsExpr.Variable(cbvName)],
+                  ),
+                  result,
+                );
+              },
+              TsExpr.Never(),
+            ),
+          }),
           [that.lower_v(value, typeCaptures)],
         );
       },
@@ -333,6 +340,18 @@ export class TsLoweringContext {
           TsExpr.TypeApplication(that.lower_v(body, typeCaptures), [
             that.lower_t_v(ty, typeCaptures),
           ]),
+          [],
+        );
+      },
+      Def(name, comput, ty, right) {
+        return TsExpr.Apply(
+          TsExpr.Lambda([], [], that.lower_t_c(right.getType(), typeCaptures), {
+            kind: 'block',
+            stmts: [
+              TsStatement.Const(name, that.lower_c(comput, typeCaptures)),
+              TsStatement.Return(that.lower_c(right, typeCaptures)),
+            ],
+          }),
           [],
         );
       },

@@ -65,7 +65,9 @@ interface TTsExpr {
     params: { name: string; type?: TsType }[],
     typeParams: string[],
     ret: TsType | null,
-    body: TsExpr,
+    body:
+      | { kind: 'block'; stmts: TsStatement[] }
+      | { kind: 'expr'; expr: TsExpr },
   ): TsExpr;
   Apply(fn: TsExpr, param: TsExpr[]): TsExpr;
   Satisfies(expr: TsExpr, type: TsType): TsExpr;
@@ -77,8 +79,74 @@ interface TTsExpr {
   Equals(left: TsExpr, right: TsExpr): TsExpr;
   TypeApplication(body: TsExpr, typeParams: TsType[]): TsExpr;
 }
-export type TsExpr = Handsum<TTsExpr>;
-export const TsExpr = handsum<TTsExpr>({});
+export interface ITsExpr {
+  sub(this: TsExpr, target: string, targetExpr: TsExpr): TsExpr;
+}
+export type TsExpr = Handsum<TTsExpr, ITsExpr>;
+export const TsExpr = handsum<TTsExpr, ITsExpr>({
+  sub(this: TsExpr, target: string, targetExpr: TsExpr): TsExpr {
+    return this.match({
+      Variable(name) {
+        return name === target ? targetExpr : TsExpr.Variable(name);
+      },
+      Lambda(params, typeParams, ret, body) {
+        return TsExpr.Lambda(
+          params,
+          typeParams,
+          ret,
+          body.kind === 'block'
+            ? {
+                kind: 'block',
+                stmts: body.stmts.map((s) => s.sub(target, targetExpr)),
+              }
+            : { kind: 'expr', expr: body.expr.sub(target, targetExpr) },
+        );
+      },
+      Apply(fn, params) {
+        return TsExpr.Apply(
+          fn.sub(target, targetExpr),
+          params.map((p) => p.sub(target, targetExpr)),
+        );
+      },
+      Satisfies(expr, type) {
+        return TsExpr.Satisfies(expr.sub(target, targetExpr), type);
+      },
+      FieldAccess(object, field) {
+        return TsExpr.FieldAccess(object.sub(target, targetExpr), field);
+      },
+      Object(entries) {
+        return TsExpr.Object(
+          entries.map(({ name, value }) => ({
+            name,
+            value: value.sub(target, targetExpr),
+          })),
+        );
+      },
+      StringLiteral(value) {
+        return TsExpr.StringLiteral(value);
+      },
+      Ternary(condition, then, otherwise) {
+        return TsExpr.Ternary(
+          condition.sub(target, targetExpr),
+          then.sub(target, targetExpr),
+          otherwise.sub(target, targetExpr),
+        );
+      },
+      Never() {
+        return TsExpr.Never();
+      },
+      Equals(left, right) {
+        return TsExpr.Equals(
+          left.sub(target, targetExpr),
+          right.sub(target, targetExpr),
+        );
+      },
+      TypeApplication(body, typeParams) {
+        return TsExpr.TypeApplication(body.sub(target, targetExpr), typeParams);
+      },
+    });
+  },
+});
 
 type SymbolKey = 'Lumo/tag';
 export type Key =
@@ -93,3 +161,24 @@ export const Key = {
     return { tag: 'symbol', value };
   },
 };
+
+interface TTsStatement {
+  Const(name: string, value: TsExpr): TsStatement;
+  Return(value: TsExpr): TsStatement;
+}
+interface ITsStatement {
+  sub(this: TsStatement, target: string, targetExpr: TsExpr): TsStatement;
+}
+export type TsStatement = Handsum<TTsStatement, ITsStatement>;
+export const TsStatement = handsum<TTsStatement, ITsStatement>({
+  sub(this: TsStatement, target: string, targetExpr: TsExpr): TsStatement {
+    return this.match({
+      Const(name, value) {
+        return TsStatement.Const(name, value.sub(target, targetExpr));
+      },
+      Return(value) {
+        return TsStatement.Return(value.sub(target, targetExpr));
+      },
+    });
+  },
+});

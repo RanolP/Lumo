@@ -1,6 +1,7 @@
 import type { Simplify } from 'type-fest';
 
 export interface Input<TInstructions extends {} = {}> {
+  cut: boolean;
   checkpoint(): [instructions: TInstructions, apply: () => void];
 }
 
@@ -8,6 +9,7 @@ export const createArrayInput = <TItem>(items: TItem[], begin: number = 0) => {
   let index = begin;
 
   return {
+    cut: false,
     checkpoint() {
       let newIndex = index;
       return [

@@ -15,6 +15,13 @@ export class ExpectedError<TInput> extends ParseError<TInput> {
   }
 }
 
+export class OneOfError<TInput> extends ParseError<TInput> {
+  constructor(input: TInput, expected: string[]) {
+    super(input, `expected one of ${expected.join(', ')}`);
+    this.name = 'OneOfError';
+  }
+}
+
 export class ExpectedAtLeastError<TInput> extends ParseError<TInput> {
   constructor(input: TInput, expected: number) {
     super(input, `expected at least ${expected} items`);

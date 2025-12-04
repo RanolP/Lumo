@@ -14,7 +14,6 @@ type Nat = μX. ∑(
     `Nat/succ: `Nat/succ { value: X },
 )
 
-
 type Maybe = ∀T. μX. ∑(
     `Maybe/none: `Maybe/none {},
     `Maybe/some: `Maybe/some { value: T },
@@ -25,21 +24,30 @@ type List = ∀T. μX. ∑(
     `List/cons: `List/cons { head: T, tail: X }
 )
 
-type Module = thunk bundle {
-    `isEven: Nat -> produce Bool,
-    `isOdd: Nat -> produce Bool,
+fn isEven(n: Nat): produce Bool {
+    match unroll n {
+        `Nat/zero as n => produce (roll `Bool/true {}) : Bool,
+        `Nat/succ as n => v <- n.value; (force isOdd)(v),
+    }
 }
 
-
-fixpoint <- (
-    fn[A](f: thunk (A -> produce A)): produce A {
-        g <- produce (thunk (
-            fn(x: μX. thunk (X -> produce A)): produce A {
-                ret <- (force unroll x)(x);
-                (force f)(ret)
-            }
-        ));
-        (force g)(roll g)
+fn isOdd(n: Nat): produce Bool {
+    match unroll n {
+        `Nat/zero as n => produce (roll `Bool/false {}) : Bool,
+        `Nat/succ as n => v <- n.value; (force isEven)(v),
     }
+}
+
+one <- ((force mod) `isEven)(
+    roll `Nat/succ { value: roll `Nat/zero {} }
 );
-produce ((roll `Nat/succ { value: roll `Nat/zero {} }) : Nat)
+two <- ((force mod) `isEven)(
+    roll `Nat/succ { value: roll `Nat/succ { value: roll `Nat/zero {} } }
+);
+produce ((roll `List/cons {
+    head: one,
+    tail: roll `List/cons {
+        head: two,
+        tail: roll `List/nil {}
+    }
+}) : List[Bool])

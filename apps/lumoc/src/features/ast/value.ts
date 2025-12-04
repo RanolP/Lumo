@@ -18,6 +18,11 @@ interface TValueImplSet {
       produce(this: ValueF<'untyped'>): ComputationF<'untyped'>;
       force(this: ValueF<'untyped'>): ComputationF<'untyped'>;
       select(this: ValueF<'untyped'>, name: string): ComputationF<'untyped'>;
+      sub_v(
+        this: ValueF<'untyped'>,
+        target: string,
+        newValue: ValueF<'untyped'>,
+      ): ValueF<'untyped'>;
     };
   };
   typed: {
@@ -143,6 +148,51 @@ export const Value = handsum<
   },
   select(name: string): Computation {
     return Computation.Projection(this, name);
+  },
+  sub_v(target: string, newValue: Value): Value {
+    return this.match({
+      Annotate(_0, _1, meta) {
+        return Value.Annotate(_0.sub_v(target, newValue), _1, meta);
+      },
+      Roll(_0, meta) {
+        return Value.Roll(_0.sub_v(target, newValue), meta);
+      },
+      Unroll(_0, meta) {
+        return Value.Unroll(_0.sub_v(target, newValue), meta);
+      },
+      Injection(_0, _1, meta) {
+        return Value.Injection(_0, _1.sub_v(target, newValue), meta);
+      },
+      Variable(_0, meta) {
+        return target === _0 ? newValue : Value.Variable(_0, meta);
+      },
+      Thunk(_0, meta) {
+        return Value.Thunk(_0.sub_v(target, newValue), meta);
+      },
+      TyAbsV(_0, _1, meta) {
+        return Value.TyAbsV(_0, _1.sub_v(target, newValue), meta);
+      },
+      TyAbsC(_0, _1, meta) {
+        return Value.TyAbsC(_0, _1.sub_v(target, newValue), meta);
+      },
+      Record(_0, meta) {
+        return Value.Record(
+          Object.fromEntries(
+            Object.entries(_0).map(([k, v]) => [k, v.sub_v(target, newValue)]),
+          ),
+          meta,
+        );
+      },
+      Variant(_0, _1, meta) {
+        return Value.Variant(
+          _0,
+          Object.fromEntries(
+            Object.entries(_1).map(([k, v]) => [k, v.sub_v(target, newValue)]),
+          ),
+          meta,
+        );
+      },
+    });
   },
 });
 

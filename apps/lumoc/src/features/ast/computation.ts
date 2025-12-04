@@ -16,6 +16,11 @@ interface TComputationImplSet {
         this: ComputationF<'untyped'>,
         type: TypeC,
       ): ComputationF<'untyped'>;
+      sub_v(
+        this: ComputationF<'untyped'>,
+        name: string,
+        value: ValueF<'untyped'>,
+      ): ComputationF<'untyped'>;
     };
   };
   typed: {
@@ -67,6 +72,13 @@ interface TComputation<TImplKey extends ImplKind> {
   Sequence(
     left: ComputationF<TImplKey>,
     name: string,
+    right: ComputationF<TImplKey>,
+    meta: MetaOf<TImplKey>,
+  ): ComputationF<TImplKey>;
+  Def(
+    name: string,
+    comput: ComputationF<TImplKey>,
+    ty: TypeC,
     right: ComputationF<TImplKey>,
     meta: MetaOf<TImplKey>,
   ): ComputationF<TImplKey>;
@@ -149,6 +161,12 @@ export const Computation = handsum<
           meta,
         );
       },
+      Def(_0, _1, _2, meta) {
+        return decorate(
+          `def rec ${_0} = (${_1.display()}) in ${_2.display()}`,
+          meta,
+        );
+      },
     });
   },
   annotate(type: TypeC): Computation {
@@ -156,6 +174,78 @@ export const Computation = handsum<
   },
   thunk() {
     return Value.Thunk(this);
+  },
+  sub_v(target: string, newValue: Value): Computation {
+    return this.match({
+      Annotate(_0, _1, meta) {
+        return Computation.Annotate(_0.sub_v(target, newValue), _1, meta);
+      },
+      Produce(_0, meta) {
+        return Computation.Produce(_0.sub_v(target, newValue), meta);
+      },
+      Force(_0, meta) {
+        return Computation.Force(_0.sub_v(target, newValue), meta);
+      },
+      Apply(_0, _1, meta) {
+        return Computation.Apply(
+          _0.sub_v(target, newValue),
+          _1.sub_v(target, newValue),
+          meta,
+        );
+      },
+      Resolve(_0, _1, meta) {
+        return Computation.Resolve(_0.sub_v(target, newValue), _1, meta);
+      },
+      Lambda(_0, _1, meta) {
+        return Computation.Lambda(_0, _1.sub_v(target, newValue), meta);
+      },
+      With(_0, meta) {
+        return Computation.With(
+          Object.fromEntries(
+            Object.entries(_0).map(([k, v]) => [k, v.sub_v(target, newValue)]),
+          ),
+          meta,
+        );
+      },
+      Sequence(_0, _1, _2, meta) {
+        return Computation.Sequence(
+          _0.sub_v(target, newValue),
+          _1,
+          _2.sub_v(target, newValue),
+          meta,
+        );
+      },
+      TyAppV(_0, _1, meta) {
+        return Computation.TyAppV(_0.sub_v(target, newValue), _1, meta);
+      },
+      TyAppC(_0, _1, meta) {
+        return Computation.TyAppC(_0.sub_v(target, newValue), _1, meta);
+      },
+      Projection(_0, _1, meta) {
+        return Computation.Projection(_0.sub_v(target, newValue), _1, meta);
+      },
+      Match(_0, _1, meta) {
+        return Computation.Match(
+          _0.sub_v(target, newValue),
+          Object.fromEntries(
+            Object.entries(_1).map(([k, [tag, v]]) => [
+              k,
+              [tag, v.sub_v(target, newValue)],
+            ]),
+          ),
+          meta,
+        );
+      },
+      Def(_0, _1, _2, _3, meta) {
+        return Computation.Def(
+          _0,
+          _1.sub_v(target, newValue),
+          _2,
+          _3.sub_v(target, newValue),
+          meta,
+        );
+      },
+    });
   },
 });
 
@@ -216,6 +306,12 @@ export const TypedComputation = handsum<
           meta,
         );
       },
+      Def(_0, _1, _2, _3, meta) {
+        return decorate(
+          `def rec ${_0}: ${_2.display()} = (${_1.display()}) in ${_2.display()}`,
+          meta,
+        );
+      },
     });
   },
   getType(): TypeC {
@@ -254,6 +350,9 @@ export const TypedComputation = handsum<
         return meta.type;
       },
       Match(_0, _1, meta) {
+        return meta.type;
+      },
+      Def(_0, _1, _2, _3, meta) {
         return meta.type;
       },
     });
@@ -312,6 +411,15 @@ export const TypedComputation = handsum<
       },
       Match(_0, _1, meta) {
         return TypedComputation.Match(_0.sub_v(name, value), _1, meta);
+      },
+      Def(_0, _1, _2, _3, meta) {
+        return TypedComputation.Def(
+          _0,
+          _1.sub_v(name, value),
+          _2,
+          _3.sub_v(name, value),
+          meta,
+        );
       },
     });
   },

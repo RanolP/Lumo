@@ -1,4 +1,4 @@
-import type { Key, TsExpr, TsType } from '.';
+import type { Key, TsExpr, TsStatement, TsType } from '.';
 
 export function emitType(type: TsType): string {
   return type.match({
@@ -48,7 +48,11 @@ export function emitExpr(expr: TsExpr): string {
         typeParams.length > 0 ? `<${typeParams.join(', ')}>` : ''
       }(${params
         .map(({ name, type }) => `${name}${type ? `: ${emitType(type)}` : ''}`)
-        .join(', ')})${ret ? `: ${emitType(ret)}` : ''} => ${emitExpr(body)})`;
+        .join(', ')})${ret ? `: ${emitType(ret)}` : ''} => ${
+        body.kind === 'block'
+          ? `{${body.stmts.map((s) => emitStatement(s)).join('\n')}}`
+          : emitExpr(body.expr)
+      })`;
     },
     FieldAccess(object, field) {
       return `${emitExpr(object)}${fieldAccess(field)}`;
@@ -81,6 +85,17 @@ export function emitExpr(expr: TsExpr): string {
           ? `<${typeParams.map((t) => emitType(t)).join(', ')}>`
           : ''
       }`;
+    },
+  });
+}
+
+export function emitStatement(statement: TsStatement): string {
+  return statement.match({
+    Const(name, value) {
+      return `const ${name} = ${emitExpr(value)};`;
+    },
+    Return(value) {
+      return `return ${emitExpr(value)};`;
     },
   });
 }
