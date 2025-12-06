@@ -470,16 +470,96 @@ var fn = ({ isAnonymous }: { isAnonymous: boolean }) =>
     })
     .labeled('fn');
 
+var enumDef = parser(() =>
+  parser.seq(
+    tok.kw.Enum,
+    parser.cut,
+    tok.Ident.capture('name'),
+    parser
+      .seq(
+        tok.punct.square.l,
+        parser
+          .seq(tok.Ident.capture('name'))
+          .sepBy(tok.punct.comma)
+          .capture('items'),
+        tok.punct.comma.opt(),
+        tok.punct.square.r,
+      )
+      .map(({ items }) => items)
+      .opt()
+      .capture('typeParams'),
+    tok.punct.curly.l,
+    parser
+      .seq(
+        tok.Ident.capture('name'),
+        parser
+          .seq(
+            tok.punct.curly.l,
+            parser
+              .seq(
+                tok.Ident.capture('name'),
+                tok.punct.colon,
+                ty_v.capture('type'),
+              )
+              .sepBy(tok.punct.comma)
+              .capture('fields'),
+            tok.punct.comma.opt(),
+            tok.punct.curly.r,
+          )
+          .map(({ fields }) => fields)
+          .opt()
+          .capture('fields'),
+      )
+      .sepBy(tok.punct.comma)
+      .capture('variants'),
+    tok.punct.comma.opt(),
+    tok.punct.curly.r,
+    parser.uncut,
+  ),
+);
+
 export const program = parser(() =>
   parser.seq(
     parser
       .oneOf(
-        typedef.map(({ name, type }) => Item.TypeDef(name, type)),
-        fn({ isAnonymous: false }).map(([name, computation, ty]) =>
+        typedef.map(({ name, type }) => [Item.TypeDef(name, type)]),
+        fn({ isAnonymous: false }).map(([name, computation, ty]) => [
           Item.Fn(name!, computation, ty),
-        ),
+        ]),
+        enumDef.map(({ name: enumName, typeParams = [], variants }) => {
+          // @TODO: typeParams unsupported yet
+          const recursionToken = freshName('ty');
+          return [
+            Item.TypeDef(
+              enumName,
+              TypeV.Recursive(
+                recursionToken,
+                TypeV.Sum(
+                  Object.fromEntries(
+                    variants.map(({ name: variantName, fields = [] }) => [
+                      `${enumName}/${variantName}`,
+                      TypeV.Variant(
+                        `${enumName}/${variantName}`,
+                        Object.fromEntries(
+                          fields.map(({ name: fieldName, type }) => [
+                            fieldName,
+                            type.sub_v(
+                              enumName,
+                              TypeV.Variable(recursionToken).freshRefined(),
+                            ),
+                          ]),
+                        ),
+                      ).freshRefined(),
+                    ]),
+                  ),
+                ).freshRefined(),
+              ).freshRefined(),
+            ),
+          ];
+        }),
       )
       .repeat()
+      .map((items) => items.flat())
       .capture('preamble'),
     expr_c.capture('main'),
   ),
@@ -505,6 +585,21 @@ export const program = parser(() =>
     ),
   );
 
+  const substLetRec = (target: Computation) => {
+    for (const [ref] of fns) {
+      target = target.sub_v(
+        ref,
+        Value.Annotate(
+          Value.Thunk(
+            Computation.Resolve(Computation.Force(Value.Variable('mod')), ref),
+          ),
+          TypeV.Thunk(TypeC.Variable(freshName('ty'))).freshRefined(),
+        ),
+      );
+    }
+    return target;
+  };
+
   return {
     typedefs,
     main: Computation.Def(
@@ -512,22 +607,7 @@ export const program = parser(() =>
       Computation.With(
         Object.fromEntries(
           fns.map(([name, comput]) => {
-            let target = comput;
-            for (const [ref] of fns) {
-              target = target.sub_v(
-                ref,
-                Value.Annotate(
-                  Value.Thunk(
-                    Computation.Resolve(
-                      Computation.Force(Value.Variable('mod')),
-                      ref,
-                    ),
-                  ),
-                  TypeV.Thunk(TypeC.Variable(freshName('ty'))).freshRefined(),
-                ),
-              );
-            }
-            return [name, target];
+            return [name, substLetRec(comput)];
           }),
         ),
       ),
@@ -540,7 +620,7 @@ export const program = parser(() =>
           }),
         ),
       ),
-      main,
+      substLetRec(main),
     ),
   };
 });

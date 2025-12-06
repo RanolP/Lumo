@@ -53,15 +53,20 @@ export class TsLoweringContext {
         fixedName ??= `Rec_${that.#id++}`;
         that.#fixedTypes[fixedName] = {
           typeParams: Array.from(captures),
-          body: that.lower_t_v(body, [...captures, name]).sub(
-            name,
-            captures.length > 0
-              ? TsType.TypeApplication(
-                  TsType.Variable(fixedName),
-                  Array.from(captures).map((name) => TsType.Variable(name)),
-                )
-              : TsType.Variable(fixedName),
-          ),
+          body: that
+            .lower_t_v(body, [
+              ...captures,
+              ...(captures.includes(name) ? [] : [name]),
+            ])
+            .sub(
+              name,
+              captures.length > 0
+                ? TsType.TypeApplication(
+                    TsType.Variable(fixedName),
+                    Array.from(captures).map((name) => TsType.Variable(name)),
+                  )
+                : TsType.Variable(fixedName),
+            ),
         };
         return TsType.TypeApplication(
           TsType.Variable(fixedName),

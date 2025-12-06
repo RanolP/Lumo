@@ -73,7 +73,7 @@ for (const [name, type] of result.typedefs) {
 }
 const tsMain = loweringContext.lower_c(typedMain, []);
 const tsSource = `
-const STD_TAG = Symbol('Lumo/tag');
+const STD_TAG = Symbol.for('Lumo/tag');
 
 const std = {
   Never: (): never => { throw new Error('Never') },
@@ -81,7 +81,31 @@ const std = {
 
 ${loweringContext.emitTsTypes()}
 
-const LumoModule = ${formatParens(emitExpr(tsMain))}
+const LumoModule = ${formatParens(emitExpr(tsMain))};
+
+console.log(LumoModule);
+// console.log(JSON.stringify(
+//   LumoModule,
+//   (_, value) => {
+//     if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+//       const props = [
+//         ...Object.getOwnPropertySymbols(value),
+//         ...Object.getOwnPropertyNames(value),
+//       ]
+//       const alt = {};
+//       for (const k of props) {
+//         if (typeof k === 'symbol') {
+//           alt[\`Symbol(\${Symbol.keyFor(k)})\`] = value[k];
+//         } else {
+//           alt[k] = value[k];
+//         }
+//       }
+//       return alt;
+//     }
+//     return value;
+//   },
+//   2,
+// ));
 `;
 
 await fs.mkdir('./dist', { recursive: true });

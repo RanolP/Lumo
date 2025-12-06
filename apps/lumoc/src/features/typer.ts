@@ -76,7 +76,7 @@ export class Typer {
       body = this.apply_v(body);
       type = this.apply_v(type);
       if (!body.handle.TyAbsV) {
-        throw new Error('TODO[E0001]: You made wrong type');
+        throw new Error(`TODO[E0001]: You made wrong type: ${ty.display()}`);
       }
       const [name, target] = body.handle.TyAbsV;
       return this.apply_v(target.sub_v(name, type));
