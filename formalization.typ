@@ -11,14 +11,39 @@
   ]
 }
 
-#let judge = (
-  c: $attach(tack.r, tr: C)$,
-  v: $attach(tack.r, tr: V)$,
-)
+#let judge = (c: $attach(tack.r, tr: C)$, v: $attach(tack.r, tr: V)$)
 
 #let check = text(fill: blue)[$arrow.l.double$]
 #let synth = text(fill: red)[$arrow.r.double$]
 #let emits = $arrow.squiggly.r$
+#let bv = $"bv"$
+#let kw = s => box(text(
+  font: "New Computer Modern",
+  weight: "bold",
+  fill: color.rgb("#7B1FA2"),
+)[#s])
+#let kwThunk = kw("thunk")
+#let kwLet = kw("let")
+#let kwLambda = kw("lambda")
+#let kwForce = kw("force")
+#let kwMatch = kw("match")
+#let kwMut = kw("mut")
+#let kwFn = kw("fn")
+#let kwPerform = kw("perform")
+#let kwHandle = kw("handle")
+#let kwEffect = kw("effect")
+#let kwForall = kw("forall")
+#let kwProduce = kw("produce")
+#let kwData = kw("data")
+#let kwBundle = kw("bundle")
+#let kwOf = kw("of")
+#let kwRoll = kw("roll")
+#let kwUnroll = kw("unroll")
+#let LetSlots = "LetSlots"
+#let MutSlots = "MutSlots"
+#let EffectTag = "EffectTag"
+#let binds = "binds"
+#let assigncount = "assign-count"
 
 #let rule(premises, conclusion, name) = {
   $
@@ -26,271 +51,765 @@
   $
 }
 
-#let version = sys.inputs.at("version", default: "0.0.0-DRAFT")
-#outline(title: [Formalization of Lumo Language v#version (#datetime.today().display("[year]-[month]-[day]"))])
+#let reduce-rule(from, to, name) = {
+  $
+    #grid(columns: 2, align: center + horizon, column-gutter: 4pt)[#from \
+      #text(fill: color.rgb("#008404"))[$-->$] #to ][#box(inset: (bottom: 4pt))[[#smallcaps(name)]]]
+  $
+}
+
+#let elaboration-rule(from, to, name) = {
+  $
+    #grid(
+      columns: 3,
+      rows: 2,
+      align: center + horizon,
+      row-gutter: 16pt,
+      column-gutter: 4pt,
+      grid.cell(colspan: 2)[
+        #from
+      ],
+      grid.cell(rowspan: 2)[#box(inset: (bottom: 4pt))[[#smallcaps(name)]]],
+    )[
+      #box(inset: (right: 4pt))[#text(fill: color.rgb("#1565C0"), size: 1.5em)[$~>$]]
+    ][#to]
+  $
+}
+
+#let version = sys.inputs.at("version", default: "0.1.0-DRAFT")
+#outline(
+  title: [Formalization of Lumo IR v#version (#datetime.today().display("[year]-[month]-[day]"))],
+)
 
 = Introduction
 
-Lumo is a brand-new programming language built upon modern cutting-edge theoretical foundations.
+In this document, we write a Lumo IR, built upon:
 
-Its goal is:
+- _Algebraic Effects_ research done by *Effekt* @brachthaeuser2020effektjfp.
+- _Linear Resource Calculus_($lambda^1$) proposed by Perceus @reinking2021perceus.
+- _Mutable Value Semantics_ formalized by *Hylo/Val* @racordon2022implementation @racordon2021native.
 
-- To provide a sophisticated way to express complex side-effectul codes in a safe and efficient manner.
-- To keep no surprises for newcomers who are familiar with procedural programming languages such as C, TypeScript, Python, etc.
+= Reading Typing Rules
 
-For achieving the goals, Lumo has three pillars:
+We'll use several typing judgments with the following contexts:
 
-- First, Lumo utilizes the essence of _Algebraic Effects_ research done by *Effekt*. \
-  which gives us an alternative approach to Monadic side effect containerization \
-  while keeping the traditional looks of throw/catch or async/await syntaxes.
-- Second, Lumo compiles to a _Linear Resource Calculus_($lambda^1$) prposed on Perceus, by the *Koka*. \
-  which makes us to enable the FBIP(Functional But In-Place) paradigm, which introduce efficient \
-  memory management while avoiding complex reasoning on lifetime or ownership.
-- Lastly, Lumo adapts the _Mutable Value Semantics_ formalized by *Hylo*. \
-  which enables the users to write idiomatic codes on mutating the parameters, \
-  powered by the standard mutable state effect `ref<τ>`.
+- $Delta$: Variable and its Assigned Types, Borrowed. Must own before use.
+- $Gamma$: Variable and its Assigned Types, Owned. Use values exactly once.
+- $E$: Named Capabilities available in this context, implemented in a Bundle.
 
-Our goal is to compile the Lumo source code into the C or JavaScript code.
+Judgment forms:
 
-= The Source Language
+- $Delta | Gamma; E judge.v x synth A$ : The inferred type of value $x$ is $A$
+- $Delta | Gamma; E judge.v x check A$ : The value $x$ must be type-checked against $A$
+- $Delta | Gamma; E judge.c M synth underline(B)$ : The inferred type of computation $M$ is $underline(B)$
+- $Delta | Gamma; E judge.c M check underline(B)$ : The computation $M$ must be type-checked against $underline(B)$
 
-Next we'll define the source language terms and its translation with denotational semantics using inference rules.
+Pattern binder notation:
 
-First, we'll visit terms solely.
+- $bv(p)$: the set (or ordered list) of variables bound by pattern $p$.
+- $bv("_") = emptyset$.
+- $LetSlots(p)$: variables introduced as #kwLet slots by pattern $p$.
+- $MutSlots(p)$: variables introduced as #kwMut slots by pattern $p$.
 
-== Terms
-
-$
-  italic("Item") ::= & "Enum" thick n thick { thick dots, thick i |->tau_i, thick dots thick } & quad italic("Define-Enum") \
-  \
-$
-
-
-== Type Assignment
-
-Every item emits a type assignment in the scope. Note that rhe assignments can be hoisted in the scope and can be shared into subscopes.
-
-We have two namespaces: the type ($n_t$) and the material, either a value or computation ($n_m$).
-There may be conflicting names in the user's perspective, but in the compiler's perspective, they are distinct, because the type and the material are stored in distinct namespaces.
-
-#rule[$X_t in.not Gamma_t$][$
-  Gamma tack.r & "Enum" thick n thick { thick dots, v_i |-> tau_i, dots thick } emits { \
-               & quad n_t ::= mu X_t. Sigma_((i in I)) tau_i [n:=X_t] \
-               & quad n_m ::= lambda chevron.l thick dots, thick i. tau_i -> n_t, thick dots thick chevron.r \
-               & }
-$][Define-Enum]
-
-== Semantics
-
-#definition(title: "Elaboration")[
-  $Gamma tack.r e arrow.squiggly.r e^prime$ means in the context $Gamma$, the expression $e$ elaborates to $e^prime$.
-  For example, $Gamma tack.r 1 + 2 emits 3$ means that the syntax 1 + 2 should be compiled into 3.
-]
-
-#definition(title: "Inference Rule")[ The inference rule
-  #rule[
-    Premises
-  ][
-    Conclusion
-  ][
-    Rule-Name
-  ]
-
-  means that when the premises are true, the conclusion must be true by the rule named as Rule-Name.
-]
-
-
-#columns[]
-
-= LIR(Lumo Intermediate Representation)
-
-This document describes a intermediate representation of the Lumo programming language, which is a functional programming language built upon modern Algebraic Effects and efficient memory management powered by Linear Resource Calculus($lambda^1$) by Perceus.
-
-== Types
-
-As we follows the Call-by-Push-Value, we have different type for value and computations.
-We'll call the value type as $A$ and the computation type as $underline(B)$ (underlined).
+Pattern syntax:
 
 $
-             A ::= & Sigma_(i in I) A_i         && quad italic("Sum") \
-                 | & Pi_(i in I) A_i            && quad italic("Prod") \
-                 | & j Pi_(i in I) A_i          && quad italic("Variant") \
-                 | & "thunk" underline(B)       && quad italic("Thunk") \
-                 | & mu X.A                     && quad italic("Recursive") \
-                 | & X                          && quad italic("Variable") \
-                   \
-  underline(B) ::= & "produce" A" "epsilon      && quad italic("Produce") \
-                 | & Pi_(i in I) underline(B)_i && quad italic("With") \
-                 | & A -> underline(B)          && quad italic("Arrow") \
+  p ::= "_"
+  | i(p_0, dots.c, p_n)
+  | #kwLet x
+  | #kwMut x
 $
 
-== Before the Core Language
+= Tags
 
-We have combined 3 notions: Bidirectional Typing, Call-by-Push-Value, and Linear Resource Calculus($lambda^1$) from Perceus. So we propose a new judgement rule merged the notions for both typing and elaboration.
+Tags are second-class names, used for places such as variant constructors and function names inside bundles. They cannot be used alone.
+For effects, we assume a tag-extraction operation $EffectTag(e)$ for every effect $e$ (including instantiated effects after generic monomorphization).
 
-*Definition 1.* The context $Gamma$ is a key-value record containing a mapping from a variable name to a type.
-In other words, `let Γ: HashMap<string, RefinedTypeV>` or ${ x_0 |-> A_0, dots, x_n |-> A_n }$.
+= Types
 
-*Definition 2.* The heap-context $Delta$ is a key-value record containing a mapping from a variable name to a tuple consist of the reference count and the value. In other words, `let Δ: HashMap<string, (Nat, Value)>` or ${ x_0 -> (NN^+_0, v_0), dots, x_n -> (NN^+_n, v_n) }$.
+Lumo IR uses System F with several extensions: higher-order types ($omega$), recursive types ($mu$), and a Call-by-Push-Value style separation between values ($A$) and computations ($underline(B)$).
 
-The calculus has four judgements (two for value and computation, two for infer and check).
+$
+             K ::= & "*" | K -> K \
+             A ::= & X
+                     | i #kwOf [A_0, A_1, dots.c, A_n]
+                     | A + A
+                     | #kwThunk underline(B)
+                     | #kwMut A \
+                 | & #kwForall "[" X : K "]" "." A
+                     | A "[" A "]"
+                     | mu X "." A \
+  underline(B) ::= & #kwProduce A
+                     | A -> underline(B)
+                     | Pi_((i in I)) (i times underline(B_i))
+$
 
-- $Delta bar Gamma judge.v x synth A emits x^prime$ : The inferred type of value $x$ is $A$, emits $x^prime$
-- $Delta bar Gamma judge.v x check A emits x^prime$ : The value $x$ must be type-checked against $A$, emits $x^prime$
-- $Delta bar Gamma judge.c M synth underline(B) emits M^prime$ : The inferred type of computation $M$ is $underline(B)$, emits $M^prime$
-- $Delta bar Gamma judge.c M check underline(B) emits M^prime$ : The computation $M$ must be type-checked against $underline(B)$, emits $M^prime$
+== Type Formation
 
-#pagebreak()
+We separate value types (`"Type"`) from computation types (`"CType"`).
 
-== Syntax-Directed Typing Rules and Elaborations
+$
+  (A : "Type") / (#kwProduce A : "CType")
+$
 
-#columns[
-  #rule[
-    $Delta bar Gamma judge.v x check A$
-  ][
-    $Delta bar Gamma judge.v (x : A) synth& A \
-    emits& x$
-  ][Annotate]
+$
+  (A : "Type" quad underline(B) : "CType")
+  / ((A -> underline(B)) : "CType")
+$
 
-  #rule[
-    $Delta bar Gamma judge.v x check (mu X. A)[X |-> mu X.A]$
-  ][
-    $Delta bar Gamma judge.v"roll" x check& mu X.A \
-    emits& "roll" x$
-  ][Roll]
+$
+  (forall i in I. (underline(B_i) : "CType"))
+  / (Pi_((i in I))(i times underline(B_i)) : "CType")
+$
 
-  #rule[
-  ][
-    TODO
-  ][Unroll]
+#kwBundle values are named in $E$ and treated as computation-level entities.
 
-  #rule[
-    $Delta bar Gamma judge.v v check A_(i^prime)$
-  ][
-    $Delta bar Gamma judge.v "inj"_(i^prime) v
-    check& Sigma_(i in {i^prime, I}) (dots, i^prime |-> A_(i^prime), dots) \
-    emits& "inj"_(i^prime) v$
-  ][Injection]
+= On Bidirectional Typing
 
-  #rule[
-  ][
-    $Delta bar {x |-> A} judge.v x synth& A \ emits& x$
-  ][Variable]
+We use Pfenning Recipe for our type system with following rules included.
 
-  #rule[
-    $Delta bar Gamma judge.c M check underline(B)$
-  ][
-    $Delta bar Gamma judge.v "thunk" M check& "thunk" underline(B) \
-    emits& "thunk" M$
-  ][Thunk]
+== Variable Synthesis
 
-  #rule[
-  ][
-    TODO
-  ][$"TyAbs"_V$]
-
-  #rule[
-  ][
-    TODO
-  ][$"TyAbs"_C$]
-
-
-  #rule[
-    $dots.c quad Delta bar Gamma judge.v x_i check A_i quad dots.c$
-  ][
-    $Delta bar Gamma judge.v "record" { dots, i = x_i, dots } check& Pi_(i in I) A_i \
-    emits& "record" { dots, i = x_i, dots}$
-  ][Record]
-
-  #colbreak()
-
-  #rule[
-    $dots.c quad Delta bar Gamma judge.v x_i check A_i quad dots.c$
-  ][
-    $Delta bar Gamma judge.v j" "{ dots, i = x_i, dots}
-    check& j Pi_(i in I) A_i \
-    emits& j" "{ dots, i = x_i, dots}$
-  ][Variant]
-
-
-  #rule[
-    $Delta bar Gamma judge.v x check A$
-  ][
-    $Delta bar Gamma judge.c "return" x check& "produce" A \
-    emits& "return" x$
-  ][Return]
-
-  #rule[
-  ][
-    TODO
-  ][Force]
-
-  #rule[
-  ][
-    TODO
-  ][Apply]
-
-  #rule[
-    $Delta bar Gamma, x : A judge.c M check underline(B)$
-  ][
-    $Delta bar Gamma judge.c lambda x. M check& A -> underline(B) \
-    emits& lambda x. M$
-  ][Lambda]
-
-  #rule[
-  ][
-    TODO
-  ][Sequence]
-
-
-  #rule[
-  ][
-    TODO
-  ][$"TyApp"_V$]
-
-  #rule[
-  ][
-    TODO
-  ][$"TyApp"_C$]
-
-  #rule[
-  ][
-    TODO
-  ][Projection]
-
-  #rule[
-  ][
-    TODO
-  ][Match]
-]
-
-== Bibliography
-
-- Call by Push value
-- Bidirectional Typing
-
-== Appendix
-
-=== Quick lesson on Inference Rules
-
-Inference rules have following form.
+Variables synthesize their type directly from the owned context.
 
 #rule[
-  Premises
+  $x : A in Gamma$
 ][
-  Conclusion
-][RuleName]
+  $Delta | Gamma; E
+  judge.v
+  x synth A$
+][Var-Synth]
 
-Let's become familiar with inference rules by reading examples below:
+== Annotation Synthesis
 
-#rule[
-  $a = 1 quad b = 2$
-][
-  $a + b = 3$
-][Add]
+A type annotation upgrades checking into synthesis.
 
 #rule[
-  $f : A -> underline(B) quad x : A$
+  $Delta | Gamma; E
+  judge.v
+  v check A$
 ][
-  $f(x) : underline(B)$
-][FunApp#super[Function Application]]
+  $Delta | Gamma; E
+  judge.v
+  (v : A) synth A$
+][Ann-Synth]
+
+== Value Synth-to-Check
+
+Any synthesized value can be consumed in checking mode.
+
+#rule[
+  $Delta | Gamma; E
+  judge.v
+  v synth A$
+][
+  $Delta | Gamma; E
+  judge.v
+  v check A$
+][V-Synth-Check]
+
+== Computation Synth-to-Check
+
+Any synthesized computation can be consumed in checking mode.
+
+#rule[
+  $Delta | Gamma; E
+  judge.c
+  M synth underline(B)$
+][
+  $Delta | Gamma; E
+  judge.c
+  M check underline(B)$
+][C-Synth-Check]
+
+== Forall Elimination
+
+Type application instantiates a polymorphic value and synthesizes the instantiated type.
+
+#rule[
+  $Delta | Gamma; E
+  judge.v
+  u synth kwForall[X: K]. A \
+  T : K$
+][
+  $Delta | Gamma; E
+  judge.v
+  u[T] synth A[X := T]$
+][Forall-Elim-Synth]
+
+
+= Data
+
+Lumo IR uses a single concept for constructing values, called #kwData, which can cover the following real-world practices:
+
+- `enum`: finite #kwData variants
+- `struct`: single #kwData variant
+- `primitives`: modeled as infinite-variant #kwData. \
+  for example: $#kwData "nat" ::= { x | x in NN }$
+
+== Definition of Data
+
+$
+  #kwData T "=" Sigma_((i in I)) i #kwOf [A_0, A_1, dots.c, A_n]
+$
+
+The #box(fill: color.rgb("d9d9d9"), outset: (top: 4pt, bottom: 4pt), inset: (left: 4pt, right: 4pt))[$#kwOf [dots]$] part can be omitted; if omitted, the tag is treated as nullary.
+
+Examples:
+
+$
+  #kwData "Nat" "=" "Zero" + "Succ" #kwOf ["Nat"]
+$
+
+$
+  #kwData "Bool" "=" "False" + "True"
+$
+
+$
+  #kwData "NatList" "=" "Nil" + "Cons" #kwOf ["Nat", "NatList"]
+$
+
+== Rules of Data
+
+=== Introduction
+
+Before constructing `data`, we must "own" the parameters — each $p_i$ must be available in $Gamma_i$ — and consume contexts sequentially so the constructed data owns its values.
+
+#rule[
+  $Delta | Gamma_(i+1), dots.c, Gamma_n ; E | Gamma_i
+  judge.v
+  p_i check A_i
+  quad
+  (0 <= i <= n)$
+][
+  $Delta | Gamma_0, Gamma_1, dots.c, Gamma_n; E
+  judge.v
+  i(p_0, p_1, dots.c, p_n) check i #kwOf [A_0, A_1, dots.c, A_n]$
+][Data-Intro]
+
+We can get `data T` by `roll`-ing the expression above with type assertion `(e : T)`.
+
+=== Elimination
+
+Next we eliminate unrolled data (a sum of variants).
+#kwMatch requires an owned variable `x`, and each branch is checked under freshly owned bindings introduced by the match pattern.
+For the bindings, we can use #kwLet $x$ and for mut data, #kwMut $x$.
+
+#rule[
+  $forall i in I. MutSlots(p_i) = emptyset \
+  Delta | Gamma, bv(p_i); E
+  judge.c
+  e_i check underline(B)$
+][
+  $Delta | Gamma, x; E
+  judge.c
+  #kwMatch x { p_i |-> e_i } check underline(B)$
+][Data-Elim]
+
+#rule[
+  $x : #kwMut A in Gamma \
+  Delta | Gamma, bv(p_i); E
+  judge.c
+  e_i check underline(B)$
+][
+  $Delta | Gamma, x; E
+  judge.c
+  #kwMatch x { p_i |-> e_i } check underline(B)$
+][Data-Elim-Mut]
+
+=== $beta$-reduction and $eta$-expansion
+
+When a pattern matches, only bound variables are substituted.
+Wildcard `_` drops the matched value and contributes no binding.
+
+$
+  binds("_", v) = [] \
+  binds(#kwLet x, v) = [x := v] \
+  binds(#kwMut x, v) = [x := v] \
+  binds(i(p_0, dots.c, p_n), i(v_0, dots.c, v_n))
+  = binds(p_0, v_0), dots.c, binds(p_n, v_n)
+$
+
+#reduce-rule[
+  $#kwMatch i(v_0, v_1, dots.c, v_n) { i(p_0, p_1, dots.c, p_n) |-> e_i }_(i in I)$
+][
+  $e_i[binds(i(p_0, p_1, dots.c, p_n), i(v_0, v_1, dots.c, v_n))]$
+][Data-Beta]
+
+Reconstructing the same data through #kwMatch yields the original value.
+
+#reduce-rule[
+  $#kwMatch v { i(#kwLet x_0, #kwLet x_1, dots.c, #kwLet x_n) |-> i(x_0, x_1, dots.c, x_n) }_(i in I)$
+][
+  $v$
+][Data-Eta]
+
+= Recursive Types
+
+Recursive types are introduced by #kwRoll and eliminated by #kwUnroll. It is crucial, to represent recursive #kwData types.
+
+== Introduction / Elimination
+
+#rule[
+  $Delta | Gamma; E
+  judge.v
+  v check A[X := mu X "." A]$
+][
+  $Delta | Gamma; E
+  judge.v
+  #kwRoll v check mu X "." A$
+][Mu-Intro]
+
+#rule[
+  $Delta | Gamma; E
+  judge.v
+  v synth "mu" X "." A$
+][
+  $Delta | Gamma; E
+  judge.v
+  #kwUnroll v synth A[X := "mu" X "." A]$
+][Mu-Elim]
+
+== $beta$-reduction
+
+#reduce-rule[
+  $#kwUnroll (#kwRoll v)$
+][
+  $v$
+][Mu-Beta]
+
+= Function
+
+Functions are computations transforming input data into output data while having capabilities to utilize.
+
+== User-level Syntax
+
+The user only sees the surface-level syntax:
+
+$
+  #kwFn f[X_0: K_0, dots.c, X_n: K_n](p_0: A_0, dots.c, p_m: A_m): underline(B) "/" rho := M
+$
+
+where
+$
+  p ::= "_"
+  | i(p_0, dots.c, p_n)
+  | #kwLet x
+  | #kwMut x
+$
+
+Also, we have the sibling call syntax:
+
+$
+  "Call" ::= u(overline(e))
+$
+
+$
+  u ::= f | f[overline(A)]
+$
+
+Here each argument position in $overline(e)$ may be filled by either an ordinary expression argument or an explicit slot argument ($#kwLet x$ or $#kwMut x$). We keep the metavariable $e$ for both forms in the call rules below.
+
+TODO: Slot semantics and metatheory for let/mut parameters are deferred.
+
+=== Elaboration of User-level Syntax
+
+The user-level syntax mixes several concerns, so we elaborate it step by step.
+
+==== Let Elaboration
+
+In fact, named #kwFn is just an alias for #kwLet. We can define #kwFn without giving a name.
+
+#elaboration-rule[
+  $&#kwFn f[X_0: K_0, dots.c, X_n: K_n](\
+    &quad p_0 : A_0, dots.c, p_m : A_m\
+    &): underline(B) "/" rho := M$
+][
+  $&kwLet f = \
+  & quad kwProduce ( \
+    & quad quad kwFn[X_0: K_0, dots.c, X_n: K_n](\
+      &quad quad quad p_0 : A_0, dots.c, p_m : A_m\
+      &quad quad ): underline(B) "/" rho := M) \
+  & quad ) "in" f$
+][Fn-Let-Elab]
+
+==== Type Parameters Elaboration
+
+Next we'll elaborate type parameters using #kwForall. Sequentially transform $X_i : K_i$ into $kwForall[X_i: K_i]$ syntax.
+
+#elaboration-rule[
+  $
+    & kwFn[X_0: K_0, dots.c, X_n: K_n]( \
+    & quad p_0 : A_0, dots.c, p_m : A_m \
+    & ): underline(B) := M
+  $
+][
+  $& kwForall[X_0 : K_0]. \
+  & dots.v \
+  & kwForall[X_n : K_n]. \
+  & quad kwFn(
+    \
+    & quad quad p_0 : A_0, dots.c, p_m : A_m\
+    & quad
+  ): underline(B) := M$
+][Fn-Type-Param-Elab]
+
+==== Spine Elaboration
+
+Now let's elaborate the rest -- spine of function -- at once.
+
+#elaboration-rule[
+  $kwFn ( p_0 : A_0, dots.c, p_m : A_m): underline(B) := M$
+][
+  $& kwThunk (\
+    & quad kwLambda (p_0 : A_0). \
+    &quad dots.v \
+    &quad kwLambda (p_m : A_m). \
+    &quad quad (M : underline(B)) \
+    &)$
+][Fn-Elab-Mono]
+
+==== Call Elaboration
+
+#elaboration-rule[
+  $u(overline(e))$
+][
+  $(#kwForce u)(e_0) dots.c (e_n)$
+][Call-Elab]
+
+Note that you can pass $#kwLet x$ or $#kwMut x$ slots.
+
+= CBPV Instructions
+
+== #kwBundle (Computation-Level $Pi$)
+
+$Pi_((i in I))(i times underline(B_i))$ is a finite computation-level record keyed by tags.
+
+=== Bundle Introduction
+
+Check each field and assemble them into one bundle.
+
+#rule[
+  $Delta | Gamma_(i+1), dots.c, Gamma_n ; E | Gamma_i
+  judge.c
+  M_i check underline(B_i)
+  quad
+  (0 <= i <= n)$
+][
+  $Delta | Gamma_0, Gamma_1, dots.c, Gamma_n; E
+  judge.c
+  kwBundle { i_0 |-> M_0, i_1 |-> M_1, dots.c, i_n |-> M_n }
+  check Pi_((i in I))(i times underline(B_i))$
+][Pi-Intro]
+
+=== Bundle Elimination
+
+Projecting a field from a synthesized bundle yields that field type.
+
+#rule[
+  $Delta | Gamma; E
+  judge.c
+  M synth Pi_((i in I))(i times underline(B_i)) \
+  j in I$
+][
+  $Delta | Gamma; E
+  judge.c
+  M.j synth underline(B_j)$
+][Pi-Elim]
+
+=== Beta Reduction
+
+Projecting from a literal bundle returns the corresponding field.
+
+#reduce-rule[
+  $(kwBundle { i_0 |-> M_0, i_1 |-> M_1, dots.c, i_n |-> M_n }).j$
+][
+  $M_j$
+][Pi-Beta]
+
+== Lambda
+
+The function type $A -> underline(B)$ is made out of #kwLambda.
+
+=== Introduction
+
+#rule[
+  $Delta | Gamma, x : A; E
+  judge.c
+  M check underline(B)$
+][
+  $Delta | Gamma; E
+  judge.c
+  #kwLambda x. M check A -> underline(B)$
+][Lambda-Intro]
+
+Also you can use slot-bindings here:
+
+TODO: Formal proof obligations for slot-bindings (#kwLet/#kwMut parameters) will be specified later.
+
+#rule[
+  $Delta | Gamma, x : A; E
+  judge.c
+  M check underline(B) \
+  assigncount(M, x) >= 1$
+][
+  $Delta | Gamma; E
+  judge.c
+  #kwLambda (#kwLet x). M check A -> underline(B)$
+][Lambda-Let-Intro]
+
+#rule[
+  $Delta | Gamma, x : A; E
+  judge.c
+  M check underline(B)$
+][
+  $Delta | Gamma; E
+  judge.c
+  #kwLambda (#kwMut x). M check A -> underline(B)$
+][Lambda-Mut-Intro]
+
+=== Elimination
+
+Application consumes the argument and runs the function computation.
+
+#rule[
+  $Delta | Gamma_1; E
+  judge.c
+  f synth A -> underline(B) \
+  Delta | Gamma_2; E
+  judge.v
+  v check A$
+][
+  $Delta | Gamma_1, Gamma_2; E
+  judge.c
+  f(v) synth underline(B)$
+][Lambda-Elim]
+
+=== $beta$-reduction and $eta$-expansion
+
+#reduce-rule[
+  $(#kwLambda x. M)(v)$
+][
+  $M[x := v]$
+][Lambda-Beta]
+
+#reduce-rule[
+  $#kwLambda x. f(x)$
+][
+  $f$
+][Lambda-Eta]
+
+== Thunk and Force
+
+#kwThunk packages a computation as a value, and #kwForce restores the computation.
+
+=== Type Formation
+
+$
+  #kwThunk underline(B) : "Type"
+$
+
+=== Typing Rules
+
+#rule[
+  $Delta | Gamma; E
+  judge.c
+  M check underline(B)$
+][
+  $Delta | Gamma; E
+  judge.v
+  #kwThunk M check #kwThunk underline(B)$
+][Thunk-Intro]
+
+#rule[
+  $Delta | Gamma; E
+  judge.v
+  v synth #kwThunk underline(B)$
+][
+  $Delta | Gamma; E
+  judge.c
+  #kwForce v synth underline(B)$
+][Force-Elim]
+
+=== $beta$-reduction and $eta$-expansion
+
+#reduce-rule[
+  $#kwForce (#kwThunk M)$
+][
+  $M$
+][Thunk-Beta]
+
+#reduce-rule[
+  $#kwThunk (#kwForce v)$
+][
+  $v$
+][Thunk-Eta]
+
+== Produce and Let
+
+#kwProduce injects a value into the computation type $#kwProduce A$.
+
+#rule[
+  $Delta | Gamma; E
+  judge.v
+  v check A$
+][
+  $Delta | Gamma; E
+  judge.c
+  #kwProduce v check #kwProduce A$
+][Produce-Intro]
+
+#rule[
+  $Delta | Gamma_1; E
+  judge.c
+  M synth #kwProduce A \
+  Delta | Gamma_2, x : A; E
+  judge.c
+  N synth underline(B)$
+][
+  $Delta | Gamma_1, Gamma_2; E
+  judge.c
+  #kwLet x = M "in" N synth underline(B)$
+][Produce-Elim]
+
+=== $beta$-reduction
+
+#reduce-rule[
+  $#kwLet x = #kwProduce v "in" N$
+][
+  $N[x := v]$
+][Produce-Beta]
+
+= Algebraic Effects
+
+Algebraic effects are expressed with $kwPerform_"op"$ and interpreted by $kwHandle_"op"$.
+
+== User-level Syntax
+
+Effects are computations passed naturally.
+
+=== Effect Definition
+
+You group compuations by the namespace, and can utilize same syntax as $kwFn$.
+
+$
+  & #kwEffect "Test" { \
+  & quad #kwFn "argless"(): "Ret1" \
+  & quad #kwFn "generic"[A: *](): "Ret1" \
+  & }
+$
+
+So the effect declaration becomes a bundle of elaborated operation types:
+
+#elaboration-rule[
+  $&#kwEffect e { \
+    &quad #kwFn "op"_0[X_(0,0): K_(0,0), dots.c, X_(0,n_0): K_(0,n_0)](p_(0,0) : A_(0,0), dots.c, p_(0,m_0) : A_(0,m_0)): B_0 \
+    &quad dots.v \
+    &quad #kwFn "op"_n[X_(n,0): K_(n,0), dots.c, X_(n,n_n): K_(n,n_n)](p_(n,0) : A_(n,0), dots.c, p_(n,m_n) : A_(n,m_n)): B_n \
+    &}$
+][
+  $&e : Pi_((i in I))( \
+    &quad "op"_i times ( \
+      &quad quad kwForall[X_(i,0): K_(i,0)]. \
+      &quad quad dots.v\
+      &quad quad kwForall[X_(i,n_i): K_(i,n_i)]. ( \
+        &quad quad quad A_(i,0) -> \
+        &quad quad quad dots -> \
+        &quad quad quad A_(i,m_i) -> \
+        &quad quad quad quad underline(B_i) \
+        & quad )) \
+    &)$
+][Effect-Def-Elab]
+
+== Effect Operation Invocation
+
+When we have the operation $op$ in our effect handler context, we can invoke $kwPerform_"op"$.
+
+#rule[
+  $op : underline(B) in E$
+][
+  $Delta | Gamma; E
+  judge.c
+  kwPerform_"op" synth underline(B)$
+][Perform]
+
+== Handlers
+
+Of course you can pass the handler so the context takes care of it.
+
+#rule[
+  $Delta | Gamma_1; E
+  judge.c
+  M check underline(B) \
+  Delta | Gamma_2; E, (op: underline(B))
+  judge.c
+  N check underline(C)$
+][
+  $Delta | Gamma_1, Gamma_2; E
+  judge.c
+  kwHandle_"op" "with" M "in" N check underline(C)$
+][Handler-Intro]
+
+== Operational Equations
+
+#reduce-rule[
+  $kwHandle_"op" "with" M "in" #kwProduce v$
+][
+  $#kwProduce v$
+][Handle-Unit]
+
+#reduce-rule[
+  $kwHandle_"op" "with" M "in" kwPerform_"op"$
+][
+  $M$
+][Handle-Perform-Beta]
+
+
+
+= Meta-Theory Roadmap
+
+Priority lemmas.
+
+== Substitution
+
+Goal: prove substitution while preserving linear/accounting side conditions.
+
+Expected effect: enables modular proofs by replacing variables with well-typed terms safely.
+
+== Preservation
+
+Goal: prove that one-step reduction preserves typing and resource/effect invariants.
+
+Expected effect: guarantees type/resource invariants are maintained by every reduction step.
+
+== Progress
+
+Goal: prove that well-typed closed programs are either terminal forms or can reduce.
+
+Expected effect: rules out stuck well-typed closed programs (except designated terminal forms).
+
+== NbE Soundness
+
+Goal: prove soundness of NbE-based definitional equality.
+
+Expected effect: provides a trustworthy basis for definitional equality checks.
+
+== NbE (Normalization by Evaluation)
+
+TODO: NbE formalization is deferred.
+
+Expected benefits:
+
+- Canonical decision procedure for definitional equality.
+- Cleaner convertibility checks in type checking.
+- Better foundation for future optimizations (normalization-driven simplification).
+
+This document is the base spec for machine-checked proofs.
+
+= References
+
+#bibliography(
+  "references.bib",
+  style: "chicago-author-date",
+  title: [Bibliography],
+)
