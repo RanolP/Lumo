@@ -1,2 +1,0 @@
-data Option[A] { Some(A), None }
-fn id := produce a

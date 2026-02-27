@@ -18,7 +18,7 @@ fn lower_lossless(src: &str) -> hir::File {
 
 #[test]
 fn content_hash_is_deterministic() {
-    let src = "data Option[A] { Some(A), None } fn id[A](a: A): produce A / {} := produce a";
+    let src = "data Option[A] { .some(A), .none } fn id[A](a: A): produce A / {} := produce a";
     let a = lower_typed(src);
     let b = lower_typed(src);
     assert_eq!(a.content_hash, b.content_hash);
@@ -110,7 +110,7 @@ fn expression_nodes_have_content_hash_ids() {
 
 #[test]
 fn lossless_lower_handles_let_and_produce() {
-    let file = lower_lossless("fn f := let x = y in produce x");
+    let file = lower_lossless("fn f() := let x = y in produce x");
     let Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
@@ -138,7 +138,7 @@ fn lossless_lower_handles_let_and_produce() {
 
 #[test]
 fn query_path_matches_direct_lossless_lower() {
-    let src = "data X { A, B } fn f := produce x";
+    let src = "data X { .a, .b } fn f() := produce x";
 
     let direct = lower_lossless(src);
 
@@ -152,15 +152,53 @@ fn query_path_matches_direct_lossless_lower() {
 #[test]
 fn typed_and_lossless_lower_match_on_mvp_samples() {
     let cases = [
-        "fn f := produce x",
-        "fn f := let x = y in produce x",
-        "data Option[A] { Some(A), None } fn id := produce a",
-        "data Pair { Pair } fn mk := let p = q in p",
+        "fn f() := produce x",
+        "fn f() := let x = y in produce x",
+        "data Option[A] { .some(A), .none } fn id() := produce a",
+        "data Pair { .pair } fn mk() := let p = q in p",
     ];
 
     for src in cases {
         let typed = lower_typed(src);
         let lossless = lower_lossless(src);
         assert_eq!(typed, lossless, "mismatch on source: {src}");
+    }
+}
+
+#[test]
+fn match_scrutinee_is_lowered_with_implicit_unroll() {
+    let file = lower_typed("fn f() := match a { x => produce x }");
+    let Item::Fn(f) = &file.items[0] else {
+        panic!("expected fn")
+    };
+
+    match &f.body {
+        Expr::Match { scrutinee, .. } => match scrutinee.as_ref() {
+            Expr::Unroll { expr, .. } => match expr.as_ref() {
+                Expr::Ident { name, .. } => assert_eq!(name, "a"),
+                other => panic!("expected ident in unroll, got {other:?}"),
+            },
+            other => panic!("expected implicit unroll scrutinee, got {other:?}"),
+        },
+        other => panic!("expected match body, got {other:?}"),
+    }
+}
+
+#[test]
+fn data_ctor_is_lowered_with_implicit_roll() {
+    let file = lower_typed("data OptionA { .some(A), .none } fn mk() := OptionA.some(a)");
+    let Item::Fn(f) = &file.items[1] else {
+        panic!("expected fn")
+    };
+
+    match &f.body {
+        Expr::Roll { expr, .. } => match expr.as_ref() {
+            Expr::Ctor { name, args, .. } => {
+                assert_eq!(name, "OptionA.some");
+                assert_eq!(args.len(), 1);
+            }
+            other => panic!("expected ctor inside roll, got {other:?}"),
+        },
+        other => panic!("expected implicit roll, got {other:?}"),
     }
 }

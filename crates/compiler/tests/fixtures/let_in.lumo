@@ -1,1 +1,0 @@
-fn main := let x = y in produce x

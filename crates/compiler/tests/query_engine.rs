@@ -6,14 +6,14 @@ use lumo_compiler::{
 #[test]
 fn parse_lower_diagnostics_are_callable() {
     let mut q = QueryEngine::new();
-    q.set_file("main.lumo", "data X { A } fn id := produce a+");
+    q.set_file("main.lumo", "data X { .a } fn id() := produce a+");
 
     let parsed = q.parse("main.lumo").expect("parse result");
     assert_eq!(parsed.file.items.len(), 2);
     assert_eq!(parsed.lossless.root.kind, SyntaxKind::File);
     assert_eq!(
         node_text(&parsed.lossless.root),
-        "data X { A } fn id := produce a+"
+        "data X { .a } fn id() := produce a+"
     );
 
     let lowered = q.lower("main.lumo").expect("lower result");
@@ -26,7 +26,7 @@ fn parse_lower_diagnostics_are_callable() {
 #[test]
 fn cache_is_reused_when_source_is_unchanged() {
     let mut q = QueryEngine::new();
-    q.set_file("main.lumo", "fn id := produce a");
+    q.set_file("main.lumo", "fn id() := produce a");
 
     let _ = q.parse("main.lumo");
     let _ = q.lower("main.lumo");
@@ -55,14 +55,14 @@ fn cache_is_reused_when_source_is_unchanged() {
 #[test]
 fn cache_is_invalidated_when_source_changes() {
     let mut q = QueryEngine::new();
-    q.set_file("main.lumo", "fn id := produce a");
+    q.set_file("main.lumo", "fn id() := produce a");
 
     let _ = q.parse("main.lumo");
     let _ = q.lower("main.lumo");
     let _ = q.diagnostics("main.lumo");
     let stats_before = q.stats();
 
-    q.set_file("main.lumo", "fn id := produce b");
+    q.set_file("main.lumo", "fn id() := produce b");
     let _ = q.parse("main.lumo");
     let _ = q.lower("main.lumo");
     let _ = q.diagnostics("main.lumo");

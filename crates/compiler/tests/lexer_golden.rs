@@ -40,6 +40,12 @@ fn lexer_golden_cases() {
             errors: &[],
         },
         Case {
+            name: "kw_thunk_force_match",
+            input: "thunk force match",
+            tokens: &["kw(thunk)@0..5", "kw(force)@6..11", "kw(match)@12..17"],
+            errors: &[],
+        },
+        Case {
             name: "brackets",
             input: "[](){}",
             tokens: &[
@@ -54,7 +60,7 @@ fn lexer_golden_cases() {
         },
         Case {
             name: "punctuation",
-            input: ":,=:=/*",
+            input: ":,=:=/*=>.",
             tokens: &[
                 "sym(:)@0..1",
                 "sym(,)@1..2",
@@ -62,6 +68,8 @@ fn lexer_golden_cases() {
                 "sym(:=)@3..5",
                 "sym(/)@5..6",
                 "sym(*)@6..7",
+                "sym(=>)@7..9",
+                "sym(.)@9..10",
             ],
             errors: &[],
         },
@@ -85,7 +93,7 @@ fn lexer_golden_cases() {
         },
         Case {
             name: "data_decl_sample",
-            input: "data Option[A] { Some(A), None }",
+            input: "data Option[A] { .some(A), .none }",
             tokens: &[
                 "kw(data)@0..4",
                 "ident(Option)@5..11",
@@ -93,13 +101,15 @@ fn lexer_golden_cases() {
                 "ident(A)@12..13",
                 "sym(])@13..14",
                 "sym({)@15..16",
-                "ident(Some)@17..21",
-                "sym(()@21..22",
-                "ident(A)@22..23",
-                "sym())@23..24",
-                "sym(,)@24..25",
-                "ident(None)@26..30",
-                "sym(})@31..32",
+                "sym(.)@17..18",
+                "ident(some)@18..22",
+                "sym(()@22..23",
+                "ident(A)@23..24",
+                "sym())@24..25",
+                "sym(,)@25..26",
+                "sym(.)@27..28",
+                "ident(none)@28..32",
+                "sym(})@33..34",
             ],
             errors: &[],
         },
@@ -231,6 +241,9 @@ fn render_token(token: &lumo_compiler::lexer::Token) -> String {
         TokenKind::Keyword(Keyword::Let) => "kw(let)".to_owned(),
         TokenKind::Keyword(Keyword::In) => "kw(in)".to_owned(),
         TokenKind::Keyword(Keyword::Produce) => "kw(produce)".to_owned(),
+        TokenKind::Keyword(Keyword::Thunk) => "kw(thunk)".to_owned(),
+        TokenKind::Keyword(Keyword::Force) => "kw(force)".to_owned(),
+        TokenKind::Keyword(Keyword::Match) => "kw(match)".to_owned(),
         TokenKind::Ident(s) => format!("ident({s})"),
         TokenKind::Symbol(Symbol::LBracket) => "sym([)".to_owned(),
         TokenKind::Symbol(Symbol::RBracket) => "sym(])".to_owned(),
@@ -244,6 +257,8 @@ fn render_token(token: &lumo_compiler::lexer::Token) -> String {
         TokenKind::Symbol(Symbol::ColonEquals) => "sym(:=)".to_owned(),
         TokenKind::Symbol(Symbol::Slash) => "sym(/)".to_owned(),
         TokenKind::Symbol(Symbol::Star) => "sym(*)".to_owned(),
+        TokenKind::Symbol(Symbol::FatArrow) => "sym(=>)".to_owned(),
+        TokenKind::Symbol(Symbol::Dot) => "sym(.)".to_owned(),
     };
     format!("{head}@{}..{}", token.span.start, token.span.end)
 }

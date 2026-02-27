@@ -1,0 +1,95 @@
+fn id(a: A): produce A / {} := produce a
+---
+id : (A) -> produce A / {}
+==========
+fn keep(a: A): A / {} := a
+---
+keep : (A) -> A / {}
+==========
+fn f(a: A): produce A / {} := let x = a in produce x
+---
+f : (A) -> produce A / {}
+==========
+fn bad(): produce A / {} := produce x
+---
+ERROR: unknown variable `x`
+==========
+fn bad(a: A): produce B / {} := produce a
+---
+ERROR: type mismatch: expected B, got A
+==========
+fn pick(a: A): produce A / {} := match a { x => produce x }
+---
+pick : (A) -> produce A / {}
+==========
+data OptionA { .some(A), .none }
+fn pick2(a: OptionA, b: A): produce A / {} := match a { .some(let x) => produce x, .none => produce b }
+---
+pick2 : (OptionA, A) -> produce A / {}
+==========
+data Option { .some(A), .none }
+fn bad(a: Option): produce Option / {} := match a { .some(let x, let y) => produce a, .none => produce a }
+---
+ERROR: pattern `some` expects 1 args, got 2
+==========
+data Option { .some(A), .none }
+fn bad2(a: Option): produce Option / {} := match a { .nope => produce a }
+---
+ERROR: unknown variant `nope` in match pattern
+==========
+data OptionInt { .some(B), .none }
+fn ok(a: OptionInt, b: B): produce B / {} := match a { .some(x) => produce x, .none => produce b }
+---
+ok : (OptionInt, B) -> produce B / {}
+==========
+data OptionInt { .some(B), .none }
+fn bad3(a: OptionInt, c: C): produce B / {} := match a { .some(x) => produce c, .none => produce c }
+---
+ERROR: type mismatch: expected produce B, got produce C
+==========
+data Pair { .pair(B, C) }
+data Wrap { .wrap(Pair), .empty }
+fn nested_ok(w: Wrap, b: B): produce B / {} := match w { .wrap(.pair(x, _)) => produce x, .empty => produce b }
+---
+nested_ok : (Wrap, B) -> produce B / {}
+==========
+data Pair { .pair(B, C) }
+data Wrap { .wrap(Pair), .empty }
+fn nested_bad(w: Wrap, b: B): produce B / {} := match w { .wrap(.nope(x)) => produce b, .empty => produce b }
+---
+ERROR: unknown variant `nope` in match pattern
+==========
+data Bool { .true, .false }
+fn ne(b: Bool): produce Bool / {} := match b { .true => produce b }
+---
+ERROR: non-exhaustive match: missing variants false
+==========
+data Bool { .true, .false }
+fn ex(b: Bool): produce Bool / {} := match b { .true => produce b, _ => produce b }
+---
+ex : (Bool) -> produce Bool / {}
+==========
+data Bool { .true, .false }
+fn unreach1(b: Bool): produce Bool / {} := match b { _ => produce b, .true => produce b }
+---
+ERROR: unreachable match arm: prior catch-all pattern
+==========
+data Bool { .true, .false }
+fn unreach2(b: Bool): produce Bool / {} := match b { .true => produce b, .true => produce b, .false => produce b }
+---
+ERROR: unreachable match arm: variant `true` already covered
+==========
+data OptionA { .some(A), .none }
+fn mk(a: A): OptionA / {} := OptionA.some(a)
+---
+mk : (A) -> OptionA / {}
+==========
+data OptionA { .some(A), .none }
+fn badp1(a: OptionA, b: A): produce A / {} := match a { some(x) => produce b, .none => produce b }
+---
+ERROR: constructor pattern must start with `.`
+==========
+data OptionA { .some(A), .none }
+fn badp2(a: OptionA, b: A): produce A / {} := match a { some => produce b, .none => produce b }
+---
+ERROR: variant pattern `some` must be written `.some`

@@ -5,7 +5,7 @@ use lumo_compiler::{
 
 #[test]
 fn lossless_lexer_roundtrips_original_text() {
-    let src = "data Option[A] { Some(A), None }\nfn id := produce x+";
+    let src = "data Option[A] { .some(A), .none }\nfn id() := produce x+";
     let out = lex_lossless(src);
     let rebuilt = out
         .tokens
@@ -26,7 +26,7 @@ fn lossless_lexer_roundtrips_original_text() {
 
 #[test]
 fn lossless_lst_preserves_text_on_valid_source() {
-    let src = "data X { A, B }\nfn id := produce x";
+    let src = "data X { .a, .b }\nfn id() := produce x";
     let parsed = parse(src);
 
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -36,7 +36,7 @@ fn lossless_lst_preserves_text_on_valid_source() {
 
 #[test]
 fn lossless_lst_preserves_text_on_broken_source() {
-    let src = "fn broken := produce +\ndata Good { A }";
+    let src = "fn broken() := produce +\ndata Good { .a }";
     let parsed = parse(src);
 
     assert!(!parsed.errors.is_empty());

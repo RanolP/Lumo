@@ -33,7 +33,9 @@ pub fn highlight(source: &str) -> Vec<HighlightToken> {
             | TokenKind::Symbol(Symbol::Equals)
             | TokenKind::Symbol(Symbol::ColonEquals)
             | TokenKind::Symbol(Symbol::Slash)
-            | TokenKind::Symbol(Symbol::Star) => HighlightKind::Symbol,
+            | TokenKind::Symbol(Symbol::Star)
+            | TokenKind::Symbol(Symbol::FatArrow)
+            | TokenKind::Symbol(Symbol::Dot) => HighlightKind::Symbol,
         };
 
         tokens.push(HighlightToken {

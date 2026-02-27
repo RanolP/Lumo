@@ -13,7 +13,11 @@ pub enum SyntaxKind {
     FnDecl,
     LetExpr,
     ProduceExpr,
+    ThunkExpr,
+    ForceExpr,
+    MatchExpr,
     IdentExpr,
+    CallExpr,
     Error,
 }
 
@@ -163,9 +167,14 @@ impl Parser {
             self.parse_let_expr()
         } else if self.at_keyword(Keyword::Produce) {
             self.parse_produce_expr()
+        } else if self.at_keyword(Keyword::Thunk) {
+            self.parse_thunk_expr()
+        } else if self.at_keyword(Keyword::Force) {
+            self.parse_force_expr()
+        } else if self.at_keyword(Keyword::Match) {
+            self.parse_match_expr()
         } else if self.at_ident() {
-            let token = self.bump().unwrap();
-            node_from_children(SyntaxKind::IdentExpr, vec![SyntaxElement::Token(token)])
+            self.parse_ident_or_call_expr()
         } else {
             self.error_here("expected expression");
             self.parse_error_node()
@@ -230,10 +239,7 @@ impl Parser {
         }
 
         if self.at_ident() {
-            children.push(SyntaxElement::Node(Box::new(node_from_children(
-                SyntaxKind::IdentExpr,
-                vec![SyntaxElement::Token(self.bump().unwrap())],
-            ))));
+            children.push(SyntaxElement::Node(Box::new(self.parse_ident_or_call_expr())));
         } else if self.at_keyword(Keyword::Let) {
             let let_node = self.parse_let_expr();
             children.push(SyntaxElement::Node(Box::new(let_node)));
@@ -241,7 +247,12 @@ impl Parser {
             while !self.eof() && self.at_trivia_or_unknown() {
                 children.push(SyntaxElement::Token(self.bump().unwrap()));
             }
-            if self.at_ident() || self.at_keyword(Keyword::Let) || self.at_keyword(Keyword::Produce)
+            if self.at_ident()
+                || self.at_keyword(Keyword::Let)
+                || self.at_keyword(Keyword::Produce)
+                || self.at_keyword(Keyword::Thunk)
+                || self.at_keyword(Keyword::Force)
+                || self.at_keyword(Keyword::Match)
             {
                 let nested = self.parse_expr();
                 children.push(SyntaxElement::Node(Box::new(nested)));
@@ -258,6 +269,103 @@ impl Parser {
         }
 
         node_from_children(SyntaxKind::ProduceExpr, children)
+    }
+
+    fn parse_thunk_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // thunk
+        let payload = self.parse_expr();
+        children.push(SyntaxElement::Node(Box::new(payload)));
+        node_from_children(SyntaxKind::ThunkExpr, children)
+    }
+
+    fn parse_force_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // force
+        let payload = self.parse_expr();
+        children.push(SyntaxElement::Node(Box::new(payload)));
+        node_from_children(SyntaxKind::ForceExpr, children)
+    }
+
+    fn parse_match_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // match
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr()))); // scrutinee
+
+        while !self.eof() && self.at_trivia() {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        if !self.at_symbol_text("{") {
+            self.error_here("expected `{` in match expression");
+            return node_from_children(SyntaxKind::MatchExpr, children);
+        }
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // {
+
+        while !self.eof() && !self.at_symbol_text("}") {
+            while !self.eof() && !self.at_symbol_text("=>") {
+                if self.at_symbol_text("}") {
+                    break;
+                }
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
+            }
+            if self.at_symbol_text("=>") {
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
+                children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+            } else {
+                break;
+            }
+            if self.at_symbol_text(",") {
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
+            }
+        }
+
+        if self.at_symbol_text("}") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else {
+            self.error_here("expected `}` in match expression");
+        }
+
+        node_from_children(SyntaxKind::MatchExpr, children)
+    }
+
+    fn parse_ident_or_call_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // ident
+
+        if !self.at_symbol_text(".") {
+            return node_from_children(SyntaxKind::IdentExpr, children);
+        }
+
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // .
+        if self.at_ident() {
+            children.push(SyntaxElement::Token(self.bump().unwrap())); // member
+        } else {
+            self.error_here("expected member name after `.`");
+            return node_from_children(SyntaxKind::CallExpr, children);
+        }
+
+        if !self.at_symbol_text("(") {
+            self.error_here("expected `(` in member call expression");
+            return node_from_children(SyntaxKind::CallExpr, children);
+        }
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // (
+        while !self.eof() && !self.at_symbol_text(")") {
+            children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+            if self.at_symbol_text(",") {
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
+            } else {
+                break;
+            }
+        }
+
+        if self.at_symbol_text(")") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else {
+            self.error_here("expected `)` in call expression");
+        }
+
+        node_from_children(SyntaxKind::CallExpr, children)
     }
 
     fn parse_error_node(&mut self) -> SyntaxNode {

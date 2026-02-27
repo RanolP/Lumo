@@ -658,7 +658,7 @@ mod tests {
     #[test]
     fn semantic_tokens_request_uses_opened_document() {
         let mut server = Server::new();
-        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id := produce x"}}}"#;
+        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id() := produce x"}}}"#;
         server.handle_json_message(open);
 
         let req = r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"file:///main.lumo"}}}"#;
@@ -671,7 +671,7 @@ mod tests {
     #[test]
     fn semantic_tokens_delta_returns_edits() {
         let mut server = Server::new();
-        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id := produce x"}}}"#;
+        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id() := produce x"}}}"#;
         server.handle_json_message(open);
 
         let full = r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"file:///main.lumo"}}}"#;
@@ -684,7 +684,7 @@ mod tests {
             .expect("resultId")
             .to_owned();
 
-        let change = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///main.lumo"},"contentChanges":[{"text":"fn id := produce y"}]}}"#;
+        let change = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///main.lumo"},"contentChanges":[{"text":"fn id() := produce y"}]}}"#;
         server.handle_json_message(change);
 
         let delta = format!(
@@ -698,7 +698,7 @@ mod tests {
     #[test]
     fn semantic_tokens_delta_falls_back_to_full_on_stale_result_id() {
         let mut server = Server::new();
-        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id := produce x"}}}"#;
+        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id() := produce x"}}}"#;
         server.handle_json_message(open);
 
         let _ = server
@@ -707,7 +707,7 @@ mod tests {
             )
             .expect("full response");
 
-        let change = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///main.lumo"},"contentChanges":[{"text":"fn id := produce y"}]}}"#;
+        let change = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///main.lumo"},"contentChanges":[{"text":"fn id() := produce y"}]}}"#;
         server.handle_json_message(change);
 
         let stale_delta = r#"{"jsonrpc":"2.0","id":3,"method":"textDocument/semanticTokens/full/delta","params":{"textDocument":{"uri":"file:///main.lumo"},"previousResultId":"stale-id"}}"#;
@@ -721,7 +721,7 @@ mod tests {
     #[test]
     fn diagnostics_are_published_on_open_and_change() {
         let mut server = Server::new();
-        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id := produce +"}}}"#;
+        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id() := produce +"}}}"#;
         server.handle_json_message(open);
 
         let notes = server.take_outgoing_notifications();
@@ -730,7 +730,7 @@ mod tests {
         assert!(notes[0].contains("\"diagnostics\":["));
         assert!(!notes[0].contains("\"diagnostics\":[]"));
 
-        let change = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///main.lumo"},"contentChanges":[{"text":"fn id := produce x"}]}}"#;
+        let change = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///main.lumo"},"contentChanges":[{"text":"fn id() := produce x"}]}}"#;
         server.handle_json_message(change);
 
         let notes = server.take_outgoing_notifications();
@@ -741,7 +741,7 @@ mod tests {
     #[test]
     fn did_close_clears_diagnostics() {
         let mut server = Server::new();
-        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id := produce +"}}}"#;
+        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id() := produce +"}}}"#;
         server.handle_json_message(open);
         let _ = server.take_outgoing_notifications();
 
@@ -757,7 +757,7 @@ mod tests {
     #[test]
     fn did_change_incremental_range_is_applied() {
         let mut server = Server::new();
-        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id := produce x"}}}"#;
+        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id() := produce x"}}}"#;
         server.handle_json_message(open);
         let _ = server.take_outgoing_notifications();
 
@@ -776,7 +776,7 @@ mod tests {
     #[test]
     fn did_change_incremental_handles_utf16_positions() {
         let mut server = Server::new();
-        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id := produce 😀x"}}}"#;
+        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id() := produce 😀x"}}}"#;
         server.handle_json_message(open);
         let _ = server.take_outgoing_notifications();
 
@@ -791,7 +791,7 @@ mod tests {
     #[test]
     fn did_change_applies_multiple_content_changes_in_order() {
         let mut server = Server::new();
-        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id := produce x"}}}"#;
+        let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///main.lumo","text":"fn id() := produce x"}}}"#;
         server.handle_json_message(open);
         let _ = server.take_outgoing_notifications();
 
@@ -812,7 +812,7 @@ mod tests {
 
     #[test]
     fn highlighting_survives_syntax_error() {
-        let data = semantic_tokens_data("fn id := produce + x");
+        let data = semantic_tokens_data("fn id() := produce + x");
         assert!(!data.is_empty());
     }
 }

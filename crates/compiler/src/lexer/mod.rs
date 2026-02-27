@@ -30,6 +30,9 @@ pub enum Keyword {
     Let,
     In,
     Produce,
+    Thunk,
+    Force,
+    Match,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +49,8 @@ pub enum Symbol {
     ColonEquals,
     Slash,
     Star,
+    FatArrow,
+    Dot,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,6 +179,9 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
                 "let" => LosslessTokenKind::Keyword(Keyword::Let),
                 "in" => LosslessTokenKind::Keyword(Keyword::In),
                 "produce" => LosslessTokenKind::Keyword(Keyword::Produce),
+                "thunk" => LosslessTokenKind::Keyword(Keyword::Thunk),
+                "force" => LosslessTokenKind::Keyword(Keyword::Force),
+                "match" => LosslessTokenKind::Keyword(Keyword::Match),
                 _ => LosslessTokenKind::Ident,
             };
 
@@ -195,6 +203,15 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
             });
             continue;
         }
+        if starts_with_at(input, index, "=>") {
+            index += 2;
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Symbol(Symbol::FatArrow),
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
 
         let symbol = match ch {
             '[' => Some(Symbol::LBracket),
@@ -208,6 +225,7 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
             '=' => Some(Symbol::Equals),
             '/' => Some(Symbol::Slash),
             '*' => Some(Symbol::Star),
+            '.' => Some(Symbol::Dot),
             _ => None,
         };
 
