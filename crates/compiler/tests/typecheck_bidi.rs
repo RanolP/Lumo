@@ -35,7 +35,7 @@ fn reports_type_mismatch() {
 
 #[test]
 fn typechecks_thunk_and_force() {
-    let errs = check("fn f(job: thunk A): A / {} := force job");
+    let errs = check("fn f(job: thunk produce A): produce A / {} := force job");
     assert!(errs.is_empty(), "errors: {errs:?}");
 }
 
@@ -80,7 +80,7 @@ fn pattern_binding_payload_type_mismatch_is_reported() {
     );
     assert!(errs
         .iter()
-        .any(|e| e.contains("type mismatch: expected produce B, got produce C")));
+        .any(|e| e.contains("type mismatch: expected B, got C")));
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn reports_non_exhaustive_match() {
     );
     assert!(errs
         .iter()
-        .any(|e| e.contains("non-exhaustive match: missing variants false")));
+        .any(|e| e.contains("non-exhaustive match: missing patterns .false")));
 }
 
 #[test]
@@ -126,7 +126,7 @@ fn reports_unreachable_arm_after_catchall() {
     );
     assert!(errs
         .iter()
-        .any(|e| e.contains("unreachable match arm: prior catch-all pattern")));
+        .any(|e| e.contains("unreachable match arm: pattern already covered")));
 }
 
 #[test]
@@ -136,12 +136,32 @@ fn reports_unreachable_duplicate_variant_arm() {
     );
     assert!(errs
         .iter()
-        .any(|e| e.contains("unreachable match arm: variant `true` already covered")));
+        .any(|e| e.contains("unreachable match arm: pattern already covered")));
 }
 
 #[test]
-fn typechecks_constructor_application_as_data_value() {
-    let errs = check("data OptionA { .some(A), .none } fn mk(a: A): OptionA / {} := OptionA.some(a)");
+fn nested_patterns_are_checked_for_usefulness_and_exhaustiveness() {
+    let errs = check(
+        "data Bool { .true, .false } data Nat { .zero, .succ(Nat) } fn is_even(n: Nat, t: Bool, f: Bool): produce Bool / {} := match n { .zero => produce t, .succ(.zero) => produce f, .succ(.succ(let n)) => is_even(n, t, f) }",
+    );
+    assert!(errs.is_empty(), "errors: {errs:?}");
+}
+
+#[test]
+fn reports_all_uncovered_nested_patterns() {
+    let errs = check(
+        "data Bool { .true, .false } data Nat { .zero, .succ(Nat) } fn f(n: Nat, b: Bool): produce Bool / {} := match n { .succ(.zero) => produce b }",
+    );
+    assert!(errs
+        .iter()
+        .any(|e| e.contains("non-exhaustive match: missing patterns .succ(.succ(_)), .zero")));
+}
+
+#[test]
+fn typechecks_bundle_field_application_as_computation() {
+    let errs = check(
+        "data OptionA { .some(A), .none } fn mk(a: A): produce OptionA / {} := OptionA.some(a)",
+    );
     assert!(errs.is_empty(), "errors: {errs:?}");
 }
 
@@ -163,4 +183,83 @@ fn reports_missing_dot_in_variant_pattern_name() {
     assert!(errs
         .iter()
         .any(|e| e.contains("variant pattern `some` must be written `.some`")));
+}
+
+#[test]
+fn generic_constructor_none_unifies_with_expected_return_type() {
+    let errs = check(
+        "data Nat { .zero, .succ(Nat) } data Option[A] { .some(A), .none } fn sub1(x: Nat): produce Option[Nat] / {} := match x { .zero => Option.none, .succ(let x) => Option.some(x) }",
+    );
+    assert!(errs.is_empty(), "errors: {errs:?}");
+}
+
+#[test]
+fn generic_match_payload_binds_with_instantiated_type() {
+    let errs = check(
+        "data Nat { .zero, .succ(Nat) } data Option[A] { .some(A), .none } fn get_or_zero(o: Option[Nat], z: Nat): produce Nat / {} := match o { .some(x) => produce x, .none => produce z }",
+    );
+    assert!(errs.is_empty(), "errors: {errs:?}");
+}
+
+#[test]
+fn generic_constructor_without_constraints_reports_inference_failure() {
+    let errs = check(
+        "data Option[A] { .some(A), .none } fn bad(u: Unit): produce Unit / {} := let x = Option.none in produce u",
+    );
+    assert!(errs
+        .iter()
+        .any(|e| e.contains("cannot infer type arguments for bundle field `Option.none`")));
+}
+
+#[test]
+fn match_arms_allow_value_sugar_when_expected_is_produce() {
+    let errs = check(
+        "data Bool { .true, .false } fn not(x: Bool): produce Bool / {} := match x { .true => Bool.false, .false => Bool.true }",
+    );
+    assert!(errs.is_empty(), "errors: {errs:?}");
+}
+
+#[test]
+fn match_arm_rejects_calling_nullary_bundle_field() {
+    let errs = check(
+        "data Bool { .true, .false } fn not(x: Bool): produce Bool / {} := match x { .true => Bool.false(), .false => Bool.true() }",
+    );
+    assert!(errs.iter().any(|e| e.contains("which is not a function")));
+}
+
+#[test]
+fn produce_cannot_wrap_bundle_computation() {
+    let errs =
+        check("data OptionA { .some(A), .none } fn mk(a: A): produce OptionA / {} := produce OptionA.some(a)");
+    assert!(errs.iter().any(|e| e.contains("expected value expression")));
+}
+
+#[test]
+fn recursive_function_call_typechecks() {
+    let errs = check(
+        "data Nat { .zero, .succ(Nat) } fn add(n: Nat, m: Nat): produce Nat / {} := match n { .zero => produce m, .succ(let n) => let next = Nat.succ(m) in add(n, next) }",
+    );
+    assert!(errs.is_empty(), "errors: {errs:?}");
+}
+
+#[test]
+fn mutual_recursive_function_calls_typecheck() {
+    let errs = check(
+        "data Bool { .true, .false } data Nat { .zero, .succ(Nat) } fn even(n: Nat): produce Bool / {} := match n { .zero => Bool.true, .succ(let n) => odd(n) } fn odd(n: Nat): produce Bool / {} := match n { .zero => Bool.false, .succ(let n) => even(n) }",
+    );
+    assert!(errs.is_empty(), "errors: {errs:?}");
+}
+
+#[test]
+fn extern_fn_call_typechecks() {
+    let errs = check(
+        "#[extern = \"string\"] extern type String; #[extern = \"console.log\"] extern fn console_log(msg: String); fn main(msg: String): produce Unit / {} := console_log(msg)",
+    );
+    assert!(errs.is_empty(), "errors: {errs:?}");
+}
+
+#[test]
+fn extern_attribute_value_must_be_string() {
+    let errs = check("#[extern = thunk produce \"x\"] extern type String;");
+    assert!(errs.iter().any(|e| e.contains("expected String")));
 }

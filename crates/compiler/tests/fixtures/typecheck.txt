@@ -2,9 +2,9 @@ fn id(a: A): produce A / {} := produce a
 ---
 id : (A) -> produce A / {}
 ==========
-fn keep(a: A): A / {} := a
+fn keep(a: A): produce A / {} := produce a
 ---
-keep : (A) -> A / {}
+keep : (A) -> produce A / {}
 ==========
 fn f(a: A): produce A / {} := let x = a in produce x
 ---
@@ -45,7 +45,7 @@ ok : (OptionInt, B) -> produce B / {}
 data OptionInt { .some(B), .none }
 fn bad3(a: OptionInt, c: C): produce B / {} := match a { .some(x) => produce c, .none => produce c }
 ---
-ERROR: type mismatch: expected produce B, got produce C
+ERROR: type mismatch: expected B, got C
 ==========
 data Pair { .pair(B, C) }
 data Wrap { .wrap(Pair), .empty }
@@ -62,7 +62,7 @@ ERROR: unknown variant `nope` in match pattern
 data Bool { .true, .false }
 fn ne(b: Bool): produce Bool / {} := match b { .true => produce b }
 ---
-ERROR: non-exhaustive match: missing variants false
+ERROR: non-exhaustive match: missing patterns .false
 ==========
 data Bool { .true, .false }
 fn ex(b: Bool): produce Bool / {} := match b { .true => produce b, _ => produce b }
@@ -72,17 +72,22 @@ ex : (Bool) -> produce Bool / {}
 data Bool { .true, .false }
 fn unreach1(b: Bool): produce Bool / {} := match b { _ => produce b, .true => produce b }
 ---
-ERROR: unreachable match arm: prior catch-all pattern
+ERROR: unreachable match arm: pattern already covered
 ==========
 data Bool { .true, .false }
 fn unreach2(b: Bool): produce Bool / {} := match b { .true => produce b, .true => produce b, .false => produce b }
 ---
-ERROR: unreachable match arm: variant `true` already covered
+ERROR: unreachable match arm: pattern already covered
 ==========
 data OptionA { .some(A), .none }
-fn mk(a: A): OptionA / {} := OptionA.some(a)
+fn mk(a: A): produce OptionA / {} := OptionA.some(a)
 ---
-mk : (A) -> OptionA / {}
+mk : (A) -> produce OptionA / {}
+==========
+data OptionA { .some(A), .none }
+fn badmk(a: A): produce OptionA / {} := produce OptionA.some(a)
+---
+ERROR: expected value expression
 ==========
 data OptionA { .some(A), .none }
 fn badp1(a: OptionA, b: A): produce A / {} := match a { some(x) => produce b, .none => produce b }

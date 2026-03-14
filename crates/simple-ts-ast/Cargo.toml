@@ -1,0 +1,8 @@
+[package]
+name = "simple-ts-ast"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "simple_ts_ast"
+path = "src/lib.rs"

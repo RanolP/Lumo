@@ -4,6 +4,7 @@ use std::path::Path;
 use lumo_compiler::{
     hir,
     lexer::lex,
+    lir,
     lst::lossless,
     parser::{parse, parse_lossless, Expr, Item},
     query::QueryEngine,
@@ -38,18 +39,20 @@ fn parser_fixtures_pipeline_consistency() {
         );
 
         let hir_typed = hir::lower(&typed_from_lex.file);
-        let hir_lossless = hir::lower_lossless(&lossless_parsed);
+        let hir_from_lossless_typed = hir::lower(&typed_from_lossless.file);
         assert_eq!(
-            hir_typed, hir_lossless,
+            hir_typed, hir_from_lossless_typed,
             "HIR mismatch on fixture {}",
             case_name
         );
+        let lir_typed = lir::lower(&hir_typed);
 
         let mut query = QueryEngine::new();
         let virtual_path = format!("fixture-{index}.lumo");
         query.set_file(virtual_path.clone(), source.clone());
         let q_parsed = query.parse(&virtual_path).expect("query parse result");
-        let q_lowered = query.lower(&virtual_path).expect("query lower result");
+        let q_lowered_hir = query.lower_hir(&virtual_path).expect("query hir result");
+        let q_lowered = query.lower(&virtual_path).expect("query lir result");
         let q_diags = query
             .diagnostics(&virtual_path)
             .expect("query diagnostics result");
@@ -60,7 +63,12 @@ fn parser_fixtures_pipeline_consistency() {
             case_name
         );
         assert_eq!(
-            hir_lossless, q_lowered,
+            hir_typed, q_lowered_hir,
+            "query HIR lower mismatch on fixture {}",
+            case_name
+        );
+        assert_eq!(
+            lir_typed, q_lowered,
             "query lower mismatch on fixture {}",
             case_name
         );
@@ -121,6 +129,8 @@ fn render_items(items: &[Item]) -> String {
 
 fn render_item(item: &Item) -> String {
     match item {
+        Item::ExternType(ext) => format!("ExternType(name=\"{}\")", ext.name),
+        Item::ExternFn(ext) => format!("ExternFn(name=\"{}\")", ext.name),
         Item::Data(d) => {
             let variants = d
                 .variants
@@ -137,6 +147,19 @@ fn render_item(item: &Item) -> String {
 fn render_expr(expr: &Expr) -> String {
     match expr {
         Expr::Ident { name, .. } => format!("Variable(\"{}\")", name),
+        Expr::String { value, .. } => format!("String(\"{}\")", value),
+        Expr::Member { object, member, .. } => {
+            format!(
+                "Member(object={}, member=\"{}\")",
+                render_expr(object),
+                member
+            )
+        }
+        Expr::Call { callee, args, .. } => format!(
+            "Call(callee={}, args=[{}])",
+            render_expr(callee),
+            args.iter().map(render_expr).collect::<Vec<_>>().join(", ")
+        ),
         Expr::Produce { expr, .. } => format!("Produce({})", render_expr(expr)),
         Expr::Thunk { expr, .. } => format!("Thunk({})", render_expr(expr)),
         Expr::Force { expr, .. } => format!("Force({})", render_expr(expr)),
@@ -148,24 +171,15 @@ fn render_expr(expr: &Expr) -> String {
             render_expr(value),
             render_expr(body)
         ),
-        Expr::Match { scrutinee, arms, .. } => format!(
+        Expr::Match {
+            scrutinee, arms, ..
+        } => format!(
             "Match(scrutinee={}, arms=[{}])",
             render_expr(scrutinee),
             arms.iter()
                 .map(|arm| format!("{} => {}", arm.pattern, render_expr(&arm.body)))
                 .collect::<Vec<_>>()
                 .join(", ")
-        ),
-        Expr::Apply {
-            owner,
-            member,
-            args,
-            ..
-        } => format!(
-            "Apply(owner=\"{}\", member=\"{}\", args=[{}])",
-            owner,
-            member,
-            args.iter().map(render_expr).collect::<Vec<_>>().join(", ")
         ),
         Expr::Error { .. } => "Error".to_owned(),
     }

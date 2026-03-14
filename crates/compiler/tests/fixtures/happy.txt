@@ -26,7 +26,7 @@ data OptionA { .some(A), .none }
 fn mk() := OptionA.some(a)
 ---
 Data(name="OptionA", variants=["some", "none"])
-Fn(name="mk", body=Apply(owner="OptionA", member="some", args=[Variable("a")]))
+Fn(name="mk", body=Call(callee=Member(object=Variable("OptionA"), member="some"), args=[Variable("a")]))
 ==========
 fn main() := let x = y in produce x
 ---

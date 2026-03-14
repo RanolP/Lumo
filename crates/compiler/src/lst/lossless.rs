@@ -11,12 +11,14 @@ pub enum SyntaxKind {
     File,
     DataDecl,
     FnDecl,
+    ExternDecl,
     LetExpr,
     ProduceExpr,
     ThunkExpr,
     ForceExpr,
     MatchExpr,
     IdentExpr,
+    StringExpr,
     CallExpr,
     Error,
 }
@@ -81,6 +83,10 @@ impl Parser {
         let mut children = Vec::new();
 
         while !self.eof() {
+            if self.at_symbol_text("#") {
+                self.consume_attribute_tokens(&mut children);
+                continue;
+            }
             if self.at_keyword(Keyword::Data) {
                 let node = self.parse_data_decl();
                 children.push(SyntaxElement::Node(Box::new(node)));
@@ -91,13 +97,18 @@ impl Parser {
                 children.push(SyntaxElement::Node(Box::new(node)));
                 continue;
             }
+            if self.at_keyword(Keyword::Extern) {
+                let node = self.parse_extern_decl();
+                children.push(SyntaxElement::Node(Box::new(node)));
+                continue;
+            }
 
             if self.at_trivia_or_unknown() {
                 children.push(SyntaxElement::Token(self.bump().unwrap()));
                 continue;
             }
 
-            self.error_here("expected top-level `data` or `fn`");
+            self.error_here("expected top-level `data`, `fn`, or `extern`");
             children.push(SyntaxElement::Node(Box::new(self.parse_error_node())));
         }
 
@@ -157,6 +168,43 @@ impl Parser {
         node_from_children(SyntaxKind::FnDecl, children)
     }
 
+    fn parse_extern_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // extern
+
+        while !self.eof() && !self.at_symbol_text(";") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        if self.at_symbol_text(";") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        node_from_children(SyntaxKind::ExternDecl, children)
+    }
+
+    fn consume_attribute_tokens(&mut self, children: &mut Vec<SyntaxElement>) {
+        while self.at_symbol_text("#") {
+            children.push(SyntaxElement::Token(self.bump().unwrap())); // #
+            if self.at_symbol_text("[") {
+                children.push(SyntaxElement::Token(self.bump().unwrap())); // [
+            } else {
+                self.error_here("expected `[` after `#`");
+                return;
+            }
+
+            let mut depth = 1usize;
+            while !self.eof() && depth > 0 {
+                if self.at_symbol_text("[") {
+                    depth += 1;
+                } else if self.at_symbol_text("]") {
+                    depth = depth.saturating_sub(1);
+                }
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
+            }
+        }
+    }
+
     fn parse_expr(&mut self) -> SyntaxNode {
         let mut leading = Vec::new();
         while self.at_trivia() {
@@ -175,6 +223,8 @@ impl Parser {
             self.parse_match_expr()
         } else if self.at_ident() {
             self.parse_ident_or_call_expr()
+        } else if self.at_string_lit() {
+            self.parse_string_expr()
         } else {
             self.error_here("expected expression");
             self.parse_error_node()
@@ -196,7 +246,10 @@ impl Parser {
         children.push(SyntaxElement::Token(self.bump().unwrap())); // let
 
         while !self.eof() && !self.at_symbol_text("=") {
-            if self.at_keyword(Keyword::Data) || self.at_keyword(Keyword::Fn) {
+            if self.at_keyword(Keyword::Data)
+                || self.at_keyword(Keyword::Fn)
+                || self.at_keyword(Keyword::Extern)
+            {
                 break;
             }
             children.push(SyntaxElement::Token(self.bump().unwrap()));
@@ -212,7 +265,10 @@ impl Parser {
         }
 
         while !self.eof() && !self.at_keyword(Keyword::In) {
-            if self.at_keyword(Keyword::Data) || self.at_keyword(Keyword::Fn) {
+            if self.at_keyword(Keyword::Data)
+                || self.at_keyword(Keyword::Fn)
+                || self.at_keyword(Keyword::Extern)
+            {
                 break;
             }
             children.push(SyntaxElement::Token(self.bump().unwrap()));
@@ -233,13 +289,21 @@ impl Parser {
         let mut children = Vec::new();
         children.push(SyntaxElement::Token(self.bump().unwrap())); // produce
 
-        if self.eof() || self.at_keyword(Keyword::Data) || self.at_keyword(Keyword::Fn) {
+        if self.eof()
+            || self.at_keyword(Keyword::Data)
+            || self.at_keyword(Keyword::Fn)
+            || self.at_keyword(Keyword::Extern)
+        {
             self.error_here("expected payload expression after `produce`");
             return node_from_children(SyntaxKind::ProduceExpr, children);
         }
 
         if self.at_ident() {
-            children.push(SyntaxElement::Node(Box::new(self.parse_ident_or_call_expr())));
+            children.push(SyntaxElement::Node(Box::new(
+                self.parse_ident_or_call_expr(),
+            )));
+        } else if self.at_string_lit() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_string_expr())));
         } else if self.at_keyword(Keyword::Let) {
             let let_node = self.parse_let_expr();
             children.push(SyntaxElement::Node(Box::new(let_node)));
@@ -253,6 +317,7 @@ impl Parser {
                 || self.at_keyword(Keyword::Thunk)
                 || self.at_keyword(Keyword::Force)
                 || self.at_keyword(Keyword::Match)
+                || self.at_string_lit()
             {
                 let nested = self.parse_expr();
                 children.push(SyntaxElement::Node(Box::new(nested)));
@@ -333,39 +398,57 @@ impl Parser {
         let mut children = Vec::new();
         children.push(SyntaxElement::Token(self.bump().unwrap())); // ident
 
-        if !self.at_symbol_text(".") {
-            return node_from_children(SyntaxKind::IdentExpr, children);
-        }
-
-        children.push(SyntaxElement::Token(self.bump().unwrap())); // .
-        if self.at_ident() {
-            children.push(SyntaxElement::Token(self.bump().unwrap())); // member
-        } else {
-            self.error_here("expected member name after `.`");
-            return node_from_children(SyntaxKind::CallExpr, children);
-        }
-
-        if !self.at_symbol_text("(") {
-            self.error_here("expected `(` in member call expression");
-            return node_from_children(SyntaxKind::CallExpr, children);
-        }
-        children.push(SyntaxElement::Token(self.bump().unwrap())); // (
-        while !self.eof() && !self.at_symbol_text(")") {
-            children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
-            if self.at_symbol_text(",") {
-                children.push(SyntaxElement::Token(self.bump().unwrap()));
-            } else {
-                break;
+        let mut has_postfix = false;
+        loop {
+            if self.at_symbol_text(".") {
+                has_postfix = true;
+                children.push(SyntaxElement::Token(self.bump().unwrap())); // .
+                if self.at_ident() {
+                    children.push(SyntaxElement::Token(self.bump().unwrap())); // member
+                } else {
+                    self.error_here("expected member name after `.`");
+                    break;
+                }
+                continue;
             }
+
+            if self.at_symbol_text("(") {
+                has_postfix = true;
+                children.push(SyntaxElement::Token(self.bump().unwrap())); // (
+                while !self.eof() && !self.at_symbol_text(")") {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+                    if self.at_symbol_text(",") {
+                        children.push(SyntaxElement::Token(self.bump().unwrap()));
+                    } else {
+                        break;
+                    }
+                }
+
+                if self.at_symbol_text(")") {
+                    children.push(SyntaxElement::Token(self.bump().unwrap()));
+                } else {
+                    self.error_here("expected `)` in call expression");
+                }
+                continue;
+            }
+
+            break;
         }
 
-        if self.at_symbol_text(")") {
-            children.push(SyntaxElement::Token(self.bump().unwrap()));
-        } else {
-            self.error_here("expected `)` in call expression");
-        }
+        node_from_children(
+            if has_postfix {
+                SyntaxKind::CallExpr
+            } else {
+                SyntaxKind::IdentExpr
+            },
+            children,
+        )
+    }
 
-        node_from_children(SyntaxKind::CallExpr, children)
+    fn parse_string_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // string literal
+        node_from_children(SyntaxKind::StringExpr, children)
     }
 
     fn parse_error_node(&mut self) -> SyntaxNode {
@@ -411,12 +494,28 @@ impl Parser {
         )
     }
 
+    fn at_string_lit(&self) -> bool {
+        matches!(
+            self.current().map(|t| &t.kind),
+            Some(LosslessTokenKind::StringLit)
+        )
+    }
+
     fn at_symbol_text(&self, text: &str) -> bool {
         self.current().map(|t| t.text.as_str()) == Some(text)
     }
 
     fn current_span(&self) -> Span {
-        self.current().map(|t| t.span).unwrap_or(Span::new(0, 0))
+        self.current()
+            .map(|t| t.span)
+            .or_else(|| {
+                self.index.checked_sub(1).and_then(|idx| {
+                    self.tokens
+                        .get(idx)
+                        .map(|t| Span::new(t.span.end, t.span.end))
+                })
+            })
+            .unwrap_or(Span::new(0, 0))
     }
 
     fn current(&self) -> Option<&LosslessToken> {
@@ -436,10 +535,7 @@ impl Parser {
     }
 
     fn error_here(&mut self, message: &str) {
-        let span = self
-            .current()
-            .map(|t| t.span)
-            .unwrap_or_else(|| Span::new(0, 0));
+        let span = self.current_span();
         self.errors.push(ParseError {
             span,
             message: message.to_owned(),

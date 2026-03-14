@@ -1,0 +1,269 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #0f1117;
+  color: #f4f5f7;
+}
+
+.app-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #232634;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.header p {
+  margin: 0.25rem 0 0;
+  color: #b8bdd0;
+}
+
+.workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.source-pane {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 180px;
+}
+
+.editor {
+  min-height: 0;
+}
+
+.problems-panel {
+  border-top: 1px solid #232634;
+  background: #10131f;
+  padding: 0.5rem 0.75rem;
+  overflow: auto;
+}
+
+.problems-panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.problems-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.problem-item {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 0.78rem;
+  color: #ffb4b4;
+  line-height: 1.35;
+}
+
+.sidebar {
+  border-left: 1px solid #232634;
+  padding: 1rem;
+  overflow: auto;
+  background: #121522;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.panel-row {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.panel-controls {
+  margin-bottom: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.ts-panel {
+  display: grid;
+  grid-template-rows: minmax(0, 320px) minmax(110px, auto);
+  gap: 0.75rem;
+}
+
+.tab-btn {
+  border: 1px solid #2b2f42;
+  background: #0f1424;
+  color: #c6ccdc;
+  border-radius: 6px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  border-color: #2e6df6;
+  color: #ffffff;
+}
+
+.run-btn {
+  border: 1px solid #2e6df6;
+  background: #2e6df6;
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sidebar h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.sidebar pre {
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+  background: #0d101b;
+  border: 1px solid #232634;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ts-view {
+  border: 1px solid #232634;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ts-problems-panel {
+  border: 1px solid #232634;
+  border-radius: 8px;
+  background: #0d101b;
+  padding: 0.75rem;
+  overflow: auto;
+}
+
+.subpanel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.subpanel-header h2 {
+  margin: 0;
+}
+
+.problems-badge {
+  min-width: 1.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #16203b;
+  color: #dce6ff;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.ast-view {
+  height: 320px;
+  overflow: auto;
+}
+
+.is-hidden {
+  display: none;
+}
+
+.runtime-output {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  white-space: pre-wrap;
+}
+
+.ts-problems-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+.ts-problem-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+  color: #dde4ff;
+}
+
+.problem-severity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.severity-error .problem-severity {
+  background: rgba(255, 110, 110, 0.16);
+  color: #ff8f8f;
+}
+
+.severity-warning .problem-severity {
+  background: rgba(255, 196, 92, 0.16);
+  color: #ffd27e;
+}
+
+.severity-info .problem-severity,
+.severity-hint .problem-severity {
+  background: rgba(104, 160, 255, 0.16);
+  color: #8cb4ff;
+}
+
+.error {
+  color: #ff8f8f;
+  font-weight: 600;
+}
+
+.hint {
+  color: #b8bdd0;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 960px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    border-left: 0;
+    border-top: 1px solid #232634;
+  }
+}

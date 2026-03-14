@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::Diagnostic,
-    hir, lst,
+    hir, lir, lst,
     parser::{self, ParseOutput},
+    typecheck,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,8 +43,10 @@ struct FileEntry {
     source_hash: u64,
     parsed_at_hash: Option<u64>,
     parse: Option<ParseResult>,
+    lowered_hir_at_hash: Option<u64>,
+    lowered_hir: Option<hir::File>,
     lowered_at_hash: Option<u64>,
-    lowered: Option<hir::File>,
+    lowered: Option<lir::File>,
     diagnostics_at_hash: Option<u64>,
     diagnostics: Option<Vec<Diagnostic>>,
 }
@@ -56,6 +59,8 @@ impl FileEntry {
             source_hash,
             parsed_at_hash: None,
             parse: None,
+            lowered_hir_at_hash: None,
+            lowered_hir: None,
             lowered_at_hash: None,
             lowered: None,
             diagnostics_at_hash: None,
@@ -74,6 +79,8 @@ impl FileEntry {
         self.source_hash = new_hash;
         self.parsed_at_hash = None;
         self.parse = None;
+        self.lowered_hir_at_hash = None;
+        self.lowered_hir = None;
         self.lowered_at_hash = None;
         self.lowered = None;
         self.diagnostics_at_hash = None;
@@ -134,14 +141,30 @@ impl QueryEngine {
         Some(parse)
     }
 
-    pub fn lower(&mut self, file: &str) -> Option<hir::File> {
+    pub fn lower_hir(&mut self, file: &str) -> Option<hir::File> {
+        let source_hash = self.files.get(file)?.source_hash;
+        if self.files.get(file)?.lowered_hir_at_hash == Some(source_hash) {
+            return self.files.get(file)?.lowered_hir.clone();
+        }
+
+        let parsed = self.parse(file)?;
+        let lowered = hir::lower(&parsed.file);
+
+        let entry = self.files.get_mut(file)?;
+        entry.lowered_hir_at_hash = Some(entry.source_hash);
+        entry.lowered_hir = Some(lowered.clone());
+
+        Some(lowered)
+    }
+
+    pub fn lower(&mut self, file: &str) -> Option<lir::File> {
         let source_hash = self.files.get(file)?.source_hash;
         if self.files.get(file)?.lowered_at_hash == Some(source_hash) {
             return self.files.get(file)?.lowered.clone();
         }
 
-        let parsed = self.parse(file)?;
-        let lowered = hir::lower_lossless(&parsed.lossless);
+        let lowered_hir = self.lower_hir(file)?;
+        let lowered = lir::lower(&lowered_hir);
 
         let entry = self.files.get_mut(file)?;
         entry.lowered_at_hash = Some(entry.source_hash);
@@ -158,7 +181,7 @@ impl QueryEngine {
         }
 
         let parsed = self.parse(file)?;
-        let diags = parsed
+        let mut diags = parsed
             .errors
             .iter()
             .map(|e| Diagnostic {
@@ -167,6 +190,12 @@ impl QueryEngine {
                 message: e.message.clone(),
             })
             .collect::<Vec<_>>();
+        let type_errors = typecheck::typecheck_file(&parsed.file);
+        diags.extend(type_errors.into_iter().map(|e| Diagnostic {
+            start: e.span.start,
+            end: e.span.end,
+            message: e.message,
+        }));
 
         let entry = self.files.get_mut(file)?;
         entry.diagnostics_at_hash = Some(entry.source_hash);

@@ -138,16 +138,82 @@ fn parses_apply_expression() {
     let Item::Fn(f) = &parsed.file.items[0] else {
         panic!("expected fn item")
     };
-    let Expr::Apply {
-        owner,
-        member,
-        args,
-        ..
-    } = &f.body
-    else {
-        panic!("expected apply body")
+    let Expr::Call { callee, args, .. } = &f.body else {
+        panic!("expected call body")
     };
-    assert_eq!(owner, "Option");
+    let Expr::Member { object, member, .. } = callee.as_ref() else {
+        panic!("expected member callee")
+    };
+    let Expr::Ident { name, .. } = object.as_ref() else {
+        panic!("expected ident object")
+    };
+    assert_eq!(name, "Option");
     assert_eq!(member, "some");
     assert_eq!(args.len(), 1);
+}
+
+#[test]
+fn parses_projection_without_call_for_nullary_ctor() {
+    let src = "fn t() := Bool.true";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+
+    let Item::Fn(f) = &parsed.file.items[0] else {
+        panic!("expected fn item")
+    };
+    let Expr::Member { object, member, .. } = &f.body else {
+        panic!("expected member body")
+    };
+    let Expr::Ident { name, .. } = object.as_ref() else {
+        panic!("expected ident object")
+    };
+    assert_eq!(name, "Bool");
+    assert_eq!(member, "true");
+}
+
+#[test]
+fn parses_extern_items_with_attributes() {
+    let src =
+        "#[extern = \"string\"] extern type String;\n#[extern(name = \"console.log\")] extern fn console_log(msg: String);";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    assert_eq!(parsed.file.items.len(), 2);
+
+    let Item::ExternType(ext_ty) = &parsed.file.items[0] else {
+        panic!("expected extern type item")
+    };
+    assert_eq!(ext_ty.name, "String");
+    assert_eq!(ext_ty.attrs.len(), 1);
+    assert_eq!(ext_ty.attrs[0].name, "extern");
+    assert!(ext_ty.attrs[0].args.is_empty());
+    let Some(Expr::String { value, .. }) = ext_ty.attrs[0].value.as_ref() else {
+        panic!("expected direct extern attribute string value")
+    };
+    assert_eq!(value, "string");
+
+    let Item::ExternFn(ext_fn) = &parsed.file.items[1] else {
+        panic!("expected extern fn item")
+    };
+    assert_eq!(ext_fn.name, "console_log");
+    assert_eq!(ext_fn.attrs.len(), 1);
+    let Expr::String { value, .. } = &ext_fn.attrs[0].args[0].value else {
+        panic!("expected extern name arg string value")
+    };
+    assert_eq!(value, "console.log");
+    assert_eq!(ext_fn.params.len(), 1);
+    assert_eq!(ext_fn.params[0].name, "msg");
+    assert_eq!(ext_fn.params[0].ty.repr, "String");
+}
+
+#[test]
+fn parses_extern_fn_without_semicolon_before_next_item() {
+    let src = "#[extern(name = \"console.log\")] extern fn console_log(msg: String) fn main(msg: String): produce Unit := console_log(msg)";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    assert_eq!(parsed.file.items.len(), 2);
+    assert!(matches!(parsed.file.items[0], Item::ExternFn(_)));
+    assert!(matches!(parsed.file.items[1], Item::Fn(_)));
 }

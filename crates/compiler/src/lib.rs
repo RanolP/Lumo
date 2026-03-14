@@ -1,6 +1,8 @@
+pub mod backend;
 pub mod diagnostics;
 pub mod hir;
 pub mod lexer;
+pub mod lir;
 pub mod lst;
 pub mod parser;
 pub mod query;

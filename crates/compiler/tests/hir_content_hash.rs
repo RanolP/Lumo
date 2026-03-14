@@ -1,6 +1,7 @@
 use lumo_compiler::{
     hir::{self, Expr, Item},
     lexer::lex,
+    lir,
     lst::lossless,
     parser::parse,
 };
@@ -14,6 +15,11 @@ fn lower_typed(src: &str) -> hir::File {
 fn lower_lossless(src: &str) -> hir::File {
     let parsed = lossless::parse(src);
     hir::lower_lossless(&parsed)
+}
+
+fn lower_lir(src: &str) -> lir::File {
+    let hir = lower_typed(src);
+    lir::lower(&hir)
 }
 
 #[test]
@@ -140,11 +146,11 @@ fn lossless_lower_handles_let_and_produce() {
 fn query_path_matches_direct_lossless_lower() {
     let src = "data X { .a, .b } fn f() := produce x";
 
-    let direct = lower_lossless(src);
+    let direct = lower_typed(src);
 
     let mut q = lumo_compiler::query::QueryEngine::new();
     q.set_file("main.lumo", src);
-    let via_query = q.lower("main.lumo").expect("lowered");
+    let via_query = q.lower_hir("main.lumo").expect("lowered");
 
     assert_eq!(direct, via_query);
 }
@@ -154,7 +160,7 @@ fn typed_and_lossless_lower_match_on_mvp_samples() {
     let cases = [
         "fn f() := produce x",
         "fn f() := let x = y in produce x",
-        "data Option[A] { .some(A), .none } fn id() := produce a",
+        "data Option[A] { .some, .none } fn id() := produce a",
         "data Pair { .pair } fn mk() := let p = q in p",
     ];
 
@@ -166,7 +172,7 @@ fn typed_and_lossless_lower_match_on_mvp_samples() {
 }
 
 #[test]
-fn match_scrutinee_is_lowered_with_implicit_unroll() {
+fn hir_keeps_match_scrutinee_as_user_syntax() {
     let file = lower_typed("fn f() := match a { x => produce x }");
     let Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
@@ -174,8 +180,47 @@ fn match_scrutinee_is_lowered_with_implicit_unroll() {
 
     match &f.body {
         Expr::Match { scrutinee, .. } => match scrutinee.as_ref() {
-            Expr::Unroll { expr, .. } => match expr.as_ref() {
-                Expr::Ident { name, .. } => assert_eq!(name, "a"),
+            Expr::Ident { name, .. } => assert_eq!(name, "a"),
+            other => panic!("expected raw ident scrutinee, got {other:?}"),
+        },
+        other => panic!("expected match body, got {other:?}"),
+    }
+}
+
+#[test]
+fn hir_keeps_ctor_call_as_user_syntax() {
+    let file = lower_typed("data OptionA { .some(A), .none } fn mk() := OptionA.some(a)");
+    let Item::Fn(f) = &file.items[1] else {
+        panic!("expected fn")
+    };
+
+    match &f.body {
+        Expr::Call { callee, args, .. } => {
+            let Expr::Member { object, member, .. } = callee.as_ref() else {
+                panic!("expected member callee")
+            };
+            let Expr::Ident { name, .. } = object.as_ref() else {
+                panic!("expected ident owner")
+            };
+            assert_eq!(name, "OptionA");
+            assert_eq!(member, "some");
+            assert_eq!(args.len(), 1);
+        }
+        other => panic!("expected user-level call, got {other:?}"),
+    }
+}
+
+#[test]
+fn lir_inserts_implicit_unroll_for_match_scrutinee() {
+    let file = lower_lir("fn f() := match a { x => produce x }");
+    let lir::Item::Fn(f) = &file.items[0] else {
+        panic!("expected fn")
+    };
+
+    match &f.body {
+        lir::Expr::Match { scrutinee, .. } => match scrutinee.as_ref() {
+            lir::Expr::Unroll { expr, .. } => match expr.as_ref() {
+                lir::Expr::Ident { name, .. } => assert_eq!(name, "a"),
                 other => panic!("expected ident in unroll, got {other:?}"),
             },
             other => panic!("expected implicit unroll scrutinee, got {other:?}"),
@@ -185,15 +230,15 @@ fn match_scrutinee_is_lowered_with_implicit_unroll() {
 }
 
 #[test]
-fn data_ctor_is_lowered_with_implicit_roll() {
-    let file = lower_typed("data OptionA { .some(A), .none } fn mk() := OptionA.some(a)");
-    let Item::Fn(f) = &file.items[1] else {
+fn lir_inserts_implicit_roll_for_data_ctor() {
+    let file = lower_lir("data OptionA { .some(A), .none } fn mk() := OptionA.some(a)");
+    let lir::Item::Fn(f) = &file.items[1] else {
         panic!("expected fn")
     };
 
     match &f.body {
-        Expr::Roll { expr, .. } => match expr.as_ref() {
-            Expr::Ctor { name, args, .. } => {
+        lir::Expr::Roll { expr, .. } => match expr.as_ref() {
+            lir::Expr::Ctor { name, args, .. } => {
                 assert_eq!(name, "OptionA.some");
                 assert_eq!(args.len(), 1);
             }
@@ -201,4 +246,30 @@ fn data_ctor_is_lowered_with_implicit_roll() {
         },
         other => panic!("expected implicit roll, got {other:?}"),
     }
+}
+
+#[test]
+fn data_variant_payload_types_are_preserved_in_hir() {
+    let file = lower_typed("data Maybe { .some(Bool), .none }");
+    let Item::Data(d) = &file.items[0] else {
+        panic!("expected data")
+    };
+    assert_eq!(d.variants[0].name, "some");
+    assert_eq!(d.variants[0].payload_types, vec!["Bool"]);
+    assert_eq!(d.variants[1].name, "none");
+    assert!(d.variants[1].payload_types.is_empty());
+}
+
+#[test]
+fn data_generics_are_preserved_in_hir() {
+    let typed = lower_typed("data Option[A, B] { .some(A), .none }");
+    let lossless = lower_lossless("data Option[A, B] { .some, .none }");
+    let Item::Data(d) = &typed.items[0] else {
+        panic!("expected data")
+    };
+    assert_eq!(d.generics, vec!["A", "B"]);
+    let Item::Data(ld) = &lossless.items[0] else {
+        panic!("expected data")
+    };
+    assert_eq!(ld.generics, vec!["A", "B"]);
 }

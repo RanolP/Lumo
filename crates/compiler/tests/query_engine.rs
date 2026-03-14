@@ -72,3 +72,39 @@ fn cache_is_invalidated_when_source_changes() {
     assert!(stats_after.lower_computes > stats_before.lower_computes);
     assert!(stats_after.diagnostics_computes > stats_before.diagnostics_computes);
 }
+
+#[test]
+fn eof_diagnostics_use_eof_span_instead_of_zero_zero() {
+    let mut q = QueryEngine::new();
+    let src = "fn broken() := produce";
+    q.set_file("main.lumo", src);
+
+    let diagnostics = q.diagnostics("main.lumo").expect("diagnostics result");
+    assert!(diagnostics.iter().any(|d| d
+        .message
+        .contains("expected payload expression after `produce`")));
+    assert!(diagnostics
+        .iter()
+        .any(|d| d.message.contains("expected expression")));
+    assert!(
+        diagnostics
+            .iter()
+            .all(|d| d.start == src.len() && d.end == src.len()),
+        "expected EOF diagnostics at byte {}, got {:?}",
+        src.len(),
+        diagnostics
+    );
+}
+
+#[test]
+fn extern_fn_declaration_without_body_is_not_parsed_as_fn_decl() {
+    let mut q = QueryEngine::new();
+    let src = "#[extern(name = \"string\")] extern type String;\nextern fn console_log(s: String): produce Unit;";
+    q.set_file("main.lumo", src);
+
+    let diagnostics = q.diagnostics("main.lumo").expect("diagnostics result");
+    assert!(
+        diagnostics.is_empty(),
+        "expected no diagnostics, got {diagnostics:?}"
+    );
+}

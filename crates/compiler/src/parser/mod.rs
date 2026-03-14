@@ -13,8 +13,42 @@ pub struct File {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Item {
+    ExternType(ExternTypeDecl),
+    ExternFn(ExternFnDecl),
     Data(DataDecl),
     Fn(FnDecl),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attribute {
+    pub name: String,
+    pub value: Option<Expr>,
+    pub args: Vec<AttributeArg>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttributeArg {
+    pub key: String,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternTypeDecl {
+    pub attrs: Vec<Attribute>,
+    pub name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternFnDecl {
+    pub attrs: Vec<Attribute>,
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<TypeSig>,
+    pub effect: Option<EffectSig>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +109,20 @@ pub enum Expr {
         name: String,
         span: Span,
     },
+    String {
+        value: String,
+        span: Span,
+    },
+    Member {
+        object: Box<Expr>,
+        member: String,
+        span: Span,
+    },
+    Call {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+        span: Span,
+    },
     Produce {
         expr: Box<Expr>,
         span: Span,
@@ -96,12 +144,6 @@ pub enum Expr {
     Match {
         scrutinee: Box<Expr>,
         arms: Vec<MatchArm>,
-        span: Span,
-    },
-    Apply {
-        owner: String,
-        member: String,
-        args: Vec<Expr>,
         span: Span,
     },
     Error {
@@ -137,16 +179,35 @@ pub fn parse(tokens: &[Token], lex_errors: &[LexError]) -> ParseOutput {
 
     let mut items = Vec::new();
     while !p.eof() {
+        let attrs = p.parse_attributes();
+
+        if p.at_keyword(Keyword::Extern) {
+            if let Some(item) = p.parse_extern_item(attrs) {
+                items.push(item);
+            }
+            continue;
+        }
         if p.at_keyword(Keyword::Data) {
+            if !attrs.is_empty() {
+                p.error_here("attributes are only supported on `extern` items");
+            }
             items.push(Item::Data(p.parse_data_decl()));
             continue;
         }
         if p.at_keyword(Keyword::Fn) {
+            if !attrs.is_empty() {
+                p.error_here("attributes are only supported on `extern` items");
+            }
             items.push(Item::Fn(p.parse_fn_decl()));
             continue;
         }
 
-        p.error_here("expected top-level `data` or `fn`");
+        if !attrs.is_empty() {
+            p.error_here("attribute must be followed by an item declaration");
+            continue;
+        }
+
+        p.error_here("expected top-level `data`, `fn`, or `extern`");
         p.bump();
     }
 
@@ -189,6 +250,10 @@ fn collect_lossless_tokens(
                     kind: TokenKind::Ident(t.text.clone()),
                     span: t.span,
                 }),
+                crate::lexer::LosslessTokenKind::StringLit => tokens.push(Token {
+                    kind: TokenKind::StringLit(t.text.clone()),
+                    span: t.span,
+                }),
                 crate::lexer::LosslessTokenKind::Symbol(sym) => tokens.push(Token {
                     kind: TokenKind::Symbol(*sym),
                     span: t.span,
@@ -219,6 +284,223 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+    fn parse_attributes(&mut self) -> Vec<Attribute> {
+        let mut attrs = Vec::new();
+        while self.at_symbol(Symbol::Hash) {
+            attrs.push(self.parse_attribute());
+        }
+        attrs
+    }
+
+    fn parse_attribute(&mut self) -> Attribute {
+        let hash = self.expect_symbol(Symbol::Hash);
+        self.expect_symbol(Symbol::LBracket);
+        let name = self.expect_word();
+        let mut value = None;
+        let mut args = Vec::new();
+        if self.at_symbol(Symbol::Equals) {
+            self.bump();
+            value = Some(self.parse_attribute_expr_until(
+                |p| p.at_symbol(Symbol::RBracket),
+                "expected attribute value expression",
+            ));
+        } else if self.at_symbol(Symbol::LParen) {
+            self.bump();
+            while !self.eof() && !self.at_symbol(Symbol::RParen) {
+                let key_start = self.current_span();
+                let key = self.expect_ident();
+                self.expect_symbol(Symbol::Equals);
+                let value = self.parse_attribute_expr_until(
+                    |p| p.at_symbol(Symbol::Comma) || p.at_symbol(Symbol::RParen),
+                    "expected attribute argument expression",
+                );
+                let value_end = self
+                    .tokens
+                    .get(self.index)
+                    .map(|t| t.span.start)
+                    .unwrap_or(key_start.end);
+                args.push(AttributeArg {
+                    key,
+                    value,
+                    span: Span::new(key_start.start, value_end.max(key_start.start)),
+                });
+                if self.at_symbol(Symbol::Comma) {
+                    self.bump();
+                } else {
+                    break;
+                }
+            }
+            self.expect_symbol(Symbol::RParen);
+        }
+        let end = self.expect_symbol(Symbol::RBracket);
+        Attribute {
+            name,
+            value,
+            args,
+            span: Span::new(hash.start, end.end),
+        }
+    }
+
+    fn parse_attribute_expr_until<F>(&mut self, stop: F, missing_message: &str) -> Expr
+    where
+        F: Fn(&Self) -> bool,
+    {
+        let start_span = self.current_span();
+        let start = self.index;
+
+        let mut paren_depth = 0_usize;
+        let mut bracket_depth = 0_usize;
+        let mut brace_depth = 0_usize;
+
+        while !self.eof() {
+            if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && stop(self) {
+                break;
+            }
+            let token = match self.current() {
+                Some(token) => token,
+                None => break,
+            };
+            match token.kind {
+                TokenKind::Symbol(Symbol::LParen) => paren_depth += 1,
+                TokenKind::Symbol(Symbol::RParen) => {
+                    if paren_depth > 0 {
+                        paren_depth -= 1;
+                    }
+                }
+                TokenKind::Symbol(Symbol::LBracket) => bracket_depth += 1,
+                TokenKind::Symbol(Symbol::RBracket) => {
+                    if bracket_depth > 0 {
+                        bracket_depth -= 1;
+                    }
+                }
+                TokenKind::Symbol(Symbol::LBrace) => brace_depth += 1,
+                TokenKind::Symbol(Symbol::RBrace) => {
+                    if brace_depth > 0 {
+                        brace_depth -= 1;
+                    }
+                }
+                _ => {}
+            }
+            self.bump();
+        }
+
+        if start == self.index {
+            self.error_here(missing_message);
+            return Expr::Error { span: start_span };
+        }
+
+        let tokens = &self.tokens[start..self.index];
+        let mut sub = Parser {
+            tokens,
+            index: 0,
+            errors: Vec::new(),
+        };
+        let expr = sub.parse_expr();
+        if !sub.eof() {
+            sub.error_here("unexpected tokens in attribute expression");
+            while !sub.eof() {
+                sub.bump();
+            }
+        }
+        self.errors.extend(sub.errors);
+        expr
+    }
+
+    fn parse_extern_item(&mut self, attrs: Vec<Attribute>) -> Option<Item> {
+        let start = self.expect_keyword(Keyword::Extern);
+        if self.at_ident_text("type") {
+            return Some(Item::ExternType(self.parse_extern_type_decl(attrs, start)));
+        }
+        if self.at_keyword(Keyword::Fn) {
+            return Some(Item::ExternFn(self.parse_extern_fn_decl(attrs, start)));
+        }
+        self.error_here("expected `type` or `fn` after `extern`");
+        while !self.eof() && !self.at_symbol(Symbol::Semi) {
+            if self.at_keyword(Keyword::Data)
+                || self.at_keyword(Keyword::Fn)
+                || self.at_keyword(Keyword::Extern)
+            {
+                break;
+            }
+            self.bump();
+        }
+        if self.at_symbol(Symbol::Semi) {
+            self.bump();
+        }
+        None
+    }
+
+    fn parse_extern_type_decl(&mut self, attrs: Vec<Attribute>, start: Span) -> ExternTypeDecl {
+        self.expect_ident_text("type");
+        let name = self.expect_ident();
+        let end = self.expect_symbol(Symbol::Semi);
+        ExternTypeDecl {
+            attrs,
+            name,
+            span: Span::new(start.start, end.end),
+        }
+    }
+
+    fn parse_extern_fn_decl(&mut self, attrs: Vec<Attribute>, start: Span) -> ExternFnDecl {
+        self.expect_keyword(Keyword::Fn);
+        let name = self.expect_ident();
+        let params = if self.at_symbol(Symbol::LParen) {
+            self.parse_params()
+        } else {
+            self.error_here("expected parameter list `(...)` after extern fn name");
+            Vec::new()
+        };
+
+        let mut return_type = None;
+        if self.at_symbol(Symbol::Colon) {
+            self.bump();
+            let (repr, span) = self.collect_signature_until(|p| {
+                p.at_symbol(Symbol::Slash) || p.at_symbol(Symbol::Semi)
+            });
+            if let Some(span) = span {
+                return_type = Some(TypeSig { repr, span });
+            } else {
+                self.error_here("expected return type after `:`");
+            }
+        }
+        let mut effect = None;
+        if self.at_symbol(Symbol::Slash) {
+            self.bump();
+            let (repr, span) = self.collect_signature_until(|p| p.at_symbol(Symbol::Semi));
+            if let Some(span) = span {
+                effect = Some(EffectSig { repr, span });
+            } else {
+                self.error_here("expected effect after `/`");
+            }
+        }
+
+        let end = if self.at_symbol(Symbol::Semi) {
+            self.bump().map(|t| t.span).unwrap_or(start)
+        } else if self.eof()
+            || self.at_keyword(Keyword::Data)
+            || self.at_keyword(Keyword::Fn)
+            || self.at_keyword(Keyword::Extern)
+            || self.at_symbol(Symbol::Hash)
+        {
+            self.tokens
+                .get(self.index.saturating_sub(1))
+                .map(|t| t.span)
+                .unwrap_or(start)
+        } else {
+            self.error_here("expected `;` after extern fn declaration");
+            self.current_span()
+        };
+
+        ExternFnDecl {
+            attrs,
+            name,
+            params,
+            return_type,
+            effect,
+            span: Span::new(start.start, end.end),
+        }
+    }
+
     fn parse_data_decl(&mut self) -> DataDecl {
         let start = self.expect_keyword(Keyword::Data);
         let name = self.expect_ident();
@@ -337,7 +619,10 @@ impl<'a> Parser<'a> {
         }
 
         while !self.eof() && !self.at_symbol(Symbol::ColonEquals) {
-            if self.at_keyword(Keyword::Data) || self.at_keyword(Keyword::Fn) {
+            if self.at_keyword(Keyword::Data)
+                || self.at_keyword(Keyword::Fn)
+                || self.at_keyword(Keyword::Extern)
+            {
                 break;
             }
             self.bump();
@@ -517,13 +802,51 @@ impl<'a> Parser<'a> {
             return self.parse_match_expr();
         }
 
-        if self.at_ident() {
-            let token = self.bump().unwrap().clone();
-            let name = ident_text(&token).unwrap_or_default().to_owned();
+        let mut expr = if self.at_ident() {
+            let token = self.bump().expect("checked at_ident").clone();
+            Expr::Ident {
+                name: ident_text(&token).unwrap_or_default().to_owned(),
+                span: token.span,
+            }
+        } else if self.at_string_lit() {
+            let token = self.bump().expect("checked at_string_lit").clone();
+            Expr::String {
+                value: decode_string_lit(token_text(&token).as_str()),
+                span: token.span,
+            }
+        } else {
+            let span = self.current_span();
+            self.error_here("expected expression");
+            if !(self.at_keyword(Keyword::Data)
+                || self.at_keyword(Keyword::Fn)
+                || self.at_keyword(Keyword::Extern))
+                && !self.eof()
+            {
+                self.bump();
+            }
+            return Expr::Error { span };
+        };
+
+        loop {
             if self.at_symbol(Symbol::Dot) {
+                let start = expr_span(&expr).start;
                 self.bump();
                 let member = self.expect_ident();
-                self.expect_symbol(Symbol::LParen);
+                let end = self
+                    .tokens
+                    .get(self.index.saturating_sub(1))
+                    .map(|t| t.span.end)
+                    .unwrap_or(start);
+                expr = Expr::Member {
+                    object: Box::new(expr),
+                    member,
+                    span: Span::new(start, end),
+                };
+                continue;
+            }
+            if self.at_symbol(Symbol::LParen) {
+                let start = expr_span(&expr).start;
+                self.bump();
                 let mut args = Vec::new();
                 while !self.eof() && !self.at_symbol(Symbol::RParen) {
                     args.push(self.parse_expr());
@@ -533,26 +856,18 @@ impl<'a> Parser<'a> {
                         break;
                     }
                 }
-                let end = self.expect_symbol(Symbol::RParen);
-                return Expr::Apply {
-                    owner: name,
-                    member,
+                let end = self.expect_symbol(Symbol::RParen).end;
+                expr = Expr::Call {
+                    callee: Box::new(expr),
                     args,
-                    span: Span::new(token.span.start, end.end),
+                    span: Span::new(start, end),
                 };
+                continue;
             }
-            return Expr::Ident {
-                name,
-                span: token.span,
-            };
+            break;
         }
 
-        let span = self.current_span();
-        self.error_here("expected expression");
-        if !(self.at_keyword(Keyword::Data) || self.at_keyword(Keyword::Fn)) && !self.eof() {
-            self.bump();
-        }
-        Expr::Error { span }
+        expr
     }
 
     fn parse_match_expr(&mut self) -> Expr {
@@ -613,6 +928,20 @@ impl<'a> Parser<'a> {
         matches!(self.current().map(|t| &t.kind), Some(TokenKind::Ident(_)))
     }
 
+    fn at_string_lit(&self) -> bool {
+        matches!(
+            self.current().map(|t| &t.kind),
+            Some(TokenKind::StringLit(_))
+        )
+    }
+
+    fn at_ident_text(&self, expected: &str) -> bool {
+        matches!(
+            self.current().map(|t| &t.kind),
+            Some(TokenKind::Ident(actual)) if actual == expected
+        )
+    }
+
     fn expect_keyword(&mut self, kw: Keyword) -> Span {
         if self.at_keyword(kw) {
             return self.bump().unwrap().span;
@@ -638,6 +967,29 @@ impl<'a> Parser<'a> {
         "<missing>".to_owned()
     }
 
+    fn expect_word(&mut self) -> String {
+        if let Some(token) = self.current() {
+            match &token.kind {
+                TokenKind::Ident(_) | TokenKind::Keyword(_) => {
+                    let text = token_text(token);
+                    self.bump();
+                    return text;
+                }
+                _ => {}
+            }
+        }
+        self.error_here("expected identifier");
+        "<missing>".to_owned()
+    }
+
+    fn expect_ident_text(&mut self, expected: &str) {
+        if self.at_ident_text(expected) {
+            self.bump();
+            return;
+        }
+        self.error_here(&format!("expected `{expected}`"));
+    }
+
     fn error_here(&mut self, message: &str) {
         self.errors.push(ParseError {
             span: self.current_span(),
@@ -650,7 +1002,16 @@ impl<'a> Parser<'a> {
     }
 
     fn current_span(&self) -> Span {
-        self.current().map(|t| t.span).unwrap_or(Span::new(0, 0))
+        self.current()
+            .map(|t| t.span)
+            .or_else(|| {
+                self.index.checked_sub(1).and_then(|idx| {
+                    self.tokens
+                        .get(idx)
+                        .map(|t| Span::new(t.span.end, t.span.end))
+                })
+            })
+            .unwrap_or(Span::new(0, 0))
     }
 
     fn bump(&mut self) -> Option<&Token> {
@@ -676,20 +1037,30 @@ fn ident_text(token: &Token) -> Option<&str> {
 fn expr_span(expr: &Expr) -> Span {
     match expr {
         Expr::Ident { span, .. } => *span,
+        Expr::String { span, .. } => *span,
+        Expr::Member { span, .. } => *span,
+        Expr::Call { span, .. } => *span,
         Expr::Produce { span, .. } => *span,
         Expr::Thunk { span, .. } => *span,
         Expr::Force { span, .. } => *span,
         Expr::LetIn { span, .. } => *span,
         Expr::Match { span, .. } => *span,
-        Expr::Apply { span, .. } => *span,
         Expr::Error { span } => *span,
     }
+}
+
+fn decode_string_lit(text: &str) -> String {
+    text.strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(text)
+        .to_owned()
 }
 
 fn token_text(token: &Token) -> String {
     match &token.kind {
         TokenKind::Keyword(Keyword::Data) => "data".to_owned(),
         TokenKind::Keyword(Keyword::Fn) => "fn".to_owned(),
+        TokenKind::Keyword(Keyword::Extern) => "extern".to_owned(),
         TokenKind::Keyword(Keyword::Let) => "let".to_owned(),
         TokenKind::Keyword(Keyword::In) => "in".to_owned(),
         TokenKind::Keyword(Keyword::Produce) => "produce".to_owned(),
@@ -697,12 +1068,15 @@ fn token_text(token: &Token) -> String {
         TokenKind::Keyword(Keyword::Force) => "force".to_owned(),
         TokenKind::Keyword(Keyword::Match) => "match".to_owned(),
         TokenKind::Ident(s) => s.clone(),
+        TokenKind::StringLit(s) => s.clone(),
+        TokenKind::Symbol(Symbol::Hash) => "#".to_owned(),
         TokenKind::Symbol(Symbol::LBracket) => "[".to_owned(),
         TokenKind::Symbol(Symbol::RBracket) => "]".to_owned(),
         TokenKind::Symbol(Symbol::LParen) => "(".to_owned(),
         TokenKind::Symbol(Symbol::RParen) => ")".to_owned(),
         TokenKind::Symbol(Symbol::LBrace) => "{".to_owned(),
         TokenKind::Symbol(Symbol::RBrace) => "}".to_owned(),
+        TokenKind::Symbol(Symbol::Semi) => ";".to_owned(),
         TokenKind::Symbol(Symbol::Colon) => ":".to_owned(),
         TokenKind::Symbol(Symbol::Comma) => ",".to_owned(),
         TokenKind::Symbol(Symbol::Equals) => "=".to_owned(),

@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "pnpm -F=lumoc compile && pnpm -F=lumoc start",
-    "check:types": "pnpm -F=lumoc check:types"
+    "check:types": "pnpm -F=lumoc check:types",
+    "playground:dev": "pnpm -C apps/playground dev:with-wasm",
+    "playground:build": "pnpm -C apps/playground build:with-wasm",
+    "playground:check:types": "pnpm -C apps/playground check:types"
   },
   "keywords": [],
   "author": "",

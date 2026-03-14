@@ -1,6 +1,6 @@
 use derive_more::Debug;
 
-use crate::{lst, parser};
+use crate::hir;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ContentHash(pub u64);
@@ -100,22 +100,6 @@ pub enum Expr {
         structural_hash: ContentHash,
         value: String,
     },
-    Member {
-        #[debug(skip)]
-        id: ContentHash,
-        #[debug(skip)]
-        structural_hash: ContentHash,
-        object: Box<Expr>,
-        member: String,
-    },
-    Call {
-        #[debug(skip)]
-        id: ContentHash,
-        #[debug(skip)]
-        structural_hash: ContentHash,
-        callee: Box<Expr>,
-        args: Vec<Expr>,
-    },
     Produce {
         #[debug(skip)]
         id: ContentHash,
@@ -131,6 +115,13 @@ pub enum Expr {
         expr: Box<Expr>,
     },
     Force {
+        #[debug(skip)]
+        id: ContentHash,
+        #[debug(skip)]
+        structural_hash: ContentHash,
+        expr: Box<Expr>,
+    },
+    Unroll {
         #[debug(skip)]
         id: ContentHash,
         #[debug(skip)]
@@ -154,6 +145,21 @@ pub enum Expr {
         scrutinee: Box<Expr>,
         arms: Vec<MatchArm>,
     },
+    Ctor {
+        #[debug(skip)]
+        id: ContentHash,
+        #[debug(skip)]
+        structural_hash: ContentHash,
+        name: String,
+        args: Vec<Expr>,
+    },
+    Roll {
+        #[debug(skip)]
+        id: ContentHash,
+        #[debug(skip)]
+        structural_hash: ContentHash,
+        expr: Box<Expr>,
+    },
     Error {
         #[debug(skip)]
         id: ContentHash,
@@ -168,20 +174,16 @@ pub struct MatchArm {
     pub body: Expr,
 }
 
-pub fn lower_lossless(parsed: &crate::lst::lossless::ParseOutput) -> File {
-    let parsed = parser::parse_lossless(parsed);
-    lower(&parsed.file)
-}
-
-pub fn lower(file: &lst::File) -> File {
+pub fn lower(file: &hir::File) -> File {
+    let variants = collect_variants(file);
     let items = file
         .items
         .iter()
         .map(|item| match item {
-            lst::Item::ExternType(ext) => Item::ExternType(lower_extern_type(ext)),
-            lst::Item::ExternFn(ext) => Item::ExternFn(lower_extern_fn(ext)),
-            lst::Item::Data(data) => Item::Data(lower_data(data)),
-            lst::Item::Fn(func) => Item::Fn(lower_fn(func)),
+            hir::Item::ExternType(ext) => Item::ExternType(lower_extern_type(ext)),
+            hir::Item::ExternFn(ext) => Item::ExternFn(lower_extern_fn(ext)),
+            hir::Item::Data(data) => Item::Data(lower_data(data)),
+            hir::Item::Fn(func) => Item::Fn(lower_fn(func, &variants)),
         })
         .collect::<Vec<_>>();
 
@@ -197,122 +199,63 @@ pub fn lower(file: &lst::File) -> File {
     }
 }
 
-fn lower_data(data: &lst::DataDecl) -> DataDecl {
-    let variants = data.variants.iter().map(lower_variant).collect::<Vec<_>>();
-
-    let mut hasher = Hasher::new();
-    hasher.write_tag("data");
-    for variant in &variants {
-        hasher.write_u64(variant.id.0);
+fn lower_extern_type(ext: &hir::ExternTypeDecl) -> ExternTypeDecl {
+    ExternTypeDecl {
+        id: ContentHash(ext.id.0),
+        structural_hash: ContentHash(ext.structural_hash.0),
+        name: ext.name.clone(),
+        extern_name: ext.extern_name.clone(),
     }
-    let hash = ContentHash(hasher.finish());
+}
 
+fn lower_extern_fn(ext: &hir::ExternFnDecl) -> ExternFnDecl {
+    ExternFnDecl {
+        id: ContentHash(ext.id.0),
+        structural_hash: ContentHash(ext.structural_hash.0),
+        name: ext.name.clone(),
+        extern_name: ext.extern_name.clone(),
+        params: ext
+            .params
+            .iter()
+            .map(|param| ParamDecl {
+                name: param.name.clone(),
+                ty_repr: param.ty_repr.clone(),
+            })
+            .collect(),
+        return_type_repr: ext.return_type_repr.clone(),
+        effect_repr: ext.effect_repr.clone(),
+    }
+}
+
+fn lower_data(data: &hir::DataDecl) -> DataDecl {
     DataDecl {
         name: data.name.clone(),
-        generics: data.generics.iter().map(|g| g.name.clone()).collect(),
-        id: hash,
-        structural_hash: hash,
-        variants,
-    }
-}
-
-fn lower_extern_type(ext: &lst::ExternTypeDecl) -> ExternTypeDecl {
-    let extern_name = find_extern_name(&ext.attrs);
-    let mut hasher = Hasher::new();
-    hasher.write_tag("extern-type");
-    hasher.write_str(&ext.name);
-    if let Some(name) = &extern_name {
-        hasher.write_str(name);
-    }
-    let hash = ContentHash(hasher.finish());
-    ExternTypeDecl {
-        id: hash,
-        structural_hash: hash,
-        name: ext.name.clone(),
-        extern_name,
-    }
-}
-
-fn lower_extern_fn(ext: &lst::ExternFnDecl) -> ExternFnDecl {
-    let extern_name = find_extern_name(&ext.attrs);
-    let params = ext
-        .params
-        .iter()
-        .map(|param| ParamDecl {
-            name: param.name.clone(),
-            ty_repr: param.ty.repr.trim().to_owned(),
-        })
-        .collect::<Vec<_>>();
-    let return_type_repr = ext.return_type.as_ref().map(|ty| ty.repr.trim().to_owned());
-    let effect_repr = ext
-        .effect
-        .as_ref()
-        .map(|effect| effect.repr.trim().to_owned());
-    let mut hasher = Hasher::new();
-    hasher.write_tag("extern-fn");
-    hasher.write_str(&ext.name);
-    if let Some(name) = &extern_name {
-        hasher.write_str(name);
-    }
-    for param in &params {
-        hasher.write_str(&param.name);
-        hasher.write_str(&param.ty_repr);
-    }
-    if let Some(ret) = &return_type_repr {
-        hasher.write_str(ret);
-    }
-    if let Some(effect) = &effect_repr {
-        hasher.write_str(effect);
-    }
-    let hash = ContentHash(hasher.finish());
-    ExternFnDecl {
-        id: hash,
-        structural_hash: hash,
-        name: ext.name.clone(),
-        extern_name,
-        params,
-        return_type_repr,
-        effect_repr,
-    }
-}
-
-fn lower_variant(variant: &lst::VariantDecl) -> VariantDecl {
-    let mut hasher = Hasher::new();
-    hasher.write_tag("variant");
-    hasher.write_str(&variant.name);
-    let hash = ContentHash(hasher.finish());
-
-    VariantDecl {
-        id: hash,
-        structural_hash: hash,
-        name: variant.name.clone(),
-        payload_types: variant
-            .payload
+        generics: data.generics.clone(),
+        id: ContentHash(data.id.0),
+        structural_hash: ContentHash(data.structural_hash.0),
+        variants: data
+            .variants
             .iter()
-            .map(|ty| ty.repr.trim().to_owned())
+            .map(|variant| VariantDecl {
+                id: ContentHash(variant.id.0),
+                structural_hash: ContentHash(variant.structural_hash.0),
+                name: variant.name.clone(),
+                payload_types: variant.payload_types.clone(),
+            })
             .collect(),
     }
 }
 
-fn lower_fn(func: &lst::FnDecl) -> FnDecl {
-    let body = lower_expr(&func.body);
+fn lower_fn(func: &hir::FnDecl, variants: &[(String, String)]) -> FnDecl {
+    let body = lower_expr(&func.body, variants);
     let params = func
         .params
         .iter()
         .map(|param| ParamDecl {
             name: param.name.clone(),
-            ty_repr: param.ty.repr.trim().to_owned(),
+            ty_repr: param.ty_repr.clone(),
         })
         .collect::<Vec<_>>();
-    let return_type_repr = func
-        .return_type
-        .as_ref()
-        .map(|ty| ty.repr.trim().to_owned());
-    let effect_repr = func
-        .effect
-        .as_ref()
-        .map(|effect| effect.repr.trim().to_owned());
-
     let mut hasher = Hasher::new();
     hasher.write_tag("fn");
     hasher.write_u64(expr_id(&body).0);
@@ -320,19 +263,19 @@ fn lower_fn(func: &lst::FnDecl) -> FnDecl {
 
     FnDecl {
         name: func.name.clone(),
-        generics: func.generics.iter().map(|g| g.name.clone()).collect(),
+        generics: func.generics.clone(),
         id: hash,
         structural_hash: hash,
         params,
-        return_type_repr,
-        effect_repr,
+        return_type_repr: func.return_type_repr.clone(),
+        effect_repr: func.effect_repr.clone(),
         body,
     }
 }
 
-fn lower_expr(expr: &lst::Expr) -> Expr {
+fn lower_expr(expr: &hir::Expr, variants: &[(String, String)]) -> Expr {
     match expr {
-        lst::Expr::Ident { name, .. } => {
+        hir::Expr::Ident { name, .. } => {
             let mut hasher = Hasher::new();
             hasher.write_tag("ident");
             hasher.write_str(name);
@@ -343,7 +286,7 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 name: name.clone(),
             }
         }
-        lst::Expr::String { value, .. } => {
+        hir::Expr::String { value, .. } => {
             let mut hasher = Hasher::new();
             hasher.write_tag("string");
             hasher.write_str(value);
@@ -354,39 +297,8 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 value: value.clone(),
             }
         }
-        lst::Expr::Member { object, member, .. } => {
-            let object = Box::new(lower_expr(object));
-            let mut hasher = Hasher::new();
-            hasher.write_tag("member");
-            hasher.write_u64(expr_id(&object).0);
-            hasher.write_str(member);
-            let hash = ContentHash(hasher.finish());
-            Expr::Member {
-                id: hash,
-                structural_hash: hash,
-                object,
-                member: member.clone(),
-            }
-        }
-        lst::Expr::Call { callee, args, .. } => {
-            let callee = Box::new(lower_expr(callee));
-            let args = args.iter().map(lower_expr).collect::<Vec<_>>();
-            let mut hasher = Hasher::new();
-            hasher.write_tag("call");
-            hasher.write_u64(expr_id(&callee).0);
-            for arg in &args {
-                hasher.write_u64(expr_id(arg).0);
-            }
-            let hash = ContentHash(hasher.finish());
-            Expr::Call {
-                id: hash,
-                structural_hash: hash,
-                callee,
-                args,
-            }
-        }
-        lst::Expr::Produce { expr, .. } => {
-            let expr = Box::new(lower_expr(expr));
+        hir::Expr::Produce { expr, .. } => {
+            let expr = Box::new(lower_expr(expr, variants));
             let mut hasher = Hasher::new();
             hasher.write_tag("produce");
             hasher.write_u64(expr_id(&expr).0);
@@ -397,8 +309,8 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 expr,
             }
         }
-        lst::Expr::Thunk { expr, .. } => {
-            let expr = Box::new(lower_expr(expr));
+        hir::Expr::Thunk { expr, .. } => {
+            let expr = Box::new(lower_expr(expr, variants));
             let mut hasher = Hasher::new();
             hasher.write_tag("thunk");
             hasher.write_u64(expr_id(&expr).0);
@@ -409,8 +321,8 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 expr,
             }
         }
-        lst::Expr::Force { expr, .. } => {
-            let expr = Box::new(lower_expr(expr));
+        hir::Expr::Force { expr, .. } => {
+            let expr = Box::new(lower_expr(expr, variants));
             let mut hasher = Hasher::new();
             hasher.write_tag("force");
             hasher.write_u64(expr_id(&expr).0);
@@ -421,11 +333,11 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 expr,
             }
         }
-        lst::Expr::LetIn {
+        hir::Expr::LetIn {
             name, value, body, ..
         } => {
-            let value = Box::new(lower_expr(value));
-            let body = Box::new(lower_expr(body));
+            let value = Box::new(lower_expr(value, variants));
+            let body = Box::new(lower_expr(body, variants));
             let mut hasher = Hasher::new();
             hasher.write_tag("let-in");
             hasher.write_str(name);
@@ -440,15 +352,16 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 body,
             }
         }
-        lst::Expr::Match {
+        hir::Expr::Match {
             scrutinee, arms, ..
         } => {
-            let scrutinee = Box::new(lower_expr(scrutinee));
+            let lowered_scrutinee = lower_expr(scrutinee, variants);
+            let scrutinee = Box::new(with_unroll(lowered_scrutinee));
             let arms = arms
                 .iter()
                 .map(|arm| MatchArm {
                     pattern: arm.pattern.clone(),
-                    body: lower_expr(&arm.body),
+                    body: lower_expr(&arm.body, variants),
                 })
                 .collect::<Vec<_>>();
             let mut hasher = Hasher::new();
@@ -466,32 +379,79 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 arms,
             }
         }
-        lst::Expr::Error { .. } => error_expr(),
+        hir::Expr::Member { object, member, .. } => {
+            let hir::Expr::Ident { name: owner, .. } = object.as_ref() else {
+                return error_expr();
+            };
+            let ctor = ctor_expr(&format!("{owner}.{member}"), Vec::new());
+            if variants.iter().any(|(o, v)| o == owner && v == member) {
+                with_roll(ctor)
+            } else {
+                ctor
+            }
+        }
+        hir::Expr::Call { callee, args, .. } => {
+            let args = args
+                .iter()
+                .map(|arg| lower_expr(arg, variants))
+                .collect::<Vec<_>>();
+            if let hir::Expr::Member { object, member, .. } = callee.as_ref() {
+                if let hir::Expr::Ident { name: owner, .. } = object.as_ref() {
+                    let ctor = ctor_expr(&format!("{owner}.{member}"), args);
+                    if variants.iter().any(|(o, v)| o == owner && v == member) {
+                        return with_roll(ctor);
+                    }
+                    return ctor;
+                }
+            }
+            if let hir::Expr::Ident { name, .. } = callee.as_ref() {
+                return ctor_expr(name, args);
+            }
+            error_expr()
+        }
+        hir::Expr::Error { .. } => error_expr(),
     }
 }
 
-fn find_extern_name(attrs: &[lst::Attribute]) -> Option<String> {
-    attrs
-        .iter()
-        .find(|attr| attr.name == "extern")
-        .and_then(|attr| {
-            if let Some(value) = &attr.value {
-                if let Some(text) = expr_string_literal(value) {
-                    return Some(text.to_owned());
-                }
-            }
-            attr.args
-                .iter()
-                .find(|arg| arg.key == "name")
-                .and_then(|arg| expr_string_literal(&arg.value))
-                .map(ToOwned::to_owned)
-        })
+fn with_unroll(expr: Expr) -> Expr {
+    let expr = Box::new(expr);
+    let mut hasher = Hasher::new();
+    hasher.write_tag("unroll");
+    hasher.write_u64(expr_id(&expr).0);
+    let hash = ContentHash(hasher.finish());
+    Expr::Unroll {
+        id: hash,
+        structural_hash: hash,
+        expr,
+    }
 }
 
-fn expr_string_literal(expr: &lst::Expr) -> Option<&str> {
-    match expr {
-        lst::Expr::String { value, .. } => Some(value.as_str()),
-        _ => None,
+fn with_roll(expr: Expr) -> Expr {
+    let expr = Box::new(expr);
+    let mut hasher = Hasher::new();
+    hasher.write_tag("roll");
+    hasher.write_u64(expr_id(&expr).0);
+    let hash = ContentHash(hasher.finish());
+    Expr::Roll {
+        id: hash,
+        structural_hash: hash,
+        expr,
+    }
+}
+
+fn ctor_expr(name: &str, args: Vec<Expr>) -> Expr {
+    let mut hasher = Hasher::new();
+    hasher.write_tag("ctor");
+    hasher.write_str(name);
+    for arg in &args {
+        hasher.write_u64(expr_id(arg).0);
+    }
+    let hash = ContentHash(hasher.finish());
+    Expr::Ctor {
+        id: hash,
+        structural_hash: hash,
+        name: name.to_owned(),
+        args,
     }
 }
 
@@ -503,6 +463,18 @@ fn error_expr() -> Expr {
         id: hash,
         structural_hash: hash,
     }
+}
+
+fn collect_variants(file: &hir::File) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for item in &file.items {
+        if let hir::Item::Data(d) = item {
+            for v in &d.variants {
+                out.push((d.name.clone(), v.name.clone()));
+            }
+        }
+    }
+    out
 }
 
 fn item_id(item: &Item) -> ContentHash {
@@ -518,13 +490,14 @@ fn expr_id(expr: &Expr) -> ContentHash {
     match expr {
         Expr::Ident { id, .. } => *id,
         Expr::String { id, .. } => *id,
-        Expr::Member { id, .. } => *id,
-        Expr::Call { id, .. } => *id,
         Expr::Produce { id, .. } => *id,
         Expr::Thunk { id, .. } => *id,
         Expr::Force { id, .. } => *id,
+        Expr::Unroll { id, .. } => *id,
         Expr::LetIn { id, .. } => *id,
         Expr::Match { id, .. } => *id,
+        Expr::Ctor { id, .. } => *id,
+        Expr::Roll { id, .. } => *id,
         Expr::Error { id, .. } => *id,
     }
 }

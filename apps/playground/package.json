@@ -1,0 +1,24 @@
+{
+  "name": "playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "wasm:build": "wasm-pack build ../../crates/playground-wasm --target web --out-dir ../../apps/playground/src/wasm --out-name lumo_playground_wasm",
+    "dev": "vite",
+    "dev:with-wasm": "pnpm wasm:build && pnpm dev",
+    "build": "vite build",
+    "build:with-wasm": "pnpm wasm:build && pnpm build",
+    "preview": "vite preview",
+    "check:types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.54.0",
+    "solid-js": "^1.9.9"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vite-plugin-solid": "^2.11.10"
+  }
+}

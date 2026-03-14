@@ -20,6 +20,7 @@ pub struct Token {
 pub enum TokenKind {
     Keyword(Keyword),
     Ident(String),
+    StringLit(String),
     Symbol(Symbol),
 }
 
@@ -27,6 +28,7 @@ pub enum TokenKind {
 pub enum Keyword {
     Data,
     Fn,
+    Extern,
     Let,
     In,
     Produce,
@@ -37,12 +39,14 @@ pub enum Keyword {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Symbol {
+    Hash,
     LBracket,
     RBracket,
     LParen,
     RParen,
     LBrace,
     RBrace,
+    Semi,
     Colon,
     Comma,
     Equals,
@@ -76,6 +80,7 @@ pub struct LosslessToken {
 pub enum LosslessTokenKind {
     Keyword(Keyword),
     Ident,
+    StringLit,
     Symbol(Symbol),
     Whitespace,
     Newline,
@@ -99,6 +104,10 @@ pub fn lex(input: &str) -> LexOutput {
             }),
             LosslessTokenKind::Ident => output.tokens.push(Token {
                 kind: TokenKind::Ident(token.text),
+                span: token.span,
+            }),
+            LosslessTokenKind::StringLit => output.tokens.push(Token {
+                kind: TokenKind::StringLit(token.text),
                 span: token.span,
             }),
             LosslessTokenKind::Symbol(sym) => output.tokens.push(Token {
@@ -176,6 +185,7 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
             let kind = match text {
                 "data" => LosslessTokenKind::Keyword(Keyword::Data),
                 "fn" => LosslessTokenKind::Keyword(Keyword::Fn),
+                "extern" => LosslessTokenKind::Keyword(Keyword::Extern),
                 "let" => LosslessTokenKind::Keyword(Keyword::Let),
                 "in" => LosslessTokenKind::Keyword(Keyword::In),
                 "produce" => LosslessTokenKind::Keyword(Keyword::Produce),
@@ -189,6 +199,33 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
                 kind,
                 span: Span::new(start, index),
                 text: text.to_owned(),
+            });
+            continue;
+        }
+
+        if ch == '"' {
+            let start = index;
+            index += ch.len_utf8();
+            let mut escaped = false;
+            while index < input.len() {
+                let c = next_char(input, index);
+                index += c.len_utf8();
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                if c == '\\' {
+                    escaped = true;
+                    continue;
+                }
+                if c == '"' {
+                    break;
+                }
+            }
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::StringLit,
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
             });
             continue;
         }
@@ -214,12 +251,14 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
         }
 
         let symbol = match ch {
+            '#' => Some(Symbol::Hash),
             '[' => Some(Symbol::LBracket),
             ']' => Some(Symbol::RBracket),
             '(' => Some(Symbol::LParen),
             ')' => Some(Symbol::RParen),
             '{' => Some(Symbol::LBrace),
             '}' => Some(Symbol::RBrace),
+            ';' => Some(Symbol::Semi),
             ':' => Some(Symbol::Colon),
             ',' => Some(Symbol::Comma),
             '=' => Some(Symbol::Equals),

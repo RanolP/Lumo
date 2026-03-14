@@ -35,6 +35,15 @@ fn lossless_lst_preserves_text_on_valid_source() {
 }
 
 #[test]
+fn lossless_lst_allows_member_projection_without_call() {
+    let src = "data Bool { .true, .false }\nfn not(x: Bool): produce Bool := match x { .true => Bool.false, .false => Bool.true }";
+    let parsed = parse(src);
+
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    assert_eq!(node_text(&parsed.root), src);
+}
+
+#[test]
 fn lossless_lst_preserves_text_on_broken_source() {
     let src = "fn broken() := produce +\ndata Good { .a }";
     let parsed = parse(src);

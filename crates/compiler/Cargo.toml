@@ -6,3 +6,7 @@ edition = "2021"
 [lib]
 name = "lumo_compiler"
 path = "src/lib.rs"
+
+[dependencies]
+derive_more = { version = "2", features = ["debug"] }
+simple-ts-ast = { path = "../simple-ts-ast" }

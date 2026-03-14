@@ -336,7 +336,8 @@ fn semantic_tokens_data_from_lossless(
     root: &lumo_compiler::lst::lossless::SyntaxNode,
 ) -> Vec<u32> {
     let mut tokens = Vec::new();
-    collect_lossless_tokens(root, &mut tokens);
+    let mut state = AttrSemanticState::default();
+    collect_lossless_tokens(root, &mut tokens, &mut state);
     tokens.sort_by_key(|t| (t.start, t.end));
 
     encode_highlight_tokens(source, &tokens)
@@ -378,14 +379,22 @@ fn encode_highlight_tokens(source: &str, tokens: &[highlight::HighlightToken]) -
 fn collect_lossless_tokens(
     node: &lumo_compiler::lst::lossless::SyntaxNode,
     out: &mut Vec<highlight::HighlightToken>,
+    state: &mut AttrSemanticState,
 ) {
     for child in &node.children {
         match child {
-            lumo_compiler::lst::lossless::SyntaxElement::Node(n) => collect_lossless_tokens(n, out),
+            lumo_compiler::lst::lossless::SyntaxElement::Node(n) => {
+                collect_lossless_tokens(n, out, state)
+            }
             lumo_compiler::lst::lossless::SyntaxElement::Token(t) => {
                 let kind = match t.kind {
+                    LosslessTokenKind::Keyword(_) if state.expect_attr_name && state.depth > 0 => {
+                        Some(HighlightKind::Identifier)
+                    }
                     LosslessTokenKind::Keyword(_) => Some(HighlightKind::Keyword),
+                    LosslessTokenKind::Ident if t.text == "type" => Some(HighlightKind::Keyword),
                     LosslessTokenKind::Ident => Some(HighlightKind::Identifier),
+                    LosslessTokenKind::StringLit => Some(HighlightKind::String),
                     LosslessTokenKind::Symbol(_) => Some(HighlightKind::Symbol),
                     LosslessTokenKind::Whitespace
                     | LosslessTokenKind::Newline
@@ -399,7 +408,58 @@ fn collect_lossless_tokens(
                         kind,
                     });
                 }
+
+                state.observe(&t.kind, &t.text);
             }
+        }
+    }
+}
+
+#[derive(Default)]
+struct AttrSemanticState {
+    pending_hash: bool,
+    depth: usize,
+    expect_attr_name: bool,
+}
+
+impl AttrSemanticState {
+    fn observe(&mut self, kind: &LosslessTokenKind, text: &str) {
+        match kind {
+            LosslessTokenKind::Ident | LosslessTokenKind::Keyword(_) => {
+                self.pending_hash = false;
+                if self.expect_attr_name && self.depth > 0 {
+                    self.expect_attr_name = false;
+                }
+            }
+            LosslessTokenKind::Whitespace | LosslessTokenKind::Newline => {}
+            _ => {
+                self.pending_hash = false;
+            }
+        }
+
+        match text {
+            "#" => {
+                self.pending_hash = true;
+            }
+            "[" => {
+                if self.pending_hash {
+                    self.pending_hash = false;
+                    self.depth = 1;
+                    self.expect_attr_name = true;
+                } else if self.depth > 0 {
+                    self.depth += 1;
+                }
+            }
+            "]" => {
+                self.pending_hash = false;
+                if self.depth > 0 {
+                    self.depth -= 1;
+                    if self.depth == 0 {
+                        self.expect_attr_name = false;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -408,7 +468,8 @@ fn token_type_index(kind: HighlightKind) -> u32 {
     match kind {
         HighlightKind::Keyword => 0,
         HighlightKind::Identifier => 1,
-        HighlightKind::Symbol => 2,
+        HighlightKind::String => 2,
+        HighlightKind::Symbol => 3,
     }
 }
 
@@ -459,6 +520,7 @@ fn capabilities_json() -> Value {
                     token_types: vec![
                         SemanticTokenType::KEYWORD,
                         SemanticTokenType::VARIABLE,
+                        SemanticTokenType::STRING,
                         SemanticTokenType::OPERATOR,
                     ],
                     token_modifiers: vec![],
@@ -730,7 +792,7 @@ mod tests {
         assert!(notes[0].contains("\"diagnostics\":["));
         assert!(!notes[0].contains("\"diagnostics\":[]"));
 
-        let change = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///main.lumo"},"contentChanges":[{"text":"fn id() := produce x"}]}}"#;
+        let change = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///main.lumo"},"contentChanges":[{"text":"fn id(a: A): produce A := produce a"}]}}"#;
         server.handle_json_message(change);
 
         let notes = server.take_outgoing_notifications();
