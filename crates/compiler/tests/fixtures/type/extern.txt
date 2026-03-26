@@ -1,0 +1,9 @@
+#[extern = "string"] extern type String; #[extern = "console.log"] extern fn console_log(msg: String)
+fn main(msg: String): produce Unit / {} := console_log(msg)
+---
+console_log : (String) -> produce Unit
+main : (String) -> produce Unit / {}
+==========
+#[extern = thunk produce "x"] extern type String;
+---
+

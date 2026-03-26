@@ -1,0 +1,23 @@
+fn id(a: A): produce A / {} := produce a
+---
+id : (A) -> produce A / {}
+==========
+fn keep(a: A): produce A / {} := produce a
+---
+keep : (A) -> produce A / {}
+==========
+fn f(a: A): produce A / {} := let x = a in produce x
+---
+f : (A) -> produce A / {}
+==========
+fn bad(): produce A / {} := produce x
+---
+ERROR: unknown variable `x`
+==========
+fn bad(a: A): produce B / {} := produce a
+---
+ERROR: type mismatch: expected B, got A
+==========
+fn f(job: thunk produce A): produce A / {} := force job
+---
+f : (thunk produce A) -> produce A / {}

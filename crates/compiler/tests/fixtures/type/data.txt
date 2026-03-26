@@ -1,0 +1,46 @@
+data OptionA { .some(A), .none }
+fn mk(a: A): produce OptionA / {} := OptionA.some(a)
+---
+mk : (A) -> produce OptionA / {}
+==========
+data OptionA { .some(A), .none }
+fn badmk(a: A): produce OptionA / {} := produce OptionA.some(a)
+---
+ERROR: expected value expression
+==========
+data OptionA { .some(A), .none }
+fn badp1(a: OptionA, b: A): produce A / {} := match a { some(x) => produce b, .none => produce b }
+---
+ERROR: constructor pattern must start with `.`
+==========
+data OptionA { .some(A), .none }
+fn badp2(a: OptionA, b: A): produce A / {} := match a { some => produce b, .none => produce b }
+---
+ERROR: variant pattern `some` must be written `.some`
+==========
+data Nat { .zero, .succ(Nat) }
+data Option[A] { .some(A), .none }
+fn sub1(x: Nat): produce Option[Nat] / {} := match x { .zero => Option.none, .succ(let x) => Option.some(x) }
+---
+sub1 : (Nat) -> produce Option[Nat] / {}
+==========
+data Nat { .zero, .succ(Nat) }
+data Option[A] { .some(A), .none }
+fn get_or_zero(o: Option[Nat], z: Nat): produce Nat / {} := match o { .some(x) => produce x, .none => produce z }
+---
+get_or_zero : (Option[Nat], Nat) -> produce Nat / {}
+==========
+data Option[A] { .some(A), .none }
+fn bad(u: Unit): produce Unit / {} := let x = Option.none in produce u
+---
+ERROR: cannot infer type arguments for bundle field `Option.none`
+==========
+data Bool { .true, .false }
+fn not(x: Bool): produce Bool / {} := match x { .true => Bool.false, .false => Bool.true }
+---
+not : (Bool) -> produce Bool / {}
+==========
+data Bool { .true, .false }
+fn not(x: Bool): produce Bool / {} := match x { .true => Bool.false(), .false => Bool.true() }
+---
+ERROR: which is not a function

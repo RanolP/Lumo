@@ -22,6 +22,20 @@ fn lower_lir(src: &str) -> lir::File {
     lir::lower(&hir)
 }
 
+fn unwrap_lir_fn_value<'a>(func: &'a lir::FnDecl) -> (&'a lir::Expr, Vec<&'a str>) {
+    let lir::Expr::Thunk { expr, .. } = &func.value else {
+        panic!("expected thunked function value")
+    };
+
+    let mut params = Vec::new();
+    let mut cursor = expr.as_ref();
+    while let lir::Expr::Lambda { param, body, .. } = cursor {
+        params.push(param.as_str());
+        cursor = body.as_ref();
+    }
+    (cursor, params)
+}
+
 #[test]
 fn content_hash_is_deterministic() {
     let src = "data Option[A] { .some(A), .none } fn id[A](a: A): produce A / {} := produce a";
@@ -32,7 +46,7 @@ fn content_hash_is_deterministic() {
 }
 
 #[test]
-fn top_level_name_does_not_affect_fn_id() {
+fn top_level_name_does_not_affect_fn_structural_hash() {
     let a = lower_typed("fn alpha(): produce A / {} := produce x");
     let b = lower_typed("fn beta(): produce A / {} := produce x");
 
@@ -45,12 +59,11 @@ fn top_level_name_does_not_affect_fn_id() {
         _ => panic!("expected fn"),
     };
 
-    assert_eq!(fn_a.id, fn_b.id);
     assert_eq!(fn_a.structural_hash, fn_b.structural_hash);
 }
 
 #[test]
-fn body_change_affects_fn_id() {
+fn body_change_affects_fn_structural_hash() {
     let a = lower_typed("fn f(): produce A / {} := produce x");
     let b = lower_typed("fn f(): produce A / {} := produce y");
 
@@ -63,11 +76,11 @@ fn body_change_affects_fn_id() {
         _ => panic!("expected fn"),
     };
 
-    assert_ne!(fn_a.id, fn_b.id);
+    assert_ne!(fn_a.structural_hash, fn_b.structural_hash);
 }
 
 #[test]
-fn expression_nodes_have_content_hash_ids() {
+fn expression_nodes_keep_source_id_separate_from_structural_hash() {
     let file = lower_typed("fn f(): produce A / {} := let x = y in produce x");
     let func = match &file.items[0] {
         Item::Fn(f) => f,
@@ -82,13 +95,13 @@ fn expression_nodes_have_content_hash_ids() {
             body,
             ..
         } => {
-            assert_eq!(id, structural_hash);
+            assert_ne!(id, structural_hash);
             match value.as_ref() {
                 Expr::Ident {
                     id,
                     structural_hash,
                     ..
-                } => assert_eq!(id, structural_hash),
+                } => assert_ne!(id, structural_hash),
                 _ => panic!("expected ident"),
             }
             match body.as_ref() {
@@ -96,14 +109,15 @@ fn expression_nodes_have_content_hash_ids() {
                     id,
                     structural_hash,
                     expr,
+                    ..
                 } => {
-                    assert_eq!(id, structural_hash);
+                    assert_ne!(id, structural_hash);
                     match expr.as_ref() {
                         Expr::Ident {
                             id,
                             structural_hash,
                             ..
-                        } => assert_eq!(id, structural_hash),
+                        } => assert_ne!(id, structural_hash),
                         _ => panic!("expected ident"),
                     }
                 }
@@ -216,8 +230,10 @@ fn lir_inserts_implicit_unroll_for_match_scrutinee() {
     let lir::Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
+    let (body, params) = unwrap_lir_fn_value(f);
+    assert!(params.is_empty(), "unexpected params: {params:?}");
 
-    match &f.body {
+    match body {
         lir::Expr::Match { scrutinee, .. } => match scrutinee.as_ref() {
             lir::Expr::Unroll { expr, .. } => match expr.as_ref() {
                 lir::Expr::Ident { name, .. } => assert_eq!(name, "a"),
@@ -230,13 +246,15 @@ fn lir_inserts_implicit_unroll_for_match_scrutinee() {
 }
 
 #[test]
-fn lir_inserts_implicit_roll_for_data_ctor() {
+fn lir_inlines_data_ctor_bundle_as_rolled_ctor() {
     let file = lower_lir("data OptionA { .some(A), .none } fn mk() := OptionA.some(a)");
     let lir::Item::Fn(f) = &file.items[1] else {
         panic!("expected fn")
     };
+    let (body, params) = unwrap_lir_fn_value(f);
+    assert!(params.is_empty(), "unexpected params: {params:?}");
 
-    match &f.body {
+    match body {
         lir::Expr::Roll { expr, .. } => match expr.as_ref() {
             lir::Expr::Ctor { name, args, .. } => {
                 assert_eq!(name, "OptionA.some");
@@ -244,8 +262,65 @@ fn lir_inserts_implicit_roll_for_data_ctor() {
             }
             other => panic!("expected ctor inside roll, got {other:?}"),
         },
-        other => panic!("expected implicit roll, got {other:?}"),
+        other => panic!("expected rolled ctor bundle body, got {other:?}"),
     }
+}
+
+#[test]
+fn lir_lowers_fn_item_to_thunk_lambda_spine() {
+    let file = lower_lir("fn id(x: A, y: B): produce A := produce x");
+    let lir::Item::Fn(f) = &file.items[0] else {
+        panic!("expected fn")
+    };
+    let (body, params) = unwrap_lir_fn_value(f);
+
+    assert_eq!(params, vec!["x", "y"]);
+    match body {
+        lir::Expr::Produce { expr, .. } => match expr.as_ref() {
+            lir::Expr::Ident { name, .. } => assert_eq!(name, "x"),
+            other => panic!("expected produce ident, got {other:?}"),
+        },
+        other => panic!("expected produced body, got {other:?}"),
+    }
+}
+
+#[test]
+fn lir_lowers_function_call_to_force_apply_chain() {
+    let file = lower_lir("fn main(x: A, y: B): produce C := f(x, y)");
+    let lir::Item::Fn(f) = &file.items[0] else {
+        panic!("expected fn")
+    };
+    let (body, params) = unwrap_lir_fn_value(f);
+
+    assert_eq!(params, vec!["x", "y"]);
+    let lir::Expr::Apply { callee, arg, .. } = body else {
+        panic!("expected outer apply")
+    };
+    let lir::Expr::Ident { name, .. } = arg.as_ref() else {
+        panic!("expected second arg ident")
+    };
+    assert_eq!(name, "y");
+
+    let lir::Expr::Apply {
+        callee: inner_callee,
+        arg: inner_arg,
+        ..
+    } = callee.as_ref()
+    else {
+        panic!("expected inner apply")
+    };
+    let lir::Expr::Ident { name, .. } = inner_arg.as_ref() else {
+        panic!("expected first arg ident")
+    };
+    assert_eq!(name, "x");
+
+    let lir::Expr::Force { expr, .. } = inner_callee.as_ref() else {
+        panic!("expected forced callee")
+    };
+    let lir::Expr::Ident { name, .. } = expr.as_ref() else {
+        panic!("expected function ident")
+    };
+    assert_eq!(name, "f");
 }
 
 #[test]
@@ -272,4 +347,29 @@ fn data_generics_are_preserved_in_hir() {
         panic!("expected data")
     };
     assert_eq!(ld.generics, vec!["A", "B"]);
+}
+
+#[test]
+fn effect_decl_is_preserved_in_hir() {
+    let file = lower_typed("effect Console { fn log(msg: String): produce Unit }");
+    let Item::Effect(e) = &file.items[0] else {
+        panic!("expected effect, got {:?}", file.items[0])
+    };
+    assert_eq!(e.name, "Console");
+    assert_eq!(e.operations.len(), 1);
+    assert_eq!(e.operations[0].name, "log");
+    assert_eq!(e.operations[0].params.len(), 1);
+    assert_eq!(e.operations[0].params[0].name, "msg");
+    assert_eq!(e.operations[0].params[0].ty_repr, "String");
+    assert_eq!(
+        e.operations[0].return_type_repr.as_deref(),
+        Some("produce Unit")
+    );
+
+    // Hash stability: re-lowering yields the same hash
+    let file2 = lower_typed("effect Console { fn log(msg: String): produce Unit }");
+    let Item::Effect(e2) = &file2.items[0] else {
+        panic!("expected effect")
+    };
+    assert_eq!(e.structural_hash, e2.structural_hash);
 }

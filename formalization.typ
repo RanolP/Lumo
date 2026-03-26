@@ -44,6 +44,7 @@
 #let EffectTag = "EffectTag"
 #let binds = "binds"
 #let assigncount = "assign-count"
+#let eff = "eff"
 
 #let rule(premises, conclusion, name) = {
   $
@@ -682,7 +683,7 @@ $
 
 = Algebraic Effects
 
-Algebraic effects are expressed with $kwPerform_"op"$ and interpreted by $kwHandle_"op"$.
+Algebraic effects are expressed with $kwPerform_eff$ and interpreted by $kwHandle_eff$.
 
 == User-level Syntax
 
@@ -723,14 +724,14 @@ So the effect declaration becomes a bundle of elaborated operation types:
 
 == Effect Operation Invocation
 
-When we have the operation $op$ in our effect handler context, we can invoke $kwPerform_"op"$.
+When we have the operation $eff$ in our effect handler context, we can invoke $kwPerform_eff$.
 
 #rule[
-  $op : underline(B) in E$
+  $eff : underline(B) in E$
 ][
   $Delta | Gamma; E
   judge.c
-  kwPerform_"op" synth underline(B)$
+  kwPerform_eff synth underline(B)$
 ][Perform]
 
 == Handlers
@@ -741,25 +742,25 @@ Of course you can pass the handler so the context takes care of it.
   $Delta | Gamma_1; E
   judge.c
   M check underline(B) \
-  Delta | Gamma_2; E, (op: underline(B))
+  Delta | Gamma_2; E, (eff: underline(B))
   judge.c
   N check underline(C)$
 ][
   $Delta | Gamma_1, Gamma_2; E
   judge.c
-  kwHandle_"op" "with" M "in" N check underline(C)$
+  kwHandle_eff "with" M "in" N check underline(C)$
 ][Handler-Intro]
 
 == Operational Equations
 
 #reduce-rule[
-  $kwHandle_"op" "with" M "in" #kwProduce v$
+  $kwHandle_eff "with" M "in" #kwProduce v$
 ][
   $#kwProduce v$
 ][Handle-Unit]
 
 #reduce-rule[
-  $kwHandle_"op" "with" M "in" kwPerform_"op"$
+  $kwHandle_eff "with" M "in" kwPerform_eff$
 ][
   $M$
 ][Handle-Perform-Beta]

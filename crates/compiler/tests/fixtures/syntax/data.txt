@@ -1,0 +1,50 @@
+data OptionA { .some(A), .none }
+fn mk() := OptionA.some(a)
+---
+Data(name="OptionA", variants=["some", "none"])
+Fn(name="mk", body=Call(callee=Member(object=Variable("OptionA"), member="some"), args=[Variable("a")]))
+==========
+data Option[A] { .some(A), .none }
+fn id() := produce a
+---
+Data(name="Option", variants=["some", "none"])
+Fn(name="id", body=Produce(Variable("a")))
+==========
+data Bool { .true, .false }
+fn id() := produce x
+fn keep() := let a = b in a
+---
+Data(name="Bool", variants=["true", "false"])
+Fn(name="id", body=Produce(Variable("x")))
+Fn(name="keep", body=Let(name="a", value=Variable("b"), body=Variable("a")))
+==========
+
+data   X   {   .a ,   .b }
+
+  fn   id()   :=   produce   x
+
+---
+Data(name="X", variants=["a", "b"])
+Fn(name="id", body=Produce(Variable("x")))
+==========
+data Empty { }
+---
+Data(name="Empty", variants=[])
+==========
+data One { .only }
+---
+Data(name="One", variants=["only"])
+==========
+data Bool { .true, .false }
+---
+Data(name="Bool", variants=["true", "false"])
+==========
+data A { .v }
+fn f() := produce x
+data B { .w, .z }
+fn g() := let y = x in y
+---
+Data(name="A", variants=["v"])
+Fn(name="f", body=Produce(Variable("x")))
+Data(name="B", variants=["w", "z"])
+Fn(name="g", body=Let(name="y", value=Variable("x"), body=Variable("y")))

@@ -12,18 +12,29 @@ use lumo_compiler::{
 
 #[test]
 fn parser_fixtures_pipeline_consistency() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/happy.txt");
-    let all = fs::read_to_string(&path).expect("fixtures/happy.txt");
-    let cases = split_cases(&all);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/syntax");
+    let mut dir_entries: Vec<_> = fs::read_dir(&dir)
+        .expect("tests/fixtures/syntax/ directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "txt"))
+        .collect();
+    dir_entries.sort_by_key(|e| e.file_name());
 
     assert!(
-        cases.len() >= 12,
-        "expected at least 12 happy fixtures, got {}",
-        cases.len()
+        !dir_entries.is_empty(),
+        "no fixture files found in tests/fixtures/syntax/"
     );
 
+    let mut total_cases = 0;
+
+    for dir_entry in dir_entries {
+        let path = dir_entry.path();
+        let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+        let all = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {file_name}: {e}"));
+        let cases = split_cases(&all);
+
     for (index, raw_case) in cases.iter().enumerate() {
-        let case_name = format!("fixtures/happy.txt#{}", index + 1);
+        let case_name = format!("syntax/{file_name}#{}", index + 1);
         let (source, expected) = split_source_expected(raw_case, &case_name);
 
         let lexed = lex(&source);
@@ -48,7 +59,7 @@ fn parser_fixtures_pipeline_consistency() {
         let lir_typed = lir::lower(&hir_typed);
 
         let mut query = QueryEngine::new();
-        let virtual_path = format!("fixture-{index}.lumo");
+        let virtual_path = format!("fixture-{file_name}-{index}.lumo");
         query.set_file(virtual_path.clone(), source.clone());
         let q_parsed = query.parse(&virtual_path).expect("query parse result");
         let q_lowered_hir = query.lower_hir(&virtual_path).expect("query hir result");
@@ -74,7 +85,15 @@ fn parser_fixtures_pipeline_consistency() {
         );
 
         assert_expected(expected, &q_parsed.file.items, &q_diags, &case_name);
+        total_cases += 1;
     }
+    }
+
+    assert!(
+        total_cases >= 12,
+        "expected at least 12 syntax fixtures, got {}",
+        total_cases
+    );
 }
 
 fn split_cases(text: &str) -> Vec<String> {
@@ -141,6 +160,15 @@ fn render_item(item: &Item) -> String {
             format!("Data(name=\"{}\", variants=[{}])", d.name, variants)
         }
         Item::Fn(f) => format!("Fn(name=\"{}\", body={})", f.name, render_expr(&f.body)),
+        Item::Effect(e) => {
+            let ops = e
+                .operations
+                .iter()
+                .map(|op| format!("\"{}\"", op.name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("Effect(name=\"{}\", ops=[{}])", e.name, ops)
+        }
     }
 }
 
@@ -181,6 +209,33 @@ fn render_expr(expr: &Expr) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        Expr::Perform { effect, .. } => {
+            format!("Perform(effect=\"{effect}\")")
+        }
+        Expr::Handle {
+            effect, handler, body, ..
+        } => format!(
+            "Handle(effect=\"{effect}\", handler={}, body={})",
+            render_expr(handler),
+            render_expr(body)
+        ),
+        Expr::Ann { expr, ty, .. } => format!("Ann({}, \"{}\")", render_expr(expr), ty.repr),
+        Expr::Bundle { entries, .. } => {
+            let es = entries
+                .iter()
+                .map(|e| {
+                    let params = e
+                        .params
+                        .iter()
+                        .map(|p| p.name.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{}({}) := {}", e.name, params, render_expr(&e.body))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("Bundle([{}])", es)
+        }
         Expr::Error { .. } => "Error".to_owned(),
     }
 }

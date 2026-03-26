@@ -8,6 +8,10 @@ use std::collections::HashMap;
 #[derive(Debug, Default)]
 pub struct TypeScriptBackend;
 
+struct LoweringContext {
+    direct_callable_arities: HashMap<String, usize>,
+}
+
 impl TypeScriptBackend {
     pub fn new() -> Self {
         Self
@@ -16,6 +20,9 @@ impl TypeScriptBackend {
     fn lower_file(&self, file: &lir::File) -> Result<tsast::Program, BackendError> {
         let mut body = Vec::new();
         let mut extern_names = HashMap::new();
+        let ctx = LoweringContext {
+            direct_callable_arities: collect_direct_callable_arities(file),
+        };
 
         for item in &file.items {
             match item {
@@ -73,30 +80,11 @@ impl TypeScriptBackend {
                     }));
                     body.push(tsast::Stmt::Const(lower_data_bundle_const(data)));
                 }
+                lir::Item::Effect(_) => {
+                    // Effect declarations are type-only; no TS output needed
+                }
                 lir::Item::Fn(func) => {
-                    let params = func
-                        .params
-                        .iter()
-                        .map(|param| {
-                            let ty = parse_lumo_type_text(&param.ty_repr);
-                            tsast::Param::new(&param.name)
-                                .with_type(lower_lumo_type_to_ts_type(&ty))
-                        })
-                        .collect::<Vec<_>>();
-
-                    let return_ty = func
-                        .return_type_repr
-                        .as_ref()
-                        .map(|repr| parse_lumo_type_text(repr))
-                        .unwrap_or_else(|| LumoType::Named("Unit".to_owned()));
-                    body.push(tsast::Stmt::Function(tsast::FunctionDecl {
-                        export: true,
-                        name: func.name.clone(),
-                        type_params: func.generics.clone(),
-                        params,
-                        return_type: Some(lower_lumo_type_to_ts_type(&return_ty)),
-                        body: tsast::FunctionBody::Expr(Box::new(lower_expr(&func.body))),
-                    }));
+                    body.push(tsast::Stmt::Function(lower_fn_decl(func, &ctx)?));
                 }
             }
         }
@@ -104,11 +92,84 @@ impl TypeScriptBackend {
         let mut program = tsast::Program::new(body);
         specialize_operator_extern_wrappers(&mut program, &extern_names);
         tsast::lower_expression_bodies(&mut program);
+        tsast::flatten_iifes(&mut program);
         tsast::return_lifting(&mut program);
         tsast::return_lifting(&mut program);
         validate_program_has_no_any_or_unknown(&program)?;
         Ok(program)
     }
+}
+
+fn collect_direct_callable_arities(file: &lir::File) -> HashMap<String, usize> {
+    let mut out = HashMap::new();
+    for item in &file.items {
+        match item {
+            lir::Item::ExternFn(func) => {
+                out.insert(func.name.clone(), func.params.len());
+            }
+            lir::Item::Fn(func) => {
+                out.insert(func.name.clone(), func.params.len());
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn lower_fn_decl(
+    func: &lir::FnDecl,
+    ctx: &LoweringContext,
+) -> Result<tsast::FunctionDecl, BackendError> {
+    let (lowered_params, lowered_body) = unwrap_fn_value(&func.value)?;
+    if lowered_params.len() != func.params.len() {
+        return Err(BackendError::EmitFailed(format!(
+            "function `{}` lowered to {} lambda params but signature has {} params",
+            func.name,
+            lowered_params.len(),
+            func.params.len()
+        )));
+    }
+
+    let params = func
+        .params
+        .iter()
+        .zip(lowered_params.iter())
+        .map(|(param, lowered_name)| {
+            let ty = parse_lumo_type_text(&param.ty_repr);
+            tsast::Param::new(lowered_name).with_type(lower_lumo_type_to_ts_type(&ty))
+        })
+        .collect::<Vec<_>>();
+
+    let return_ty = func
+        .return_type_repr
+        .as_ref()
+        .map(|repr| parse_lumo_type_text(repr))
+        .unwrap_or_else(|| LumoType::Named("Unit".to_owned()));
+
+    Ok(tsast::FunctionDecl {
+        export: true,
+        name: func.name.clone(),
+        type_params: func.generics.clone(),
+        params,
+        return_type: Some(lower_lumo_type_to_ts_type(&return_ty)),
+        body: tsast::FunctionBody::Expr(Box::new(lower_expr(lowered_body, ctx))),
+    })
+}
+
+fn unwrap_fn_value(value: &lir::Expr) -> Result<(Vec<String>, &lir::Expr), BackendError> {
+    let lir::Expr::Thunk { expr, .. } = value else {
+        return Err(BackendError::EmitFailed(
+            "lowered function value must start with thunk".to_owned(),
+        ));
+    };
+
+    let mut params = Vec::new();
+    let mut cursor = expr.as_ref();
+    while let lir::Expr::Lambda { param, body, .. } = cursor {
+        params.push(param.clone());
+        cursor = body.as_ref();
+    }
+    Ok((params, cursor))
 }
 
 impl Backend for TypeScriptBackend {
@@ -728,41 +789,44 @@ fn validate_ts_type_has_no_any_or_unknown(ty: &tsast::TsType) -> Result<(), Back
     }
 }
 
-fn lower_expr(expr: &lir::Expr) -> tsast::Expr {
+fn lower_expr(expr: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
     match expr {
         lir::Expr::Ident { name, .. } if name == "Unit" => {
             tsast::Expr::Void(Box::new(tsast::Expr::Number(0.0)))
         }
         lir::Expr::Ident { name, .. } => tsast::Expr::Ident(name.clone()),
         lir::Expr::String { value, .. } => tsast::Expr::String(value.clone()),
-        lir::Expr::Produce { expr, .. } => lower_expr(expr),
+        lir::Expr::Produce { expr, .. } => lower_expr(expr, ctx),
         lir::Expr::Thunk { expr, .. } => tsast::Expr::Arrow {
             params: Vec::new(),
             return_type: None,
-            body: Box::new(tsast::FunctionBody::Expr(Box::new(lower_expr(expr)))),
+            body: Box::new(tsast::FunctionBody::Expr(Box::new(lower_expr(expr, ctx)))),
         },
-        lir::Expr::Force { expr, .. } => tsast::Expr::Call {
-            callee: Box::new(lower_expr(expr)),
-            args: Vec::new(),
+        lir::Expr::Force { expr, .. } => lower_force_expr(expr, ctx),
+        lir::Expr::Lambda { param, body, .. } => tsast::Expr::Arrow {
+            params: vec![tsast::Param::new(param)],
+            return_type: None,
+            body: Box::new(tsast::FunctionBody::Expr(Box::new(lower_expr(body, ctx)))),
         },
-        lir::Expr::Unroll { expr, .. } => lower_expr(expr),
-        lir::Expr::Roll { expr, .. } => lower_expr(expr),
+        lir::Expr::Apply { callee, arg, .. } => lower_apply_expr(callee, arg, ctx),
+        lir::Expr::Unroll { expr, .. } => lower_expr(expr, ctx),
+        lir::Expr::Roll { expr, .. } => lower_expr(expr, ctx),
         lir::Expr::LetIn {
             name, value, body, ..
         } => {
             let lambda = tsast::Expr::Arrow {
                 params: vec![tsast::Param::new(name)],
                 return_type: None,
-                body: Box::new(tsast::FunctionBody::Expr(Box::new(lower_expr(body)))),
+                body: Box::new(tsast::FunctionBody::Expr(Box::new(lower_expr(body, ctx)))),
             };
             tsast::Expr::Call {
                 callee: Box::new(lambda),
-                args: vec![lower_expr(value)],
+                args: vec![lower_expr(value, ctx)],
             }
         }
         lir::Expr::Match {
             scrutinee, arms, ..
-        } => lower_match_expr(scrutinee, arms),
+        } => lower_match_expr(scrutinee, arms, ctx),
         lir::Expr::Ctor { name, args, .. } => {
             if let Some((owner, variant)) = name.split_once('.') {
                 let ctor = tsast::Expr::Index {
@@ -774,7 +838,7 @@ fn lower_expr(expr: &lir::Expr) -> tsast::Expr {
                 } else {
                     tsast::Expr::Call {
                         callee: Box::new(ctor),
-                        args: args.iter().map(lower_expr).collect(),
+                        args: args.iter().map(|arg| lower_expr(arg, ctx)).collect(),
                     }
                 }
             } else {
@@ -784,17 +848,141 @@ fn lower_expr(expr: &lir::Expr) -> tsast::Expr {
                 } else {
                     tsast::Expr::Call {
                         callee: Box::new(callee),
-                        args: args.iter().map(lower_expr).collect(),
+                        args: args.iter().map(|arg| lower_expr(arg, ctx)).collect(),
                     }
                 }
             }
         }
+        lir::Expr::Perform { effect, .. } => {
+            tsast::Expr::Ident(format!("__effect_{effect}"))
+        }
+        lir::Expr::Handle {
+            effect, handler, body, ..
+        } => {
+            // ((__effect_E) => body)(handler)
+            let param_name = format!("__effect_{effect}");
+            let lambda = tsast::Expr::Arrow {
+                params: vec![tsast::Param::new(&param_name)],
+                return_type: None,
+                body: Box::new(tsast::FunctionBody::Expr(Box::new(lower_expr(body, ctx)))),
+            };
+            tsast::Expr::Call {
+                callee: Box::new(lambda),
+                args: vec![lower_expr(handler, ctx)],
+            }
+        }
+        lir::Expr::Ann { expr, .. } => lower_expr(expr, ctx),
         lir::Expr::Error { .. } => runtime_call("__lumo_error", Vec::new()),
+        lir::Expr::Bundle { entries, .. } => {
+            let props = entries
+                .iter()
+                .map(|entry| {
+                    let body = lower_expr(&entry.body, ctx);
+                    let value = if entry.params.is_empty() {
+                        tsast::Expr::Arrow {
+                            params: Vec::new(),
+                            return_type: None,
+                            body: Box::new(tsast::FunctionBody::Expr(Box::new(body))),
+                        }
+                    } else {
+                        tsast::Expr::Arrow {
+                            params: entry
+                                .params
+                                .iter()
+                                .map(|p| tsast::Param::new(&p.name))
+                                .collect(),
+                            return_type: None,
+                            body: Box::new(tsast::FunctionBody::Expr(Box::new(body))),
+                        }
+                    };
+                    tsast::ObjectProp {
+                        key: tsast::ObjectKey::Ident(entry.name.clone()),
+                        value,
+                    }
+                })
+                .collect();
+            tsast::Expr::Object(props)
+        }
+        lir::Expr::Member {
+            object, field, ..
+        } => tsast::Expr::Member {
+            object: Box::new(lower_expr(object, ctx)),
+            property: field.clone(),
+        },
     }
 }
 
-fn lower_match_expr(scrutinee: &lir::Expr, arms: &[lir::MatchArm]) -> tsast::Expr {
-    let lowered_scrutinee = lower_expr(scrutinee);
+fn lower_force_expr(expr: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
+    if let lir::Expr::Ident { name, .. } = expr {
+        if let Some(arity) = ctx.direct_callable_arities.get(name) {
+            if *arity == 0 {
+                return tsast::Expr::Call {
+                    callee: Box::new(tsast::Expr::Ident(name.clone())),
+                    args: Vec::new(),
+                };
+            }
+            return tsast::Expr::Ident(name.clone());
+        }
+    }
+
+    tsast::Expr::Call {
+        callee: Box::new(lower_expr(expr, ctx)),
+        args: Vec::new(),
+    }
+}
+
+fn lower_apply_expr(callee: &lir::Expr, arg: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
+    if let Some((root_name, args)) = collect_direct_apply_chain(callee, arg, ctx) {
+        return tsast::Expr::Call {
+            callee: Box::new(tsast::Expr::Ident(root_name)),
+            args: args.into_iter().map(|arg| lower_expr(arg, ctx)).collect(),
+        };
+    }
+
+    tsast::Expr::Call {
+        callee: Box::new(lower_expr(callee, ctx)),
+        args: vec![lower_expr(arg, ctx)],
+    }
+}
+
+fn collect_direct_apply_chain<'a>(
+    callee: &'a lir::Expr,
+    arg: &'a lir::Expr,
+    ctx: &LoweringContext,
+) -> Option<(String, Vec<&'a lir::Expr>)> {
+    let mut args = vec![arg];
+    let mut cursor = callee;
+
+    while let lir::Expr::Apply {
+        callee: inner_callee,
+        arg: inner_arg,
+        ..
+    } = cursor
+    {
+        args.push(inner_arg.as_ref());
+        cursor = inner_callee.as_ref();
+    }
+
+    let lir::Expr::Force { expr, .. } = cursor else {
+        return None;
+    };
+    let lir::Expr::Ident { name, .. } = expr.as_ref() else {
+        return None;
+    };
+    if ctx.direct_callable_arities.get(name).copied().unwrap_or(0) == 0 {
+        return None;
+    }
+
+    args.reverse();
+    Some((name.clone(), args))
+}
+
+fn lower_match_expr(
+    scrutinee: &lir::Expr,
+    arms: &[lir::MatchArm],
+    ctx: &LoweringContext,
+) -> tsast::Expr {
+    let lowered_scrutinee = lower_expr(scrutinee, ctx);
     let scrutinee_name = "__match";
     let scrutinee_expr = tsast::Expr::Ident(scrutinee_name.to_owned());
     let rows = arms
@@ -806,7 +994,7 @@ fn lower_match_expr(scrutinee: &lir::Expr, arms: &[lir::MatchArm]) -> tsast::Exp
         })
         .collect::<Vec<_>>();
     let decision = build_match_decision(vec![scrutinee_expr.clone()], rows);
-    let lowered = lower_match_decision(&scrutinee_expr, decision);
+    let lowered = lower_match_decision(&scrutinee_expr, decision, ctx);
 
     tsast::Expr::Call {
         callee: Box::new(tsast::Expr::Arrow {
@@ -818,8 +1006,12 @@ fn lower_match_expr(scrutinee: &lir::Expr, arms: &[lir::MatchArm]) -> tsast::Exp
     }
 }
 
-fn lower_match_arm_body(body: &lir::Expr, bindings: Vec<(String, tsast::Expr)>) -> tsast::Expr {
-    let mut expr = lower_expr(body);
+fn lower_match_arm_body(
+    body: &lir::Expr,
+    bindings: Vec<(String, tsast::Expr)>,
+    ctx: &LoweringContext,
+) -> tsast::Expr {
+    let mut expr = lower_expr(body, ctx);
     for (name, value) in bindings.into_iter().rev() {
         expr = tsast::Expr::Call {
             callee: Box::new(tsast::Expr::Arrow {
@@ -1039,16 +1231,20 @@ fn default_specialize_occurrences(occurrences: &[tsast::Expr], column: usize) ->
     out
 }
 
-fn lower_match_decision(error_value: &tsast::Expr, decision: MatchDecision) -> tsast::Expr {
+fn lower_match_decision(
+    error_value: &tsast::Expr,
+    decision: MatchDecision,
+    ctx: &LoweringContext,
+) -> tsast::Expr {
     match decision {
         MatchDecision::Fail => runtime_call("__lumo_match_error", vec![error_value.clone()]),
-        MatchDecision::Leaf { bindings, body } => lower_match_arm_body(&body, bindings),
+        MatchDecision::Leaf { bindings, body } => lower_match_arm_body(&body, bindings, ctx),
         MatchDecision::Switch {
             occurrence,
             cases,
             default,
         } => {
-            let mut folded = lower_match_decision(error_value, *default);
+            let mut folded = lower_match_decision(error_value, *default, ctx);
             for case in cases.into_iter().rev() {
                 let cond = runtime_call(
                     "__lumo_is",
@@ -1056,7 +1252,7 @@ fn lower_match_decision(error_value: &tsast::Expr, decision: MatchDecision) -> t
                 );
                 folded = tsast::Expr::IfElse {
                     cond: Box::new(cond),
-                    then_expr: Box::new(lower_match_decision(error_value, case.subtree)),
+                    then_expr: Box::new(lower_match_decision(error_value, case.subtree, ctx)),
                     else_expr: Box::new(folded),
                 };
             }

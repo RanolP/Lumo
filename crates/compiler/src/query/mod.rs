@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::Diagnostic,
-    hir, lir, lst,
+    hir,
+    lexer::Span,
+    lir, lst,
     parser::{self, ParseOutput},
     typecheck,
 };
@@ -190,11 +192,19 @@ impl QueryEngine {
                 message: e.message.clone(),
             })
             .collect::<Vec<_>>();
-        let type_errors = typecheck::typecheck_file(&parsed.file);
-        diags.extend(type_errors.into_iter().map(|e| Diagnostic {
-            start: e.span.start,
-            end: e.span.end,
-            message: e.message,
+        let lowered = self.lower(file)?;
+        let span_map = build_lir_span_map(&lowered);
+        let type_errors = typecheck::typecheck_file(&lowered);
+        diags.extend(type_errors.into_iter().map(|e| {
+            let span = e
+                .span
+                .or_else(|| span_map.get(&e.node_id).copied())
+                .unwrap_or(Span::new(0, 0));
+            Diagnostic {
+                start: span.start,
+                end: span.end,
+                message: e.message,
+            }
         }));
 
         let entry = self.files.get_mut(file)?;
@@ -207,6 +217,225 @@ impl QueryEngine {
 
     pub fn stats(&self) -> QueryStats {
         self.stats.clone()
+    }
+}
+
+fn build_lir_span_map(file: &lir::File) -> HashMap<u64, Span> {
+    let mut out = HashMap::new();
+    for item in &file.items {
+        match item {
+            lir::Item::ExternType(ext) => {
+                out.insert(ext.id.0, ext.source_span);
+            }
+            lir::Item::ExternFn(ext) => {
+                out.insert(ext.id.0, ext.source_span);
+                for param in &ext.params {
+                    out.insert(
+                        lir::source_id("param", param.source_span).0,
+                        param.source_span,
+                    );
+                }
+                if let Some(span) = ext.return_type_span {
+                    out.insert(lir::source_id("extern-fn-return", span).0, span);
+                }
+                if let Some(span) = ext.effect_span {
+                    out.insert(lir::source_id("extern-fn-effect", span).0, span);
+                }
+            }
+            lir::Item::Data(data) => {
+                out.insert(data.id.0, data.source_span);
+                for variant in &data.variants {
+                    out.insert(variant.id.0, variant.source_span);
+                    for span in &variant.payload_spans {
+                        out.insert(lir::source_id("variant-payload", *span).0, *span);
+                    }
+                }
+            }
+            lir::Item::Effect(effect) => {
+                out.insert(effect.id.0, effect.source_span);
+                for op in &effect.operations {
+                    out.insert(op.id.0, op.source_span);
+                    for param in &op.params {
+                        out.insert(
+                            lir::source_id("param", param.source_span).0,
+                            param.source_span,
+                        );
+                    }
+                    if let Some(span) = op.return_type_span {
+                        out.insert(lir::source_id("op-return", span).0, span);
+                    }
+                }
+            }
+            lir::Item::Fn(func) => {
+                out.insert(func.id.0, func.source_span);
+                for param in &func.params {
+                    out.insert(
+                        lir::source_id("param", param.source_span).0,
+                        param.source_span,
+                    );
+                }
+                if let Some(span) = func.return_type_span {
+                    out.insert(lir::source_id("fn-return", span).0, span);
+                }
+                if let Some(span) = func.effect_span {
+                    out.insert(lir::source_id("fn-effect", span).0, span);
+                }
+                collect_expr_spans(&func.value, &mut out);
+            }
+        }
+    }
+    out
+}
+
+fn collect_expr_spans(expr: &lir::Expr, out: &mut HashMap<u64, Span>) {
+    match expr {
+        lir::Expr::Ident {
+            id, source_span, ..
+        }
+        | lir::Expr::String {
+            id, source_span, ..
+        }
+        | lir::Expr::Error {
+            id, source_span, ..
+        } => {
+            out.insert(id.0, *source_span);
+        }
+        lir::Expr::Produce {
+            id,
+            source_span,
+            expr,
+            ..
+        }
+        | lir::Expr::Thunk {
+            id,
+            source_span,
+            expr,
+            ..
+        }
+        | lir::Expr::Force {
+            id,
+            source_span,
+            expr,
+            ..
+        }
+        | lir::Expr::Unroll {
+            id,
+            source_span,
+            expr,
+            ..
+        }
+        | lir::Expr::Roll {
+            id,
+            source_span,
+            expr,
+            ..
+        }
+        | lir::Expr::Ann {
+            id,
+            source_span,
+            expr,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+            collect_expr_spans(expr, out);
+        }
+        lir::Expr::Lambda {
+            id,
+            source_span,
+            body,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+            collect_expr_spans(body, out);
+        }
+        lir::Expr::Apply {
+            id,
+            source_span,
+            callee,
+            arg,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+            collect_expr_spans(callee, out);
+            collect_expr_spans(arg, out);
+        }
+        lir::Expr::LetIn {
+            id,
+            source_span,
+            value,
+            body,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+            collect_expr_spans(value, out);
+            collect_expr_spans(body, out);
+        }
+        lir::Expr::Match {
+            id,
+            source_span,
+            scrutinee,
+            arms,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+            collect_expr_spans(scrutinee, out);
+            for arm in arms {
+                out.insert(
+                    lir::source_id("match-arm", arm.source_span).0,
+                    arm.source_span,
+                );
+                collect_expr_spans(&arm.body, out);
+            }
+        }
+        lir::Expr::Ctor {
+            id,
+            source_span,
+            args,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+            for arg in args {
+                collect_expr_spans(arg, out);
+            }
+        }
+        lir::Expr::Perform {
+            id,
+            source_span,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+        }
+        lir::Expr::Handle {
+            id,
+            source_span,
+            handler,
+            body,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+            collect_expr_spans(handler, out);
+            collect_expr_spans(body, out);
+        }
+        lir::Expr::Bundle {
+            id,
+            source_span,
+            entries,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+            for entry in entries {
+                collect_expr_spans(&entry.body, out);
+            }
+        }
+        lir::Expr::Member {
+            id,
+            source_span,
+            object,
+            ..
+        } => {
+            out.insert(id.0, *source_span);
+            collect_expr_spans(object, out);
+        }
     }
 }
 

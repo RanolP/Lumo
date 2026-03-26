@@ -1,0 +1,11 @@
+fn f() := (x : A)
+---
+Fn(name="f", body=Ann(Variable("x"), "A"))
+==========
+fn f() := produce (x : A)
+---
+Fn(name="f", body=Produce(Ann(Variable("x"), "A")))
+==========
+fn f() := (x)
+---
+Fn(name="f", body=Variable("x"))

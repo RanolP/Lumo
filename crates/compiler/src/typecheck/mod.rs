@@ -1,12 +1,31 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::lexer::Span;
-use crate::parser::{self, Expr};
+use crate::lir::{self, Expr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeError {
-    pub span: Span,
+    pub node_id: u64,
+    pub span: Option<Span>,
     pub message: String,
+}
+
+impl TypeError {
+    fn new(node_id: u64, message: String) -> Self {
+        Self {
+            node_id,
+            span: None,
+            message,
+        }
+    }
+
+    fn with_span(node_id: u64, span: Span, message: String) -> Self {
+        Self {
+            node_id,
+            span: Some(span),
+            message,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,17 +54,18 @@ pub struct CheckedBinding {
     pub ty: CompType,
 }
 
-pub fn typecheck_file(file: &parser::File) -> Vec<TypeError> {
+pub fn typecheck_file(file: &lir::File) -> Vec<TypeError> {
     typecheck_and_bindings(file).1
 }
 
-pub fn typecheck_and_bindings(file: &parser::File) -> (Vec<CheckedBinding>, Vec<TypeError>) {
+pub fn typecheck_and_bindings(file: &lir::File) -> (Vec<CheckedBinding>, Vec<TypeError>) {
     let mut tc = TypeChecker {
         errors: Vec::new(),
         bindings: Vec::new(),
         data_defs: HashMap::new(),
         variant_owner: HashMap::new(),
         fn_defs: HashMap::new(),
+        effect_defs: HashMap::new(),
     };
     tc.check_file(file);
     (tc.bindings, tc.errors)
@@ -102,12 +122,18 @@ struct TypeChecker {
     data_defs: HashMap<String, DataDef>,
     variant_owner: HashMap<String, String>,
     fn_defs: HashMap<String, CompType>,
+    effect_defs: HashMap<String, EffectDef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DataDef {
     generics: Vec<String>,
     variants: HashMap<String, Vec<ValueType>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EffectDef {
+    operations: HashMap<String, CompType>,
 }
 
 enum BundleExprInferResult {
@@ -117,25 +143,25 @@ enum BundleExprInferResult {
 }
 
 impl TypeChecker {
-    fn check_file(&mut self, file: &parser::File) {
+    fn check_file(&mut self, file: &lir::File) {
         for item in &file.items {
-            if let parser::Item::Data(d) = item {
+            if let lir::Item::Data(d) = item {
                 for v in &d.variants {
                     self.variant_owner.insert(v.name.clone(), d.name.clone());
                 }
                 let mut variants = HashMap::new();
                 for v in &d.variants {
                     let mut payload = Vec::new();
-                    for t in &v.payload {
-                        match parse_v_type(&t.repr) {
+                    for (payload_index, t) in v.payload_types.iter().enumerate() {
+                        match parse_v_type(t) {
                             Some(ty) => payload.push(ty),
-                            None => self.errors.push(TypeError {
-                                span: t.span,
-                                message: format!(
+                            None => self.errors.push(TypeError::new(
+                                payload_node_id(v, payload_index),
+                                format!(
                                     "variant payload type must be a value type, got {}",
-                                    normalize_type_text(&t.repr)
+                                    normalize_type_text(t)
                                 ),
-                            }),
+                            )),
                         }
                     }
                     variants.insert(v.name.clone(), payload);
@@ -143,107 +169,99 @@ impl TypeChecker {
                 self.data_defs.insert(
                     d.name.clone(),
                     DataDef {
-                        generics: d.generics.iter().map(|g| g.name.clone()).collect(),
+                        generics: d.generics.clone(),
                         variants,
                     },
                 );
             }
-        }
-
-        for item in &file.items {
-            match item {
-                parser::Item::Fn(f) => self.predeclare_fn(f),
-                parser::Item::ExternFn(f) => self.predeclare_extern_fn(f),
-                _ => {}
-            }
-        }
-
-        for item in &file.items {
-            match item {
-                parser::Item::Fn(f) => self.check_fn(f),
-                parser::Item::ExternType(ext) => self.check_extern_attrs(&ext.attrs),
-                parser::Item::ExternFn(f) => {
-                    self.check_extern_attrs(&f.attrs);
-                    self.check_extern_fn(f);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    fn check_extern_attrs(&mut self, attrs: &[parser::Attribute]) {
-        let empty_env = HashMap::new();
-        for attr in attrs {
-            match attr.name.as_str() {
-                "extern" => {
-                    if let Some(value) = &attr.value {
-                        self.check_v_expr(
-                            value,
-                            &ValueType::Named("String".to_owned()),
-                            &empty_env,
-                        );
-                    }
-
-                    for arg in &attr.args {
-                        if arg.key == "name" {
-                            self.check_v_expr(
-                                &arg.value,
-                                &ValueType::Named("String".to_owned()),
-                                &empty_env,
-                            );
-                        } else {
-                            self.errors.push(TypeError {
-                                span: arg.span,
-                                message: format!(
-                                    "unknown `extern` attribute argument `{}`",
-                                    arg.key
-                                ),
-                            });
+            if let lir::Item::Effect(e) = item {
+                let mut operations = HashMap::new();
+                for op in &e.operations {
+                    let params = op
+                        .params
+                        .iter()
+                        .map(|p| match parse_v_type(&p.ty_repr) {
+                            Some(ty) => ty,
+                            None => {
+                                self.errors.push(TypeError::new(
+                                    lir::source_id("param", p.source_span).0,
+                                    format!(
+                                        "operation parameter `{}` must be a value type",
+                                        p.name
+                                    ),
+                                ));
+                                ValueType::Named("__invalid".to_owned())
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    let ret = match op.return_type_repr.as_ref() {
+                        Some(r) => match parse_c_type(r) {
+                            Some(ct) => ct,
+                            None => {
+                                self.errors.push(TypeError::new(
+                                    op.id.0,
+                                    format!(
+                                        "operation return type must be a computation type (e.g. `produce {}`), got `{}`",
+                                        normalize_type_text(r),
+                                        normalize_type_text(r),
+                                    ),
+                                ));
+                                CompType::Produce(Box::new(ValueType::Named("__invalid".to_owned())))
+                            }
+                        },
+                        None => CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))),
+                    };
+                    let op_ty = if params.is_empty() {
+                        ret
+                    } else {
+                        CompType::Fn {
+                            params,
+                            ret: Box::new(ret),
+                            effect: None,
                         }
-                    }
-
-                    if attr.value.is_none() && attr.args.is_empty() {
-                        self.errors.push(TypeError {
-                            span: attr.span,
-                            message: "`extern` attribute requires a value".to_owned(),
-                        });
-                    }
-
-                    if attr.value.is_some() && !attr.args.is_empty() {
-                        self.errors.push(TypeError {
-                            span: attr.span,
-                            message:
-                                "`extern` attribute cannot mix `= expr` and `(name = expr)` forms"
-                                    .to_owned(),
-                        });
-                    }
+                    };
+                    operations.insert(op.name.clone(), op_ty);
                 }
-                other => self.errors.push(TypeError {
-                    span: attr.span,
-                    message: format!("unknown attribute `{other}`"),
-                }),
+                self.effect_defs
+                    .insert(e.name.clone(), EffectDef { operations });
+            }
+        }
+
+        for item in &file.items {
+            match item {
+                lir::Item::Fn(f) => self.predeclare_fn(f),
+                lir::Item::ExternFn(f) => self.predeclare_extern_fn(f),
+                _ => {}
+            }
+        }
+
+        for item in &file.items {
+            match item {
+                lir::Item::Fn(f) => self.check_fn(f),
+                lir::Item::ExternFn(f) => self.check_extern_fn(f),
+                _ => {}
             }
         }
     }
 
-    fn predeclare_fn(&mut self, f: &parser::FnDecl) {
+    fn predeclare_fn(&mut self, f: &lir::FnDecl) {
         let params = f
             .params
             .iter()
             .map(|p| {
-                parse_v_type(&p.ty.repr).unwrap_or_else(|| ValueType::Named("__invalid".to_owned()))
+                parse_v_type(&p.ty_repr).unwrap_or_else(|| ValueType::Named("__invalid".to_owned()))
             })
             .collect::<Vec<_>>();
-        let ret = if let Some(ret) = &f.return_type {
-            parse_c_type(&ret.repr)
+        let ret = if let Some(ret) = &f.return_type_repr {
+            parse_c_type(ret)
                 .unwrap_or_else(|| CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))))
         } else {
             CompType::Produce(Box::new(ValueType::Named("Unit".to_owned())))
         };
         let effect = f
-            .effect
+            .effect_repr
             .as_ref()
-            .map(|e| normalize_effect_text(&normalize_type_text(&e.repr)));
+            .map(|e| normalize_effect_text(&normalize_type_text(e)));
         self.fn_defs.insert(
             f.name.clone(),
             CompType::Fn {
@@ -254,24 +272,24 @@ impl TypeChecker {
         );
     }
 
-    fn predeclare_extern_fn(&mut self, f: &parser::ExternFnDecl) {
+    fn predeclare_extern_fn(&mut self, f: &lir::ExternFnDecl) {
         let params = f
             .params
             .iter()
             .map(|p| {
-                parse_v_type(&p.ty.repr).unwrap_or_else(|| ValueType::Named("__invalid".to_owned()))
+                parse_v_type(&p.ty_repr).unwrap_or_else(|| ValueType::Named("__invalid".to_owned()))
             })
             .collect::<Vec<_>>();
-        let ret = if let Some(ret) = &f.return_type {
-            parse_c_type(&ret.repr)
+        let ret = if let Some(ret) = &f.return_type_repr {
+            parse_c_type(ret)
                 .unwrap_or_else(|| CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))))
         } else {
             CompType::Produce(Box::new(ValueType::Named("Unit".to_owned())))
         };
         let effect = f
-            .effect
+            .effect_repr
             .as_ref()
-            .map(|e| normalize_effect_text(&normalize_type_text(&e.repr)));
+            .map(|e| normalize_effect_text(&normalize_type_text(e)));
         self.fn_defs.insert(
             f.name.clone(),
             CompType::Fn {
@@ -282,15 +300,15 @@ impl TypeChecker {
         );
     }
 
-    fn check_fn(&mut self, f: &parser::FnDecl) {
+    fn check_fn(&mut self, f: &lir::FnDecl) {
         let mut env = HashMap::new();
         let mut param_types = Vec::new();
         for p in &f.params {
-            let Some(ty) = parse_v_type(&p.ty.repr) else {
-                self.errors.push(TypeError {
-                    span: p.span,
-                    message: format!("function parameter `{}` must be a value type", p.name),
-                });
+            let Some(ty) = parse_v_type(&p.ty_repr) else {
+                self.errors.push(TypeError::new(
+                    param_node_id(p),
+                    format!("function parameter `{}` must be a value type", p.name),
+                ));
                 continue;
             };
             env.insert(p.name.clone(), ty.clone());
@@ -298,15 +316,15 @@ impl TypeChecker {
         }
 
         let effect = f
-            .effect
+            .effect_repr
             .as_ref()
-            .map(|e| normalize_effect_text(&normalize_type_text(&e.repr)));
-        let expected = if let Some(ret) = &f.return_type {
-            let Some(expected) = parse_c_type(&ret.repr) else {
-                self.errors.push(TypeError {
-                    span: ret.span,
-                    message: "function return type must be a computation type".to_owned(),
-                });
+            .map(|e| normalize_effect_text(&normalize_type_text(e)));
+        let expected = if let Some(ret) = &f.return_type_repr {
+            let Some(expected) = parse_c_type(ret) else {
+                self.errors.push(TypeError::new(
+                    type_sig_node_id("fn-return", f.return_type_span, f.id),
+                    "function return type must be a computation type".to_owned(),
+                ));
                 return;
             };
             expected
@@ -321,35 +339,42 @@ impl TypeChecker {
         };
         self.fn_defs.insert(f.name.clone(), fn_ty.clone());
 
-        self.check_c_expr(&f.body, &expected, &env);
+        let Some(body) = unwrap_fn_body(f) else {
+            self.errors.push(TypeError::new(
+                f.id.0,
+                "malformed LIR function value: expected thunk/lambda spine".to_owned(),
+            ));
+            return;
+        };
+        self.check_c_expr(body, &expected, &env);
         self.bindings.push(CheckedBinding {
             name: f.name.clone(),
             ty: fn_ty,
         });
     }
 
-    fn check_extern_fn(&mut self, f: &parser::ExternFnDecl) {
+    fn check_extern_fn(&mut self, f: &lir::ExternFnDecl) {
         let mut param_types = Vec::new();
         for p in &f.params {
-            let Some(ty) = parse_v_type(&p.ty.repr) else {
-                self.errors.push(TypeError {
-                    span: p.span,
-                    message: format!("function parameter `{}` must be a value type", p.name),
-                });
+            let Some(ty) = parse_v_type(&p.ty_repr) else {
+                self.errors.push(TypeError::new(
+                    param_node_id(p),
+                    format!("function parameter `{}` must be a value type", p.name),
+                ));
                 continue;
             };
             param_types.push(ty);
         }
         let effect = f
-            .effect
+            .effect_repr
             .as_ref()
-            .map(|e| normalize_effect_text(&normalize_type_text(&e.repr)));
-        let ret = if let Some(ret) = &f.return_type {
-            let Some(expected) = parse_c_type(&ret.repr) else {
-                self.errors.push(TypeError {
-                    span: ret.span,
-                    message: "function return type must be a computation type".to_owned(),
-                });
+            .map(|e| normalize_effect_text(&normalize_type_text(e)));
+        let ret = if let Some(ret) = &f.return_type_repr {
+            let Some(expected) = parse_c_type(ret) else {
+                self.errors.push(TypeError::new(
+                    type_sig_node_id("extern-fn-return", f.return_type_span, f.id),
+                    "function return type must be a computation type".to_owned(),
+                ));
                 return;
             };
             expected
@@ -376,16 +401,100 @@ impl TypeChecker {
             self.check_c_expr(expr, inner, env);
             return;
         }
+        // Check bundle expression against effect type
+        if let (
+            Expr::Bundle {
+                entries, id, ..
+            },
+            ValueType::Named(effect_name),
+        ) = (expr, expected)
+        {
+            if let Some(def) = self.effect_defs.get(effect_name).cloned() {
+                self.check_bundle_against_effect(entries, &def, effect_name, id.0, env);
+                return;
+            }
+        }
         if let Some(actual) = self.infer_v_expr(expr, env) {
             if &actual != expected {
-                self.errors.push(TypeError {
-                    span: expr_span(expr),
-                    message: format!(
+                self.errors.push(TypeError::new(
+                    expr_node_id(expr),
+                    format!(
                         "type mismatch: expected {}, got {}",
                         render_v_type(expected),
                         render_v_type(&actual)
                     ),
-                });
+                ));
+            }
+        }
+    }
+
+    fn check_bundle_against_effect(
+        &mut self,
+        entries: &[lir::LirBundleEntry],
+        def: &EffectDef,
+        effect_name: &str,
+        node_id: u64,
+        env: &HashMap<String, ValueType>,
+    ) {
+        // Check for missing operations
+        for op_name in def.operations.keys() {
+            if !entries.iter().any(|e| e.name == *op_name) {
+                self.errors.push(TypeError::new(
+                    node_id,
+                    format!(
+                        "bundle for effect `{effect_name}` is missing operation `{op_name}`"
+                    ),
+                ));
+            }
+        }
+        // Check each entry
+        for entry in entries {
+            if let Some(op_ty) = def.operations.get(&entry.name) {
+                // The entry's params + body form the operation's computation.
+                // Build the expected comp type for checking.
+                let mut entry_env = env.clone();
+                match op_ty {
+                    CompType::Fn { params, ret, .. } => {
+                        if entry.params.len() != params.len() {
+                            self.errors.push(TypeError::new(
+                                node_id,
+                                format!(
+                                    "bundle entry `{}` expects {} params, got {}",
+                                    entry.name,
+                                    params.len(),
+                                    entry.params.len()
+                                ),
+                            ));
+                            continue;
+                        }
+                        for (p, expected_ty) in entry.params.iter().zip(params.iter()) {
+                            entry_env.insert(p.name.clone(), expected_ty.clone());
+                        }
+                        self.check_c_expr(&entry.body, ret, &entry_env);
+                    }
+                    CompType::Produce(_) => {
+                        if !entry.params.is_empty() {
+                            self.errors.push(TypeError::new(
+                                node_id,
+                                format!(
+                                    "bundle entry `{}` should take no params (op type is `{}`)",
+                                    entry.name,
+                                    render_c_type(op_ty)
+                                ),
+                            ));
+                            continue;
+                        }
+                        self.check_c_expr(&entry.body, op_ty, &entry_env);
+                    }
+                }
+            } else {
+                self.errors.push(TypeError::new(
+                    node_id,
+                    format!(
+                        "bundle entry `{}` is not an operation of effect `{effect_name}`",
+                        entry.name
+                    ),
+                ));
             }
         }
     }
@@ -396,35 +505,35 @@ impl TypeChecker {
         env: &HashMap<String, ValueType>,
         expected: Option<&CompType>,
     ) -> BundleExprInferResult {
-        let Some((owner, member, args, span, called)) = decompose_bundle_expr(expr) else {
+        let Some((owner, member, args, node_id, called)) = decompose_bundle_expr(expr) else {
             return BundleExprInferResult::NotBundleExpr;
         };
         let Some(def) = self.data_defs.get(&owner).cloned() else {
-            self.errors.push(TypeError {
-                span,
-                message: format!("unknown data bundle `{owner}`"),
-            });
+            self.errors.push(TypeError::new(
+                node_id,
+                format!("unknown data bundle `{owner}`"),
+            ));
             return BundleExprInferResult::Error;
         };
         let Some(owner_by_variant) = self.variant_owner.get(&member) else {
-            self.errors.push(TypeError {
-                span,
-                message: format!("unknown constructor `{owner}.{member}`"),
-            });
+            self.errors.push(TypeError::new(
+                node_id,
+                format!("unknown constructor `{owner}.{member}`"),
+            ));
             return BundleExprInferResult::Error;
         };
         if owner_by_variant != &owner {
-            self.errors.push(TypeError {
-                span,
-                message: format!("constructor `{owner}.{member}` does not belong to `{owner}`"),
-            });
+            self.errors.push(TypeError::new(
+                node_id,
+                format!("constructor `{owner}.{member}` does not belong to `{owner}`"),
+            ));
             return BundleExprInferResult::Error;
         }
         let Some(payload_types) = def.variants.get(&member).cloned() else {
-            self.errors.push(TypeError {
-                span,
-                message: format!("unknown constructor `{owner}.{member}`"),
-            });
+            self.errors.push(TypeError::new(
+                node_id,
+                format!("unknown constructor `{owner}.{member}`"),
+            ));
             return BundleExprInferResult::Error;
         };
 
@@ -437,24 +546,24 @@ impl TypeChecker {
                     def.generics.join(", ")
                 ))))
             };
-            self.errors.push(TypeError {
-                span,
-                message: format!(
+            self.errors.push(TypeError::new(
+                node_id,
+                format!(
                     "`{owner}.{member}` is a `{}`, which is not a function",
                     render_c_type(&field_ty)
                 ),
-            });
+            ));
             return BundleExprInferResult::Error;
         }
         if called && payload_types.len() != args.len() {
-            self.errors.push(TypeError {
-                span,
-                message: format!(
+            self.errors.push(TypeError::new(
+                node_id,
+                format!(
                     "constructor `{owner}.{member}` expects {} args, got {}",
                     payload_types.len(),
                     args.len()
                 ),
-            });
+            ));
             return BundleExprInferResult::Error;
         }
 
@@ -471,7 +580,7 @@ impl TypeChecker {
                     &actual_ty,
                     &generic_set,
                     &mut subst,
-                    expr_span(arg),
+                    expr_node_id(arg),
                 ) {
                     return BundleExprInferResult::Error;
                 }
@@ -499,7 +608,7 @@ impl TypeChecker {
                 expected_ty,
                 &generic_set,
                 &mut subst,
-                span,
+                node_id,
             ) {
                 return BundleExprInferResult::Error;
             }
@@ -512,13 +621,13 @@ impl TypeChecker {
             }
         }
         if !unresolved.is_empty() {
-            self.errors.push(TypeError {
-                span,
-                message: format!(
+            self.errors.push(TypeError::new(
+                node_id,
+                format!(
                     "cannot infer type arguments for bundle field `{owner}.{member}`: unresolved {}",
                     unresolved.join(", ")
                 ),
-            });
+            ));
             return BundleExprInferResult::Error;
         }
 
@@ -573,10 +682,14 @@ impl TypeChecker {
                 let value_ty = match value.as_ref() {
                     Expr::Produce { .. }
                     | Expr::Force { .. }
+                    | Expr::Apply { .. }
                     | Expr::LetIn { .. }
                     | Expr::Match { .. }
-                    | Expr::Member { .. }
-                    | Expr::Call { .. }
+                    | Expr::Ctor { .. }
+                    | Expr::Roll { .. }
+                    | Expr::Perform { .. }
+                    | Expr::Handle { .. }
+                    | Expr::Ann { .. }
                     | Expr::Error { .. } => self.infer_c_expr(value, env),
                     _ => self
                         .infer_v_expr(value, env)
@@ -586,13 +699,13 @@ impl TypeChecker {
                     return;
                 };
                 let CompType::Produce(inner) = value_ty else {
-                    self.errors.push(TypeError {
-                        span: expr_span(value),
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        expr_node_id(value),
+                        format!(
                             "let expects produce computation, got {}",
                             render_c_type(&value_ty)
                         ),
-                    });
+                    ));
                     return;
                 };
                 let mut child = env.clone();
@@ -602,7 +715,8 @@ impl TypeChecker {
             Expr::Match {
                 scrutinee,
                 arms,
-                span,
+                id,
+                ..
             } => {
                 let scrutinee_ty = self.infer_v_expr(scrutinee, env);
                 let scrutinee_data = scrutinee_ty
@@ -611,27 +725,27 @@ impl TypeChecker {
                     .and_then(|name| self.data_defs.get(&name).cloned());
                 if let Some(ref ty) = scrutinee_ty {
                     if scrutinee_data.is_some() {
-                        self.check_match_exhaustive(arms, ty, *span);
+                        self.check_match_exhaustive(arms, ty, id.0);
                     }
                 }
                 for arm in arms {
                     let mut parsed_pattern = parse_match_pattern(&arm.pattern);
                     if parsed_pattern.is_none() {
-                        self.errors.push(TypeError {
-                            span: arm.span,
-                            message: invalid_pattern_message(&arm.pattern),
-                        });
+                        self.errors.push(TypeError::new(
+                            arm_node_id(arm),
+                            invalid_pattern_message(&arm.pattern),
+                        ));
                     }
                     if let (Some(data_def), Some(Pattern::Bind(name))) =
                         (scrutinee_data.as_ref(), parsed_pattern.as_ref())
                     {
                         if data_def.variants.contains_key(name) {
-                            self.errors.push(TypeError {
-                                span: arm.span,
-                                message: format!(
+                            self.errors.push(TypeError::new(
+                                arm_node_id(arm),
+                                format!(
                                     "variant pattern `{name}` must be written `.{name}`"
                                 ),
-                            });
+                            ));
                             parsed_pattern = None;
                         }
                     }
@@ -639,7 +753,7 @@ impl TypeChecker {
                     if let (Some(ty), Some(pattern)) =
                         (scrutinee_ty.as_ref(), parsed_pattern.as_ref())
                     {
-                        self.bind_pattern(pattern, ty, &mut arm_env, arm.span);
+                        self.bind_pattern(pattern, ty, &mut arm_env, arm_node_id(arm));
                     } else if let Some(ty) = &scrutinee_ty {
                         for binding in parsed_pattern
                             .as_ref()
@@ -652,17 +766,45 @@ impl TypeChecker {
                     self.check_c_expr(&arm.body, expected, &arm_env);
                 }
             }
+            Expr::Handle {
+                effect,
+                handler,
+                body,
+                id,
+                ..
+            } => {
+                if self.effect_defs.get(effect).is_none() {
+                    self.errors.push(TypeError::new(
+                        id.0,
+                        format!("unknown effect `{effect}`"),
+                    ));
+                    let _ = self.infer_c_expr(handler, env);
+                    self.check_c_expr(body, expected, env);
+                    return;
+                }
+                let handler_value_type = self.effect_handler_type(effect);
+                if let Some(ref expected_handler_ty) = handler_value_type {
+                    self.check_v_expr(handler, expected_handler_ty, env);
+                } else {
+                    let _ = self.infer_c_expr(handler, env);
+                }
+                let mut body_env = env.clone();
+                if let Some(ty) = handler_value_type {
+                    body_env.insert(format!("__effect_{effect}"), ty);
+                }
+                self.check_c_expr(body, expected, &body_env);
+            }
             _ => {
                 if let Some(actual) = self.infer_c_expr(expr, env) {
                     if &actual != expected {
-                        self.errors.push(TypeError {
-                            span: expr_span(expr),
-                            message: format!(
+                        self.errors.push(TypeError::new(
+                            expr_node_id(expr),
+                            format!(
                                 "type mismatch: expected {}, got {}",
                                 render_c_type(expected),
                                 render_c_type(&actual)
                             ),
-                        });
+                        ));
                     }
                 }
             }
@@ -671,14 +813,14 @@ impl TypeChecker {
 
     fn infer_v_expr(&mut self, expr: &Expr, env: &HashMap<String, ValueType>) -> Option<ValueType> {
         match expr {
-            Expr::Ident { name, span } => {
+            Expr::Ident { name, id, .. } => {
                 if let Some(ty) = env.get(name) {
                     Some(ty.clone())
                 } else {
-                    self.errors.push(TypeError {
-                        span: *span,
-                        message: format!("unknown variable `{name}`"),
-                    });
+                    self.errors.push(TypeError::new(
+                        id.0,
+                        format!("unknown variable `{name}`"),
+                    ));
                     None
                 }
             }
@@ -687,33 +829,53 @@ impl TypeChecker {
                 let inner = self.infer_c_expr(expr, env)?;
                 Some(ValueType::Thunk(Box::new(inner)))
             }
-            Expr::Member { .. } => {
-                self.errors.push(TypeError {
-                    span: expr_span(expr),
-                    message: format!(
+            Expr::Unroll { expr, .. } => self.infer_v_expr(expr, env),
+            Expr::Ann {
+                expr, ty_repr, id, ..
+            } => {
+                if let Some(v_ty) = parse_v_type(ty_repr) {
+                    self.check_v_expr(expr, &v_ty, env);
+                    Some(v_ty)
+                } else {
+                    self.errors.push(TypeError::new(
+                        id.0,
+                        format!(
+                            "annotation type `{}` is not a valid value type",
+                            normalize_type_text(ty_repr)
+                        ),
+                    ));
+                    None
+                }
+            }
+            Expr::Bundle { id, .. } => {
+                self.errors.push(TypeError::new(
+                    id.0,
+                    "cannot infer type of bundle expression; provide type context".to_owned(),
+                ));
+                None
+            }
+            Expr::Ctor { .. }
+            | Expr::Roll { .. }
+            | Expr::Apply { .. }
+            | Expr::Force { .. }
+            | Expr::Perform { .. }
+            | Expr::Handle { .. }
+            | Expr::Member { .. } => {
+                self.errors.push(TypeError::new(
+                    expr_node_id(expr),
+                    format!(
                         "expected value expression, got computation `{}`; if you need its result, bind it first with `let`",
                         render_expr_head(expr)
                     ),
-                });
-                None
-            }
-            Expr::Call { .. } => {
-                self.errors.push(TypeError {
-                    span: expr_span(expr),
-                    message: format!(
-                        "expected value expression, got computation call `{}`; function arguments must be values (try `let x = {} in ...`)",
-                        render_expr_head(expr),
-                        render_expr_head(expr)
-                    ),
-                });
+                ));
                 None
             }
             Expr::Error { .. } => None,
             _ => {
-                self.errors.push(TypeError {
-                    span: expr_span(expr),
-                    message: "expected value expression".to_owned(),
-                });
+                self.errors.push(TypeError::new(
+                    expr_node_id(expr),
+                    "expected value expression".to_owned(),
+                ));
                 None
             }
         }
@@ -721,85 +883,113 @@ impl TypeChecker {
 
     fn infer_c_expr(&mut self, expr: &Expr, env: &HashMap<String, ValueType>) -> Option<CompType> {
         match expr {
-            Expr::Ident { name, span } => {
+            Expr::Ident { name, id, .. } => {
                 if env.contains_key(name) {
-                    self.errors.push(TypeError {
-                        span: *span,
-                        message: format!("`{name}` is a value, not a computation"),
-                    });
+                    self.errors.push(TypeError::new(
+                        id.0,
+                        format!("`{name}` is a value, not a computation"),
+                    ));
                     None
                 } else if let Some(ty) = self.fn_defs.get(name) {
                     Some(ty.clone())
                 } else {
-                    self.errors.push(TypeError {
-                        span: *span,
-                        message: format!("unknown computation `{name}`"),
-                    });
+                    self.errors.push(TypeError::new(
+                        id.0,
+                        format!("unknown computation `{name}`"),
+                    ));
                     None
                 }
             }
             Expr::String { .. } => {
-                self.errors.push(TypeError {
-                    span: expr_span(expr),
-                    message: "expected computation expression".to_owned(),
-                });
+                self.errors.push(TypeError::new(
+                    expr_node_id(expr),
+                    "expected computation expression".to_owned(),
+                ));
                 None
+            }
+            Expr::Ann {
+                expr, ty_repr, id, ..
+            } => {
+                if let Some(c_ty) = parse_c_type(ty_repr) {
+                    self.check_c_expr(expr, &c_ty, env);
+                    Some(c_ty)
+                } else if let Some(v_ty) = parse_v_type(ty_repr) {
+                    self.check_v_expr(expr, &v_ty, env);
+                    Some(CompType::Produce(Box::new(v_ty)))
+                } else {
+                    self.errors.push(TypeError::new(
+                        id.0,
+                        format!(
+                            "annotation type `{}` is not a valid type",
+                            normalize_type_text(ty_repr)
+                        ),
+                    ));
+                    None
+                }
             }
             Expr::Produce { expr, .. } => {
                 let inner = self.infer_v_expr(expr, env)?;
                 Some(CompType::Produce(Box::new(inner)))
             }
             Expr::Force { expr, .. } => {
+                if let Expr::Ident { name, .. } = expr.as_ref() {
+                    if let Some(ty) = self.fn_defs.get(name) {
+                        return Some(ty.clone());
+                    }
+                }
                 let inner = self.infer_v_expr(expr, env)?;
                 if let ValueType::Thunk(thunked) = inner {
                     Some(*thunked)
                 } else {
-                    self.errors.push(TypeError {
-                        span: expr_span(expr),
-                        message: format!("cannot force non-thunk type {}", render_v_type(&inner)),
-                    });
+                    self.errors.push(TypeError::new(
+                        expr_node_id(expr),
+                        format!("cannot force non-thunk type {}", render_v_type(&inner)),
+                    ));
                     None
                 }
             }
-            Expr::Member { .. } => match self.infer_bundle_expr_as_comp(expr, env, None) {
-                BundleExprInferResult::Typed(ty) => Some(ty),
-                BundleExprInferResult::Error => None,
-                BundleExprInferResult::NotBundleExpr => {
-                    self.errors.push(TypeError {
-                        span: expr_span(expr),
-                        message: "expected computation expression".to_owned(),
-                    });
-                    None
-                }
-            },
-            Expr::Call { callee, args, span } => {
+            Expr::Ctor { .. } | Expr::Roll { .. } => {
                 match self.infer_bundle_expr_as_comp(expr, env, None) {
-                    BundleExprInferResult::Typed(ty) => return Some(ty),
-                    BundleExprInferResult::Error => return None,
-                    BundleExprInferResult::NotBundleExpr => {}
+                    BundleExprInferResult::Typed(ty) => Some(ty),
+                    BundleExprInferResult::Error => None,
+                    BundleExprInferResult::NotBundleExpr => {
+                        self.errors.push(TypeError::new(
+                            expr_node_id(expr),
+                            "expected computation expression".to_owned(),
+                        ));
+                        None
+                    }
                 }
-
+            }
+            Expr::Apply { .. } => {
+                let Some((callee, args, node_id)) = decompose_apply_chain(expr) else {
+                    self.errors.push(TypeError::new(
+                        expr_node_id(expr),
+                        "expected computation expression".to_owned(),
+                    ));
+                    return None;
+                };
                 let callee_ty = self.infer_c_expr(callee, env)?;
                 let CompType::Fn { params, ret, .. } = callee_ty else {
-                    self.errors.push(TypeError {
-                        span: *span,
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!(
                             "`{}` is a `{}`, which is not a function",
                             render_expr_head(callee),
                             render_c_type(&callee_ty)
                         ),
-                    });
+                    ));
                     return None;
                 };
                 if params.len() != args.len() {
-                    self.errors.push(TypeError {
-                        span: *span,
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!(
                             "function expects {} args, got {}",
                             params.len(),
                             args.len()
                         ),
-                    });
+                    ));
                     return None;
                 }
                 for (arg, param_ty) in args.iter().zip(params.iter()) {
@@ -813,21 +1003,33 @@ impl TypeChecker {
                 let value_ty = match value.as_ref() {
                     Expr::Produce { .. }
                     | Expr::Force { .. }
+                    | Expr::Apply { .. }
                     | Expr::LetIn { .. }
                     | Expr::Match { .. }
+                    | Expr::Ctor { .. }
+                    | Expr::Roll { .. }
+                    | Expr::Perform { .. }
+                    | Expr::Handle { .. }
                     | Expr::Member { .. }
-                    | Expr::Call { .. }
+                    | Expr::Ann { .. }
                     | Expr::Error { .. } => self.infer_c_expr(value, env)?,
-                    _ => CompType::Produce(Box::new(self.infer_v_expr(value, env)?)),
+                    Expr::Ident { .. }
+                    | Expr::String { .. }
+                    | Expr::Thunk { .. }
+                    | Expr::Lambda { .. }
+                    | Expr::Unroll { .. }
+                    | Expr::Bundle { .. } => {
+                        CompType::Produce(Box::new(self.infer_v_expr(value, env)?))
+                    }
                 };
                 let CompType::Produce(inner) = value_ty else {
-                    self.errors.push(TypeError {
-                        span: expr_span(value),
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        expr_node_id(value),
+                        format!(
                             "let expects produce computation, got {}",
                             render_c_type(&value_ty)
                         ),
-                    });
+                    ));
                     return None;
                 };
                 let mut child = env.clone();
@@ -837,7 +1039,8 @@ impl TypeChecker {
             Expr::Match {
                 scrutinee,
                 arms,
-                span,
+                id,
+                ..
             } => {
                 let scrutinee_ty = self.infer_v_expr(scrutinee, env);
                 let scrutinee_data = scrutinee_ty
@@ -846,28 +1049,28 @@ impl TypeChecker {
                     .and_then(|name| self.data_defs.get(&name).cloned());
                 if let Some(ref ty) = scrutinee_ty {
                     if scrutinee_data.is_some() {
-                        self.check_match_exhaustive(arms, ty, *span);
+                        self.check_match_exhaustive(arms, ty, id.0);
                     }
                 }
                 let mut body_ty = None;
                 for arm in arms {
                     let mut parsed_pattern = parse_match_pattern(&arm.pattern);
                     if parsed_pattern.is_none() {
-                        self.errors.push(TypeError {
-                            span: arm.span,
-                            message: invalid_pattern_message(&arm.pattern),
-                        });
+                        self.errors.push(TypeError::new(
+                            arm_node_id(arm),
+                            invalid_pattern_message(&arm.pattern),
+                        ));
                     }
                     if let (Some(data_def), Some(Pattern::Bind(name))) =
                         (scrutinee_data.as_ref(), parsed_pattern.as_ref())
                     {
                         if data_def.variants.contains_key(name) {
-                            self.errors.push(TypeError {
-                                span: arm.span,
-                                message: format!(
+                            self.errors.push(TypeError::new(
+                                arm_node_id(arm),
+                                format!(
                                     "variant pattern `{name}` must be written `.{name}`"
                                 ),
-                            });
+                            ));
                             parsed_pattern = None;
                         }
                     }
@@ -875,7 +1078,7 @@ impl TypeChecker {
                     if let (Some(ty), Some(pattern)) =
                         (scrutinee_ty.as_ref(), parsed_pattern.as_ref())
                     {
-                        self.bind_pattern(pattern, ty, &mut arm_env, arm.span);
+                        self.bind_pattern(pattern, ty, &mut arm_env, arm_node_id(arm));
                     } else if let Some(ty) = &scrutinee_ty {
                         for binding in parsed_pattern
                             .as_ref()
@@ -888,14 +1091,14 @@ impl TypeChecker {
                     let arm_ty = self.infer_c_expr(&arm.body, &arm_env)?;
                     if let Some(expected) = &body_ty {
                         if *expected != arm_ty {
-                            self.errors.push(TypeError {
-                                span: *span,
-                                message: format!(
+                            self.errors.push(TypeError::new(
+                                id.0,
+                                format!(
                                     "match arm type mismatch: expected {}, got {}",
                                     render_c_type(expected),
                                     render_c_type(&arm_ty)
                                 ),
-                            });
+                            ));
                             return None;
                         }
                     } else {
@@ -904,12 +1107,110 @@ impl TypeChecker {
                 }
                 body_ty
             }
+            Expr::Perform { effect, id, .. } => {
+                if self.effect_defs.get(effect).is_none() {
+                    self.errors.push(TypeError::new(
+                        id.0,
+                        format!("unknown effect `{effect}`"),
+                    ));
+                    return None;
+                }
+                let effect_var = format!("__effect_{effect}");
+                if let Some(handler_ty) = env.get(&effect_var) {
+                    Some(CompType::Produce(Box::new(handler_ty.clone())))
+                } else {
+                    self.errors.push(TypeError::new(
+                        id.0,
+                        format!(
+                            "effect `{effect}` is not handled in this context; \
+                             wrap in `handle {effect} with <handler> in ...`"
+                        ),
+                    ));
+                    None
+                }
+            }
+            Expr::Handle {
+                effect,
+                handler,
+                body,
+                id,
+                ..
+            } => {
+                if self.effect_defs.get(effect).is_none() {
+                    self.errors.push(TypeError::new(
+                        id.0,
+                        format!("unknown effect `{effect}`"),
+                    ));
+                    let _ = self.infer_c_expr(handler, env);
+                    return self.infer_c_expr(body, env);
+                }
+                let handler_value_type = self.effect_handler_type(effect);
+                if let Some(ref expected_handler_ty) = handler_value_type {
+                    self.check_v_expr(handler, expected_handler_ty, env);
+                } else {
+                    let _ = self.infer_c_expr(handler, env);
+                }
+                let mut body_env = env.clone();
+                if let Some(ty) = handler_value_type {
+                    body_env.insert(format!("__effect_{effect}"), ty);
+                }
+                self.infer_c_expr(body, &body_env)
+            }
+            Expr::Member {
+                object, field, id, ..
+            } => {
+                // Member access is a computation-level operation.
+                // Object can be a value (e.g. h.op) or computation (e.g. (perform E).op).
+                let obj_ty = if is_syntactic_value_expr(object) {
+                    self.infer_v_expr(object, env)?
+                } else {
+                    let comp_ty = self.infer_c_expr(object, env)?;
+                    match comp_ty {
+                        CompType::Produce(inner) => *inner,
+                        other => {
+                            self.errors.push(TypeError::new(
+                                id.0,
+                                format!(
+                                    "member access `.{field}` on computation `{}`",
+                                    render_c_type(&other)
+                                ),
+                            ));
+                            return None;
+                        }
+                    }
+                };
+
+                if let ValueType::Named(ref name) = obj_ty {
+                    if let Some(def) = self.effect_defs.get(name).cloned() {
+                        if let Some(op_ty) = def.operations.get(field) {
+                            return Some(op_ty.clone());
+                        }
+                        self.errors.push(TypeError::new(
+                            id.0,
+                            format!("effect `{name}` has no operation `{field}`"),
+                        ));
+                        return None;
+                    }
+                }
+
+                self.errors.push(TypeError::new(
+                    id.0,
+                    format!(
+                        "member access `.{field}` on type `{}`",
+                        render_v_type(&obj_ty)
+                    ),
+                ));
+                None
+            }
             Expr::Error { .. } => None,
-            _ => {
-                self.errors.push(TypeError {
-                    span: expr_span(expr),
-                    message: "expected computation expression".to_owned(),
-                });
+            Expr::Thunk { .. }
+            | Expr::Lambda { .. }
+            | Expr::Unroll { .. }
+            | Expr::Bundle { .. } => {
+                self.errors.push(TypeError::new(
+                    expr_node_id(expr),
+                    "expected computation expression".to_owned(),
+                ));
                 None
             }
         }
@@ -920,7 +1221,7 @@ impl TypeChecker {
         pattern: &Pattern,
         expected: &ValueType,
         env: &mut HashMap<String, ValueType>,
-        span: Span,
+        node_id: u64,
     ) {
         match pattern {
             Pattern::Wildcard => {}
@@ -929,32 +1230,32 @@ impl TypeChecker {
             }
             Pattern::Ctor { name, args } => {
                 let Some(data_name) = nominal_head_name(expected) else {
-                    self.errors.push(TypeError {
-                        span,
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!(
                             "constructor pattern `{name}` used on non-data type {}",
                             render_v_type(expected)
                         ),
-                    });
+                    ));
                     return;
                 };
                 let Some(data_def) = self.data_defs.get(&data_name).cloned() else {
-                    self.errors.push(TypeError {
-                        span,
-                        message: format!("unknown data type `{data_name}` in match scrutinee"),
-                    });
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!("unknown data type `{data_name}` in match scrutinee"),
+                    ));
                     return;
                 };
                 if let Some(payload_types) = data_def.variants.get(name) {
                     if payload_types.len() != args.len() {
-                        self.errors.push(TypeError {
-                            span,
-                            message: format!(
+                        self.errors.push(TypeError::new(
+                            node_id,
+                            format!(
                                 "pattern `{name}` expects {} args, got {}",
                                 payload_types.len(),
                                 args.len()
                             ),
-                        });
+                        ));
                         return;
                     }
 
@@ -962,20 +1263,22 @@ impl TypeChecker {
                     let subst = match expected {
                         ValueType::Named(named) => {
                             let (head, args_text) = split_nominal_type_args(named);
-                            self.generic_subst_from_named_type(&head, &args_text, &data_def, span)
-                                .unwrap_or_default()
+                            self.generic_subst_from_named_type(
+                                &head, &args_text, &data_def, node_id,
+                            )
+                            .unwrap_or_default()
                         }
                         _ => HashMap::new(),
                     };
                     for (arg, payload_ty) in args.iter().zip(payload_types.iter()) {
                         let expected_payload = subst_v_type(payload_ty, &subst);
-                        self.bind_pattern(arg, &expected_payload, env, span);
+                        self.bind_pattern(arg, &expected_payload, env, node_id);
                     }
                 } else {
-                    self.errors.push(TypeError {
-                        span,
-                        message: format!("unknown variant `{name}` in match pattern"),
-                    });
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!("unknown variant `{name}` in match pattern"),
+                    ));
                 }
             }
         }
@@ -986,29 +1289,29 @@ impl TypeChecker {
         expected_head: &str,
         expected_args_text: &[String],
         data_def: &DataDef,
-        span: Span,
+        node_id: u64,
     ) -> Option<HashMap<String, ValueType>> {
         if data_def.generics.is_empty() {
             return Some(HashMap::new());
         }
         if expected_args_text.len() != data_def.generics.len() {
-            self.errors.push(TypeError {
-                span,
-                message: format!(
+            self.errors.push(TypeError::new(
+                node_id,
+                format!(
                     "type argument count mismatch for `{expected_head}`: expected {}, got {}",
                     data_def.generics.len(),
                     expected_args_text.len()
                 ),
-            });
+            ));
             return None;
         }
         let mut subst = HashMap::with_capacity(data_def.generics.len());
         for (generic, arg_text) in data_def.generics.iter().zip(expected_args_text.iter()) {
             let Some(arg_ty) = parse_v_type(arg_text) else {
-                self.errors.push(TypeError {
-                    span,
-                    message: format!("invalid type argument `{arg_text}` for `{expected_head}`"),
-                });
+                self.errors.push(TypeError::new(
+                    node_id,
+                    format!("invalid type argument `{arg_text}` for `{expected_head}`"),
+                ));
                 return None;
             };
             subst.insert(generic.clone(), arg_ty);
@@ -1022,21 +1325,21 @@ impl TypeChecker {
         actual: &ValueType,
         generics: &HashSet<String>,
         subst: &mut HashMap<String, ValueType>,
-        span: Span,
+        node_id: u64,
     ) -> bool {
         match template {
             ValueType::Named(name) => {
                 if generics.contains(name) {
                     if let Some(bound) = subst.get(name) {
                         if bound != actual {
-                            self.errors.push(TypeError {
-                                span,
-                                message: format!(
+                            self.errors.push(TypeError::new(
+                                node_id,
+                                format!(
                                     "type mismatch: expected {}, got {}",
                                     render_v_type(bound),
                                     render_v_type(actual)
                                 ),
-                            });
+                            ));
                             return false;
                         }
                         return true;
@@ -1045,14 +1348,14 @@ impl TypeChecker {
                     return true;
                 }
                 let ValueType::Named(actual_name) = actual else {
-                    self.errors.push(TypeError {
-                        span,
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!(
                             "type mismatch: expected {}, got {}",
                             render_v_type(template),
                             render_v_type(actual)
                         ),
-                    });
+                    ));
                     return false;
                 };
                 let (template_head, template_args_text) = split_nominal_type_args(name);
@@ -1060,32 +1363,32 @@ impl TypeChecker {
                 if template_head != actual_head
                     || template_args_text.len() != actual_args_text.len()
                 {
-                    self.errors.push(TypeError {
-                        span,
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!(
                             "type mismatch: expected {}, got {}",
                             render_v_type(template),
                             render_v_type(actual)
                         ),
-                    });
+                    ));
                     return false;
                 }
                 for (lhs, rhs) in template_args_text.iter().zip(actual_args_text.iter()) {
                     let Some(lhs_ty) = parse_v_type(lhs) else {
-                        self.errors.push(TypeError {
-                            span,
-                            message: format!("invalid type `{lhs}`"),
-                        });
+                        self.errors.push(TypeError::new(
+                            node_id,
+                            format!("invalid type `{lhs}`"),
+                        ));
                         return false;
                     };
                     let Some(rhs_ty) = parse_v_type(rhs) else {
-                        self.errors.push(TypeError {
-                            span,
-                            message: format!("invalid type `{rhs}`"),
-                        });
+                        self.errors.push(TypeError::new(
+                            node_id,
+                            format!("invalid type `{rhs}`"),
+                        ));
                         return false;
                     };
-                    if !self.unify_ctor_payload_type(&lhs_ty, &rhs_ty, generics, subst, span) {
+                    if !self.unify_ctor_payload_type(&lhs_ty, &rhs_ty, generics, subst, node_id) {
                         return false;
                     }
                 }
@@ -1093,14 +1396,14 @@ impl TypeChecker {
             }
             ValueType::Thunk(template_inner) => {
                 let ValueType::Thunk(actual_inner) = actual else {
-                    self.errors.push(TypeError {
-                        span,
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!(
                             "type mismatch: expected {}, got {}",
                             render_v_type(template),
                             render_v_type(actual)
                         ),
-                    });
+                    ));
                     return false;
                 };
                 self.unify_ctor_payload_comp_type(
@@ -1108,7 +1411,7 @@ impl TypeChecker {
                     actual_inner,
                     generics,
                     subst,
-                    span,
+                    node_id,
                 )
             }
             ValueType::Func {
@@ -1120,33 +1423,33 @@ impl TypeChecker {
                     ret: actual_ret,
                 } = actual
                 else {
-                    self.errors.push(TypeError {
-                        span,
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!(
                             "type mismatch: expected {}, got {}",
                             render_v_type(template),
                             render_v_type(actual)
                         ),
-                    });
+                    ));
                     return false;
                 };
                 if template_params.len() != actual_params.len() {
-                    self.errors.push(TypeError {
-                        span,
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!(
                             "type mismatch: expected {}, got {}",
                             render_v_type(template),
                             render_v_type(actual)
                         ),
-                    });
+                    ));
                     return false;
                 }
                 for (lhs, rhs) in template_params.iter().zip(actual_params.iter()) {
-                    if !self.unify_ctor_payload_type(lhs, rhs, generics, subst, span) {
+                    if !self.unify_ctor_payload_type(lhs, rhs, generics, subst, node_id) {
                         return false;
                     }
                 }
-                self.unify_ctor_payload_type(template_ret, actual_ret, generics, subst, span)
+                self.unify_ctor_payload_type(template_ret, actual_ret, generics, subst, node_id)
             }
         }
     }
@@ -1157,11 +1460,11 @@ impl TypeChecker {
         actual: &CompType,
         generics: &HashSet<String>,
         subst: &mut HashMap<String, ValueType>,
-        span: Span,
+        node_id: u64,
     ) -> bool {
         match (template, actual) {
             (CompType::Produce(lhs), CompType::Produce(rhs)) => {
-                self.unify_ctor_payload_type(lhs, rhs, generics, subst, span)
+                self.unify_ctor_payload_type(lhs, rhs, generics, subst, node_id)
             }
             (
                 CompType::Fn {
@@ -1176,42 +1479,49 @@ impl TypeChecker {
                 },
             ) => {
                 if lhs_params.len() != rhs_params.len() || lhs_effect != rhs_effect {
-                    self.errors.push(TypeError {
-                        span,
-                        message: format!(
+                    self.errors.push(TypeError::new(
+                        node_id,
+                        format!(
                             "type mismatch: expected {}, got {}",
                             render_c_type(template),
                             render_c_type(actual)
                         ),
-                    });
+                    ));
                     return false;
                 }
                 for (lhs, rhs) in lhs_params.iter().zip(rhs_params.iter()) {
-                    if !self.unify_ctor_payload_type(lhs, rhs, generics, subst, span) {
+                    if !self.unify_ctor_payload_type(lhs, rhs, generics, subst, node_id) {
                         return false;
                     }
                 }
-                self.unify_ctor_payload_comp_type(lhs_ret, rhs_ret, generics, subst, span)
+                self.unify_ctor_payload_comp_type(lhs_ret, rhs_ret, generics, subst, node_id)
             }
             _ => {
-                self.errors.push(TypeError {
-                    span,
-                    message: format!(
+                self.errors.push(TypeError::new(
+                    node_id,
+                    format!(
                         "type mismatch: expected {}, got {}",
                         render_c_type(template),
                         render_c_type(actual)
                     ),
-                });
+                ));
                 false
             }
         }
     }
 
+    /// Compute the value type that a handler for effect `name` must have.
+    /// Always returns `Named(effect_name)` — effects are bundles regardless of op count.
+    fn effect_handler_type(&self, name: &str) -> Option<ValueType> {
+        self.effect_defs.get(name)?;
+        Some(ValueType::Named(name.to_owned()))
+    }
+
     fn check_match_exhaustive(
         &mut self,
-        arms: &[parser::MatchArm],
+        arms: &[lir::MatchArm],
         scrutinee_ty: &ValueType,
-        span: Span,
+        node_id: u64,
     ) {
         let mut matrix = Vec::new();
 
@@ -1223,10 +1533,10 @@ impl TypeChecker {
                 continue;
             }
             if !self.is_useful_pattern(&matrix, scrutinee_ty, &pattern) {
-                self.errors.push(TypeError {
-                    span: arm.span,
-                    message: "unreachable match arm: pattern already covered".to_owned(),
-                });
+                self.errors.push(TypeError::new(
+                    arm_node_id(arm),
+                    "unreachable match arm: pattern already covered".to_owned(),
+                ));
                 continue;
             }
             matrix.push(vec![pattern]);
@@ -1253,13 +1563,13 @@ impl TypeChecker {
         missing.sort();
         missing.dedup();
 
-        self.errors.push(TypeError {
-            span,
-            message: format!(
+        self.errors.push(TypeError::new(
+            node_id,
+            format!(
                 "non-exhaustive match: missing patterns {}",
                 missing.join(", ")
             ),
-        });
+        ));
     }
 
     fn is_useful_pattern(
@@ -1849,55 +2159,152 @@ fn nominal_head_name(ty: &ValueType) -> Option<String> {
 fn is_syntactic_value_expr(expr: &Expr) -> bool {
     matches!(
         expr,
-        Expr::Ident { .. } | Expr::String { .. } | Expr::Thunk { .. }
+        Expr::Ident { .. }
+            | Expr::String { .. }
+            | Expr::Thunk { .. }
+            | Expr::Unroll { .. }
+            | Expr::Bundle { .. }
     )
 }
 
 fn render_expr_head(expr: &Expr) -> String {
     match expr {
         Expr::Ident { name, .. } => name.clone(),
-        Expr::Member { object, member, .. } => format!("{}.{}", render_expr_head(object), member),
-        Expr::Call { callee, .. } => format!("{}(...)", render_expr_head(callee)),
+        Expr::Force { expr, .. } => format!("force {}", render_expr_head(expr)),
+        Expr::Apply { callee, .. } => format!("{}(...)", render_expr_head(callee)),
+        Expr::Ctor { name, .. } => name.clone(),
+        Expr::Roll { expr, .. } => render_expr_head(expr),
+        Expr::Perform { effect, .. } => format!("perform {effect}"),
+        Expr::Handle { effect, .. } => format!("handle {effect}"),
+        Expr::Bundle { .. } => "bundle { ... }".to_owned(),
+        Expr::Member { object, field, .. } => format!("{}.{field}", render_expr_head(object)),
         _ => "<expr>".to_owned(),
     }
 }
 
-fn decompose_bundle_expr(expr: &Expr) -> Option<(String, String, &[Expr], Span, bool)> {
+fn decompose_bundle_expr(expr: &Expr) -> Option<(String, String, &[Expr], u64, bool)> {
     match expr {
-        Expr::Member {
-            object,
-            member,
-            span,
+        Expr::Ctor {
+            name,
+            args,
+            id,
+            called,
+            ..
         } => {
-            let Expr::Ident { name: owner, .. } = object.as_ref() else {
-                return None;
-            };
-            Some((owner.clone(), member.clone(), &[], *span, false))
+            let (owner, member) = name.split_once('.')?;
+            Some((
+                owner.to_owned(),
+                member.to_owned(),
+                args.as_slice(),
+                id.0,
+                *called,
+            ))
         }
-        Expr::Call { callee, args, span } => {
-            let Expr::Member { object, member, .. } = callee.as_ref() else {
-                return None;
-            };
-            let Expr::Ident { name: owner, .. } = object.as_ref() else {
-                return None;
-            };
-            Some((owner.clone(), member.clone(), args.as_slice(), *span, true))
-        }
+        Expr::Roll { expr, id, .. } => match expr.as_ref() {
+            Expr::Ctor {
+                name, args, called, ..
+            } => {
+                let (owner, member) = name.split_once('.')?;
+                Some((
+                    owner.to_owned(),
+                    member.to_owned(),
+                    args.as_slice(),
+                    id.0,
+                    *called,
+                ))
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
 
-fn expr_span(expr: &Expr) -> Span {
-    match expr {
-        Expr::Ident { span, .. } => *span,
-        Expr::String { span, .. } => *span,
-        Expr::Member { span, .. } => *span,
-        Expr::Call { span, .. } => *span,
-        Expr::Produce { span, .. } => *span,
-        Expr::Thunk { span, .. } => *span,
-        Expr::Force { span, .. } => *span,
-        Expr::LetIn { span, .. } => *span,
-        Expr::Match { span, .. } => *span,
-        Expr::Error { span } => *span,
+fn decompose_apply_chain(expr: &Expr) -> Option<(&Expr, Vec<&Expr>, u64)> {
+    let Expr::Apply { callee, arg, .. } = expr else {
+        return None;
+    };
+    let mut args = vec![arg.as_ref()];
+    let mut cursor = callee.as_ref();
+    while let Expr::Apply {
+        callee: inner_callee,
+        arg: inner_arg,
+        ..
+    } = cursor
+    {
+        args.push(inner_arg.as_ref());
+        cursor = inner_callee.as_ref();
     }
+    args.reverse();
+    Some((cursor, args, expr_node_id(expr)))
+}
+
+fn expr_node_id(expr: &Expr) -> u64 {
+    match expr {
+        Expr::Ident { id, .. } => id.0,
+        Expr::String { id, .. } => id.0,
+        Expr::Produce { id, .. } => id.0,
+        Expr::Thunk { id, .. } => id.0,
+        Expr::Force { id, .. } => id.0,
+        Expr::Lambda { id, .. } => id.0,
+        Expr::Apply { id, .. } => id.0,
+        Expr::Unroll { id, .. } => id.0,
+        Expr::LetIn { id, .. } => id.0,
+        Expr::Match { id, .. } => id.0,
+        Expr::Ctor { id, .. } => id.0,
+        Expr::Roll { id, .. } => id.0,
+        Expr::Perform { id, .. } => id.0,
+        Expr::Handle { id, .. } => id.0,
+        Expr::Ann { id, .. } => id.0,
+        Expr::Error { id, .. } => id.0,
+        Expr::Bundle { id, .. } => id.0,
+        Expr::Member { id, .. } => id.0,
+    }
+}
+
+fn param_node_id(param: &lir::ParamDecl) -> u64 {
+    lir::source_id("param", param.source_span).0
+}
+
+fn payload_node_id(variant: &lir::VariantDecl, index: usize) -> u64 {
+    variant
+        .payload_spans
+        .get(index)
+        .copied()
+        .map(|span| lir::source_id("variant-payload", span).0)
+        .unwrap_or(variant.id.0)
+}
+
+fn type_sig_node_id(
+    tag: &str,
+    span: Option<Span>,
+    fallback: lir::ContentHash,
+) -> u64 {
+    span.map(|span| lir::source_id(tag, span).0)
+        .unwrap_or(fallback.0)
+}
+
+fn arm_node_id(arm: &lir::MatchArm) -> u64 {
+    lir::source_id("match-arm", arm.source_span).0
+}
+
+fn unwrap_fn_body<'a>(func: &'a lir::FnDecl) -> Option<&'a Expr> {
+    let Expr::Thunk { expr, .. } = &func.value else {
+        return None;
+    };
+    let mut cursor = expr.as_ref();
+    for param in &func.params {
+        let Expr::Lambda {
+            param: actual,
+            body,
+            ..
+        } = cursor
+        else {
+            return None;
+        };
+        if actual != &param.name {
+            return None;
+        }
+        cursor = body.as_ref();
+    }
+    Some(cursor)
 }

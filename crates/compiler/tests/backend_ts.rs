@@ -219,14 +219,16 @@ fn ts_backend_specializes_unary_operator_externs() {
 }
 
 #[test]
-fn ts_backend_parenthesizes_let_lambda_callee() {
+fn ts_backend_flattens_let_iife_to_const() {
     let file = lower_typed(
         "#[extern = \"string\"] extern type String; #[extern = \"String._+_\"] extern fn String_concat(a: String, b: String): produce String; fn main(): produce String := let s = String_concat(\"Hello, \", \"world!\") in String_concat(s, \"!\")",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    assert!(js.contains("((s) =>"), "{js}");
+    // IIFE is flattened: ((s) => ...)(expr) → const s = expr; ...
     assert!(
-        js.contains(")(String_concat(\"Hello, \", \"world!\"));"),
+        js.contains("const s = String_concat(\"Hello, \", \"world!\");"),
         "{js}"
     );
+    assert!(js.contains("return String_concat(s, \"!\");"), "{js}");
+    assert!(!js.contains("((s) =>"), "IIFE should be flattened: {js}");
 }

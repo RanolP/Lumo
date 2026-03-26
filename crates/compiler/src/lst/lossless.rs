@@ -17,9 +17,13 @@ pub enum SyntaxKind {
     ThunkExpr,
     ForceExpr,
     MatchExpr,
+    EffectDecl,
     IdentExpr,
     StringExpr,
     CallExpr,
+    PerformExpr,
+    HandleExpr,
+    BundleExpr,
     Error,
 }
 
@@ -87,6 +91,11 @@ impl Parser {
                 self.consume_attribute_tokens(&mut children);
                 continue;
             }
+            if self.at_keyword(Keyword::Effect) {
+                let node = self.parse_effect_decl();
+                children.push(SyntaxElement::Node(Box::new(node)));
+                continue;
+            }
             if self.at_keyword(Keyword::Data) {
                 let node = self.parse_data_decl();
                 children.push(SyntaxElement::Node(Box::new(node)));
@@ -113,6 +122,38 @@ impl Parser {
         }
 
         node_from_children(SyntaxKind::File, children)
+    }
+
+    fn parse_effect_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // effect
+
+        while !self.eof() {
+            if self.at_symbol_text("{") {
+                break;
+            }
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        if !self.eof() {
+            children.push(SyntaxElement::Token(self.bump().unwrap())); // {
+        } else {
+            self.error_here("expected `{` in effect declaration");
+            return node_from_children(SyntaxKind::EffectDecl, children);
+        }
+
+        while !self.eof() && !self.at_symbol_text("}") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        if !self.eof() && self.at_symbol_text("}") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else {
+            self.error_here("expected `}` in effect declaration");
+        }
+
+        node_from_children(SyntaxKind::EffectDecl, children)
     }
 
     fn parse_data_decl(&mut self) -> SyntaxNode {
@@ -221,6 +262,12 @@ impl Parser {
             self.parse_force_expr()
         } else if self.at_keyword(Keyword::Match) {
             self.parse_match_expr()
+        } else if self.at_keyword(Keyword::Perform) {
+            self.parse_perform_expr()
+        } else if self.at_keyword(Keyword::Handle) {
+            self.parse_handle_expr()
+        } else if self.at_keyword(Keyword::Bundle) {
+            self.parse_bundle_expr()
         } else if self.at_ident() {
             self.parse_ident_or_call_expr()
         } else if self.at_string_lit() {
@@ -247,6 +294,7 @@ impl Parser {
 
         while !self.eof() && !self.at_symbol_text("=") {
             if self.at_keyword(Keyword::Data)
+                || self.at_keyword(Keyword::Effect)
                 || self.at_keyword(Keyword::Fn)
                 || self.at_keyword(Keyword::Extern)
             {
@@ -266,6 +314,7 @@ impl Parser {
 
         while !self.eof() && !self.at_keyword(Keyword::In) {
             if self.at_keyword(Keyword::Data)
+                || self.at_keyword(Keyword::Effect)
                 || self.at_keyword(Keyword::Fn)
                 || self.at_keyword(Keyword::Extern)
             {
@@ -291,6 +340,7 @@ impl Parser {
 
         if self.eof()
             || self.at_keyword(Keyword::Data)
+            || self.at_keyword(Keyword::Effect)
             || self.at_keyword(Keyword::Fn)
             || self.at_keyword(Keyword::Extern)
         {
@@ -317,6 +367,9 @@ impl Parser {
                 || self.at_keyword(Keyword::Thunk)
                 || self.at_keyword(Keyword::Force)
                 || self.at_keyword(Keyword::Match)
+                || self.at_keyword(Keyword::Perform)
+                || self.at_keyword(Keyword::Handle)
+                || self.at_keyword(Keyword::Bundle)
                 || self.at_string_lit()
             {
                 let nested = self.parse_expr();
@@ -392,6 +445,103 @@ impl Parser {
         }
 
         node_from_children(SyntaxKind::MatchExpr, children)
+    }
+
+    fn parse_perform_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // perform
+        let payload = self.parse_expr();
+        children.push(SyntaxElement::Node(Box::new(payload)));
+        node_from_children(SyntaxKind::PerformExpr, children)
+    }
+
+    fn parse_handle_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // handle
+
+        // parse operation name (ident or tokens until "with")
+        let inner = self.parse_expr();
+        children.push(SyntaxElement::Node(Box::new(inner)));
+
+        // skip trivia
+        while !self.eof() && self.at_trivia() {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        // expect "with" (contextual keyword)
+        if self.at_ident_text("with") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else {
+            self.error_here("expected `with` in handle expression");
+            return node_from_children(SyntaxKind::HandleExpr, children);
+        }
+
+        // parse handler expression
+        let handler = self.parse_expr();
+        children.push(SyntaxElement::Node(Box::new(handler)));
+
+        // skip trivia
+        while !self.eof() && self.at_trivia() {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        // expect "in"
+        if self.at_keyword(Keyword::In) {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else {
+            self.error_here("expected `in` in handle expression");
+            return node_from_children(SyntaxKind::HandleExpr, children);
+        }
+
+        // parse body expression
+        let body = self.parse_expr();
+        children.push(SyntaxElement::Node(Box::new(body)));
+
+        node_from_children(SyntaxKind::HandleExpr, children)
+    }
+
+    fn parse_bundle_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // bundle
+
+        while !self.eof() && self.at_trivia() {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        if !self.at_symbol_text("{") {
+            self.error_here("expected `{` after `bundle`");
+            return node_from_children(SyntaxKind::BundleExpr, children);
+        }
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // {
+
+        // Consume tokens until matching }
+        let mut depth = 1usize;
+        while !self.eof() && depth > 0 {
+            if self.at_symbol_text("{") {
+                depth += 1;
+            } else if self.at_symbol_text("}") {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        if self.at_symbol_text("}") {
+            children.push(SyntaxElement::Token(self.bump().unwrap())); // }
+        } else {
+            self.error_here("expected `}` in bundle expression");
+        }
+
+        node_from_children(SyntaxKind::BundleExpr, children)
+    }
+
+    fn at_ident_text(&self, text: &str) -> bool {
+        matches!(
+            self.current().map(|t| (&t.kind, t.text.as_str())),
+            Some((LosslessTokenKind::Ident, actual)) if actual == text
+        )
     }
 
     fn parse_ident_or_call_expr(&mut self) -> SyntaxNode {

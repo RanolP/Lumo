@@ -1,23 +1,3 @@
-fn id(a: A): produce A / {} := produce a
----
-id : (A) -> produce A / {}
-==========
-fn keep(a: A): produce A / {} := produce a
----
-keep : (A) -> produce A / {}
-==========
-fn f(a: A): produce A / {} := let x = a in produce x
----
-f : (A) -> produce A / {}
-==========
-fn bad(): produce A / {} := produce x
----
-ERROR: unknown variable `x`
-==========
-fn bad(a: A): produce B / {} := produce a
----
-ERROR: type mismatch: expected B, got A
-==========
 fn pick(a: A): produce A / {} := match a { x => produce x }
 ---
 pick : (A) -> produce A / {}
@@ -79,22 +59,14 @@ fn unreach2(b: Bool): produce Bool / {} := match b { .true => produce b, .true =
 ---
 ERROR: unreachable match arm: pattern already covered
 ==========
-data OptionA { .some(A), .none }
-fn mk(a: A): produce OptionA / {} := OptionA.some(a)
+data Bool { .true, .false }
+data Nat { .zero, .succ(Nat) }
+fn is_even(n: Nat, t: Bool, f: Bool): produce Bool / {} := match n { .zero => produce t, .succ(.zero) => produce f, .succ(.succ(let n)) => is_even(n, t, f) }
 ---
-mk : (A) -> produce OptionA / {}
+is_even : (Nat, Bool, Bool) -> produce Bool / {}
 ==========
-data OptionA { .some(A), .none }
-fn badmk(a: A): produce OptionA / {} := produce OptionA.some(a)
+data Bool { .true, .false }
+data Nat { .zero, .succ(Nat) }
+fn f(n: Nat, b: Bool): produce Bool / {} := match n { .succ(.zero) => produce b }
 ---
-ERROR: expected value expression
-==========
-data OptionA { .some(A), .none }
-fn badp1(a: OptionA, b: A): produce A / {} := match a { some(x) => produce b, .none => produce b }
----
-ERROR: constructor pattern must start with `.`
-==========
-data OptionA { .some(A), .none }
-fn badp2(a: OptionA, b: A): produce A / {} := match a { some => produce b, .none => produce b }
----
-ERROR: variant pattern `some` must be written `.some`
+ERROR: non-exhaustive match: missing patterns .succ(.succ(_)), .zero

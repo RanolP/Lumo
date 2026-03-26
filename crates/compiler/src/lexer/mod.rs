@@ -35,6 +35,10 @@ pub enum Keyword {
     Thunk,
     Force,
     Match,
+    Effect,
+    Perform,
+    Handle,
+    Bundle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,6 +196,10 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
                 "thunk" => LosslessTokenKind::Keyword(Keyword::Thunk),
                 "force" => LosslessTokenKind::Keyword(Keyword::Force),
                 "match" => LosslessTokenKind::Keyword(Keyword::Match),
+                "effect" => LosslessTokenKind::Keyword(Keyword::Effect),
+                "perform" => LosslessTokenKind::Keyword(Keyword::Perform),
+                "handle" => LosslessTokenKind::Keyword(Keyword::Handle),
+                "bundle" => LosslessTokenKind::Keyword(Keyword::Bundle),
                 _ => LosslessTokenKind::Ident,
             };
 

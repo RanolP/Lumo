@@ -180,12 +180,12 @@ mod wasm {
                 (ts, d_ts, js)
             } else {
                 (
-                    emit_error_stub("typescript", "TypeScript emit skipped: no lowered HIR"),
+                    emit_error_stub("typescript", "TypeScript emit skipped: no lowered LIR"),
                     emit_error_stub(
                         "typescript-definition",
-                        "TypeScriptDefinition emit skipped: no lowered HIR",
+                        "TypeScriptDefinition emit skipped: no lowered LIR",
                     ),
-                    emit_error_stub("javascript", "JavaScript emit skipped: no lowered HIR"),
+                    emit_error_stub("javascript", "JavaScript emit skipped: no lowered LIR"),
                 )
             };
 

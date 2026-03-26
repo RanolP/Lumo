@@ -1,0 +1,68 @@
+effect E { fn op(): produce A }
+fn f(h: E): produce A / {} := handle E with h in perform E.op
+---
+f : (E) -> produce A / {}
+==========
+effect E { fn op(): produce A }
+fn f(h: E, a: A): produce A / {} := handle E with h in produce a
+---
+f : (E, A) -> produce A / {}
+==========
+effect E { fn op(): produce A }
+fn f(): produce A / {} := perform E
+---
+ERROR: not handled in this context
+==========
+effect E { fn op(): produce A }
+fn f(h: thunk produce B): produce A / {} := handle E with h in produce a
+---
+ERROR: type mismatch
+==========
+effect E { fn op(): produce A }
+fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a } in perform E.op
+---
+f : (A) -> produce A / {}
+==========
+effect E1 { fn op1(): produce A }
+effect E2 { fn op2(): produce B }
+fn f(h1: E1, h2: E2): produce A / {} := handle E1 with h1 in handle E2 with h2 in perform E1.op1
+---
+f : (E1, E2) -> produce A / {}
+==========
+effect E { fn op(): produce A }
+fn f(h1: E, h2: E): produce A / {} := handle E with h1 in handle E with h2 in perform E.op
+---
+f : (E, E) -> produce A / {}
+==========
+effect Transform { fn apply(x: A): produce B }
+fn f(a: A, b: B): produce B / {} := handle Transform with bundle { fn apply(x) := produce b } in perform Transform.apply(a)
+---
+f : (A, B) -> produce B / {}
+==========
+effect E { fn op1(): produce A; fn op2(x: A): produce B }
+fn f(a: A, b: B): produce A / {} := handle E with bundle { fn op1() := produce a; fn op2(x) := produce b } in perform E.op1
+---
+f : (A, B) -> produce A / {}
+==========
+effect Bad { fn op(): A }
+---
+ERROR: operation return type must be a computation type
+==========
+effect E { fn op1(): produce A; fn op2(): produce B }
+fn f(a: A): produce A / {} := handle E with bundle { fn op1() := produce a } in perform E.op1
+---
+ERROR: missing operation
+==========
+effect E { fn op(): produce A }
+fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a; fn bogus() := produce a } in perform E.op
+---
+ERROR: not an operation
+==========
+fn f(a: A): produce A / {} := let x = a.field in produce x
+---
+ERROR: expected value expression, got computation
+==========
+effect E { fn op(): produce A }
+fn f(h: E): produce A / {} := handle E with h in perform E.bogus
+---
+ERROR: no operation
