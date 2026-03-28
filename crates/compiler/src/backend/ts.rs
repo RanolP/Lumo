@@ -10,6 +10,21 @@ pub struct TypeScriptBackend;
 
 struct LoweringContext {
     direct_callable_arities: HashMap<String, usize>,
+    /// Maps function name → effect name (if effectful). `Some("E")` = performs E, `None` = pure.
+    fn_effects: HashMap<String, Option<String>>,
+}
+
+/// Extract the effect name from an effect_repr string like `"{ E }"`, `"E"`, or `"{}"`.
+fn extract_effect_name(repr: &str) -> Option<String> {
+    let s = repr.trim();
+    let s = s.strip_prefix('{').unwrap_or(s);
+    let s = s.strip_suffix('}').unwrap_or(s);
+    let s = s.trim();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_owned())
+    }
 }
 
 impl TypeScriptBackend {
@@ -22,6 +37,7 @@ impl TypeScriptBackend {
         let mut extern_names = HashMap::new();
         let ctx = LoweringContext {
             direct_callable_arities: collect_direct_callable_arities(file),
+            fn_effects: collect_fn_effects(file),
         };
 
         for item in &file.items {
@@ -108,7 +124,39 @@ fn collect_direct_callable_arities(file: &lir::File) -> HashMap<String, usize> {
                 out.insert(func.name.clone(), func.params.len());
             }
             lir::Item::Fn(func) => {
-                out.insert(func.name.clone(), func.params.len());
+                // Exclude effectful functions — they need CPS handling at call sites
+                let is_effectful = func
+                    .effect_repr
+                    .as_ref()
+                    .and_then(|e| extract_effect_name(e))
+                    .is_some();
+                if !is_effectful {
+                    out.insert(func.name.clone(), func.params.len());
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn collect_fn_effects(file: &lir::File) -> HashMap<String, Option<String>> {
+    let mut out = HashMap::new();
+    for item in &file.items {
+        match item {
+            lir::Item::ExternFn(func) => {
+                let effect = func
+                    .effect_repr
+                    .as_ref()
+                    .and_then(|e| extract_effect_name(e));
+                out.insert(func.name.clone(), effect);
+            }
+            lir::Item::Fn(func) => {
+                let effect = func
+                    .effect_repr
+                    .as_ref()
+                    .and_then(|e| extract_effect_name(e));
+                out.insert(func.name.clone(), effect);
             }
             _ => {}
         }
@@ -130,7 +178,7 @@ fn lower_fn_decl(
         )));
     }
 
-    let params = func
+    let mut params: Vec<tsast::Param> = func
         .params
         .iter()
         .zip(lowered_params.iter())
@@ -138,22 +186,46 @@ fn lower_fn_decl(
             let ty = parse_lumo_type_text(&param.ty_repr);
             tsast::Param::new(lowered_name).with_type(lower_lumo_type_to_ts_type(&ty))
         })
-        .collect::<Vec<_>>();
+        .collect();
 
-    let return_ty = func
-        .return_type_repr
+    let effect_name = func
+        .effect_repr
         .as_ref()
-        .map(|repr| parse_lumo_type_text(repr))
-        .unwrap_or_else(|| LumoType::Named("Unit".to_owned()));
+        .and_then(|e| extract_effect_name(e));
 
-    Ok(tsast::FunctionDecl {
-        export: true,
-        name: func.name.clone(),
-        type_params: func.generics.clone(),
-        params,
-        return_type: Some(lower_lumo_type_to_ts_type(&return_ty)),
-        body: tsast::FunctionBody::Expr(Box::new(lower_expr(lowered_body, ctx))),
-    })
+    if let Some(effect) = &effect_name {
+        // Effectful function: add __effect_E and __k params, CPS-compile body
+        params.push(tsast::Param::new(&format!("__effect_{effect}")));
+        params.push(tsast::Param::new("__k"));
+        let cps_body = lower_cps_expr(
+            lowered_body,
+            tsast::Expr::Ident("__k".to_owned()),
+            effect,
+            ctx,
+        );
+        Ok(tsast::FunctionDecl {
+            export: true,
+            name: func.name.clone(),
+            type_params: func.generics.clone(),
+            params,
+            return_type: Some(tsast::TsType::Void),
+            body: tsast::FunctionBody::Expr(Box::new(cps_body)),
+        })
+    } else {
+        let return_ty = func
+            .return_type_repr
+            .as_ref()
+            .map(|repr| parse_lumo_type_text(repr))
+            .unwrap_or_else(|| LumoType::Named("Unit".to_owned()));
+        Ok(tsast::FunctionDecl {
+            export: true,
+            name: func.name.clone(),
+            type_params: func.generics.clone(),
+            params,
+            return_type: Some(lower_lumo_type_to_ts_type(&return_ty)),
+            body: tsast::FunctionBody::Expr(Box::new(lower_expr(lowered_body, ctx))),
+        })
+    }
 }
 
 fn unwrap_fn_value(value: &lir::Expr) -> Result<(Vec<String>, &lir::Expr), BackendError> {
@@ -859,55 +931,14 @@ fn lower_expr(expr: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
         lir::Expr::Handle {
             effect, handler, body, ..
         } => {
-            if handler_needs_cps(handler) {
-                lower_cps_handle(effect, handler, body, ctx)
-            } else {
-                // ((__effect_E) => body)(handler)
-                let param_name = format!("__effect_{effect}");
-                let lambda = tsast::Expr::Arrow {
-                    params: vec![tsast::Param::new(&param_name)],
-                    return_type: None,
-                    body: Box::new(tsast::FunctionBody::Expr(Box::new(lower_expr(
-                        body, ctx,
-                    )))),
-                };
-                tsast::Expr::Call {
-                    callee: Box::new(lambda),
-                    args: vec![lower_expr(handler, ctx)],
-                }
-            }
+            // All handles use CPS (deep CPS: effectful functions need continuation threading)
+            lower_cps_handle(effect, handler, body, ctx)
         }
         lir::Expr::Ann { expr, .. } => lower_expr(expr, ctx),
         lir::Expr::Error { .. } => runtime_call("__lumo_error", Vec::new()),
-        lir::Expr::Bundle { entries, .. } => {
-            let props = entries
-                .iter()
-                .map(|entry| {
-                    let body = lower_expr(&entry.body, ctx);
-                    let value = if entry.params.is_empty() {
-                        tsast::Expr::Arrow {
-                            params: Vec::new(),
-                            return_type: None,
-                            body: Box::new(tsast::FunctionBody::Expr(Box::new(body))),
-                        }
-                    } else {
-                        tsast::Expr::Arrow {
-                            params: entry
-                                .params
-                                .iter()
-                                .map(|p| tsast::Param::new(&p.name))
-                                .collect(),
-                            return_type: None,
-                            body: Box::new(tsast::FunctionBody::Expr(Box::new(body))),
-                        }
-                    };
-                    tsast::ObjectProp {
-                        key: tsast::ObjectKey::Ident(entry.name.clone()),
-                        value,
-                    }
-                })
-                .collect();
-            tsast::Expr::Object(props)
+        lir::Expr::Bundle { .. } => {
+            // All bundles are effect handlers — use CPS entries (with __k)
+            lower_handler_with_resume(expr, ctx)
         }
         lir::Expr::Member {
             object, field, ..
@@ -1269,17 +1300,6 @@ fn lower_match_decision(
 
 // --- CPS codegen for effect handlers with resume ---
 
-/// Check if handler is a bundle with any entry that references "resume"
-fn handler_needs_cps(handler: &lir::Expr) -> bool {
-    if let lir::Expr::Bundle { entries, .. } = handler {
-        entries
-            .iter()
-            .any(|e| lir::expr_references_name(&e.body, "resume"))
-    } else {
-        false
-    }
-}
-
 /// Decompose a perform call pattern in LIR:
 /// Apply*(Member(Perform(E), op), args) → Some((E, op, args))
 /// Member(Perform(E), op) with no args → Some((E, op, []))
@@ -1296,6 +1316,25 @@ fn decompose_perform_call<'a>(
         if let lir::Expr::Perform { effect, .. } = object.as_ref() {
             args.reverse();
             return Some((effect.as_str(), field.as_str(), args));
+        }
+    }
+    None
+}
+
+/// Decompose a function call pattern in LIR:
+/// Apply*(Force(Ident(name)), args) → Some((name, args))
+/// Force(Ident(name)) with no args → Some((name, []))
+fn decompose_fn_call<'a>(expr: &'a lir::Expr) -> Option<(&'a str, Vec<&'a lir::Expr>)> {
+    let mut args = Vec::new();
+    let mut cursor = expr;
+    while let lir::Expr::Apply { callee, arg, .. } = cursor {
+        args.push(arg.as_ref());
+        cursor = callee.as_ref();
+    }
+    if let lir::Expr::Force { expr, .. } = cursor {
+        if let lir::Expr::Ident { name, .. } = expr.as_ref() {
+            args.reverse();
+            return Some((name.as_str(), args));
         }
     }
     None
@@ -1379,11 +1418,27 @@ fn lower_cps_expr(
         lir::Expr::Match {
             scrutinee, arms, ..
         } => lower_cps_match_expr(scrutinee, arms, k, handled_effect, ctx),
-        // Other expressions: treat as opaque, pass result to k
-        _ => tsast::Expr::Call {
-            callee: Box::new(k),
-            args: vec![lower_expr(expr, ctx)],
-        },
+        // Check for effectful function calls: Apply*(Force(Ident(f)), args)
+        _ => {
+            if let Some((fn_name, args)) = decompose_fn_call(expr) {
+                if let Some(Some(effect)) = ctx.fn_effects.get(fn_name) {
+                    // Effectful function call → f(args, __effect_X, k)
+                    let mut ts_args: Vec<tsast::Expr> =
+                        args.iter().map(|a| lower_expr(a, ctx)).collect();
+                    ts_args.push(tsast::Expr::Ident(format!("__effect_{effect}")));
+                    ts_args.push(k);
+                    return tsast::Expr::Call {
+                        callee: Box::new(tsast::Expr::Ident(fn_name.to_owned())),
+                        args: ts_args,
+                    };
+                }
+            }
+            // Non-effectful: treat as opaque, pass result to k
+            tsast::Expr::Call {
+                callee: Box::new(k),
+                args: vec![lower_expr(expr, ctx)],
+            }
+        }
     }
 }
 
