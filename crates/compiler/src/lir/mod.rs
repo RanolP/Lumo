@@ -1038,6 +1038,51 @@ fn expr_structural_hash(expr: &Expr) -> ContentHash {
     }
 }
 
+pub fn expr_references_name(expr: &Expr, target: &str) -> bool {
+    match expr {
+        Expr::Ident { name, .. } => name == target,
+        Expr::String { .. } | Expr::Error { .. } | Expr::Perform { .. } => false,
+        Expr::Produce { expr, .. }
+        | Expr::Thunk { expr, .. }
+        | Expr::Force { expr, .. }
+        | Expr::Unroll { expr, .. }
+        | Expr::Roll { expr, .. }
+        | Expr::Ann { expr, .. } => expr_references_name(expr, target),
+        Expr::Lambda { param, body, .. } => {
+            if param == target {
+                false
+            } else {
+                expr_references_name(body, target)
+            }
+        }
+        Expr::Apply { callee, arg, .. } => {
+            expr_references_name(callee, target) || expr_references_name(arg, target)
+        }
+        Expr::LetIn {
+            name, value, body, ..
+        } => {
+            expr_references_name(value, target)
+                || (name != target && expr_references_name(body, target))
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_references_name(scrutinee, target)
+                || arms
+                    .iter()
+                    .any(|arm| expr_references_name(&arm.body, target))
+        }
+        Expr::Ctor { args, .. } => args.iter().any(|a| expr_references_name(a, target)),
+        Expr::Handle {
+            handler, body, ..
+        } => expr_references_name(handler, target) || expr_references_name(body, target),
+        Expr::Bundle { entries, .. } => entries
+            .iter()
+            .any(|e| expr_references_name(&e.body, target)),
+        Expr::Member { object, .. } => expr_references_name(object, target),
+    }
+}
+
 pub(crate) fn source_id(tag: &str, span: Span) -> ContentHash {
     let mut hasher = Hasher::new();
     hasher.write_tag(tag);

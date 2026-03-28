@@ -1,0 +1,29 @@
+effect E { fn op(): produce A }
+fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in perform E.op
+---
+f : (A) -> produce A / {}
+==========
+effect E { fn op(): produce A }
+fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a } in perform E.op
+---
+f : (A) -> produce A / {}
+==========
+effect E { fn op(x: A): produce B }
+fn f(a: A, b: B): produce B / {} := handle E with bundle { fn op(x) := resume(b) } in perform E.op(a)
+---
+f : (A, B) -> produce B / {}
+==========
+effect Choose { fn choose(): produce A }
+fn f(a: A): produce A / {} := handle Choose with bundle { fn choose() := produce a } in let x = perform Choose.choose in produce x
+---
+f : (A) -> produce A / {}
+==========
+effect E { fn op1(): produce A; fn op2(x: A): produce B }
+fn f(a: A, b: B): produce A / {} := handle E with bundle { fn op1() := resume(a); fn op2(x) := produce b } in perform E.op1
+---
+f : (A, B) -> produce A / {}
+==========
+effect E { fn op(): produce A }
+fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in let x = perform E.op in produce x
+---
+f : (A) -> produce A / {}

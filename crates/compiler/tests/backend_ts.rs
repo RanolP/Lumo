@@ -232,3 +232,54 @@ fn ts_backend_flattens_let_iife_to_const() {
     assert!(js.contains("return String_concat(s, \"!\");"), "{js}");
     assert!(!js.contains("((s) =>"), "IIFE should be flattened: {js}");
 }
+
+#[test]
+fn ts_backend_handle_without_resume_uses_direct_style() {
+    let file = lower_typed(
+        "effect E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a } in perform E.op",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    // Direct style: ((__effect_E) => __effect_E.op)(handler)
+    // Handler should NOT have __k parameter (no CPS)
+    assert!(js.contains("__effect_E"), "{js}");
+    assert!(!js.contains("__k"), "should not have CPS __k param: {js}");
+    assert!(!js.contains("__v"), "should not have CPS identity: {js}");
+}
+
+#[test]
+fn ts_backend_handle_with_resume_uses_cps() {
+    let file = lower_typed(
+        "effect E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in perform E.op",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    // CPS: handler entries get __k param, body is CPS-transformed
+    assert!(js.contains("__k"), "handler should have CPS __k param: {js}");
+    assert!(
+        js.contains("resume"),
+        "handler should bind resume: {js}"
+    );
+}
+
+#[test]
+fn ts_backend_cps_handle_with_let_perform() {
+    let file = lower_typed(
+        "effect E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in let x = perform E.op in produce x",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    // CPS transforms: let x = perform E.op in produce x
+    // → __effect_E.op((x) => ((v) => v)(x))
+    assert!(js.contains("__effect_E.op"), "CPS perform call: {js}");
+    assert!(js.contains("__k"), "handler has __k: {js}");
+}
+
+#[test]
+fn ts_backend_mixed_resume_entries() {
+    let file = lower_typed(
+        "effect E { fn op1(): produce A; fn op2(x: A): produce B } fn f(a: A, b: B): produce A / {} := handle E with bundle { fn op1() := resume(a); fn op2(x) := produce b } in perform E.op1",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    // op1 uses resume → gets ((resume) => ...) wrapper
+    // op2 doesn't use resume → gets __k(body) wrapper
+    assert!(js.contains("__k"), "CPS mode active: {js}");
+    assert!(js.contains("resume"), "op1 binds resume: {js}");
+}

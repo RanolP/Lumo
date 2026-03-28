@@ -859,16 +859,22 @@ fn lower_expr(expr: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
         lir::Expr::Handle {
             effect, handler, body, ..
         } => {
-            // ((__effect_E) => body)(handler)
-            let param_name = format!("__effect_{effect}");
-            let lambda = tsast::Expr::Arrow {
-                params: vec![tsast::Param::new(&param_name)],
-                return_type: None,
-                body: Box::new(tsast::FunctionBody::Expr(Box::new(lower_expr(body, ctx)))),
-            };
-            tsast::Expr::Call {
-                callee: Box::new(lambda),
-                args: vec![lower_expr(handler, ctx)],
+            if handler_needs_cps(handler) {
+                lower_cps_handle(effect, handler, body, ctx)
+            } else {
+                // ((__effect_E) => body)(handler)
+                let param_name = format!("__effect_{effect}");
+                let lambda = tsast::Expr::Arrow {
+                    params: vec![tsast::Param::new(&param_name)],
+                    return_type: None,
+                    body: Box::new(tsast::FunctionBody::Expr(Box::new(lower_expr(
+                        body, ctx,
+                    )))),
+                };
+                tsast::Expr::Call {
+                    callee: Box::new(lambda),
+                    args: vec![lower_expr(handler, ctx)],
+                }
             }
         }
         lir::Expr::Ann { expr, .. } => lower_expr(expr, ctx),
@@ -1258,6 +1264,292 @@ fn lower_match_decision(
             }
             folded
         }
+    }
+}
+
+// --- CPS codegen for effect handlers with resume ---
+
+/// Check if handler is a bundle with any entry that references "resume"
+fn handler_needs_cps(handler: &lir::Expr) -> bool {
+    if let lir::Expr::Bundle { entries, .. } = handler {
+        entries
+            .iter()
+            .any(|e| lir::expr_references_name(&e.body, "resume"))
+    } else {
+        false
+    }
+}
+
+/// Decompose a perform call pattern in LIR:
+/// Apply*(Member(Perform(E), op), args) → Some((E, op, args))
+/// Member(Perform(E), op) with no args → Some((E, op, []))
+fn decompose_perform_call<'a>(
+    expr: &'a lir::Expr,
+) -> Option<(&'a str, &'a str, Vec<&'a lir::Expr>)> {
+    let mut args = Vec::new();
+    let mut cursor = expr;
+    while let lir::Expr::Apply { callee, arg, .. } = cursor {
+        args.push(arg.as_ref());
+        cursor = callee.as_ref();
+    }
+    if let lir::Expr::Member { object, field, .. } = cursor {
+        if let lir::Expr::Perform { effect, .. } = object.as_ref() {
+            args.reverse();
+            return Some((effect.as_str(), field.as_str(), args));
+        }
+    }
+    None
+}
+
+/// Compile handle expression with CPS for resume support
+fn lower_cps_handle(
+    effect: &str,
+    handler: &lir::Expr,
+    body: &lir::Expr,
+    ctx: &LoweringContext,
+) -> tsast::Expr {
+    let param_name = format!("__effect_{effect}");
+    // CPS-transform the body with identity continuation: (__v) => __v
+    let identity_k = tsast::Expr::Arrow {
+        params: vec![tsast::Param::new("__v")],
+        return_type: None,
+        body: Box::new(tsast::FunctionBody::Expr(Box::new(tsast::Expr::Ident(
+            "__v".to_owned(),
+        )))),
+    };
+    let cps_body = lower_cps_expr(body, identity_k, effect, ctx);
+    let lambda = tsast::Expr::Arrow {
+        params: vec![tsast::Param::new(&param_name)],
+        return_type: None,
+        body: Box::new(tsast::FunctionBody::Expr(Box::new(cps_body))),
+    };
+    let handler_lowered = lower_handler_with_resume(handler, ctx);
+    tsast::Expr::Call {
+        callee: Box::new(lambda),
+        args: vec![handler_lowered],
+    }
+}
+
+/// CPS-transform an expression within a handle body.
+/// `k` is the continuation expression (a JS function taking a value).
+fn lower_cps_expr(
+    expr: &lir::Expr,
+    k: tsast::Expr,
+    handled_effect: &str,
+    ctx: &LoweringContext,
+) -> tsast::Expr {
+    // Check if this is a perform of the handled effect
+    if let Some((effect, op, args)) = decompose_perform_call(expr) {
+        if effect == handled_effect {
+            // perform E.op(args) → __effect_E.op(args..., k)
+            let callee = tsast::Expr::Member {
+                object: Box::new(tsast::Expr::Ident(format!("__effect_{handled_effect}"))),
+                property: op.to_owned(),
+            };
+            let mut ts_args: Vec<tsast::Expr> =
+                args.iter().map(|a| lower_expr(a, ctx)).collect();
+            ts_args.push(k);
+            return tsast::Expr::Call {
+                callee: Box::new(callee),
+                args: ts_args,
+            };
+        }
+    }
+
+    match expr {
+        lir::Expr::Produce { expr: inner, .. } => {
+            // produce v → k(lower_expr(v))
+            tsast::Expr::Call {
+                callee: Box::new(k),
+                args: vec![lower_expr(inner, ctx)],
+            }
+        }
+        lir::Expr::LetIn {
+            name, value, body, ..
+        } => {
+            // let x = comp in body → CPS[comp]((x) => CPS[body](k))
+            let body_cps = lower_cps_expr(body, k, handled_effect, ctx);
+            let inner_k = tsast::Expr::Arrow {
+                params: vec![tsast::Param::new(name)],
+                return_type: None,
+                body: Box::new(tsast::FunctionBody::Expr(Box::new(body_cps))),
+            };
+            lower_cps_expr(value, inner_k, handled_effect, ctx)
+        }
+        lir::Expr::Match {
+            scrutinee, arms, ..
+        } => lower_cps_match_expr(scrutinee, arms, k, handled_effect, ctx),
+        // Other expressions: treat as opaque, pass result to k
+        _ => tsast::Expr::Call {
+            callee: Box::new(k),
+            args: vec![lower_expr(expr, ctx)],
+        },
+    }
+}
+
+/// CPS-transform a match expression
+fn lower_cps_match_expr(
+    scrutinee: &lir::Expr,
+    arms: &[lir::MatchArm],
+    k: tsast::Expr,
+    handled_effect: &str,
+    ctx: &LoweringContext,
+) -> tsast::Expr {
+    let k_name = "__k";
+    let k_ident = tsast::Expr::Ident(k_name.to_owned());
+
+    let lowered_scrutinee = lower_expr(scrutinee, ctx);
+    let scrutinee_name = "__match";
+    let scrutinee_expr = tsast::Expr::Ident(scrutinee_name.to_owned());
+
+    let rows = arms
+        .iter()
+        .map(|arm| MatchRow {
+            patterns: vec![parse_match_pattern(&arm.pattern).unwrap_or(MatchPattern::Wildcard)],
+            bindings: Vec::new(),
+            body: arm.body.clone(),
+        })
+        .collect::<Vec<_>>();
+    let decision = build_match_decision(vec![scrutinee_expr.clone()], rows);
+    let lowered =
+        lower_cps_match_decision(&scrutinee_expr, decision, &k_ident, handled_effect, ctx);
+
+    // ((__k) => ((__match) => lowered)(scrutinee))(k)
+    let inner = tsast::Expr::Call {
+        callee: Box::new(tsast::Expr::Arrow {
+            params: vec![tsast::Param::new(scrutinee_name)],
+            return_type: None,
+            body: Box::new(tsast::FunctionBody::Expr(Box::new(lowered))),
+        }),
+        args: vec![lowered_scrutinee],
+    };
+    tsast::Expr::Call {
+        callee: Box::new(tsast::Expr::Arrow {
+            params: vec![tsast::Param::new(k_name)],
+            return_type: None,
+            body: Box::new(tsast::FunctionBody::Expr(Box::new(inner))),
+        }),
+        args: vec![k],
+    }
+}
+
+/// Lower a match decision tree with CPS arm bodies
+fn lower_cps_match_decision(
+    error_value: &tsast::Expr,
+    decision: MatchDecision,
+    k: &tsast::Expr,
+    handled_effect: &str,
+    ctx: &LoweringContext,
+) -> tsast::Expr {
+    match decision {
+        MatchDecision::Fail => runtime_call("__lumo_match_error", vec![error_value.clone()]),
+        MatchDecision::Leaf { bindings, body } => {
+            let cps_body = lower_cps_expr(&body, k.clone(), handled_effect, ctx);
+            let mut expr = cps_body;
+            for (name, value) in bindings.into_iter().rev() {
+                expr = tsast::Expr::Call {
+                    callee: Box::new(tsast::Expr::Arrow {
+                        params: vec![tsast::Param::new(name)],
+                        return_type: None,
+                        body: Box::new(tsast::FunctionBody::Expr(Box::new(expr))),
+                    }),
+                    args: vec![value],
+                };
+            }
+            expr
+        }
+        MatchDecision::Switch {
+            occurrence,
+            cases,
+            default,
+        } => {
+            let mut folded =
+                lower_cps_match_decision(error_value, *default, k, handled_effect, ctx);
+            for case in cases.into_iter().rev() {
+                let cond = runtime_call(
+                    "__lumo_is",
+                    vec![occurrence.clone(), tsast::Expr::String(case.ctor_name)],
+                );
+                folded = tsast::Expr::IfElse {
+                    cond: Box::new(cond),
+                    then_expr: Box::new(lower_cps_match_decision(
+                        error_value,
+                        case.subtree,
+                        k,
+                        handled_effect,
+                        ctx,
+                    )),
+                    else_expr: Box::new(folded),
+                };
+            }
+            folded
+        }
+    }
+}
+
+/// Compile handler entries with resume support.
+/// Each entry gets an extra `__k` parameter.
+/// - Entries using `resume`: `(params, __k) => ((resume) => body)(() => __k)`
+/// - Tail-resumptive entries: `(params, __k) => __k(body_result)`
+fn lower_handler_with_resume(handler: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
+    if let lir::Expr::Bundle { entries, .. } = handler {
+        let props = entries
+            .iter()
+            .map(|entry| {
+                let uses_resume = lir::expr_references_name(&entry.body, "resume");
+                let body_lowered = lower_expr(&entry.body, ctx);
+                let mut params: Vec<tsast::Param> = entry
+                    .params
+                    .iter()
+                    .map(|p| tsast::Param::new(&p.name))
+                    .collect();
+                params.push(tsast::Param::new("__k"));
+
+                let value = if uses_resume {
+                    // (params, __k) => ((resume) => body)(() => __k)
+                    let resume_binding = tsast::Expr::Arrow {
+                        params: Vec::new(),
+                        return_type: None,
+                        body: Box::new(tsast::FunctionBody::Expr(Box::new(
+                            tsast::Expr::Ident("__k".to_owned()),
+                        ))),
+                    };
+                    let body_with_resume = tsast::Expr::Call {
+                        callee: Box::new(tsast::Expr::Arrow {
+                            params: vec![tsast::Param::new("resume")],
+                            return_type: None,
+                            body: Box::new(tsast::FunctionBody::Expr(Box::new(body_lowered))),
+                        }),
+                        args: vec![resume_binding],
+                    };
+                    tsast::Expr::Arrow {
+                        params,
+                        return_type: None,
+                        body: Box::new(tsast::FunctionBody::Expr(Box::new(body_with_resume))),
+                    }
+                } else {
+                    // (params, __k) => __k(body_result)
+                    let tail_resume = tsast::Expr::Call {
+                        callee: Box::new(tsast::Expr::Ident("__k".to_owned())),
+                        args: vec![body_lowered],
+                    };
+                    tsast::Expr::Arrow {
+                        params,
+                        return_type: None,
+                        body: Box::new(tsast::FunctionBody::Expr(Box::new(tail_resume))),
+                    }
+                };
+
+                tsast::ObjectProp {
+                    key: tsast::ObjectKey::Ident(entry.name.clone()),
+                    value,
+                }
+            })
+            .collect();
+        tsast::Expr::Object(props)
+    } else {
+        // Non-bundle handler — lower normally
+        lower_expr(handler, ctx)
     }
 }
 

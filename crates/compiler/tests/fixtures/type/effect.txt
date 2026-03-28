@@ -60,7 +60,7 @@ ERROR: not an operation
 ==========
 fn f(a: A): produce A / {} := let x = a.field in produce x
 ---
-ERROR: expected value expression, got computation
+ERROR: member access `.field` on type `A`
 ==========
 effect E { fn op(): produce A }
 fn f(h: E): produce A / {} := handle E with h in perform E.bogus

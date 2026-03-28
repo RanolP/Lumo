@@ -75,6 +75,15 @@ pub fn render_type(ty: &CompType) -> String {
     render_c_type(ty)
 }
 
+/// Extract the innermost return value type from a computation type.
+/// E.g. `Fn { params, ret: Produce(V) }` → `Some(V)`, `Produce(V)` → `Some(V)`.
+fn comp_type_return_value(ct: &CompType) -> Option<&ValueType> {
+    match ct {
+        CompType::Produce(v) => Some(v),
+        CompType::Fn { ret, .. } => comp_type_return_value(ret),
+    }
+}
+
 fn render_v_type(ty: &ValueType) -> String {
     match ty {
         ValueType::Named(n) => n.clone(),
@@ -410,7 +419,7 @@ impl TypeChecker {
         ) = (expr, expected)
         {
             if let Some(def) = self.effect_defs.get(effect_name).cloned() {
-                self.check_bundle_against_effect(entries, &def, effect_name, id.0, env);
+                self.check_bundle_against_effect(entries, &def, effect_name, id.0, env, None);
                 return;
             }
         }
@@ -435,6 +444,7 @@ impl TypeChecker {
         effect_name: &str,
         node_id: u64,
         env: &HashMap<String, ValueType>,
+        handle_result_type: Option<&CompType>,
     ) {
         // Check for missing operations
         for op_name in def.operations.keys() {
@@ -450,9 +460,24 @@ impl TypeChecker {
         // Check each entry
         for entry in entries {
             if let Some(op_ty) = def.operations.get(&entry.name) {
-                // The entry's params + body form the operation's computation.
-                // Build the expected comp type for checking.
                 let mut entry_env = env.clone();
+                let uses_resume = lir::expr_references_name(&entry.body, "resume");
+
+                // If entry uses resume and we have a handle result type,
+                // add resume to the environment
+                if uses_resume {
+                    if let Some(handle_result) = handle_result_type {
+                        if let Some(op_ret_val) = comp_type_return_value(op_ty) {
+                            let resume_ty = ValueType::Thunk(Box::new(CompType::Fn {
+                                params: vec![op_ret_val.clone()],
+                                ret: Box::new(handle_result.clone()),
+                                effect: None,
+                            }));
+                            entry_env.insert("resume".to_owned(), resume_ty);
+                        }
+                    }
+                }
+
                 match op_ty {
                     CompType::Fn { params, ret, .. } => {
                         if entry.params.len() != params.len() {
@@ -470,7 +495,14 @@ impl TypeChecker {
                         for (p, expected_ty) in entry.params.iter().zip(params.iter()) {
                             entry_env.insert(p.name.clone(), expected_ty.clone());
                         }
-                        self.check_c_expr(&entry.body, ret, &entry_env);
+                        // If entry uses resume, check body against handle result type;
+                        // otherwise check against op return type (tail-resumptive)
+                        let check_against = if uses_resume {
+                            handle_result_type.unwrap_or(ret.as_ref())
+                        } else {
+                            ret.as_ref()
+                        };
+                        self.check_c_expr(&entry.body, check_against, &entry_env);
                     }
                     CompType::Produce(_) => {
                         if !entry.params.is_empty() {
@@ -484,7 +516,12 @@ impl TypeChecker {
                             ));
                             continue;
                         }
-                        self.check_c_expr(&entry.body, op_ty, &entry_env);
+                        let check_against = if uses_resume {
+                            handle_result_type.unwrap_or(op_ty)
+                        } else {
+                            op_ty
+                        };
+                        self.check_c_expr(&entry.body, check_against, &entry_env);
                     }
                 }
             } else {
@@ -689,6 +726,7 @@ impl TypeChecker {
                     | Expr::Roll { .. }
                     | Expr::Perform { .. }
                     | Expr::Handle { .. }
+                    | Expr::Member { .. }
                     | Expr::Ann { .. }
                     | Expr::Error { .. } => self.infer_c_expr(value, env),
                     _ => self
@@ -783,16 +821,36 @@ impl TypeChecker {
                     return;
                 }
                 let handler_value_type = self.effect_handler_type(effect);
+                // Check body first to determine handle result type for resume
+                let mut body_env = env.clone();
+                if let Some(ref ty) = handler_value_type {
+                    body_env.insert(format!("__effect_{effect}"), ty.clone());
+                }
+                self.check_c_expr(body, expected, &body_env);
+                // Check handler with handle result type for resume
                 if let Some(ref expected_handler_ty) = handler_value_type {
-                    self.check_v_expr(handler, expected_handler_ty, env);
+                    if let Expr::Bundle {
+                        entries,
+                        id: bundle_id,
+                        ..
+                    } = handler.as_ref()
+                    {
+                        if let Some(def) = self.effect_defs.get(effect).cloned() {
+                            self.check_bundle_against_effect(
+                                entries,
+                                &def,
+                                effect,
+                                bundle_id.0,
+                                env,
+                                Some(expected),
+                            );
+                        }
+                    } else {
+                        self.check_v_expr(handler, expected_handler_ty, env);
+                    }
                 } else {
                     let _ = self.infer_c_expr(handler, env);
                 }
-                let mut body_env = env.clone();
-                if let Some(ty) = handler_value_type {
-                    body_env.insert(format!("__effect_{effect}"), ty);
-                }
-                self.check_c_expr(body, expected, &body_env);
             }
             _ => {
                 if let Some(actual) = self.infer_c_expr(expr, env) {
@@ -1145,16 +1203,37 @@ impl TypeChecker {
                     return self.infer_c_expr(body, env);
                 }
                 let handler_value_type = self.effect_handler_type(effect);
+                // Infer body first to determine handle result type (needed for resume typing)
+                let mut body_env = env.clone();
+                if let Some(ref ty) = handler_value_type {
+                    body_env.insert(format!("__effect_{effect}"), ty.clone());
+                }
+                let body_comp_type = self.infer_c_expr(body, &body_env);
+                // Check handler — if it's a bundle literal, pass handle_result_type for resume
                 if let Some(ref expected_handler_ty) = handler_value_type {
-                    self.check_v_expr(handler, expected_handler_ty, env);
+                    if let Expr::Bundle {
+                        entries,
+                        id: bundle_id,
+                        ..
+                    } = handler.as_ref()
+                    {
+                        if let Some(def) = self.effect_defs.get(effect).cloned() {
+                            self.check_bundle_against_effect(
+                                entries,
+                                &def,
+                                effect,
+                                bundle_id.0,
+                                env,
+                                body_comp_type.as_ref(),
+                            );
+                        }
+                    } else {
+                        self.check_v_expr(handler, expected_handler_ty, env);
+                    }
                 } else {
                     let _ = self.infer_c_expr(handler, env);
                 }
-                let mut body_env = env.clone();
-                if let Some(ty) = handler_value_type {
-                    body_env.insert(format!("__effect_{effect}"), ty);
-                }
-                self.infer_c_expr(body, &body_env)
+                body_comp_type
             }
             Expr::Member {
                 object, field, id, ..
