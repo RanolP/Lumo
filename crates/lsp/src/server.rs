@@ -395,6 +395,7 @@ fn collect_lossless_tokens(
                     LosslessTokenKind::Ident if t.text == "type" => Some(HighlightKind::Keyword),
                     LosslessTokenKind::Ident => Some(HighlightKind::Identifier),
                     LosslessTokenKind::StringLit => Some(HighlightKind::String),
+                    LosslessTokenKind::NumberLit => Some(HighlightKind::Number),
                     LosslessTokenKind::Symbol(_) => Some(HighlightKind::Symbol),
                     LosslessTokenKind::Whitespace
                     | LosslessTokenKind::Newline
@@ -469,7 +470,8 @@ fn token_type_index(kind: HighlightKind) -> u32 {
         HighlightKind::Keyword => 0,
         HighlightKind::Identifier => 1,
         HighlightKind::String => 2,
-        HighlightKind::Symbol => 3,
+        HighlightKind::Number => 3,
+        HighlightKind::Symbol => 4,
     }
 }
 
@@ -521,6 +523,7 @@ fn capabilities_json() -> Value {
                         SemanticTokenType::KEYWORD,
                         SemanticTokenType::VARIABLE,
                         SemanticTokenType::STRING,
+                        SemanticTokenType::NUMBER,
                         SemanticTokenType::OPERATOR,
                     ],
                     token_modifiers: vec![],

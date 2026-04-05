@@ -1,5 +1,8 @@
 use crate::lexer::{Keyword, LexError, Span, Symbol, Token, TokenKind};
 
+/// Binding power for prefix unary operators (-, !)
+const PREFIX_BP: u8 = 15;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
     pub span: Span,
@@ -16,8 +19,9 @@ pub enum Item {
     ExternType(ExternTypeDecl),
     ExternFn(ExternFnDecl),
     Data(DataDecl),
-    Effect(EffectDecl),
+    Cap(CapDecl),
     Fn(FnDecl),
+    Use(UseDecl),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,7 +52,7 @@ pub struct ExternFnDecl {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Option<TypeSig>,
-    pub effect: Option<EffectSig>,
+    pub cap: Option<CapSig>,
     pub span: Span,
 }
 
@@ -68,7 +72,7 @@ pub struct VariantDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EffectDecl {
+pub struct CapDecl {
     pub name: String,
     pub operations: Vec<OperationDecl>,
     pub span: Span,
@@ -88,8 +92,15 @@ pub struct FnDecl {
     pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
     pub return_type: Option<TypeSig>,
-    pub effect: Option<EffectSig>,
+    pub cap: Option<CapSig>,
     pub body: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UseDecl {
+    pub path: Vec<String>,
+    pub names: Option<Vec<String>>,
     pub span: Span,
 }
 
@@ -114,9 +125,32 @@ pub struct TypeSig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EffectSig {
+pub struct CapSig {
     pub repr: String,
     pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    EqEq,
+    NotEq,
+    Lt,
+    LtEq,
+    Gt,
+    GtEq,
+    AndAnd,
+    OrOr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Neg,
+    Not,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,17 +197,38 @@ pub enum Expr {
         span: Span,
     },
     Perform {
-        effect: String,
+        cap: String,
         span: Span,
     },
     Handle {
-        effect: String,
+        cap: String,
         handler: Box<Expr>,
         body: Box<Expr>,
         span: Span,
     },
     Bundle {
         entries: Vec<BundleEntry>,
+        span: Span,
+    },
+    Number {
+        value: String,
+        span: Span,
+    },
+    Binary {
+        left: Box<Expr>,
+        op: BinaryOp,
+        right: Box<Expr>,
+        span: Span,
+    },
+    Unary {
+        op: UnaryOp,
+        expr: Box<Expr>,
+        span: Span,
+    },
+    Assign {
+        name: String,
+        value: Box<Expr>,
+        body: Box<Expr>,
         span: Span,
     },
     Ann {
@@ -230,11 +285,11 @@ pub fn parse(tokens: &[Token], lex_errors: &[LexError]) -> ParseOutput {
             }
             continue;
         }
-        if p.at_keyword(Keyword::Effect) {
+        if p.at_keyword(Keyword::Cap) {
             if !attrs.is_empty() {
                 p.error_here("attributes are only supported on `extern` items");
             }
-            items.push(Item::Effect(p.parse_effect_decl()));
+            items.push(Item::Cap(p.parse_cap_decl()));
             continue;
         }
         if p.at_keyword(Keyword::Data) {
@@ -251,13 +306,20 @@ pub fn parse(tokens: &[Token], lex_errors: &[LexError]) -> ParseOutput {
             items.push(Item::Fn(p.parse_fn_decl()));
             continue;
         }
+        if p.at_keyword(Keyword::Use) {
+            if !attrs.is_empty() {
+                p.error_here("attributes are only supported on `extern` items");
+            }
+            items.push(Item::Use(p.parse_use_decl()));
+            continue;
+        }
 
         if !attrs.is_empty() {
             p.error_here("attribute must be followed by an item declaration");
             continue;
         }
 
-        p.error_here("expected top-level `data`, `effect`, `fn`, or `extern`");
+        p.error_here("expected top-level `data`, `cap`, `fn`, or `extern`");
         p.bump();
     }
 
@@ -302,6 +364,10 @@ fn collect_lossless_tokens(
                 }),
                 crate::lexer::LosslessTokenKind::StringLit => tokens.push(Token {
                     kind: TokenKind::StringLit(t.text.clone()),
+                    span: t.span,
+                }),
+                crate::lexer::LosslessTokenKind::NumberLit => tokens.push(Token {
+                    kind: TokenKind::NumberLit(t.text.clone()),
                     span: t.span,
                 }),
                 crate::lexer::LosslessTokenKind::Symbol(sym) => tokens.push(Token {
@@ -467,9 +533,10 @@ impl<'a> Parser<'a> {
         self.error_here("expected `type` or `fn` after `extern`");
         while !self.eof() && !self.at_symbol(Symbol::Semi) {
             if self.at_keyword(Keyword::Data)
-                || self.at_keyword(Keyword::Effect)
+                || self.at_keyword(Keyword::Cap)
                 || self.at_keyword(Keyword::Fn)
                 || self.at_keyword(Keyword::Extern)
+                || self.at_keyword(Keyword::Use)
             {
                 break;
             }
@@ -514,14 +581,14 @@ impl<'a> Parser<'a> {
                 self.error_here("expected return type after `:`");
             }
         }
-        let mut effect = None;
+        let mut cap = None;
         if self.at_symbol(Symbol::Slash) {
             self.bump();
             let (repr, span) = self.collect_signature_until(|p| p.at_symbol(Symbol::Semi));
             if let Some(span) = span {
-                effect = Some(EffectSig { repr, span });
+                cap = Some(CapSig { repr, span });
             } else {
-                self.error_here("expected effect after `/`");
+                self.error_here("expected capability after `/`");
             }
         }
 
@@ -529,9 +596,10 @@ impl<'a> Parser<'a> {
             self.bump().map(|t| t.span).unwrap_or(start)
         } else if self.eof()
             || self.at_keyword(Keyword::Data)
-            || self.at_keyword(Keyword::Effect)
+            || self.at_keyword(Keyword::Cap)
             || self.at_keyword(Keyword::Fn)
             || self.at_keyword(Keyword::Extern)
+            || self.at_keyword(Keyword::Use)
             || self.at_symbol(Symbol::Hash)
         {
             self.tokens
@@ -548,13 +616,13 @@ impl<'a> Parser<'a> {
             name,
             params,
             return_type,
-            effect,
+            cap,
             span: Span::new(start.start, end.end),
         }
     }
 
-    fn parse_effect_decl(&mut self) -> EffectDecl {
-        let start = self.expect_keyword(Keyword::Effect);
+    fn parse_cap_decl(&mut self) -> CapDecl {
+        let start = self.expect_keyword(Keyword::Cap);
         let name = self.expect_ident();
         self.expect_symbol(Symbol::LBrace);
 
@@ -563,7 +631,7 @@ impl<'a> Parser<'a> {
             if self.at_keyword(Keyword::Fn) {
                 operations.push(self.parse_operation_decl());
             } else {
-                self.error_here("expected `fn` in effect body");
+                self.error_here("expected `fn` in cap body");
                 self.bump();
                 continue;
             }
@@ -573,7 +641,7 @@ impl<'a> Parser<'a> {
         }
 
         let end = self.expect_symbol(Symbol::RBrace);
-        EffectDecl {
+        CapDecl {
             name,
             operations,
             span: Span::new(start.start, end.end),
@@ -724,22 +792,23 @@ impl<'a> Parser<'a> {
                 self.error_here("expected return type after `:`");
             }
         }
-        let mut effect = None;
+        let mut cap = None;
         if self.at_symbol(Symbol::Slash) {
             self.bump();
             let (repr, span) = self.collect_signature_until(|p| p.at_symbol(Symbol::ColonEquals));
             if let Some(span) = span {
-                effect = Some(EffectSig { repr, span });
+                cap = Some(CapSig { repr, span });
             } else {
-                self.error_here("expected effect after `/`");
+                self.error_here("expected capability after `/`");
             }
         }
 
         while !self.eof() && !self.at_symbol(Symbol::ColonEquals) {
             if self.at_keyword(Keyword::Data)
-                || self.at_keyword(Keyword::Effect)
+                || self.at_keyword(Keyword::Cap)
                 || self.at_keyword(Keyword::Fn)
                 || self.at_keyword(Keyword::Extern)
+                || self.at_keyword(Keyword::Use)
             {
                 break;
             }
@@ -754,9 +823,82 @@ impl<'a> Parser<'a> {
             generics,
             params,
             return_type,
-            effect,
+            cap,
             body,
             span: Span::new(start.start, body_span.end),
+        }
+    }
+
+    // Grammar: 'use' ident ('.' ident)* ['.' '{' ident (',' ident)* '}'] ';'
+    fn parse_use_decl(&mut self) -> UseDecl {
+        let start = self.expect_keyword(Keyword::Use);
+        let mut path = Vec::new();
+
+        // Parse first path segment
+        if self.at_ident() {
+            path.push(ident_text(&self.bump().unwrap()).unwrap_or_default().to_owned());
+        } else {
+            self.error_here("expected module path after `use`");
+            return UseDecl {
+                path,
+                names: None,
+                span: start,
+            };
+        }
+
+        // Parse remaining '.' separated segments, or '.' '{' destructure '}'
+        let mut names = None;
+        while self.at_symbol(Symbol::Dot) {
+            self.bump(); // .
+
+            // Check for destructuring: { a, b, self }
+            if self.at_symbol(Symbol::LBrace) {
+                self.bump(); // {
+                let mut name_list = Vec::new();
+                while !self.eof() && !self.at_symbol(Symbol::RBrace) {
+                    if self.at_ident() {
+                        name_list.push(
+                            ident_text(&self.bump().unwrap())
+                                .unwrap_or_default()
+                                .to_owned(),
+                        );
+                    } else {
+                        self.error_here("expected name in use destructuring");
+                        break;
+                    }
+                    if self.at_symbol(Symbol::Comma) {
+                        self.bump();
+                    } else {
+                        break;
+                    }
+                }
+                if self.at_symbol(Symbol::RBrace) {
+                    self.bump();
+                } else {
+                    self.error_here("expected `}` in use destructuring");
+                }
+                names = Some(name_list);
+                break;
+            }
+
+            // Regular path segment
+            if self.at_ident() {
+                path.push(ident_text(&self.bump().unwrap()).unwrap_or_default().to_owned());
+            } else {
+                self.error_here("expected identifier after `.` in use path");
+                break;
+            }
+        }
+
+        let end = self.current_span();
+        if self.at_symbol(Symbol::Semi) {
+            self.bump();
+        }
+
+        UseDecl {
+            path,
+            names,
+            span: Span::new(start.start, end.end),
         }
     }
 
@@ -870,6 +1012,11 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expr(&mut self) -> Expr {
+        self.parse_expr_bp(0)
+    }
+
+    fn parse_expr_bp(&mut self, min_bp: u8) -> Expr {
+        // Keyword expressions consume everything rightward — return immediately
         if self.at_keyword(Keyword::Let) {
             let start = self.expect_keyword(Keyword::Let);
             let name = self.expect_ident();
@@ -922,29 +1069,45 @@ impl<'a> Parser<'a> {
 
         if self.at_keyword(Keyword::Handle) {
             let start = self.expect_keyword(Keyword::Handle);
-            let (effect, _) = self.collect_signature_until(|p| {
+            let (cap, _) = self.collect_signature_until(|p| {
                 p.at_ident_text("with")
             });
             if self.at_ident_text("with") {
                 self.bump();
             } else {
-                self.error_here("expected `with` after handle effect name");
+                self.error_here("expected `with` after handle cap name");
             }
             let handler = self.parse_expr();
             self.expect_keyword(Keyword::In);
             let body = self.parse_expr();
             let end = expr_span(&body);
             return Expr::Handle {
-                effect,
+                cap,
                 handler: Box::new(handler),
                 body: Box::new(body),
                 span: Span::new(start.start, end.end),
             };
         }
 
-        let mut expr = if self.at_keyword(Keyword::Perform) {
+        // Primary expression (including prefix unary)
+        let mut expr = if self.at_symbol(Symbol::Minus) || self.at_symbol(Symbol::Bang) {
+            // Prefix unary operators
+            let op_token = self.bump().expect("checked at_symbol").clone();
+            let op = if op_token.kind == TokenKind::Symbol(Symbol::Minus) {
+                UnaryOp::Neg
+            } else {
+                UnaryOp::Not
+            };
+            let operand = self.parse_expr_bp(PREFIX_BP);
+            let end = expr_span(&operand);
+            Expr::Unary {
+                op,
+                expr: Box::new(operand),
+                span: Span::new(op_token.span.start, end.end),
+            }
+        } else if self.at_keyword(Keyword::Perform) {
             let start = self.expect_keyword(Keyword::Perform);
-            let (effect, effect_span) = self.collect_signature_until(|p| {
+            let (cap, cap_span) = self.collect_signature_until(|p| {
                 p.at_symbol(Symbol::Dot)
                     || p.at_symbol(Symbol::RParen)
                     || p.at_symbol(Symbol::Comma)
@@ -952,12 +1115,13 @@ impl<'a> Parser<'a> {
                     || p.at_symbol(Symbol::RBrace)
                     || p.at_keyword(Keyword::In)
                     || p.at_keyword(Keyword::Let)
+                    || p.at_infix_operator()
             });
-            let end = effect_span
+            let end = cap_span
                 .map(|s| s.end)
                 .unwrap_or(start.end);
             Expr::Perform {
-                effect,
+                cap,
                 span: Span::new(start.start, end),
             }
         } else if self.at_keyword(Keyword::Bundle) {
@@ -972,6 +1136,12 @@ impl<'a> Parser<'a> {
             let token = self.bump().expect("checked at_string_lit").clone();
             Expr::String {
                 value: decode_string_lit(token_text(&token).as_str()),
+                span: token.span,
+            }
+        } else if self.at_number_lit() {
+            let token = self.bump().expect("checked at_number_lit").clone();
+            Expr::Number {
+                value: token_text(&token),
                 span: token.span,
             }
         } else if self.at_symbol(Symbol::LParen) {
@@ -1001,9 +1171,10 @@ impl<'a> Parser<'a> {
             let span = self.current_span();
             self.error_here("expected expression");
             if !(self.at_keyword(Keyword::Data)
-                || self.at_keyword(Keyword::Effect)
+                || self.at_keyword(Keyword::Cap)
                 || self.at_keyword(Keyword::Fn)
-                || self.at_keyword(Keyword::Extern))
+                || self.at_keyword(Keyword::Extern)
+                || self.at_keyword(Keyword::Use))
                 && !self.eof()
             {
                 self.bump();
@@ -1011,7 +1182,9 @@ impl<'a> Parser<'a> {
             return Expr::Error { span };
         };
 
+        // Infix/postfix loop (Pratt)
         loop {
+            // Postfix: .member (highest precedence)
             if self.at_symbol(Symbol::Dot) {
                 let start = expr_span(&expr).start;
                 self.bump();
@@ -1028,6 +1201,8 @@ impl<'a> Parser<'a> {
                 };
                 continue;
             }
+
+            // Postfix: (args) (highest precedence)
             if self.at_symbol(Symbol::LParen) {
                 let start = expr_span(&expr).start;
                 self.bump();
@@ -1048,10 +1223,101 @@ impl<'a> Parser<'a> {
                 };
                 continue;
             }
+
+            // Assignment: ident = value ; body (right-assoc, lowest bp)
+            if self.at_symbol(Symbol::Equals) {
+                if let Expr::Ident { ref name, .. } = expr {
+                    let (l_bp, _) = (1_u8, 2_u8); // right-assoc: l_bp=1, r_bp=2 (but we use 0 for rhs)
+                    if l_bp < min_bp {
+                        break;
+                    }
+                    let name = name.clone();
+                    let start = expr_span(&expr).start;
+                    self.bump(); // consume =
+                    let value = self.parse_expr();
+                    if self.at_symbol(Symbol::Semi) {
+                        self.bump(); // consume ;
+                    }
+                    let body = self.parse_expr();
+                    let end = expr_span(&body);
+                    expr = Expr::Assign {
+                        name,
+                        value: Box::new(value),
+                        body: Box::new(body),
+                        span: Span::new(start, end.end),
+                    };
+                    continue;
+                }
+                break;
+            }
+
+            // Infix binary operators
+            if let Some((op, l_bp, r_bp)) = self.peek_infix_op() {
+                if l_bp < min_bp {
+                    break;
+                }
+                self.bump(); // consume operator token
+                let right = self.parse_expr_bp(r_bp);
+                let start = expr_span(&expr).start;
+                let end = expr_span(&right).end;
+                expr = Expr::Binary {
+                    left: Box::new(expr),
+                    op,
+                    right: Box::new(right),
+                    span: Span::new(start, end),
+                };
+                continue;
+            }
+
             break;
         }
 
         expr
+    }
+
+    fn at_infix_operator(&self) -> bool {
+        matches!(
+            self.current().map(|t| &t.kind),
+            Some(TokenKind::Symbol(
+                Symbol::Plus
+                    | Symbol::Minus
+                    | Symbol::Star
+                    | Symbol::Slash
+                    | Symbol::Percent
+                    | Symbol::EqEq
+                    | Symbol::BangEq
+                    | Symbol::Lt
+                    | Symbol::LtEq
+                    | Symbol::Gt
+                    | Symbol::GtEq
+                    | Symbol::AmpAmp
+                    | Symbol::PipePipe
+            ))
+        )
+    }
+
+    fn peek_infix_op(&self) -> Option<(BinaryOp, u8, u8)> {
+        let sym = match self.current().map(|t| &t.kind) {
+            Some(TokenKind::Symbol(s)) => *s,
+            _ => return None,
+        };
+        let (op, l_bp, r_bp) = match sym {
+            Symbol::PipePipe => (BinaryOp::OrOr, 3, 4),
+            Symbol::AmpAmp => (BinaryOp::AndAnd, 5, 6),
+            Symbol::EqEq => (BinaryOp::EqEq, 7, 8),
+            Symbol::BangEq => (BinaryOp::NotEq, 7, 8),
+            Symbol::Lt => (BinaryOp::Lt, 9, 10),
+            Symbol::LtEq => (BinaryOp::LtEq, 9, 10),
+            Symbol::Gt => (BinaryOp::Gt, 9, 10),
+            Symbol::GtEq => (BinaryOp::GtEq, 9, 10),
+            Symbol::Plus => (BinaryOp::Add, 11, 12),
+            Symbol::Minus => (BinaryOp::Sub, 11, 12),
+            Symbol::Star => (BinaryOp::Mul, 13, 14),
+            Symbol::Slash => (BinaryOp::Div, 13, 14),
+            Symbol::Percent => (BinaryOp::Mod, 13, 14),
+            _ => return None,
+        };
+        Some((op, l_bp, r_bp))
     }
 
     fn parse_match_expr(&mut self) -> Expr {
@@ -1160,6 +1426,13 @@ impl<'a> Parser<'a> {
         matches!(
             self.current().map(|t| &t.kind),
             Some(TokenKind::StringLit(_))
+        )
+    }
+
+    fn at_number_lit(&self) -> bool {
+        matches!(
+            self.current().map(|t| &t.kind),
+            Some(TokenKind::NumberLit(_))
         )
     }
 
@@ -1276,6 +1549,10 @@ fn expr_span(expr: &Expr) -> Span {
         Expr::Perform { span, .. } => *span,
         Expr::Handle { span, .. } => *span,
         Expr::Bundle { span, .. } => *span,
+        Expr::Number { span, .. } => *span,
+        Expr::Binary { span, .. } => *span,
+        Expr::Unary { span, .. } => *span,
+        Expr::Assign { span, .. } => *span,
         Expr::Ann { span, .. } => *span,
         Expr::Error { span } => *span,
     }
@@ -1299,10 +1576,11 @@ fn token_text(token: &Token) -> String {
         TokenKind::Keyword(Keyword::Thunk) => "thunk".to_owned(),
         TokenKind::Keyword(Keyword::Force) => "force".to_owned(),
         TokenKind::Keyword(Keyword::Match) => "match".to_owned(),
-        TokenKind::Keyword(Keyword::Effect) => "effect".to_owned(),
+        TokenKind::Keyword(Keyword::Cap) => "cap".to_owned(),
         TokenKind::Keyword(Keyword::Perform) => "perform".to_owned(),
         TokenKind::Keyword(Keyword::Handle) => "handle".to_owned(),
         TokenKind::Keyword(Keyword::Bundle) => "bundle".to_owned(),
+        TokenKind::Keyword(Keyword::Use) => "use".to_owned(),
         TokenKind::Ident(s) => s.clone(),
         TokenKind::StringLit(s) => s.clone(),
         TokenKind::Symbol(Symbol::Hash) => "#".to_owned(),
@@ -1321,5 +1599,18 @@ fn token_text(token: &Token) -> String {
         TokenKind::Symbol(Symbol::Star) => "*".to_owned(),
         TokenKind::Symbol(Symbol::FatArrow) => "=>".to_owned(),
         TokenKind::Symbol(Symbol::Dot) => ".".to_owned(),
+        TokenKind::Symbol(Symbol::Plus) => "+".to_owned(),
+        TokenKind::Symbol(Symbol::Minus) => "-".to_owned(),
+        TokenKind::Symbol(Symbol::Percent) => "%".to_owned(),
+        TokenKind::Symbol(Symbol::Bang) => "!".to_owned(),
+        TokenKind::Symbol(Symbol::Lt) => "<".to_owned(),
+        TokenKind::Symbol(Symbol::Gt) => ">".to_owned(),
+        TokenKind::Symbol(Symbol::LtEq) => "<=".to_owned(),
+        TokenKind::Symbol(Symbol::GtEq) => ">=".to_owned(),
+        TokenKind::Symbol(Symbol::EqEq) => "==".to_owned(),
+        TokenKind::Symbol(Symbol::BangEq) => "!=".to_owned(),
+        TokenKind::Symbol(Symbol::AmpAmp) => "&&".to_owned(),
+        TokenKind::Symbol(Symbol::PipePipe) => "||".to_owned(),
+        TokenKind::NumberLit(s) => s.clone(),
     }
 }

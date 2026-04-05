@@ -17,8 +17,16 @@ pub enum Item {
     ExternType(ExternTypeDecl),
     ExternFn(ExternFnDecl),
     Data(DataDecl),
-    Effect(EffectDecl),
+    Cap(CapDecl),
     Fn(FnDecl),
+    Use(UseDecl),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UseDecl {
+    pub path: Vec<String>,
+    pub names: Option<Vec<String>>,
+    pub source_span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,9 +55,9 @@ pub struct ExternFnDecl {
     pub return_type_repr: Option<String>,
     #[debug(skip)]
     pub return_type_span: Option<Span>,
-    pub effect_repr: Option<String>,
+    pub cap_repr: Option<String>,
     #[debug(skip)]
-    pub effect_span: Option<Span>,
+    pub cap_span: Option<Span>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,7 +88,7 @@ pub struct VariantDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EffectDecl {
+pub struct CapDecl {
     pub name: String,
     #[debug(skip)]
     pub id: ContentHash,
@@ -120,9 +128,9 @@ pub struct FnDecl {
     pub return_type_repr: Option<String>,
     #[debug(skip)]
     pub return_type_span: Option<Span>,
-    pub effect_repr: Option<String>,
+    pub cap_repr: Option<String>,
     #[debug(skip)]
-    pub effect_span: Option<Span>,
+    pub cap_span: Option<Span>,
     pub value: Expr,
 }
 
@@ -258,7 +266,7 @@ pub enum Expr {
         structural_hash: ContentHash,
         #[debug(skip)]
         source_span: Span,
-        effect: String,
+        cap: String,
     },
     Handle {
         #[debug(skip)]
@@ -267,7 +275,7 @@ pub enum Expr {
         structural_hash: ContentHash,
         #[debug(skip)]
         source_span: Span,
-        effect: String,
+        cap: String,
         handler: Box<Expr>,
         body: Box<Expr>,
     },
@@ -289,6 +297,15 @@ pub enum Expr {
         source_span: Span,
         object: Box<Expr>,
         field: String,
+    },
+    Number {
+        #[debug(skip)]
+        id: ContentHash,
+        #[debug(skip)]
+        structural_hash: ContentHash,
+        #[debug(skip)]
+        source_span: Span,
+        value: String,
     },
     Ann {
         #[debug(skip)]
@@ -336,8 +353,13 @@ pub fn lower(file: &hir::File) -> File {
             hir::Item::ExternType(ext) => Item::ExternType(lower_extern_type(ext)),
             hir::Item::ExternFn(ext) => Item::ExternFn(lower_extern_fn(ext)),
             hir::Item::Data(data) => Item::Data(lower_data(data)),
-            hir::Item::Effect(effect) => Item::Effect(lower_effect(effect)),
+            hir::Item::Cap(cap) => Item::Cap(lower_cap(cap)),
             hir::Item::Fn(func) => Item::Fn(lower_fn(func, &variants)),
+            hir::Item::Use(u) => Item::Use(UseDecl {
+                path: u.path.clone(),
+                names: u.names.clone(),
+                source_span: u.source_span,
+            }),
         })
         .collect::<Vec<_>>();
 
@@ -381,18 +403,18 @@ fn lower_extern_fn(ext: &hir::ExternFnDecl) -> ExternFnDecl {
             .collect(),
         return_type_repr: ext.return_type_repr.clone(),
         return_type_span: ext.return_type_span,
-        effect_repr: ext.effect_repr.clone(),
-        effect_span: ext.effect_span,
+        cap_repr: ext.cap_repr.clone(),
+        cap_span: ext.cap_span,
     }
 }
 
-fn lower_effect(effect: &hir::EffectDecl) -> EffectDecl {
-    EffectDecl {
-        name: effect.name.clone(),
-        id: ContentHash(effect.id.0),
-        structural_hash: ContentHash(effect.structural_hash.0),
-        source_span: effect.source_span,
-        operations: effect
+fn lower_cap(cap: &hir::CapDecl) -> CapDecl {
+    CapDecl {
+        name: cap.name.clone(),
+        id: ContentHash(cap.id.0),
+        structural_hash: ContentHash(cap.structural_hash.0),
+        source_span: cap.source_span,
+        operations: cap
             .operations
             .iter()
             .map(|op| OperationDecl {
@@ -465,8 +487,8 @@ fn lower_fn(func: &hir::FnDecl, variants: &[(String, String)]) -> FnDecl {
         params,
         return_type_repr: func.return_type_repr.clone(),
         return_type_span: func.return_type_span,
-        effect_repr: func.effect_repr.clone(),
-        effect_span: func.effect_span,
+        cap_repr: func.cap_repr.clone(),
+        cap_span: func.cap_span,
         value,
     }
 }
@@ -679,24 +701,24 @@ fn lower_expr(expr: &hir::Expr, variants: &[(String, String)]) -> Expr {
             lower_apply_chain(*source_span, callee, args)
         }
         hir::Expr::Perform {
-            effect,
+            cap,
             source_span,
             ..
         } => {
             let id = source_id("perform", *source_span);
             let mut hasher = Hasher::new();
             hasher.write_tag("perform");
-            hasher.write_str(effect);
+            hasher.write_str(cap);
             let structural_hash = ContentHash(hasher.finish());
             Expr::Perform {
                 id,
                 structural_hash,
                 source_span: *source_span,
-                effect: effect.clone(),
+                cap: cap.clone(),
             }
         }
         hir::Expr::Handle {
-            effect,
+            cap,
             handler,
             body,
             source_span,
@@ -711,7 +733,7 @@ fn lower_expr(expr: &hir::Expr, variants: &[(String, String)]) -> Expr {
             );
             let mut hasher = Hasher::new();
             hasher.write_tag("handle");
-            hasher.write_str(effect);
+            hasher.write_str(cap);
             hasher.write_u64(expr_structural_hash(&handler).0);
             hasher.write_u64(expr_structural_hash(&body).0);
             let structural_hash = ContentHash(hasher.finish());
@@ -719,7 +741,7 @@ fn lower_expr(expr: &hir::Expr, variants: &[(String, String)]) -> Expr {
                 id,
                 structural_hash,
                 source_span: *source_span,
-                effect: effect.clone(),
+                cap: cap.clone(),
                 handler,
                 body,
             }
@@ -764,6 +786,21 @@ fn lower_expr(expr: &hir::Expr, variants: &[(String, String)]) -> Expr {
                 structural_hash,
                 source_span: *source_span,
                 entries: lir_entries,
+            }
+        }
+        hir::Expr::Number {
+            value, source_span, ..
+        } => {
+            let id = source_id("number", *source_span);
+            let mut hasher = Hasher::new();
+            hasher.write_tag("number");
+            hasher.write_str(value);
+            let structural_hash = ContentHash(hasher.finish());
+            Expr::Number {
+                id,
+                structural_hash,
+                source_span: *source_span,
+                value: value.clone(),
             }
         }
         hir::Expr::Ann {
@@ -951,8 +988,21 @@ fn item_structural_hash(item: &Item) -> ContentHash {
         Item::ExternType(ext) => ext.structural_hash,
         Item::ExternFn(ext) => ext.structural_hash,
         Item::Data(d) => d.structural_hash,
-        Item::Effect(e) => e.structural_hash,
+        Item::Cap(e) => e.structural_hash,
         Item::Fn(f) => f.structural_hash,
+        Item::Use(u) => {
+            let mut h = Hasher::new();
+            h.write_tag("use");
+            for seg in &u.path {
+                h.write_str(seg);
+            }
+            if let Some(names) = &u.names {
+                for name in names {
+                    h.write_str(name);
+                }
+            }
+            ContentHash(h.finish())
+        }
     }
 }
 
@@ -974,6 +1024,7 @@ fn expr_id(expr: &Expr) -> ContentHash {
         Expr::Handle { id, .. } => *id,
         Expr::Bundle { id, .. } => *id,
         Expr::Member { id, .. } => *id,
+        Expr::Number { id, .. } => *id,
         Expr::Ann { id, .. } => *id,
         Expr::Error { id, .. } => *id,
     }
@@ -1029,6 +1080,9 @@ fn expr_structural_hash(expr: &Expr) -> ContentHash {
         Expr::Member {
             structural_hash, ..
         } => *structural_hash,
+        Expr::Number {
+            structural_hash, ..
+        } => *structural_hash,
         Expr::Ann {
             structural_hash, ..
         } => *structural_hash,
@@ -1041,7 +1095,7 @@ fn expr_structural_hash(expr: &Expr) -> ContentHash {
 pub fn expr_references_name(expr: &Expr, target: &str) -> bool {
     match expr {
         Expr::Ident { name, .. } => name == target,
-        Expr::String { .. } | Expr::Error { .. } | Expr::Perform { .. } => false,
+        Expr::String { .. } | Expr::Number { .. } | Expr::Error { .. } | Expr::Perform { .. } => false,
         Expr::Produce { expr, .. }
         | Expr::Thunk { expr, .. }
         | Expr::Force { expr, .. }

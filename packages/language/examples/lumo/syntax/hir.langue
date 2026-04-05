@@ -1,0 +1,26 @@
+ident := /\p{ID_Start}\p{ID_Continue}*/
+bounds := {
+  sep-by("+") {
+
+  }
+}
+type-param := {
+  // todo: kinded type
+  (name: ident) { ":" (bounds: bounds) }?
+}
+type-params := {
+  "[" (this: sep-by(",", allow-trailing) { type-param }) "]"
+}
+
+definition := one-of {
+  module := {
+    "mod" (name: ident) "{"
+      (definitions: repeat { definition })
+    "}"
+  }
+  function :+ {
+    "fn" ident type-params? "("
+    
+    ")"
+  }
+}

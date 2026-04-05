@@ -160,14 +160,21 @@ fn render_item(item: &Item) -> String {
             format!("Data(name=\"{}\", variants=[{}])", d.name, variants)
         }
         Item::Fn(f) => format!("Fn(name=\"{}\", body={})", f.name, render_expr(&f.body)),
-        Item::Effect(e) => {
+        Item::Cap(e) => {
             let ops = e
                 .operations
                 .iter()
                 .map(|op| format!("\"{}\"", op.name))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("Effect(name=\"{}\", ops=[{}])", e.name, ops)
+            format!("Cap(name=\"{}\", ops=[{}])", e.name, ops)
+        }
+        Item::Use(u) => {
+            let path = u.path.join(".");
+            match &u.names {
+                Some(names) => format!("Use(path=\"{}\", names=[{}])", path, names.join(", ")),
+                None => format!("Use(path=\"{}\")", path),
+            }
         }
     }
 }
@@ -209,13 +216,13 @@ fn render_expr(expr: &Expr) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        Expr::Perform { effect, .. } => {
-            format!("Perform(effect=\"{effect}\")")
+        Expr::Perform { cap, .. } => {
+            format!("Perform(cap=\"{cap}\")")
         }
         Expr::Handle {
-            effect, handler, body, ..
+            cap, handler, body, ..
         } => format!(
-            "Handle(effect=\"{effect}\", handler={}, body={})",
+            "Handle(cap=\"{cap}\", handler={}, body={})",
             render_expr(handler),
             render_expr(body)
         ),
@@ -236,6 +243,22 @@ fn render_expr(expr: &Expr) -> String {
                 .join(", ");
             format!("Bundle([{}])", es)
         }
+        Expr::Number { value, .. } => format!("Number(\"{}\")", value),
+        Expr::Binary { left, op, right, .. } => format!(
+            "Binary(left={}, op={:?}, right={})",
+            render_expr(left),
+            op,
+            render_expr(right)
+        ),
+        Expr::Unary { op, expr, .. } => format!("Unary(op={:?}, expr={})", op, render_expr(expr)),
+        Expr::Assign {
+            name, value, body, ..
+        } => format!(
+            "Assign(name=\"{}\", value={}, body={})",
+            name,
+            render_expr(value),
+            render_expr(body)
+        ),
         Expr::Error { .. } => "Error".to_owned(),
     }
 }

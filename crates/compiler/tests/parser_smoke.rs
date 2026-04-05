@@ -1,6 +1,6 @@
 use lumo_compiler::{
     lexer::lex,
-    parser::{parse, Expr, Item},
+    parser::{parse, BinaryOp, Expr, Item, UnaryOp},
 };
 
 #[test]
@@ -51,7 +51,7 @@ fn parses_data_and_fn() {
         f.return_type.as_ref().map(|t| t.repr.as_str()),
         Some("produce A")
     );
-    assert_eq!(f.effect.as_ref().map(|e| e.repr.as_str()), Some("{ }"));
+    assert_eq!(f.cap.as_ref().map(|e| e.repr.as_str()), Some("{ }"));
 }
 
 #[test]
@@ -216,4 +216,165 @@ fn parses_extern_fn_without_semicolon_before_next_item() {
     assert_eq!(parsed.file.items.len(), 2);
     assert!(matches!(parsed.file.items[0], Item::ExternFn(_)));
     assert!(matches!(parsed.file.items[1], Item::Fn(_)));
+}
+
+#[test]
+fn parses_use_simple_path() {
+    let src = "use myapp.utils.helper;";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    assert_eq!(parsed.file.items.len(), 1);
+
+    let Item::Use(u) = &parsed.file.items[0] else {
+        panic!("expected use item")
+    };
+    assert_eq!(u.path, vec!["myapp", "utils", "helper"]);
+    assert!(u.names.is_none());
+}
+
+#[test]
+fn parses_use_destructuring() {
+    let src = "use myapp.utils.{a, b, self};";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    assert_eq!(parsed.file.items.len(), 1);
+
+    let Item::Use(u) = &parsed.file.items[0] else {
+        panic!("expected use item")
+    };
+    assert_eq!(u.path, vec!["myapp", "utils"]);
+    assert_eq!(u.names, Some(vec!["a".to_owned(), "b".to_owned(), "self".to_owned()]));
+}
+
+#[test]
+fn parses_use_alongside_fn() {
+    let src = "use myapp;\nfn id() := produce x";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    assert_eq!(parsed.file.items.len(), 2);
+    assert!(matches!(parsed.file.items[0], Item::Use(_)));
+    assert!(matches!(parsed.file.items[1], Item::Fn(_)));
+}
+
+fn parse_fn_body(src: &str) -> Expr {
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    let Item::Fn(f) = &parsed.file.items[0] else {
+        panic!("expected fn item")
+    };
+    f.body.clone()
+}
+
+#[test]
+fn operator_precedence_mul_before_add() {
+    // 1 + 2 * 3 → Binary(1, Add, Binary(2, Mul, 3))
+    let body = parse_fn_body("fn f() := 1 + 2 * 3");
+    let Expr::Binary { op, left, right, .. } = &body else {
+        panic!("expected binary, got {body:?}")
+    };
+    assert_eq!(*op, BinaryOp::Add);
+    assert!(matches!(left.as_ref(), Expr::Number { value, .. } if value == "1"));
+    let Expr::Binary { op: inner_op, .. } = right.as_ref() else {
+        panic!("expected inner binary")
+    };
+    assert_eq!(*inner_op, BinaryOp::Mul);
+}
+
+#[test]
+fn operator_left_associativity() {
+    // 1 - 2 - 3 → Binary(Binary(1, Sub, 2), Sub, 3)
+    let body = parse_fn_body("fn f() := 1 - 2 - 3");
+    let Expr::Binary { op, left, right, .. } = &body else {
+        panic!("expected binary, got {body:?}")
+    };
+    assert_eq!(*op, BinaryOp::Sub);
+    assert!(matches!(right.as_ref(), Expr::Number { value, .. } if value == "3"));
+    let Expr::Binary { op: inner_op, .. } = left.as_ref() else {
+        panic!("expected inner binary")
+    };
+    assert_eq!(*inner_op, BinaryOp::Sub);
+}
+
+#[test]
+fn unary_prefix_neg() {
+    // -x → Unary(Neg, x)
+    let body = parse_fn_body("fn f() := -x");
+    let Expr::Unary { op, expr, .. } = &body else {
+        panic!("expected unary, got {body:?}")
+    };
+    assert_eq!(*op, UnaryOp::Neg);
+    assert!(matches!(expr.as_ref(), Expr::Ident { name, .. } if name == "x"));
+}
+
+#[test]
+fn unary_binds_tighter_than_binary() {
+    // -a + b → Binary(Unary(Neg, a), Add, b)
+    let body = parse_fn_body("fn f() := -a + b");
+    let Expr::Binary { op, left, .. } = &body else {
+        panic!("expected binary, got {body:?}")
+    };
+    assert_eq!(*op, BinaryOp::Add);
+    assert!(matches!(left.as_ref(), Expr::Unary { op: UnaryOp::Neg, .. }));
+}
+
+#[test]
+fn comparison_operators_parse() {
+    let body = parse_fn_body("fn f() := a == b");
+    assert!(matches!(&body, Expr::Binary { op: BinaryOp::EqEq, .. }));
+
+    let body = parse_fn_body("fn f() := a != b");
+    assert!(matches!(&body, Expr::Binary { op: BinaryOp::NotEq, .. }));
+
+    let body = parse_fn_body("fn f() := a < b");
+    assert!(matches!(&body, Expr::Binary { op: BinaryOp::Lt, .. }));
+
+    let body = parse_fn_body("fn f() := a >= b");
+    assert!(matches!(&body, Expr::Binary { op: BinaryOp::GtEq, .. }));
+}
+
+#[test]
+fn logical_operators_parse() {
+    // a && b || c → Binary(Binary(a, AndAnd, b), OrOr, c)
+    let body = parse_fn_body("fn f() := a && b || c");
+    let Expr::Binary { op, left, .. } = &body else {
+        panic!("expected binary, got {body:?}")
+    };
+    assert_eq!(*op, BinaryOp::OrOr);
+    assert!(matches!(left.as_ref(), Expr::Binary { op: BinaryOp::AndAnd, .. }));
+}
+
+#[test]
+fn number_literal_parse() {
+    let body = parse_fn_body("fn f() := 42");
+    assert!(matches!(&body, Expr::Number { value, .. } if value == "42"));
+
+    let body = parse_fn_body("fn f() := 3.14");
+    assert!(matches!(&body, Expr::Number { value, .. } if value == "3.14"));
+}
+
+#[test]
+fn postfix_binds_tighter_than_operators() {
+    // a.b + c → Binary(Member(a, b), Add, c)
+    let body = parse_fn_body("fn f() := a.b + c");
+    let Expr::Binary { op, left, .. } = &body else {
+        panic!("expected binary, got {body:?}")
+    };
+    assert_eq!(*op, BinaryOp::Add);
+    assert!(matches!(left.as_ref(), Expr::Member { .. }));
+}
+
+#[test]
+fn assignment_desugars_in_parser() {
+    // x = 1; y → Assign(x, 1, y)
+    let body = parse_fn_body("fn f() := x = 1; y");
+    let Expr::Assign { name, value, body: body_expr, .. } = &body else {
+        panic!("expected assign, got {body:?}")
+    };
+    assert_eq!(name, "x");
+    assert!(matches!(value.as_ref(), Expr::Number { value, .. } if value == "1"));
+    assert!(matches!(body_expr.as_ref(), Expr::Ident { name, .. } if name == "y"));
 }

@@ -5,7 +5,7 @@ use lumo_compiler::{
 
 #[test]
 fn lossless_lexer_roundtrips_original_text() {
-    let src = "data Option[A] { .some(A), .none }\nfn id() := produce x+";
+    let src = "data Option[A] { .some(A), .none }\nfn id() := produce x→";
     let out = lex_lossless(src);
     let rebuilt = out
         .tokens

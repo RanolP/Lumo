@@ -236,12 +236,12 @@ fn ts_backend_flattens_let_iife_to_const() {
 #[test]
 fn ts_backend_handle_always_uses_cps() {
     let file = lower_typed(
-        "effect E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a } in perform E.op",
+        "cap E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a } in perform E.op",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // Deep CPS: ALL handles use CPS, even without resume
     // Handler entries get __k parameter, body is CPS-transformed
-    assert!(js.contains("__effect_E"), "{js}");
+    assert!(js.contains("__cap_E"), "{js}");
     assert!(js.contains("__k"), "all handles should have CPS __k param: {js}");
     assert!(js.contains("__v"), "CPS identity continuation: {js}");
 }
@@ -249,7 +249,7 @@ fn ts_backend_handle_always_uses_cps() {
 #[test]
 fn ts_backend_handle_with_resume_uses_cps() {
     let file = lower_typed(
-        "effect E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in perform E.op",
+        "cap E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in perform E.op",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // CPS: handler entries get __k param, body is CPS-transformed
@@ -263,19 +263,19 @@ fn ts_backend_handle_with_resume_uses_cps() {
 #[test]
 fn ts_backend_cps_handle_with_let_perform() {
     let file = lower_typed(
-        "effect E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in let x = perform E.op in produce x",
+        "cap E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in let x = perform E.op in produce x",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // CPS transforms: let x = perform E.op in produce x
-    // → __effect_E.op((x) => ((v) => v)(x))
-    assert!(js.contains("__effect_E.op"), "CPS perform call: {js}");
+    // → __cap_E.op((x) => ((v) => v)(x))
+    assert!(js.contains("__cap_E.op"), "CPS perform call: {js}");
     assert!(js.contains("__k"), "handler has __k: {js}");
 }
 
 #[test]
 fn ts_backend_mixed_resume_entries() {
     let file = lower_typed(
-        "effect E { fn op1(): produce A; fn op2(x: A): produce B } fn f(a: A, b: B): produce A / {} := handle E with bundle { fn op1() := resume(a); fn op2(x) := produce b } in perform E.op1",
+        "cap E { fn op1(): produce A; fn op2(x: A): produce B } fn f(a: A, b: B): produce A / {} := handle E with bundle { fn op1() := resume(a); fn op2(x) := produce b } in perform E.op1",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // op1 uses resume → gets ((resume) => ...) wrapper
@@ -287,21 +287,21 @@ fn ts_backend_mixed_resume_entries() {
 #[test]
 fn ts_backend_effectful_fn_decl_has_extra_params() {
     let file = lower_typed(
-        "effect E { fn op(): produce A } fn inner(): produce A / E := perform E.op",
+        "cap E { fn op(): produce A } fn inner(): produce A / E := perform E.op",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // Effectful function should have __effect_E and __k params
+    // Effectful function should have __cap_E and __k params
     assert!(
-        js.contains("__effect_E"),
-        "effectful fn should have __effect_E param: {js}"
+        js.contains("__cap_E"),
+        "effectful fn should have __cap_E param: {js}"
     );
     assert!(
         js.contains("__k"),
         "effectful fn should have __k param: {js}"
     );
-    // Body should be CPS-transformed: perform E.op → __effect_E.op(__k)
+    // Body should be CPS-transformed: perform E.op → __cap_E.op(__k)
     assert!(
-        js.contains("__effect_E.op"),
+        js.contains("__cap_E.op"),
         "body should call handler op: {js}"
     );
 }
@@ -309,17 +309,17 @@ fn ts_backend_effectful_fn_decl_has_extra_params() {
 #[test]
 fn ts_backend_deep_cps_effectful_fn_call() {
     let file = lower_typed(
-        "effect E { fn op(): produce A } fn inner(): produce A / E := perform E.op fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in let x = force (thunk inner) in produce x",
+        "cap E { fn op(): produce A } fn inner(): produce A / E := perform E.op fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in let x = force (thunk inner) in produce x",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // inner should be called with __effect_E and continuation
-    // inner(__effect_E, (x) => ...)
+    // inner should be called with __cap_E and continuation
+    // inner(__cap_E, (x) => ...)
     assert!(
         js.contains("inner("),
         "should call inner with args: {js}"
     );
     assert!(
-        js.contains("__effect_E"),
+        js.contains("__cap_E"),
         "should pass handler to inner: {js}"
     );
 }
@@ -328,10 +328,10 @@ fn ts_backend_deep_cps_effectful_fn_call() {
 fn ts_backend_pure_fn_unchanged() {
     let file = lower_typed("fn f(a: A): produce A / {} := produce a");
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // Pure function should NOT have __effect or __k params
+    // Pure function should NOT have __cap or __k params
     assert!(
-        !js.contains("__effect"),
-        "pure fn should not have __effect param: {js}"
+        !js.contains("__cap"),
+        "pure fn should not have __cap param: {js}"
     );
     assert!(
         !js.contains("__k"),

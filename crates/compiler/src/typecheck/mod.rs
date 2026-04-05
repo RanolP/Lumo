@@ -44,7 +44,7 @@ pub enum CompType {
     Fn {
         params: Vec<ValueType>,
         ret: Box<CompType>,
-        effect: Option<String>,
+        cap: Option<String>,
     },
 }
 
@@ -65,7 +65,7 @@ pub fn typecheck_and_bindings(file: &lir::File) -> (Vec<CheckedBinding>, Vec<Typ
         data_defs: HashMap::new(),
         variant_owner: HashMap::new(),
         fn_defs: HashMap::new(),
-        effect_defs: HashMap::new(),
+        cap_defs: HashMap::new(),
     };
     tc.check_file(file);
     (tc.bindings, tc.errors)
@@ -105,14 +105,14 @@ fn render_c_type(ty: &CompType) -> String {
         CompType::Fn {
             params,
             ret,
-            effect,
+            cap,
         } => {
             let ps = params
                 .iter()
                 .map(render_v_type)
                 .collect::<Vec<_>>()
                 .join(", ");
-            if let Some(e) = effect {
+            if let Some(e) = cap {
                 if !e.is_empty() {
                     format!("({ps}) -> {} / {e}", render_c_type(ret))
                 } else {
@@ -131,7 +131,7 @@ struct TypeChecker {
     data_defs: HashMap<String, DataDef>,
     variant_owner: HashMap<String, String>,
     fn_defs: HashMap<String, CompType>,
-    effect_defs: HashMap<String, EffectDef>,
+    cap_defs: HashMap<String, CapDef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,7 +141,7 @@ struct DataDef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct EffectDef {
+struct CapDef {
     operations: HashMap<String, CompType>,
 }
 
@@ -183,7 +183,7 @@ impl TypeChecker {
                     },
                 );
             }
-            if let lir::Item::Effect(e) = item {
+            if let lir::Item::Cap(e) = item {
                 let mut operations = HashMap::new();
                 for op in &e.operations {
                     let params = op
@@ -226,13 +226,13 @@ impl TypeChecker {
                         CompType::Fn {
                             params,
                             ret: Box::new(ret),
-                            effect: None,
+                            cap: None,
                         }
                     };
                     operations.insert(op.name.clone(), op_ty);
                 }
-                self.effect_defs
-                    .insert(e.name.clone(), EffectDef { operations });
+                self.cap_defs
+                    .insert(e.name.clone(), CapDef { operations });
             }
         }
 
@@ -253,59 +253,51 @@ impl TypeChecker {
         }
     }
 
-    fn predeclare_fn(&mut self, f: &lir::FnDecl) {
-        let params = f
-            .params
+    fn predeclare_fn_common(
+        &mut self,
+        name: &str,
+        params: &[lir::ParamDecl],
+        return_type_repr: Option<&str>,
+        cap_repr: Option<&str>,
+    ) {
+        let param_types = params
             .iter()
             .map(|p| {
                 parse_v_type(&p.ty_repr).unwrap_or_else(|| ValueType::Named("__invalid".to_owned()))
             })
             .collect::<Vec<_>>();
-        let ret = if let Some(ret) = &f.return_type_repr {
-            parse_c_type(ret)
-                .unwrap_or_else(|| CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))))
-        } else {
-            CompType::Produce(Box::new(ValueType::Named("Unit".to_owned())))
+        let ret = match return_type_repr {
+            Some(ret) => parse_c_type(ret).unwrap_or_else(|| {
+                CompType::Produce(Box::new(ValueType::Named("Unit".to_owned())))
+            }),
+            None => CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))),
         };
-        let effect = f
-            .effect_repr
-            .as_ref()
-            .map(|e| normalize_effect_text(&normalize_type_text(e)));
+        let cap = cap_repr.map(|e| normalize_cap_text(&normalize_type_text(e)));
         self.fn_defs.insert(
-            f.name.clone(),
+            name.to_owned(),
             CompType::Fn {
-                params,
+                params: param_types,
                 ret: Box::new(ret),
-                effect,
+                cap,
             },
         );
     }
 
+    fn predeclare_fn(&mut self, f: &lir::FnDecl) {
+        self.predeclare_fn_common(
+            &f.name,
+            &f.params,
+            f.return_type_repr.as_deref(),
+            f.cap_repr.as_deref(),
+        );
+    }
+
     fn predeclare_extern_fn(&mut self, f: &lir::ExternFnDecl) {
-        let params = f
-            .params
-            .iter()
-            .map(|p| {
-                parse_v_type(&p.ty_repr).unwrap_or_else(|| ValueType::Named("__invalid".to_owned()))
-            })
-            .collect::<Vec<_>>();
-        let ret = if let Some(ret) = &f.return_type_repr {
-            parse_c_type(ret)
-                .unwrap_or_else(|| CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))))
-        } else {
-            CompType::Produce(Box::new(ValueType::Named("Unit".to_owned())))
-        };
-        let effect = f
-            .effect_repr
-            .as_ref()
-            .map(|e| normalize_effect_text(&normalize_type_text(e)));
-        self.fn_defs.insert(
-            f.name.clone(),
-            CompType::Fn {
-                params,
-                ret: Box::new(ret),
-                effect,
-            },
+        self.predeclare_fn_common(
+            &f.name,
+            &f.params,
+            f.return_type_repr.as_deref(),
+            f.cap_repr.as_deref(),
         );
     }
 
@@ -324,10 +316,10 @@ impl TypeChecker {
             param_types.push(ty);
         }
 
-        let effect = f
-            .effect_repr
+        let cap = f
+            .cap_repr
             .as_ref()
-            .map(|e| normalize_effect_text(&normalize_type_text(e)));
+            .map(|e| normalize_cap_text(&normalize_type_text(e)));
         let expected = if let Some(ret) = &f.return_type_repr {
             let Some(expected) = parse_c_type(ret) else {
                 self.errors.push(TypeError::new(
@@ -344,7 +336,7 @@ impl TypeChecker {
         let fn_ty = CompType::Fn {
             params: param_types.clone(),
             ret: Box::new(expected.clone()),
-            effect: effect.clone(),
+            cap: cap.clone(),
         };
         self.fn_defs.insert(f.name.clone(), fn_ty.clone());
 
@@ -374,10 +366,10 @@ impl TypeChecker {
             };
             param_types.push(ty);
         }
-        let effect = f
-            .effect_repr
+        let cap = f
+            .cap_repr
             .as_ref()
-            .map(|e| normalize_effect_text(&normalize_type_text(e)));
+            .map(|e| normalize_cap_text(&normalize_type_text(e)));
         let ret = if let Some(ret) = &f.return_type_repr {
             let Some(expected) = parse_c_type(ret) else {
                 self.errors.push(TypeError::new(
@@ -395,7 +387,7 @@ impl TypeChecker {
             ty: CompType::Fn {
                 params: param_types,
                 ret: Box::new(ret),
-                effect,
+                cap,
             },
         });
     }
@@ -410,16 +402,16 @@ impl TypeChecker {
             self.check_c_expr(expr, inner, env);
             return;
         }
-        // Check bundle expression against effect type
+        // Check bundle expression against cap type
         if let (
             Expr::Bundle {
                 entries, id, ..
             },
-            ValueType::Named(effect_name),
+            ValueType::Named(cap_name),
         ) = (expr, expected)
         {
-            if let Some(def) = self.effect_defs.get(effect_name).cloned() {
-                self.check_bundle_against_effect(entries, &def, effect_name, id.0, env, None);
+            if let Some(def) = self.cap_defs.get(cap_name).cloned() {
+                self.check_bundle_against_cap(entries, &def, cap_name, id.0, env, None);
                 return;
             }
         }
@@ -437,11 +429,11 @@ impl TypeChecker {
         }
     }
 
-    fn check_bundle_against_effect(
+    fn check_bundle_against_cap(
         &mut self,
         entries: &[lir::LirBundleEntry],
-        def: &EffectDef,
-        effect_name: &str,
+        def: &CapDef,
+        cap_name: &str,
         node_id: u64,
         env: &HashMap<String, ValueType>,
         handle_result_type: Option<&CompType>,
@@ -452,7 +444,7 @@ impl TypeChecker {
                 self.errors.push(TypeError::new(
                     node_id,
                     format!(
-                        "bundle for effect `{effect_name}` is missing operation `{op_name}`"
+                        "bundle for cap `{cap_name}` is missing operation `{op_name}`"
                     ),
                 ));
             }
@@ -471,7 +463,7 @@ impl TypeChecker {
                             let resume_ty = ValueType::Thunk(Box::new(CompType::Fn {
                                 params: vec![op_ret_val.clone()],
                                 ret: Box::new(handle_result.clone()),
-                                effect: None,
+                                cap: None,
                             }));
                             entry_env.insert("resume".to_owned(), resume_ty);
                         }
@@ -528,7 +520,7 @@ impl TypeChecker {
                 self.errors.push(TypeError::new(
                     node_id,
                     format!(
-                        "bundle entry `{}` is not an operation of effect `{effect_name}`",
+                        "bundle entry `{}` is not an operation of cap `{cap_name}`",
                         entry.name
                     ),
                 ));
@@ -635,7 +627,7 @@ impl TypeChecker {
             CompType::Fn {
                 params: payload_types.clone(),
                 ret: Box::new(CompType::Produce(Box::new(result_template.clone()))),
-                effect: None,
+                cap: None,
             }
         };
 
@@ -688,11 +680,94 @@ impl TypeChecker {
                     .map(|payload| subst_v_type(payload, &subst))
                     .collect(),
                 ret: Box::new(CompType::Produce(Box::new(result_ty))),
-                effect: None,
+                cap: None,
             }
         };
 
         BundleExprInferResult::Typed(resolved)
+    }
+
+    /// Shared match-arm preparation: infer scrutinee, check exhaustiveness, parse patterns,
+    /// validate variant-as-binding, and build per-arm environments.
+    fn prepare_match_arms<'a>(
+        &mut self,
+        scrutinee: &Expr,
+        arms: &'a [lir::MatchArm],
+        env: &HashMap<String, ValueType>,
+        id: u64,
+    ) -> Vec<(&'a Expr, HashMap<String, ValueType>)> {
+        let scrutinee_ty = self.infer_v_expr(scrutinee, env);
+        let scrutinee_data = scrutinee_ty
+            .as_ref()
+            .and_then(nominal_head_name)
+            .and_then(|name| self.data_defs.get(&name).cloned());
+        if let Some(ref ty) = scrutinee_ty {
+            if scrutinee_data.is_some() {
+                self.check_match_exhaustive(arms, ty, id);
+            }
+        }
+        arms.iter()
+            .map(|arm| {
+                let mut parsed_pattern = parse_match_pattern(&arm.pattern);
+                if parsed_pattern.is_none() {
+                    self.errors.push(TypeError::new(
+                        arm_node_id(arm),
+                        invalid_pattern_message(&arm.pattern),
+                    ));
+                }
+                if let (Some(data_def), Some(Pattern::Bind(name))) =
+                    (scrutinee_data.as_ref(), parsed_pattern.as_ref())
+                {
+                    if data_def.variants.contains_key(name) {
+                        self.errors.push(TypeError::new(
+                            arm_node_id(arm),
+                            format!("variant pattern `{name}` must be written `.{name}`"),
+                        ));
+                        parsed_pattern = None;
+                    }
+                }
+                let mut arm_env = env.clone();
+                if let (Some(ty), Some(pattern)) =
+                    (scrutinee_ty.as_ref(), parsed_pattern.as_ref())
+                {
+                    self.bind_pattern(pattern, ty, &mut arm_env, arm_node_id(arm));
+                } else if let Some(ty) = &scrutinee_ty {
+                    for binding in parsed_pattern
+                        .as_ref()
+                        .map(pattern_bindings)
+                        .unwrap_or_default()
+                    {
+                        arm_env.insert(binding, ty.clone());
+                    }
+                }
+                (&arm.body as &'a Expr, arm_env)
+            })
+            .collect()
+    }
+
+    /// Infer the value type bound by a `let` — classifies the value as computation or value,
+    /// infers its type, and unwraps `Produce`.
+    fn infer_let_value_type(
+        &mut self,
+        value: &Expr,
+        env: &HashMap<String, ValueType>,
+    ) -> Option<ValueType> {
+        let value_ty = if is_syntactic_computation_expr(value) {
+            self.infer_c_expr(value, env)?
+        } else {
+            CompType::Produce(Box::new(self.infer_v_expr(value, env)?))
+        };
+        let CompType::Produce(inner) = value_ty else {
+            self.errors.push(TypeError::new(
+                expr_node_id(value),
+                format!(
+                    "let expects produce computation, got {}",
+                    render_c_type(&value_ty)
+                ),
+            ));
+            return None;
+        };
+        Some(*inner)
     }
 
     fn check_c_expr(&mut self, expr: &Expr, expected: &CompType, env: &HashMap<String, ValueType>) {
@@ -716,38 +791,11 @@ impl TypeChecker {
             Expr::LetIn {
                 name, value, body, ..
             } => {
-                let value_ty = match value.as_ref() {
-                    Expr::Produce { .. }
-                    | Expr::Force { .. }
-                    | Expr::Apply { .. }
-                    | Expr::LetIn { .. }
-                    | Expr::Match { .. }
-                    | Expr::Ctor { .. }
-                    | Expr::Roll { .. }
-                    | Expr::Perform { .. }
-                    | Expr::Handle { .. }
-                    | Expr::Member { .. }
-                    | Expr::Ann { .. }
-                    | Expr::Error { .. } => self.infer_c_expr(value, env),
-                    _ => self
-                        .infer_v_expr(value, env)
-                        .map(|v| CompType::Produce(Box::new(v))),
-                };
-                let Some(value_ty) = value_ty else {
-                    return;
-                };
-                let CompType::Produce(inner) = value_ty else {
-                    self.errors.push(TypeError::new(
-                        expr_node_id(value),
-                        format!(
-                            "let expects produce computation, got {}",
-                            render_c_type(&value_ty)
-                        ),
-                    ));
+                let Some(inner) = self.infer_let_value_type(value, env) else {
                     return;
                 };
                 let mut child = env.clone();
-                child.insert(name.clone(), *inner);
+                child.insert(name.clone(), inner);
                 self.check_c_expr(body, expected, &child);
             }
             Expr::Match {
@@ -756,75 +804,32 @@ impl TypeChecker {
                 id,
                 ..
             } => {
-                let scrutinee_ty = self.infer_v_expr(scrutinee, env);
-                let scrutinee_data = scrutinee_ty
-                    .as_ref()
-                    .and_then(nominal_head_name)
-                    .and_then(|name| self.data_defs.get(&name).cloned());
-                if let Some(ref ty) = scrutinee_ty {
-                    if scrutinee_data.is_some() {
-                        self.check_match_exhaustive(arms, ty, id.0);
-                    }
-                }
-                for arm in arms {
-                    let mut parsed_pattern = parse_match_pattern(&arm.pattern);
-                    if parsed_pattern.is_none() {
-                        self.errors.push(TypeError::new(
-                            arm_node_id(arm),
-                            invalid_pattern_message(&arm.pattern),
-                        ));
-                    }
-                    if let (Some(data_def), Some(Pattern::Bind(name))) =
-                        (scrutinee_data.as_ref(), parsed_pattern.as_ref())
-                    {
-                        if data_def.variants.contains_key(name) {
-                            self.errors.push(TypeError::new(
-                                arm_node_id(arm),
-                                format!(
-                                    "variant pattern `{name}` must be written `.{name}`"
-                                ),
-                            ));
-                            parsed_pattern = None;
-                        }
-                    }
-                    let mut arm_env = env.clone();
-                    if let (Some(ty), Some(pattern)) =
-                        (scrutinee_ty.as_ref(), parsed_pattern.as_ref())
-                    {
-                        self.bind_pattern(pattern, ty, &mut arm_env, arm_node_id(arm));
-                    } else if let Some(ty) = &scrutinee_ty {
-                        for binding in parsed_pattern
-                            .as_ref()
-                            .map(pattern_bindings)
-                            .unwrap_or_default()
-                        {
-                            arm_env.insert(binding, ty.clone());
-                        }
-                    }
-                    self.check_c_expr(&arm.body, expected, &arm_env);
+                let prepared = self.prepare_match_arms(scrutinee, arms, env, id.0);
+                for (body, arm_env) in prepared {
+                    self.check_c_expr(body, expected, &arm_env);
                 }
             }
             Expr::Handle {
-                effect,
+                cap,
                 handler,
                 body,
                 id,
                 ..
             } => {
-                if self.effect_defs.get(effect).is_none() {
+                if self.cap_defs.get(cap).is_none() {
                     self.errors.push(TypeError::new(
                         id.0,
-                        format!("unknown effect `{effect}`"),
+                        format!("unknown cap `{cap}`"),
                     ));
                     let _ = self.infer_c_expr(handler, env);
                     self.check_c_expr(body, expected, env);
                     return;
                 }
-                let handler_value_type = self.effect_handler_type(effect);
+                let handler_value_type = self.cap_handler_type(cap);
                 // Check body first to determine handle result type for resume
                 let mut body_env = env.clone();
                 if let Some(ref ty) = handler_value_type {
-                    body_env.insert(format!("__effect_{effect}"), ty.clone());
+                    body_env.insert(format!("__cap_{cap}"), ty.clone());
                 }
                 self.check_c_expr(body, expected, &body_env);
                 // Check handler with handle result type for resume
@@ -835,11 +840,11 @@ impl TypeChecker {
                         ..
                     } = handler.as_ref()
                     {
-                        if let Some(def) = self.effect_defs.get(effect).cloned() {
-                            self.check_bundle_against_effect(
+                        if let Some(def) = self.cap_defs.get(cap).cloned() {
+                            self.check_bundle_against_cap(
                                 entries,
                                 &def,
-                                effect,
+                                cap,
                                 bundle_id.0,
                                 env,
                                 Some(expected),
@@ -883,6 +888,7 @@ impl TypeChecker {
                 }
             }
             Expr::String { .. } => Some(ValueType::Named("String".to_owned())),
+            Expr::Number { .. } => Some(ValueType::Named("Number".to_owned())),
             Expr::Thunk { expr, .. } => {
                 let inner = self.infer_c_expr(expr, env)?;
                 Some(ValueType::Thunk(Box::new(inner)))
@@ -958,7 +964,7 @@ impl TypeChecker {
                     None
                 }
             }
-            Expr::String { .. } => {
+            Expr::String { .. } | Expr::Number { .. } => {
                 self.errors.push(TypeError::new(
                     expr_node_id(expr),
                     "expected computation expression".to_owned(),
@@ -1058,40 +1064,9 @@ impl TypeChecker {
             Expr::LetIn {
                 name, value, body, ..
             } => {
-                let value_ty = match value.as_ref() {
-                    Expr::Produce { .. }
-                    | Expr::Force { .. }
-                    | Expr::Apply { .. }
-                    | Expr::LetIn { .. }
-                    | Expr::Match { .. }
-                    | Expr::Ctor { .. }
-                    | Expr::Roll { .. }
-                    | Expr::Perform { .. }
-                    | Expr::Handle { .. }
-                    | Expr::Member { .. }
-                    | Expr::Ann { .. }
-                    | Expr::Error { .. } => self.infer_c_expr(value, env)?,
-                    Expr::Ident { .. }
-                    | Expr::String { .. }
-                    | Expr::Thunk { .. }
-                    | Expr::Lambda { .. }
-                    | Expr::Unroll { .. }
-                    | Expr::Bundle { .. } => {
-                        CompType::Produce(Box::new(self.infer_v_expr(value, env)?))
-                    }
-                };
-                let CompType::Produce(inner) = value_ty else {
-                    self.errors.push(TypeError::new(
-                        expr_node_id(value),
-                        format!(
-                            "let expects produce computation, got {}",
-                            render_c_type(&value_ty)
-                        ),
-                    ));
-                    return None;
-                };
+                let inner = self.infer_let_value_type(value, env)?;
                 let mut child = env.clone();
-                child.insert(name.clone(), *inner);
+                child.insert(name.clone(), inner);
                 self.infer_c_expr(body, &child)
             }
             Expr::Match {
@@ -1100,53 +1075,10 @@ impl TypeChecker {
                 id,
                 ..
             } => {
-                let scrutinee_ty = self.infer_v_expr(scrutinee, env);
-                let scrutinee_data = scrutinee_ty
-                    .as_ref()
-                    .and_then(nominal_head_name)
-                    .and_then(|name| self.data_defs.get(&name).cloned());
-                if let Some(ref ty) = scrutinee_ty {
-                    if scrutinee_data.is_some() {
-                        self.check_match_exhaustive(arms, ty, id.0);
-                    }
-                }
+                let prepared = self.prepare_match_arms(scrutinee, arms, env, id.0);
                 let mut body_ty = None;
-                for arm in arms {
-                    let mut parsed_pattern = parse_match_pattern(&arm.pattern);
-                    if parsed_pattern.is_none() {
-                        self.errors.push(TypeError::new(
-                            arm_node_id(arm),
-                            invalid_pattern_message(&arm.pattern),
-                        ));
-                    }
-                    if let (Some(data_def), Some(Pattern::Bind(name))) =
-                        (scrutinee_data.as_ref(), parsed_pattern.as_ref())
-                    {
-                        if data_def.variants.contains_key(name) {
-                            self.errors.push(TypeError::new(
-                                arm_node_id(arm),
-                                format!(
-                                    "variant pattern `{name}` must be written `.{name}`"
-                                ),
-                            ));
-                            parsed_pattern = None;
-                        }
-                    }
-                    let mut arm_env = env.clone();
-                    if let (Some(ty), Some(pattern)) =
-                        (scrutinee_ty.as_ref(), parsed_pattern.as_ref())
-                    {
-                        self.bind_pattern(pattern, ty, &mut arm_env, arm_node_id(arm));
-                    } else if let Some(ty) = &scrutinee_ty {
-                        for binding in parsed_pattern
-                            .as_ref()
-                            .map(pattern_bindings)
-                            .unwrap_or_default()
-                        {
-                            arm_env.insert(binding, ty.clone());
-                        }
-                    }
-                    let arm_ty = self.infer_c_expr(&arm.body, &arm_env)?;
+                for (body, arm_env) in prepared {
+                    let arm_ty = self.infer_c_expr(body, &arm_env)?;
                     if let Some(expected) = &body_ty {
                         if *expected != arm_ty {
                             self.errors.push(TypeError::new(
@@ -1165,48 +1097,48 @@ impl TypeChecker {
                 }
                 body_ty
             }
-            Expr::Perform { effect, id, .. } => {
-                if self.effect_defs.get(effect).is_none() {
+            Expr::Perform { cap, id, .. } => {
+                if self.cap_defs.get(cap).is_none() {
                     self.errors.push(TypeError::new(
                         id.0,
-                        format!("unknown effect `{effect}`"),
+                        format!("unknown cap `{cap}`"),
                     ));
                     return None;
                 }
-                let effect_var = format!("__effect_{effect}");
-                if let Some(handler_ty) = env.get(&effect_var) {
+                let cap_var = format!("__cap_{cap}");
+                if let Some(handler_ty) = env.get(&cap_var) {
                     Some(CompType::Produce(Box::new(handler_ty.clone())))
                 } else {
                     self.errors.push(TypeError::new(
                         id.0,
                         format!(
-                            "effect `{effect}` is not handled in this context; \
-                             wrap in `handle {effect} with <handler> in ...`"
+                            "cap `{cap}` is not handled in this context; \
+                             wrap in `handle {cap} with <handler> in ...`"
                         ),
                     ));
                     None
                 }
             }
             Expr::Handle {
-                effect,
+                cap,
                 handler,
                 body,
                 id,
                 ..
             } => {
-                if self.effect_defs.get(effect).is_none() {
+                if self.cap_defs.get(cap).is_none() {
                     self.errors.push(TypeError::new(
                         id.0,
-                        format!("unknown effect `{effect}`"),
+                        format!("unknown cap `{cap}`"),
                     ));
                     let _ = self.infer_c_expr(handler, env);
                     return self.infer_c_expr(body, env);
                 }
-                let handler_value_type = self.effect_handler_type(effect);
+                let handler_value_type = self.cap_handler_type(cap);
                 // Infer body first to determine handle result type (needed for resume typing)
                 let mut body_env = env.clone();
                 if let Some(ref ty) = handler_value_type {
-                    body_env.insert(format!("__effect_{effect}"), ty.clone());
+                    body_env.insert(format!("__cap_{cap}"), ty.clone());
                 }
                 let body_comp_type = self.infer_c_expr(body, &body_env);
                 // Check handler — if it's a bundle literal, pass handle_result_type for resume
@@ -1217,11 +1149,11 @@ impl TypeChecker {
                         ..
                     } = handler.as_ref()
                     {
-                        if let Some(def) = self.effect_defs.get(effect).cloned() {
-                            self.check_bundle_against_effect(
+                        if let Some(def) = self.cap_defs.get(cap).cloned() {
+                            self.check_bundle_against_cap(
                                 entries,
                                 &def,
-                                effect,
+                                cap,
                                 bundle_id.0,
                                 env,
                                 body_comp_type.as_ref(),
@@ -1260,13 +1192,13 @@ impl TypeChecker {
                 };
 
                 if let ValueType::Named(ref name) = obj_ty {
-                    if let Some(def) = self.effect_defs.get(name).cloned() {
+                    if let Some(def) = self.cap_defs.get(name).cloned() {
                         if let Some(op_ty) = def.operations.get(field) {
                             return Some(op_ty.clone());
                         }
                         self.errors.push(TypeError::new(
                             id.0,
-                            format!("effect `{name}` has no operation `{field}`"),
+                            format!("cap `{name}` has no operation `{field}`"),
                         ));
                         return None;
                     }
@@ -1549,15 +1481,15 @@ impl TypeChecker {
                 CompType::Fn {
                     params: lhs_params,
                     ret: lhs_ret,
-                    effect: lhs_effect,
+                    cap: lhs_cap,
                 },
                 CompType::Fn {
                     params: rhs_params,
                     ret: rhs_ret,
-                    effect: rhs_effect,
+                    cap: rhs_cap,
                 },
             ) => {
-                if lhs_params.len() != rhs_params.len() || lhs_effect != rhs_effect {
+                if lhs_params.len() != rhs_params.len() || lhs_cap != rhs_cap {
                     self.errors.push(TypeError::new(
                         node_id,
                         format!(
@@ -1589,10 +1521,10 @@ impl TypeChecker {
         }
     }
 
-    /// Compute the value type that a handler for effect `name` must have.
-    /// Always returns `Named(effect_name)` — effects are bundles regardless of op count.
-    fn effect_handler_type(&self, name: &str) -> Option<ValueType> {
-        self.effect_defs.get(name)?;
+    /// Compute the value type that a handler for cap `name` must have.
+    /// Always returns `Named(cap_name)` — caps are bundles regardless of op count.
+    fn cap_handler_type(&self, name: &str) -> Option<ValueType> {
+        self.cap_defs.get(name)?;
         Some(ValueType::Named(name.to_owned()))
     }
 
@@ -1979,11 +1911,11 @@ fn subst_c_type(ty: &CompType, subst: &HashMap<String, ValueType>) -> CompType {
         CompType::Fn {
             params,
             ret,
-            effect,
+            cap,
         } => CompType::Fn {
             params: params.iter().map(|p| subst_v_type(p, subst)).collect(),
             ret: Box::new(subst_c_type(ret, subst)),
-            effect: effect.clone(),
+            cap: cap.clone(),
         },
     }
 }
@@ -1992,7 +1924,7 @@ fn normalize_type_text(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn normalize_effect_text(text: &str) -> String {
+fn normalize_cap_text(text: &str) -> String {
     text.replace("{ }", "{}")
 }
 
@@ -2246,6 +2178,24 @@ fn is_syntactic_value_expr(expr: &Expr) -> bool {
     )
 }
 
+fn is_syntactic_computation_expr(expr: &Expr) -> bool {
+    matches!(
+        expr,
+        Expr::Produce { .. }
+            | Expr::Force { .. }
+            | Expr::Apply { .. }
+            | Expr::LetIn { .. }
+            | Expr::Match { .. }
+            | Expr::Ctor { .. }
+            | Expr::Roll { .. }
+            | Expr::Perform { .. }
+            | Expr::Handle { .. }
+            | Expr::Member { .. }
+            | Expr::Ann { .. }
+            | Expr::Error { .. }
+    )
+}
+
 fn render_expr_head(expr: &Expr) -> String {
     match expr {
         Expr::Ident { name, .. } => name.clone(),
@@ -2253,8 +2203,8 @@ fn render_expr_head(expr: &Expr) -> String {
         Expr::Apply { callee, .. } => format!("{}(...)", render_expr_head(callee)),
         Expr::Ctor { name, .. } => name.clone(),
         Expr::Roll { expr, .. } => render_expr_head(expr),
-        Expr::Perform { effect, .. } => format!("perform {effect}"),
-        Expr::Handle { effect, .. } => format!("handle {effect}"),
+        Expr::Perform { cap, .. } => format!("perform {cap}"),
+        Expr::Handle { cap, .. } => format!("handle {cap}"),
         Expr::Bundle { .. } => "bundle { ... }".to_owned(),
         Expr::Member { object, field, .. } => format!("{}.{field}", render_expr_head(object)),
         _ => "<expr>".to_owned(),
@@ -2333,6 +2283,7 @@ fn expr_node_id(expr: &Expr) -> u64 {
         Expr::Roll { id, .. } => id.0,
         Expr::Perform { id, .. } => id.0,
         Expr::Handle { id, .. } => id.0,
+        Expr::Number { id, .. } => id.0,
         Expr::Ann { id, .. } => id.0,
         Expr::Error { id, .. } => id.0,
         Expr::Bundle { id, .. } => id.0,

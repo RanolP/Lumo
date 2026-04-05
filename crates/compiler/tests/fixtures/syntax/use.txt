@@ -1,0 +1,25 @@
+use myapp;
+---
+Use(path="myapp")
+==========
+use myapp.utils;
+---
+Use(path="myapp.utils")
+==========
+use myapp.utils.helper;
+---
+Use(path="myapp.utils.helper")
+==========
+use myapp.utils.{a, b};
+---
+Use(path="myapp.utils", names=[a, b])
+==========
+use myapp.utils.{a, b, self};
+---
+Use(path="myapp.utils", names=[a, b, self])
+==========
+use myapp;
+fn id() := produce x
+---
+Use(path="myapp")
+Fn(name="id", body=Produce(Variable("x")))

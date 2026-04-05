@@ -21,6 +21,7 @@ pub enum TokenKind {
     Keyword(Keyword),
     Ident(String),
     StringLit(String),
+    NumberLit(String),
     Symbol(Symbol),
 }
 
@@ -35,10 +36,11 @@ pub enum Keyword {
     Thunk,
     Force,
     Match,
-    Effect,
+    Cap,
     Perform,
     Handle,
     Bundle,
+    Use,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +61,18 @@ pub enum Symbol {
     Star,
     FatArrow,
     Dot,
+    Plus,
+    Minus,
+    Percent,
+    Bang,
+    Lt,
+    Gt,
+    LtEq,
+    GtEq,
+    EqEq,
+    BangEq,
+    AmpAmp,
+    PipePipe,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +99,7 @@ pub enum LosslessTokenKind {
     Keyword(Keyword),
     Ident,
     StringLit,
+    NumberLit,
     Symbol(Symbol),
     Whitespace,
     Newline,
@@ -112,6 +127,10 @@ pub fn lex(input: &str) -> LexOutput {
             }),
             LosslessTokenKind::StringLit => output.tokens.push(Token {
                 kind: TokenKind::StringLit(token.text),
+                span: token.span,
+            }),
+            LosslessTokenKind::NumberLit => output.tokens.push(Token {
+                kind: TokenKind::NumberLit(token.text),
                 span: token.span,
             }),
             LosslessTokenKind::Symbol(sym) => output.tokens.push(Token {
@@ -196,10 +215,11 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
                 "thunk" => LosslessTokenKind::Keyword(Keyword::Thunk),
                 "force" => LosslessTokenKind::Keyword(Keyword::Force),
                 "match" => LosslessTokenKind::Keyword(Keyword::Match),
-                "effect" => LosslessTokenKind::Keyword(Keyword::Effect),
+                "cap" => LosslessTokenKind::Keyword(Keyword::Cap),
                 "perform" => LosslessTokenKind::Keyword(Keyword::Perform),
                 "handle" => LosslessTokenKind::Keyword(Keyword::Handle),
                 "bundle" => LosslessTokenKind::Keyword(Keyword::Bundle),
+                "use" => LosslessTokenKind::Keyword(Keyword::Use),
                 _ => LosslessTokenKind::Ident,
             };
 
@@ -238,6 +258,39 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
             continue;
         }
 
+        if ch.is_ascii_digit() {
+            let start = index;
+            index += ch.len_utf8();
+            while index < input.len() {
+                let c = next_char(input, index);
+                if !c.is_ascii_digit() {
+                    break;
+                }
+                index += c.len_utf8();
+            }
+            if index < input.len() && next_char(input, index) == '.' {
+                let dot_pos = index;
+                index += 1;
+                if index < input.len() && next_char(input, index).is_ascii_digit() {
+                    while index < input.len() {
+                        let c = next_char(input, index);
+                        if !c.is_ascii_digit() {
+                            break;
+                        }
+                        index += c.len_utf8();
+                    }
+                } else {
+                    index = dot_pos;
+                }
+            }
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::NumberLit,
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+
         let start = index;
         if starts_with_at(input, index, ":=") {
             index += 2;
@@ -252,6 +305,60 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
             index += 2;
             output.tokens.push(LosslessToken {
                 kind: LosslessTokenKind::Symbol(Symbol::FatArrow),
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+        if starts_with_at(input, index, "==") {
+            index += 2;
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Symbol(Symbol::EqEq),
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+        if starts_with_at(input, index, "!=") {
+            index += 2;
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Symbol(Symbol::BangEq),
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+        if starts_with_at(input, index, "<=") {
+            index += 2;
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Symbol(Symbol::LtEq),
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+        if starts_with_at(input, index, ">=") {
+            index += 2;
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Symbol(Symbol::GtEq),
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+        if starts_with_at(input, index, "&&") {
+            index += 2;
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Symbol(Symbol::AmpAmp),
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+        if starts_with_at(input, index, "||") {
+            index += 2;
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Symbol(Symbol::PipePipe),
                 span: Span::new(start, index),
                 text: input[start..index].to_owned(),
             });
@@ -273,6 +380,12 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
             '/' => Some(Symbol::Slash),
             '*' => Some(Symbol::Star),
             '.' => Some(Symbol::Dot),
+            '+' => Some(Symbol::Plus),
+            '-' => Some(Symbol::Minus),
+            '%' => Some(Symbol::Percent),
+            '!' => Some(Symbol::Bang),
+            '<' => Some(Symbol::Lt),
+            '>' => Some(Symbol::Gt),
             _ => None,
         };
 

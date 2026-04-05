@@ -17,13 +17,15 @@ pub enum SyntaxKind {
     ThunkExpr,
     ForceExpr,
     MatchExpr,
-    EffectDecl,
+    CapDecl,
     IdentExpr,
     StringExpr,
     CallExpr,
     PerformExpr,
     HandleExpr,
     BundleExpr,
+    NumberExpr,
+    UseDecl,
     Error,
 }
 
@@ -91,8 +93,8 @@ impl Parser {
                 self.consume_attribute_tokens(&mut children);
                 continue;
             }
-            if self.at_keyword(Keyword::Effect) {
-                let node = self.parse_effect_decl();
+            if self.at_keyword(Keyword::Cap) {
+                let node = self.parse_cap_decl();
                 children.push(SyntaxElement::Node(Box::new(node)));
                 continue;
             }
@@ -111,6 +113,11 @@ impl Parser {
                 children.push(SyntaxElement::Node(Box::new(node)));
                 continue;
             }
+            if self.at_keyword(Keyword::Use) {
+                let node = self.parse_use_decl();
+                children.push(SyntaxElement::Node(Box::new(node)));
+                continue;
+            }
 
             if self.at_trivia_or_unknown() {
                 children.push(SyntaxElement::Token(self.bump().unwrap()));
@@ -124,10 +131,10 @@ impl Parser {
         node_from_children(SyntaxKind::File, children)
     }
 
-    fn parse_effect_decl(&mut self) -> SyntaxNode {
+    fn parse_cap_decl(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
 
-        children.push(SyntaxElement::Token(self.bump().unwrap())); // effect
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // cap
 
         while !self.eof() {
             if self.at_symbol_text("{") {
@@ -139,8 +146,8 @@ impl Parser {
         if !self.eof() {
             children.push(SyntaxElement::Token(self.bump().unwrap())); // {
         } else {
-            self.error_here("expected `{` in effect declaration");
-            return node_from_children(SyntaxKind::EffectDecl, children);
+            self.error_here("expected `{` in cap declaration");
+            return node_from_children(SyntaxKind::CapDecl, children);
         }
 
         while !self.eof() && !self.at_symbol_text("}") {
@@ -150,10 +157,10 @@ impl Parser {
         if !self.eof() && self.at_symbol_text("}") {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         } else {
-            self.error_here("expected `}` in effect declaration");
+            self.error_here("expected `}` in cap declaration");
         }
 
-        node_from_children(SyntaxKind::EffectDecl, children)
+        node_from_children(SyntaxKind::CapDecl, children)
     }
 
     fn parse_data_decl(&mut self) -> SyntaxNode {
@@ -224,6 +231,21 @@ impl Parser {
         node_from_children(SyntaxKind::ExternDecl, children)
     }
 
+    fn parse_use_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // use
+
+        while !self.eof() && !self.at_symbol_text(";") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        if self.at_symbol_text(";") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        node_from_children(SyntaxKind::UseDecl, children)
+    }
+
     fn consume_attribute_tokens(&mut self, children: &mut Vec<SyntaxElement>) {
         while self.at_symbol_text("#") {
             children.push(SyntaxElement::Token(self.bump().unwrap())); // #
@@ -272,6 +294,8 @@ impl Parser {
             self.parse_ident_or_call_expr()
         } else if self.at_string_lit() {
             self.parse_string_expr()
+        } else if self.at_number_lit() {
+            self.parse_number_expr()
         } else {
             self.error_here("expected expression");
             self.parse_error_node()
@@ -294,9 +318,10 @@ impl Parser {
 
         while !self.eof() && !self.at_symbol_text("=") {
             if self.at_keyword(Keyword::Data)
-                || self.at_keyword(Keyword::Effect)
+                || self.at_keyword(Keyword::Cap)
                 || self.at_keyword(Keyword::Fn)
                 || self.at_keyword(Keyword::Extern)
+                || self.at_keyword(Keyword::Use)
             {
                 break;
             }
@@ -314,9 +339,10 @@ impl Parser {
 
         while !self.eof() && !self.at_keyword(Keyword::In) {
             if self.at_keyword(Keyword::Data)
-                || self.at_keyword(Keyword::Effect)
+                || self.at_keyword(Keyword::Cap)
                 || self.at_keyword(Keyword::Fn)
                 || self.at_keyword(Keyword::Extern)
+                || self.at_keyword(Keyword::Use)
             {
                 break;
             }
@@ -340,9 +366,10 @@ impl Parser {
 
         if self.eof()
             || self.at_keyword(Keyword::Data)
-            || self.at_keyword(Keyword::Effect)
+            || self.at_keyword(Keyword::Cap)
             || self.at_keyword(Keyword::Fn)
             || self.at_keyword(Keyword::Extern)
+            || self.at_keyword(Keyword::Use)
         {
             self.error_here("expected payload expression after `produce`");
             return node_from_children(SyntaxKind::ProduceExpr, children);
@@ -601,6 +628,12 @@ impl Parser {
         node_from_children(SyntaxKind::StringExpr, children)
     }
 
+    fn parse_number_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // number literal
+        node_from_children(SyntaxKind::NumberExpr, children)
+    }
+
     fn parse_error_node(&mut self) -> SyntaxNode {
         if self.eof() {
             return SyntaxNode {
@@ -648,6 +681,13 @@ impl Parser {
         matches!(
             self.current().map(|t| &t.kind),
             Some(LosslessTokenKind::StringLit)
+        )
+    }
+
+    fn at_number_lit(&self) -> bool {
+        matches!(
+            self.current().map(|t| &t.kind),
+            Some(LosslessTokenKind::NumberLit)
         )
     }
 

@@ -1,9 +1,0 @@
-effect Console { fn log(msg: String): produce Unit }
-fn f() := perform Console.log("hi")
----
-Effect(name="Console", ops=["log"])
-Fn(name="f", body=Call(callee=Member(object=Perform(effect="Console"), member="log"), args=[String("hi")]))
-==========
-fn f() := handle E with h in produce x
----
-Fn(name="f", body=Handle(effect="E", handler=Variable("h"), body=Produce(Variable("x"))))

@@ -5,6 +5,7 @@ pub enum HighlightKind {
     Keyword,
     Identifier,
     String,
+    Number,
     Symbol,
 }
 
@@ -44,7 +45,20 @@ pub fn highlight(source: &str) -> Vec<HighlightToken> {
             | TokenKind::Symbol(Symbol::Slash)
             | TokenKind::Symbol(Symbol::Star)
             | TokenKind::Symbol(Symbol::FatArrow)
-            | TokenKind::Symbol(Symbol::Dot) => HighlightKind::Symbol,
+            | TokenKind::Symbol(Symbol::Dot)
+            | TokenKind::Symbol(Symbol::Plus)
+            | TokenKind::Symbol(Symbol::Minus)
+            | TokenKind::Symbol(Symbol::Percent)
+            | TokenKind::Symbol(Symbol::Bang)
+            | TokenKind::Symbol(Symbol::Lt)
+            | TokenKind::Symbol(Symbol::Gt)
+            | TokenKind::Symbol(Symbol::LtEq)
+            | TokenKind::Symbol(Symbol::GtEq)
+            | TokenKind::Symbol(Symbol::EqEq)
+            | TokenKind::Symbol(Symbol::BangEq)
+            | TokenKind::Symbol(Symbol::AmpAmp)
+            | TokenKind::Symbol(Symbol::PipePipe) => HighlightKind::Symbol,
+            TokenKind::NumberLit(_) => HighlightKind::Number,
         };
 
         state.observe(&token.kind);

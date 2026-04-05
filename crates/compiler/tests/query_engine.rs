@@ -1,6 +1,8 @@
 use lumo_compiler::{
+    backend::{self, CodegenTarget},
     lst::lossless::{node_text, SyntaxKind},
     query::QueryEngine,
+    typecheck,
 };
 
 #[test]
@@ -107,4 +109,64 @@ fn extern_fn_declaration_without_body_is_not_parsed_as_fn_decl() {
         diagnostics.is_empty(),
         "expected no diagnostics, got {diagnostics:?}"
     );
+}
+
+// --- Multi-file module tests ---
+
+#[test]
+fn multi_file_shares_data_type() {
+    let mut q = QueryEngine::new();
+    q.set_file("types.lumo", "data Bool { .true, .false }");
+    q.set_file(
+        "fns.lumo",
+        "fn not(x: Bool): produce Bool / {} := match x { .true => Bool.false, .false => Bool.true }",
+    );
+
+    let merged = q
+        .lower_module(&["types.lumo", "fns.lumo"])
+        .expect("merged module");
+    let errors = typecheck::typecheck_file(&merged);
+    assert!(
+        errors.is_empty(),
+        "cross-file data type should typecheck, got: {errors:?}"
+    );
+}
+
+#[test]
+fn multi_file_cross_fn_reference() {
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "a.lumo",
+        "fn id(x: A): produce A / {} := produce x",
+    );
+    q.set_file(
+        "b.lumo",
+        "fn use_id(x: A): produce A / {} := id(x)",
+    );
+
+    let merged = q
+        .lower_module(&["a.lumo", "b.lumo"])
+        .expect("merged module");
+    let errors = typecheck::typecheck_file(&merged);
+    assert!(
+        errors.is_empty(),
+        "cross-file fn ref should typecheck, got: {errors:?}"
+    );
+}
+
+#[test]
+fn multi_file_backend_emits_all_items() {
+    let mut q = QueryEngine::new();
+    q.set_file("types.lumo", "data Bool { .true, .false }");
+    q.set_file(
+        "fns.lumo",
+        "fn not(x: Bool): produce Bool / {} := match x { .true => Bool.false, .false => Bool.true }",
+    );
+
+    let merged = q
+        .lower_module(&["types.lumo", "fns.lumo"])
+        .expect("merged module");
+    let output = backend::emit(&merged, CodegenTarget::TypeScript).expect("backend emit");
+    assert!(output.contains("Bool"), "output should contain Bool type");
+    assert!(output.contains("not"), "output should contain not function");
 }

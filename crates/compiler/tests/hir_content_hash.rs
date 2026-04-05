@@ -350,10 +350,10 @@ fn data_generics_are_preserved_in_hir() {
 }
 
 #[test]
-fn effect_decl_is_preserved_in_hir() {
-    let file = lower_typed("effect Console { fn log(msg: String): produce Unit }");
-    let Item::Effect(e) = &file.items[0] else {
-        panic!("expected effect, got {:?}", file.items[0])
+fn cap_decl_is_preserved_in_hir() {
+    let file = lower_typed("cap Console { fn log(msg: String): produce Unit }");
+    let Item::Cap(e) = &file.items[0] else {
+        panic!("expected cap, got {:?}", file.items[0])
     };
     assert_eq!(e.name, "Console");
     assert_eq!(e.operations.len(), 1);
@@ -367,9 +367,9 @@ fn effect_decl_is_preserved_in_hir() {
     );
 
     // Hash stability: re-lowering yields the same hash
-    let file2 = lower_typed("effect Console { fn log(msg: String): produce Unit }");
-    let Item::Effect(e2) = &file2.items[0] else {
-        panic!("expected effect")
+    let file2 = lower_typed("cap Console { fn log(msg: String): produce Unit }");
+    let Item::Cap(e2) = &file2.items[0] else {
+        panic!("expected cap")
     };
     assert_eq!(e.structural_hash, e2.structural_hash);
 }

@@ -17,8 +17,9 @@ pub enum Item {
     ExternType(ExternTypeDecl),
     ExternFn(ExternFnDecl),
     Data(DataDecl),
-    Effect(EffectDecl),
+    Cap(CapDecl),
     Fn(FnDecl),
+    Use(UseDecl),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,9 +48,9 @@ pub struct ExternFnDecl {
     pub return_type_repr: Option<String>,
     #[debug(skip)]
     pub return_type_span: Option<Span>,
-    pub effect_repr: Option<String>,
+    pub cap_repr: Option<String>,
     #[debug(skip)]
-    pub effect_span: Option<Span>,
+    pub cap_span: Option<Span>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,7 +81,7 @@ pub struct VariantDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EffectDecl {
+pub struct CapDecl {
     pub name: String,
     #[debug(skip)]
     pub id: ContentHash,
@@ -120,10 +121,18 @@ pub struct FnDecl {
     pub return_type_repr: Option<String>,
     #[debug(skip)]
     pub return_type_span: Option<Span>,
-    pub effect_repr: Option<String>,
+    pub cap_repr: Option<String>,
     #[debug(skip)]
-    pub effect_span: Option<Span>,
+    pub cap_span: Option<Span>,
     pub body: Expr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UseDecl {
+    pub path: Vec<String>,
+    pub names: Option<Vec<String>>,
+    #[debug(skip)]
+    pub source_span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -229,7 +238,7 @@ pub enum Expr {
         structural_hash: ContentHash,
         #[debug(skip)]
         source_span: Span,
-        effect: String,
+        cap: String,
     },
     Handle {
         #[debug(skip)]
@@ -238,7 +247,7 @@ pub enum Expr {
         structural_hash: ContentHash,
         #[debug(skip)]
         source_span: Span,
-        effect: String,
+        cap: String,
         handler: Box<Expr>,
         body: Box<Expr>,
     },
@@ -250,6 +259,15 @@ pub enum Expr {
         #[debug(skip)]
         source_span: Span,
         entries: Vec<HirBundleEntry>,
+    },
+    Number {
+        #[debug(skip)]
+        id: ContentHash,
+        #[debug(skip)]
+        structural_hash: ContentHash,
+        #[debug(skip)]
+        source_span: Span,
+        value: String,
     },
     Ann {
         #[debug(skip)]
@@ -301,8 +319,13 @@ pub fn lower(file: &lst::File) -> File {
             lst::Item::ExternType(ext) => Item::ExternType(lower_extern_type(ext)),
             lst::Item::ExternFn(ext) => Item::ExternFn(lower_extern_fn(ext)),
             lst::Item::Data(data) => Item::Data(lower_data(data)),
-            lst::Item::Effect(effect) => Item::Effect(lower_effect(effect)),
+            lst::Item::Cap(cap) => Item::Cap(lower_cap(cap)),
             lst::Item::Fn(func) => Item::Fn(lower_fn(func)),
+            lst::Item::Use(u) => Item::Use(UseDecl {
+                path: u.path.clone(),
+                names: u.names.clone(),
+                source_span: u.span,
+            }),
         })
         .collect::<Vec<_>>();
 
@@ -318,8 +341,26 @@ pub fn lower(file: &lst::File) -> File {
     }
 }
 
-fn lower_effect(effect: &lst::EffectDecl) -> EffectDecl {
-    let operations = effect
+/// Merge multiple HIR files into a single combined File.
+/// All items are concatenated and the content_hash is recomputed.
+pub fn merge_files(files: &[File]) -> File {
+    let mut items = Vec::new();
+    for file in files {
+        items.extend(file.items.iter().cloned());
+    }
+    let mut hasher = Hasher::new();
+    hasher.write_tag("file");
+    for item in &items {
+        hasher.write_u64(item_structural_hash(item).0);
+    }
+    File {
+        items,
+        content_hash: ContentHash(hasher.finish()),
+    }
+}
+
+fn lower_cap(cap: &lst::CapDecl) -> CapDecl {
+    let operations = cap
         .operations
         .iter()
         .map(|op| {
@@ -358,20 +399,20 @@ fn lower_effect(effect: &lst::EffectDecl) -> EffectDecl {
         })
         .collect::<Vec<_>>();
 
-    let id = source_id("effect", effect.span);
+    let id = source_id("cap", cap.span);
     let mut hasher = Hasher::new();
-    hasher.write_tag("effect");
-    hasher.write_str(&effect.name);
+    hasher.write_tag("cap");
+    hasher.write_str(&cap.name);
     for op in &operations {
         hasher.write_u64(op.structural_hash.0);
     }
     let structural_hash = ContentHash(hasher.finish());
 
-    EffectDecl {
-        name: effect.name.clone(),
+    CapDecl {
+        name: cap.name.clone(),
         id,
         structural_hash,
-        source_span: effect.span,
+        source_span: cap.span,
         operations,
     }
 }
@@ -429,11 +470,11 @@ fn lower_extern_fn(ext: &lst::ExternFnDecl) -> ExternFnDecl {
         .collect::<Vec<_>>();
     let return_type_repr = ext.return_type.as_ref().map(|ty| ty.repr.trim().to_owned());
     let return_type_span = ext.return_type.as_ref().map(|ty| ty.span);
-    let effect_repr = ext
-        .effect
+    let cap_repr = ext
+        .cap
         .as_ref()
-        .map(|effect| effect.repr.trim().to_owned());
-    let effect_span = ext.effect.as_ref().map(|effect| effect.span);
+        .map(|cap| cap.repr.trim().to_owned());
+    let cap_span = ext.cap.as_ref().map(|cap| cap.span);
     let id = source_id("extern-fn", ext.span);
     let mut hasher = Hasher::new();
     hasher.write_tag("extern-fn");
@@ -448,8 +489,8 @@ fn lower_extern_fn(ext: &lst::ExternFnDecl) -> ExternFnDecl {
     if let Some(ret) = &return_type_repr {
         hasher.write_str(ret);
     }
-    if let Some(effect) = &effect_repr {
-        hasher.write_str(effect);
+    if let Some(cap) = &cap_repr {
+        hasher.write_str(cap);
     }
     let structural_hash = ContentHash(hasher.finish());
     ExternFnDecl {
@@ -461,8 +502,8 @@ fn lower_extern_fn(ext: &lst::ExternFnDecl) -> ExternFnDecl {
         params,
         return_type_repr,
         return_type_span,
-        effect_repr,
-        effect_span,
+        cap_repr,
+        cap_span,
     }
 }
 
@@ -502,12 +543,12 @@ fn lower_fn(func: &lst::FnDecl) -> FnDecl {
         .return_type
         .as_ref()
         .map(|ty| ty.repr.trim().to_owned());
-    let effect_repr = func
-        .effect
+    let cap_repr = func
+        .cap
         .as_ref()
-        .map(|effect| effect.repr.trim().to_owned());
+        .map(|cap| cap.repr.trim().to_owned());
     let return_type_span = func.return_type.as_ref().map(|ty| ty.span);
-    let effect_span = func.effect.as_ref().map(|effect| effect.span);
+    let cap_span = func.cap.as_ref().map(|cap| cap.span);
 
     let id = source_id("fn", func.span);
     let mut hasher = Hasher::new();
@@ -524,8 +565,8 @@ fn lower_fn(func: &lst::FnDecl) -> FnDecl {
         params,
         return_type_repr,
         return_type_span,
-        effect_repr,
-        effect_span,
+        cap_repr,
+        cap_span,
         body,
     }
 }
@@ -698,22 +739,22 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 arms,
             }
         }
-        lst::Expr::Perform { effect, .. } => {
+        lst::Expr::Perform { cap, .. } => {
             let span = expr_source_span(expr);
             let id = source_id("perform", span);
             let mut hasher = Hasher::new();
             hasher.write_tag("perform");
-            hasher.write_str(effect);
+            hasher.write_str(cap);
             let structural_hash = ContentHash(hasher.finish());
             Expr::Perform {
                 id,
                 structural_hash,
                 source_span: span,
-                effect: effect.clone(),
+                cap: cap.clone(),
             }
         }
         lst::Expr::Handle {
-            effect, handler, body, ..
+            cap, handler, body, ..
         } => {
             let span = expr_source_span(expr);
             let handler = Box::new(lower_expr(handler));
@@ -722,7 +763,7 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 source_expr_id("handle", span, &[expr_id(&handler), expr_id(&body)]);
             let mut hasher = Hasher::new();
             hasher.write_tag("handle");
-            hasher.write_str(effect);
+            hasher.write_str(cap);
             hasher.write_u64(expr_structural_hash(&handler).0);
             hasher.write_u64(expr_structural_hash(&body).0);
             let structural_hash = ContentHash(hasher.finish());
@@ -730,7 +771,7 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 id,
                 structural_hash,
                 source_span: span,
-                effect: effect.clone(),
+                cap: cap.clone(),
                 handler,
                 body,
             }
@@ -772,6 +813,60 @@ fn lower_expr(expr: &lst::Expr) -> Expr {
                 structural_hash,
                 source_span: span,
                 entries: hir_entries,
+            }
+        }
+        lst::Expr::Number { value, .. } => {
+            let span = expr_source_span(expr);
+            let id = source_id("number", span);
+            let mut hasher = Hasher::new();
+            hasher.write_tag("number");
+            hasher.write_str(value);
+            let structural_hash = ContentHash(hasher.finish());
+            Expr::Number {
+                id,
+                structural_hash,
+                source_span: span,
+                value: value.clone(),
+            }
+        }
+        lst::Expr::Binary {
+            left, op, right, ..
+        } => {
+            // Desugar: a <op> b → Call(Member(Perform(Cap), method), [a, b])
+            let span = expr_source_span(expr);
+            let (cap_name, method_name) = op_to_cap_method(*op);
+            let left = lower_expr(left);
+            let right = lower_expr(right);
+            desugar_binary_call(span, cap_name, method_name, left, right)
+        }
+        lst::Expr::Unary { op, expr: inner, .. } => {
+            // Desugar: <op> a → Call(Member(Perform(Cap), method), [a])
+            let span = expr_source_span(expr);
+            let (cap_name, method_name) = unary_op_to_cap_method(*op);
+            let inner = lower_expr(inner);
+            desugar_unary_call(span, cap_name, method_name, inner)
+        }
+        lst::Expr::Assign {
+            name, value, body, ..
+        } => {
+            // Desugar: x = v; body → let x = v in body (SSA shadowing)
+            let span = expr_source_span(expr);
+            let value = Box::new(lower_expr(value));
+            let body = Box::new(lower_expr(body));
+            let id = source_expr_id("let-in", span, &[expr_id(&value), expr_id(&body)]);
+            let mut hasher = Hasher::new();
+            hasher.write_tag("let-in");
+            hasher.write_str(name);
+            hasher.write_u64(expr_structural_hash(&value).0);
+            hasher.write_u64(expr_structural_hash(&body).0);
+            let structural_hash = ContentHash(hasher.finish());
+            Expr::LetIn {
+                id,
+                structural_hash,
+                source_span: span,
+                name: name.clone(),
+                value,
+                body,
             }
         }
         lst::Expr::Ann { expr: inner, ty, .. } => {
@@ -832,13 +927,166 @@ fn error_expr(source_span: Span) -> Expr {
     }
 }
 
+fn op_to_cap_method(op: lst::BinaryOp) -> (&'static str, &'static str) {
+    match op {
+        lst::BinaryOp::Add => ("Add", "add"),
+        lst::BinaryOp::Sub => ("Sub", "sub"),
+        lst::BinaryOp::Mul => ("Mul", "mul"),
+        lst::BinaryOp::Div => ("Div", "div"),
+        lst::BinaryOp::Mod => ("Mod", "mod_"),
+        lst::BinaryOp::EqEq => ("Eq", "eq"),
+        lst::BinaryOp::NotEq => ("Eq", "neq"),
+        lst::BinaryOp::Lt => ("Ord", "lt"),
+        lst::BinaryOp::LtEq => ("Ord", "lte"),
+        lst::BinaryOp::Gt => ("Ord", "gt"),
+        lst::BinaryOp::GtEq => ("Ord", "gte"),
+        lst::BinaryOp::AndAnd => ("Bool", "and"),
+        lst::BinaryOp::OrOr => ("Bool", "or"),
+    }
+}
+
+fn unary_op_to_cap_method(op: lst::UnaryOp) -> (&'static str, &'static str) {
+    match op {
+        lst::UnaryOp::Neg => ("Neg", "neg"),
+        lst::UnaryOp::Not => ("Not", "not"),
+    }
+}
+
+/// Desugar `a <op> b` → `Call(Member(Perform(Cap), method), [a, b])`
+fn desugar_binary_call(
+    span: Span,
+    cap_name: &str,
+    method_name: &str,
+    left: Expr,
+    right: Expr,
+) -> Expr {
+    let perform = {
+        let id = source_id("perform", span);
+        let mut hasher = Hasher::new();
+        hasher.write_tag("perform");
+        hasher.write_str(cap_name);
+        let structural_hash = ContentHash(hasher.finish());
+        Expr::Perform {
+            id,
+            structural_hash,
+            source_span: span,
+            cap: cap_name.to_owned(),
+        }
+    };
+    let member = {
+        let object = Box::new(perform);
+        let id = source_expr_id("member", span, &[expr_id(&object)]);
+        let mut hasher = Hasher::new();
+        hasher.write_tag("member");
+        hasher.write_u64(expr_structural_hash(&object).0);
+        hasher.write_str(method_name);
+        let structural_hash = ContentHash(hasher.finish());
+        Expr::Member {
+            id,
+            structural_hash,
+            source_span: span,
+            object,
+            member: method_name.to_owned(),
+        }
+    };
+    let args = vec![left, right];
+    let callee = Box::new(member);
+    let mut source_children = vec![expr_id(&callee)];
+    source_children.extend(args.iter().map(expr_id));
+    let id = source_expr_id("call", span, &source_children);
+    let mut hasher = Hasher::new();
+    hasher.write_tag("call");
+    hasher.write_u64(expr_structural_hash(&callee).0);
+    for arg in &args {
+        hasher.write_u64(expr_structural_hash(arg).0);
+    }
+    let structural_hash = ContentHash(hasher.finish());
+    Expr::Call {
+        id,
+        structural_hash,
+        source_span: span,
+        callee,
+        args,
+    }
+}
+
+/// Desugar `-a` / `!a` → `Call(Member(Perform(Cap), method), [a])`
+fn desugar_unary_call(
+    span: Span,
+    cap_name: &str,
+    method_name: &str,
+    operand: Expr,
+) -> Expr {
+    let perform = {
+        let id = source_id("perform", span);
+        let mut hasher = Hasher::new();
+        hasher.write_tag("perform");
+        hasher.write_str(cap_name);
+        let structural_hash = ContentHash(hasher.finish());
+        Expr::Perform {
+            id,
+            structural_hash,
+            source_span: span,
+            cap: cap_name.to_owned(),
+        }
+    };
+    let member = {
+        let object = Box::new(perform);
+        let id = source_expr_id("member", span, &[expr_id(&object)]);
+        let mut hasher = Hasher::new();
+        hasher.write_tag("member");
+        hasher.write_u64(expr_structural_hash(&object).0);
+        hasher.write_str(method_name);
+        let structural_hash = ContentHash(hasher.finish());
+        Expr::Member {
+            id,
+            structural_hash,
+            source_span: span,
+            object,
+            member: method_name.to_owned(),
+        }
+    };
+    let args = vec![operand];
+    let callee = Box::new(member);
+    let mut source_children = vec![expr_id(&callee)];
+    source_children.extend(args.iter().map(expr_id));
+    let id = source_expr_id("call", span, &source_children);
+    let mut hasher = Hasher::new();
+    hasher.write_tag("call");
+    hasher.write_u64(expr_structural_hash(&callee).0);
+    for arg in &args {
+        hasher.write_u64(expr_structural_hash(arg).0);
+    }
+    let structural_hash = ContentHash(hasher.finish());
+    Expr::Call {
+        id,
+        structural_hash,
+        source_span: span,
+        callee,
+        args,
+    }
+}
+
 fn item_structural_hash(item: &Item) -> ContentHash {
     match item {
         Item::ExternType(ext) => ext.structural_hash,
         Item::ExternFn(ext) => ext.structural_hash,
         Item::Data(d) => d.structural_hash,
-        Item::Effect(e) => e.structural_hash,
+        Item::Cap(e) => e.structural_hash,
         Item::Fn(f) => f.structural_hash,
+        Item::Use(u) => {
+            let mut h = Hasher::new();
+            h.write_tag("use");
+            for seg in &u.path {
+                h.write_str(seg);
+            }
+            if let Some(names) = &u.names {
+                for name in names {
+                    h.write_str(name);
+                }
+            }
+            ContentHash(h.finish())
+        }
     }
 }
 
@@ -856,6 +1104,7 @@ fn expr_id(expr: &Expr) -> ContentHash {
         Expr::Perform { id, .. } => *id,
         Expr::Handle { id, .. } => *id,
         Expr::Bundle { id, .. } => *id,
+        Expr::Number { id, .. } => *id,
         Expr::Ann { id, .. } => *id,
         Expr::Error { id, .. } => *id,
     }
@@ -899,6 +1148,9 @@ fn expr_structural_hash(expr: &Expr) -> ContentHash {
         Expr::Bundle {
             structural_hash, ..
         } => *structural_hash,
+        Expr::Number {
+            structural_hash, ..
+        } => *structural_hash,
         Expr::Ann {
             structural_hash, ..
         } => *structural_hash,
@@ -922,6 +1174,10 @@ fn expr_source_span(expr: &lst::Expr) -> Span {
         | lst::Expr::Perform { span, .. }
         | lst::Expr::Handle { span, .. }
         | lst::Expr::Bundle { span, .. }
+        | lst::Expr::Number { span, .. }
+        | lst::Expr::Binary { span, .. }
+        | lst::Expr::Unary { span, .. }
+        | lst::Expr::Assign { span, .. }
         | lst::Expr::Ann { span, .. }
         | lst::Expr::Error { span } => *span,
     }

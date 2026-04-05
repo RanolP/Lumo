@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::{
     diagnostics::Diagnostic,
@@ -176,6 +176,50 @@ impl QueryEngine {
         Some(lowered)
     }
 
+    /// Lower a group of files as a single module.
+    /// Parses each file individually (reusing per-file cache), merges HIR,
+    /// then lowers the merged HIR to a single LIR.
+    pub fn lower_module(&mut self, files: &[&str]) -> Option<lir::File> {
+        let mut hir_files = Vec::new();
+        for file in files {
+            hir_files.push(self.lower_hir(file)?);
+        }
+        let merged = hir::merge_files(&hir_files);
+        Some(lir::lower(&merged))
+    }
+
+    /// Compile entry files with transitive `use` resolution.
+    ///
+    /// The `resolve` callback maps a use-path (e.g. `["lumo_std", "io"]`) to
+    /// a `(filename, source)` pair. Resolution is applied iteratively until
+    /// all dependencies are loaded, then all files are merged via `lower_module`.
+    pub fn compile_with_deps<F>(
+        &mut self,
+        entry_files: &[&str],
+        resolve: F,
+    ) -> Option<lir::File>
+    where
+        F: Fn(&[String]) -> Option<(String, String)>,
+    {
+        let mut all_files: HashSet<String> = entry_files.iter().map(|f| f.to_string()).collect();
+        let mut pending: VecDeque<String> = all_files.iter().cloned().collect();
+
+        while let Some(file) = pending.pop_front() {
+            let parsed = self.parse(&file)?;
+            for use_path in collect_use_paths(&parsed.file) {
+                if let Some((filename, source)) = resolve(&use_path) {
+                    if all_files.insert(filename.clone()) {
+                        self.set_file(&filename, source);
+                        pending.push_back(filename);
+                    }
+                }
+            }
+        }
+
+        let file_refs: Vec<&str> = all_files.iter().map(|s| s.as_str()).collect();
+        self.lower_module(&file_refs)
+    }
+
     pub fn diagnostics(&mut self, file: &str) -> Option<Vec<Diagnostic>> {
         let source_hash = self.files.get(file)?.source_hash;
         if self.files.get(file)?.diagnostics_at_hash == Some(source_hash) {
@@ -238,8 +282,8 @@ fn build_lir_span_map(file: &lir::File) -> HashMap<u64, Span> {
                 if let Some(span) = ext.return_type_span {
                     out.insert(lir::source_id("extern-fn-return", span).0, span);
                 }
-                if let Some(span) = ext.effect_span {
-                    out.insert(lir::source_id("extern-fn-effect", span).0, span);
+                if let Some(span) = ext.cap_span {
+                    out.insert(lir::source_id("extern-fn-cap", span).0, span);
                 }
             }
             lir::Item::Data(data) => {
@@ -251,9 +295,9 @@ fn build_lir_span_map(file: &lir::File) -> HashMap<u64, Span> {
                     }
                 }
             }
-            lir::Item::Effect(effect) => {
-                out.insert(effect.id.0, effect.source_span);
-                for op in &effect.operations {
+            lir::Item::Cap(cap) => {
+                out.insert(cap.id.0, cap.source_span);
+                for op in &cap.operations {
                     out.insert(op.id.0, op.source_span);
                     for param in &op.params {
                         out.insert(
@@ -277,11 +321,12 @@ fn build_lir_span_map(file: &lir::File) -> HashMap<u64, Span> {
                 if let Some(span) = func.return_type_span {
                     out.insert(lir::source_id("fn-return", span).0, span);
                 }
-                if let Some(span) = func.effect_span {
-                    out.insert(lir::source_id("fn-effect", span).0, span);
+                if let Some(span) = func.cap_span {
+                    out.insert(lir::source_id("fn-cap", span).0, span);
                 }
                 collect_expr_spans(&func.value, &mut out);
             }
+            lir::Item::Use(_) => {}
         }
     }
     out
@@ -293,6 +338,9 @@ fn collect_expr_spans(expr: &lir::Expr, out: &mut HashMap<u64, Span>) {
             id, source_span, ..
         }
         | lir::Expr::String {
+            id, source_span, ..
+        }
+        | lir::Expr::Number {
             id, source_span, ..
         }
         | lir::Expr::Error {
@@ -446,6 +494,19 @@ fn hash_text(text: &str) -> u64 {
         state = state.wrapping_mul(0x100000001b3);
     }
     state
+}
+
+fn collect_use_paths(file: &crate::lst::File) -> Vec<Vec<String>> {
+    file.items
+        .iter()
+        .filter_map(|item| {
+            if let lst::Item::Use(u) = item {
+                Some(u.path.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 impl Default for QueryEngine {
