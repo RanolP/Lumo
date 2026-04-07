@@ -1,0 +1,151 @@
+// Lumo syntax tree grammar
+// Describes the shape of the lossless CST (concrete syntax tree).
+// Used by langue to generate SyntaxKind enum + typed AST accessors.
+
+@token Ident StringLit NumberLit
+
+// === Top-level ===
+
+File = items:Item*
+
+Item =
+  | ExternTypeDecl
+  | ExternFnDecl
+  | DataDecl
+  | CapDecl
+  | FnDecl
+  | UseDecl
+  | ImplDecl
+
+// === Attributes ===
+
+Attribute = '#' '[' name:Ident AttributeArgs? ']'
+AttributeArgs = '(' args:AttributeArg* ')'
+AttributeArg = key:Ident '=' value:Expr
+
+// === Data types ===
+
+DataDecl = attrs:Attribute* 'data' name:Ident generic_params:GenericParams? '{' variants:Variant* '}'
+Variant = '.' name:Ident variant_fields:VariantFields?
+VariantFields = '(' fields:TypeExpr* ')'
+
+// === Functions ===
+
+FnDecl = attrs:Attribute* 'fn' name:Ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? ':=' body:Expr
+
+// === Generics ===
+
+GenericParams = '[' params:GenericParam* ']'
+GenericParam = name:Ident (':' constraint:TypeExpr)?
+
+// === Parameters ===
+
+ParamList = '(' params:Param* ')'
+Param = name:Ident ':' ty:TypeExpr
+
+// === Capabilities ===
+
+CapAnnotation = '/' '{' caps:TypeExpr* '}'
+CapDecl = 'cap' name:Ident '{' operations:OperationDecl* '}'
+OperationDecl = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)?
+
+// === Extern declarations ===
+
+ExternTypeDecl = attrs:Attribute* 'extern' 'type' name:Ident
+ExternFnDecl = attrs:Attribute* 'extern' 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)?
+
+// === Use declarations ===
+
+UseDecl = 'use' path:UsePath ';'
+UsePath = segments:Ident UseTree?
+UseTree = '.' '{' names:Ident* '}'
+
+// === Impl blocks ===
+
+ImplDecl = 'impl' generic_params:GenericParams? name:Ident? target:TypeExpr (':' cap:TypeExpr)? '{' methods:ImplMethod* '}'
+ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? ':=' body:Expr
+
+// === Expressions ===
+
+Expr =
+  | IdentExpr
+  | StringExpr
+  | NumberExpr
+  | LetExpr
+  | ProduceExpr
+  | ThunkExpr
+  | ForceExpr
+  | MatchExpr
+  | CallExpr
+  | MemberExpr
+  | BinaryExpr
+  | UnaryExpr
+  | PerformExpr
+  | HandleExpr
+  | BundleExpr
+  | ParenExpr
+  | AnnotationExpr
+
+IdentExpr = name:Ident
+StringExpr = value:StringLit
+NumberExpr = value:NumberLit
+
+LetExpr = 'let' name:Ident (':' ty:TypeExpr)? '=' value:Expr 'in' body:Expr
+ProduceExpr = 'produce' value:Expr
+ThunkExpr = 'thunk' body:Expr
+ForceExpr = 'force' expr:Expr
+
+MatchExpr = 'match' scrutinee:Expr '{' arms:MatchArm* '}'
+MatchArm = pattern:Pattern '=>' body:Expr
+
+CallExpr = callee:Expr '(' args:Expr* ')'
+MemberExpr = object:Expr '.' member:Ident
+BinaryExpr = lhs:Expr op:BinaryOp rhs:Expr
+UnaryExpr = op:UnaryOp operand:Expr
+
+PerformExpr = 'perform' expr:Expr
+HandleExpr = 'handle' cap_expr:Expr 'with' handler:Expr 'in' body:Expr
+BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
+BundleEntry = 'fn' name:Ident param_list:ParamList ':=' body:Expr
+
+ParenExpr = '(' inner:Expr ')'
+AnnotationExpr = '(' expr:Expr ':' ty:TypeExpr ')'
+
+// === Patterns ===
+
+Pattern =
+  | VariantPattern
+  | BindPattern
+  | WildcardPattern
+
+VariantPattern = '.' name:Ident ('(' fields:Pattern* ')')?
+BindPattern = 'let' name:Ident
+WildcardPattern = '_'
+
+// === Types ===
+// Types are kept simple in the CST. The typechecker does deeper parsing.
+
+TypeExpr = name:Ident generic_args:GenericArgs?
+GenericArgs = '[' args:TypeExpr* ']'
+
+// === Operators ===
+// Token-only alternatives: no node wrapper, just SyntaxKind variants
+
+BinaryOp =
+  | '+'
+  | '-'
+  | '*'
+  | '/'
+  | '%'
+  | '=='
+  | '!='
+  | '<'
+  | '<='
+  | '>'
+  | '>='
+  | '&&'
+  | '||'
+
+UnaryOp =
+  | '-'
+  | '!'
