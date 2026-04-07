@@ -1,0 +1,4 @@
+use lumo_std.prelude.{String};
+use lumo_std.io.{println};
+
+fn main() := println("Hello, World!")

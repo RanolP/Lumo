@@ -1,0 +1,50 @@
+use lumo_std.prelude.{String, Number, Bool};
+use lumo_std.io.{println};
+use lumo_std.fs.{read_file, write_file};
+use lumo_std.process.{arg_at, args_count, panic_with};
+use lumo_std.string.{str_concat, num_to_string};
+use lumo_std.number.{num_lt, num_add};
+use lumo_std.list.{List};
+
+fn main() :=
+  match num_lt(args_count(), 2) {
+    .true => panic_with("Usage: langue <input.langue> [output_dir]"),
+    .false =>
+      let file = arg_at(1) in
+      let src = read_file(file) in
+      match parse_grammar(src) {
+        .ok(raw_grammar, _) =>
+          let grammar = resolve_grammar(raw_grammar) in
+          match grammar { .mk(tokens, rules) =>
+            let count = list_length_rules(rules) in
+            let syntax_kind_code = generate_syntax_kind(grammar) in
+            let ast_code = generate_ast(grammar) in
+            run_generate(file, count, syntax_kind_code, ast_code)
+          },
+        .err(msg, pos) =>
+          panic_with(str_concat("Parse error at position ", str_concat(num_to_string(pos), str_concat(": ", msg))))
+      }
+  }
+
+fn run_generate(file: String, count: Number, syntax_kind_code: String, ast_code: String) :=
+  match num_lt(args_count(), 3) {
+    .true => write_output(".", file, count, syntax_kind_code, ast_code),
+    .false =>
+      let out_dir = arg_at(2) in
+      write_output(out_dir, file, count, syntax_kind_code, ast_code)
+  }
+
+fn write_output(out_dir: String, file: String, count: Number, syntax_kind_code: String, ast_code: String) :=
+  let sk_path = str_concat(out_dir, "/syntax_kind.rs") in
+  let ast_path = str_concat(out_dir, "/ast.rs") in
+  let w1 = write_file(sk_path, syntax_kind_code) in
+  let w2 = write_file(ast_path, ast_code) in
+  let p1 = println(str_concat("Parsed ", str_concat(num_to_string(count), str_concat(" rules from ", file)))) in
+  let p2 = println(str_concat("Wrote ", sk_path)) in
+  println(str_concat("Wrote ", ast_path))
+
+fn list_length_rules(xs: List[Rule]): produce Number :=
+  match xs {
+    .nil => produce 0,
+    .cons(_, rest) => produce num_add(1, list_length_rules(rest))
+  }

@@ -1,0 +1,5 @@
+[package]
+name = "lumo-std"
+
+[deps]
+lumo_std = "."

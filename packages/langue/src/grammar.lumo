@@ -1,0 +1,37 @@
+use lumo_std.prelude.{String, Number, Bool};
+use lumo_std.list.{List};
+
+// A complete grammar: token declarations + node rules
+data Grammar { .mk(List[String], List[Rule]) }
+
+// A named rule: `Name = body`
+data Rule { .mk(String, RuleBody) }
+
+// Rule body: either a sequence of elements or alternatives
+data RuleBody {
+  .sequence(List[Element]),
+  .alternatives(List[Alternative])
+}
+
+// An alternative in `| A | B | C`
+data Alternative { .mk(String) }
+
+// An element in a rule sequence
+data Element {
+  .token(TokenRef),
+  .node(NodeRef),
+  .labeled(String, Element),
+  .optional(Element),
+  .repeated(Element),
+  .group(List[Element])
+}
+
+// A token reference
+data TokenRef {
+  .keyword(String),
+  .symbol(String),
+  .named(String)
+}
+
+// A node reference
+data NodeRef { .mk(String) }
