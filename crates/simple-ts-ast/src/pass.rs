@@ -271,6 +271,10 @@ fn try_flatten(stmt: &mut Stmt) -> Option<Vec<Stmt>> {
 }
 
 fn flatten_block(block: &mut Block) {
+    flatten_block_with_params(block, &[]);
+}
+
+fn flatten_block_with_params(block: &mut Block, enclosing_names: &[String]) {
     // Phase 1: inline IIFEs at statement level
     let mut i = 0;
     while i < block.stmts.len() {
@@ -285,26 +289,154 @@ fn flatten_block(block: &mut Block) {
         i += 1;
     }
 
-    // Phase 2: recurse into sub-structures
+    // Phase 2: deduplicate shadowed const names (seeded with enclosing params)
+    dedup_const_names_with_params(block, enclosing_names);
+
+    // Phase 3: recurse into sub-structures, threading enclosing names for
+    // nested blocks (e.g. if-branches) that share the same scope for TDZ.
     for stmt in &mut block.stmts {
-        flatten_stmt(stmt);
+        flatten_stmt_with_enclosing(stmt, enclosing_names);
+    }
+}
+
+/// After IIFE flattening, the same `const` name may appear multiple times in a
+/// block (from Lumo `let s = … in let s = … in …` shadowing). JS forbids
+/// duplicate `const` in a single scope, so we rename later occurrences and
+/// rewrite all subsequent references.
+fn dedup_const_names(block: &mut Block) {
+    dedup_const_names_with_params(block, &[]);
+}
+
+fn dedup_const_names_with_params(block: &mut Block, param_names: &[String]) {
+    use std::collections::{HashMap, HashSet};
+
+    let mut declared: HashSet<String> = HashSet::new();
+    // Pre-seed with function/arrow parameter names so `const s = ...` is
+    // treated as a duplicate when `s` is already a param.
+    for p in param_names {
+        declared.insert(p.clone());
+    }
+    let mut rename_map: HashMap<String, String> = HashMap::new();
+    let mut counter: usize = 0;
+
+    for i in 0..block.stmts.len() {
+        // Apply pending renames to expressions in this statement
+        if !rename_map.is_empty() {
+            rename_idents_in_stmt(&mut block.stmts[i], &rename_map);
+        }
+
+        // If this is a const, check for duplicate name
+        if let Stmt::Const(decl) = &mut block.stmts[i] {
+            if declared.contains(&decl.name) {
+                let orig = decl.name.clone();
+                let fresh = loop {
+                    let candidate = format!("{}_{}", orig, counter);
+                    counter += 1;
+                    if !declared.contains(&candidate) {
+                        break candidate;
+                    }
+                };
+                decl.name = fresh.clone();
+                declared.insert(fresh.clone());
+                rename_map.insert(orig, fresh);
+            } else {
+                declared.insert(decl.name.clone());
+                // This declaration introduces a fresh binding that overrides any
+                // prior rename for this name.
+                rename_map.remove(&decl.name);
+            }
+        }
+    }
+}
+
+fn rename_idents_in_stmt(stmt: &mut Stmt, map: &std::collections::HashMap<String, String>) {
+    match stmt {
+        Stmt::Expr(expr) | Stmt::Return(Some(expr)) => rename_idents_in_expr(expr, map),
+        Stmt::Const(decl) => rename_idents_in_expr(&mut decl.init, map),
+        Stmt::If { cond, then_branch, else_branch } => {
+            rename_idents_in_expr(cond, map);
+            for s in &mut then_branch.stmts { rename_idents_in_stmt(s, map); }
+            if let Some(eb) = else_branch {
+                for s in &mut eb.stmts { rename_idents_in_stmt(s, map); }
+            }
+        }
+        Stmt::Block(b) => {
+            for s in &mut b.stmts { rename_idents_in_stmt(s, map); }
+        }
+        _ => {}
+    }
+}
+
+fn rename_idents_in_expr(expr: &mut Expr, map: &std::collections::HashMap<String, String>) {
+    match expr {
+        Expr::Ident(name) => {
+            if let Some(new) = map.get(name.as_str()) {
+                *name = new.clone();
+            }
+        }
+        Expr::Call { callee, args } => {
+            rename_idents_in_expr(callee, map);
+            for a in args { rename_idents_in_expr(a, map); }
+        }
+        Expr::Member { object, .. } => rename_idents_in_expr(object, map),
+        Expr::Index { object, index } => {
+            rename_idents_in_expr(object, map);
+            rename_idents_in_expr(index, map);
+        }
+        Expr::Unary { expr: e, .. } | Expr::Void(e) => rename_idents_in_expr(e, map),
+        Expr::Binary { left, right, .. } => {
+            rename_idents_in_expr(left, map);
+            rename_idents_in_expr(right, map);
+        }
+        Expr::Array(items) => {
+            for item in items { rename_idents_in_expr(item, map); }
+        }
+        Expr::Object(props) => {
+            for prop in props {
+                if let ObjectKey::Computed(e) = &mut prop.key {
+                    rename_idents_in_expr(e, map);
+                }
+                rename_idents_in_expr(&mut prop.value, map);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            rename_idents_in_expr(cond, map);
+            rename_idents_in_expr(then_expr, map);
+            rename_idents_in_expr(else_expr, map);
+        }
+        // Don't recurse into Arrow bodies — they have their own scope
+        Expr::Arrow { .. } => {}
+        Expr::String(_) | Expr::Number(_) | Expr::Bool(_)
+        | Expr::Null | Expr::Undefined => {}
     }
 }
 
 fn flatten_stmt(stmt: &mut Stmt) {
+    flatten_stmt_with_enclosing(stmt, &[]);
+}
+
+/// Flatten a statement, propagating `enclosing_names` (function/arrow params
+/// plus already-declared consts) into nested blocks so the dedup pass can
+/// detect TDZ-inducing shadowing in `if`/`else` branches.
+fn flatten_stmt_with_enclosing(stmt: &mut Stmt, enclosing_names: &[String]) {
     match stmt {
-        Stmt::Function(f) => flatten_function_body(&mut f.body),
+        Stmt::Function(f) => {
+            // New function scope — only its own params matter, not the parent's.
+            let param_names: Vec<String> = f.params.iter().map(|p| p.name.clone()).collect();
+            flatten_function_body_with_params(&mut f.body, &param_names);
+        }
         Stmt::If {
             then_branch,
             else_branch,
             ..
         } => {
-            flatten_block(then_branch);
+            // if/else branches share the enclosing function's scope for TDZ
+            flatten_block_with_params(then_branch, enclosing_names);
             if let Some(eb) = else_branch {
-                flatten_block(eb);
+                flatten_block_with_params(eb, enclosing_names);
             }
         }
-        Stmt::Block(block) => flatten_block(block),
+        Stmt::Block(block) => flatten_block_with_params(block, enclosing_names),
         Stmt::Const(decl) => flatten_expr_arrows(&mut decl.init),
         Stmt::Expr(expr) | Stmt::Return(Some(expr)) => flatten_expr_arrows(expr),
         Stmt::Return(None) | Stmt::TypeAlias(_) | Stmt::Interface(_) => {}
@@ -312,16 +444,23 @@ fn flatten_stmt(stmt: &mut Stmt) {
 }
 
 fn flatten_function_body(body: &mut FunctionBody) {
+    flatten_function_body_with_params(body, &[]);
+}
+
+fn flatten_function_body_with_params(body: &mut FunctionBody, param_names: &[String]) {
     match body {
         FunctionBody::Expr(expr) => flatten_expr_arrows(expr),
-        FunctionBody::Block(block) => flatten_block(block),
+        FunctionBody::Block(block) => flatten_block_with_params(block, param_names),
     }
 }
 
 /// Recurse into sub-expressions to flatten IIFEs inside nested arrow bodies.
 fn flatten_expr_arrows(expr: &mut Expr) {
     match expr {
-        Expr::Arrow { body, .. } => flatten_function_body(body),
+        Expr::Arrow { params, body, .. } => {
+            let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+            flatten_function_body_with_params(body, &param_names);
+        }
         Expr::Call { callee, args } => {
             flatten_expr_arrows(callee);
             for arg in args {

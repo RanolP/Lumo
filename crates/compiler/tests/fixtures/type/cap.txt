@@ -44,9 +44,10 @@ fn f(a: A, b: B): produce A / {} := handle E with bundle { fn op1() := produce a
 ---
 f : (A, B) -> produce A / {}
 ==========
-cap Bad { fn op(): A }
+cap Ok { fn op(): A }
+fn f(a: A): produce A / {} := handle Ok with bundle { fn op() := produce a } in perform Ok.op
 ---
-ERROR: operation return type must be a computation type
+f : (A) -> produce A / {}
 ==========
 cap E { fn op1(): produce A; fn op2(): produce B }
 fn f(a: A): produce A / {} := handle E with bundle { fn op1() := produce a } in perform E.op1

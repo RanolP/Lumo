@@ -250,6 +250,7 @@ fn render_token(token: &lumo_compiler::lexer::Token) -> String {
         TokenKind::Keyword(Keyword::Handle) => "kw(handle)".to_owned(),
         TokenKind::Keyword(Keyword::Bundle) => "kw(bundle)".to_owned(),
         TokenKind::Keyword(Keyword::Use) => "kw(use)".to_owned(),
+        TokenKind::Keyword(Keyword::Impl) => "kw(impl)".to_owned(),
         TokenKind::Ident(s) => format!("ident({s})"),
         TokenKind::StringLit(s) => format!("string({s})"),
         TokenKind::Symbol(Symbol::Hash) => "sym(#)".to_owned(),

@@ -1,5 +1,6 @@
 use crate::lir;
 
+pub mod rs;
 pub mod ts;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -37,7 +38,10 @@ pub struct BackendRegistry {
 impl BackendRegistry {
     pub fn with_defaults() -> Self {
         Self {
-            backends: vec![Box::new(ts::TypeScriptBackend::new())],
+            backends: vec![
+                Box::new(ts::TypeScriptBackend::new()),
+                Box::new(rs::RustBackend::new()),
+            ],
         }
     }
 

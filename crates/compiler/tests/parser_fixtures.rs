@@ -176,6 +176,21 @@ fn render_item(item: &Item) -> String {
                 None => format!("Use(path=\"{}\")", path),
             }
         }
+        Item::Impl(i) => {
+            let methods = i
+                .methods
+                .iter()
+                .map(|m| format!("\"{}\"", m.name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let target = &i.target_type.repr;
+            let cap = i.capability.as_ref().map(|c| c.repr.as_str()).unwrap_or("_");
+            let name = i.name.as_deref().unwrap_or("_");
+            format!(
+                "Impl(name={}, target=\"{}\", cap=\"{}\", methods=[{}])",
+                name, target, cap, methods
+            )
+        }
     }
 }
 

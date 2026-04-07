@@ -22,6 +22,7 @@ pub enum Item {
     Cap(CapDecl),
     Fn(FnDecl),
     Use(UseDecl),
+    Impl(ImplDecl),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +102,27 @@ pub struct FnDecl {
 pub struct UseDecl {
     pub path: Vec<String>,
     pub names: Option<Vec<String>>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImplDecl {
+    /// None = unnamed (author's impl), Some = named impl
+    pub name: Option<String>,
+    pub generics: Vec<GenericParam>,
+    pub target_type: TypeSig,
+    /// None = inherent impl, Some = capability impl
+    pub capability: Option<TypeSig>,
+    pub methods: Vec<ImplMethod>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImplMethod {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<TypeSig>,
+    pub body: Expr,
     pub span: Span,
 }
 
@@ -313,13 +335,20 @@ pub fn parse(tokens: &[Token], lex_errors: &[LexError]) -> ParseOutput {
             items.push(Item::Use(p.parse_use_decl()));
             continue;
         }
+        if p.at_keyword(Keyword::Impl) {
+            if !attrs.is_empty() {
+                p.error_here("attributes are only supported on `extern` items");
+            }
+            items.push(Item::Impl(p.parse_impl_decl()));
+            continue;
+        }
 
         if !attrs.is_empty() {
             p.error_here("attribute must be followed by an item declaration");
             continue;
         }
 
-        p.error_here("expected top-level `data`, `cap`, `fn`, or `extern`");
+        p.error_here("expected top-level `data`, `cap`, `fn`, `impl`, or `extern`");
         p.bump();
     }
 
@@ -902,6 +931,182 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // Grammar:
+    //   impl[generics] Name = TargetType : Cap { methods }   -- named cap impl
+    //   impl[generics] TargetType : Cap { methods }           -- unnamed cap impl
+    //   impl TargetType { methods }                           -- inherent impl
+    //   impl Name = TargetType { methods }                    -- named inherent impl
+    fn parse_impl_decl(&mut self) -> ImplDecl {
+        let start = self.expect_keyword(Keyword::Impl);
+
+        // Optional generics: impl[T: Clone]
+        let generics = if self.at_symbol(Symbol::LBracket) {
+            self.parse_generics()
+        } else {
+            Vec::new()
+        };
+
+        // Determine if named (ident followed by `=`) or unnamed.
+        // We need lookahead: if current is ident and next is `=`, it's named.
+        let name = if self.at_ident() && self.peek_is_symbol(Symbol::Equals) {
+            let n = self.expect_ident();
+            self.expect_symbol(Symbol::Equals);
+            Some(n)
+        } else {
+            None
+        };
+
+        // Parse target type (until `:` or `{`)
+        let (target_repr, target_span) = self.collect_signature_until(|p| {
+            p.at_symbol(Symbol::Colon) || p.at_symbol(Symbol::LBrace)
+        });
+        let target_type = if let Some(span) = target_span {
+            TypeSig {
+                repr: target_repr,
+                span,
+            }
+        } else {
+            self.error_here("expected target type in impl declaration");
+            TypeSig {
+                repr: "<missing>".to_owned(),
+                span: self.current_span(),
+            }
+        };
+
+        // Optional capability: `: Clone`
+        let capability = if self.at_symbol(Symbol::Colon) {
+            self.bump();
+            let (cap_repr, cap_span) =
+                self.collect_signature_until(|p| p.at_symbol(Symbol::LBrace));
+            if let Some(span) = cap_span {
+                Some(TypeSig {
+                    repr: cap_repr,
+                    span,
+                })
+            } else {
+                self.error_here("expected capability type after `:`");
+                None
+            }
+        } else {
+            None
+        };
+
+        // Parse methods block: { fn name(params): RetType := body ... }
+        self.expect_symbol(Symbol::LBrace);
+        let mut methods = Vec::new();
+
+        while !self.eof() && !self.at_symbol(Symbol::RBrace) {
+            let method_start = self.current_span();
+            if !self.at_keyword(Keyword::Fn) {
+                self.error_here("expected `fn` in impl method");
+                self.bump();
+                continue;
+            }
+            self.bump(); // fn
+
+            let method_name = self.expect_ident();
+            let params = if self.at_symbol(Symbol::LParen) {
+                self.parse_impl_params()
+            } else {
+                Vec::new()
+            };
+
+            let mut return_type = None;
+            if self.at_symbol(Symbol::Colon) {
+                self.bump();
+                let (repr, span) =
+                    self.collect_signature_until(|p| p.at_symbol(Symbol::ColonEquals));
+                if let Some(span) = span {
+                    return_type = Some(TypeSig { repr, span });
+                } else {
+                    self.error_here("expected return type after `:`");
+                }
+            }
+
+            self.expect_symbol(Symbol::ColonEquals);
+            let body = self.parse_expr();
+            let body_end = expr_span(&body);
+
+            methods.push(ImplMethod {
+                name: method_name,
+                params,
+                return_type,
+                body,
+                span: Span::new(method_start.start, body_end.end),
+            });
+
+            if self.at_symbol(Symbol::Semi) || self.at_symbol(Symbol::Comma) {
+                self.bump();
+            }
+        }
+
+        let end = self.expect_symbol(Symbol::RBrace);
+        ImplDecl {
+            name,
+            generics,
+            target_type,
+            capability,
+            methods,
+            span: Span::new(start.start, end.end),
+        }
+    }
+
+    /// Parse params for impl methods. `self` is allowed without a type annotation.
+    fn parse_impl_params(&mut self) -> Vec<Param> {
+        let mut out = Vec::new();
+        self.expect_symbol(Symbol::LParen);
+
+        while !self.eof() && !self.at_symbol(Symbol::RParen) {
+            if !self.at_ident() {
+                self.error_here("expected parameter name");
+                self.bump();
+                continue;
+            }
+
+            let name_token = self.bump().expect("checked at_ident").clone();
+            let name = ident_text(&name_token).unwrap_or_default().to_owned();
+
+            if name == "self" && !self.at_symbol(Symbol::Colon) {
+                // `self` without type annotation — type injected during HIR lowering
+                out.push(Param {
+                    name,
+                    ty: TypeSig {
+                        repr: "Self".to_owned(),
+                        span: name_token.span,
+                    },
+                    span: name_token.span,
+                });
+            } else {
+                self.expect_symbol(Symbol::Colon);
+                let (repr, span) = self.collect_signature_until(|p| {
+                    p.at_symbol(Symbol::Comma) || p.at_symbol(Symbol::RParen)
+                });
+                let ty = if let Some(span) = span {
+                    TypeSig { repr, span }
+                } else {
+                    self.error_here("expected parameter type");
+                    TypeSig {
+                        repr: "<missing>".to_owned(),
+                        span: self.current_span(),
+                    }
+                };
+                let end = ty.span.end.max(name_token.span.end);
+                out.push(Param {
+                    name,
+                    ty,
+                    span: Span::new(name_token.span.start, end),
+                });
+            }
+
+            if self.at_symbol(Symbol::Comma) {
+                self.bump();
+            }
+        }
+
+        self.expect_symbol(Symbol::RParen);
+        out
+    }
+
     fn parse_generics(&mut self) -> Vec<GenericParam> {
         let mut out = Vec::new();
         self.expect_symbol(Symbol::LBracket);
@@ -1418,6 +1623,13 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn peek_is_symbol(&self, sym: Symbol) -> bool {
+        matches!(
+            self.tokens.get(self.index + 1).map(|t| &t.kind),
+            Some(TokenKind::Symbol(actual)) if *actual == sym
+        )
+    }
+
     fn at_ident(&self) -> bool {
         matches!(self.current().map(|t| &t.kind), Some(TokenKind::Ident(_)))
     }
@@ -1559,10 +1771,31 @@ fn expr_span(expr: &Expr) -> Span {
 }
 
 fn decode_string_lit(text: &str) -> String {
-    text.strip_prefix('"')
+    let inner = text
+        .strip_prefix('"')
         .and_then(|s| s.strip_suffix('"'))
-        .unwrap_or(text)
-        .to_owned()
+        .unwrap_or(text);
+    let mut out = String::new();
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('r') => out.push('\r'),
+                Some('\\') => out.push('\\'),
+                Some('"') => out.push('"'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn token_text(token: &Token) -> String {
@@ -1581,6 +1814,7 @@ fn token_text(token: &Token) -> String {
         TokenKind::Keyword(Keyword::Handle) => "handle".to_owned(),
         TokenKind::Keyword(Keyword::Bundle) => "bundle".to_owned(),
         TokenKind::Keyword(Keyword::Use) => "use".to_owned(),
+        TokenKind::Keyword(Keyword::Impl) => "impl".to_owned(),
         TokenKind::Ident(s) => s.clone(),
         TokenKind::StringLit(s) => s.clone(),
         TokenKind::Symbol(Symbol::Hash) => "#".to_owned(),

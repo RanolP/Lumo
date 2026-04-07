@@ -378,3 +378,89 @@ fn assignment_desugars_in_parser() {
     assert!(matches!(value.as_ref(), Expr::Number { value, .. } if value == "1"));
     assert!(matches!(body_expr.as_ref(), Expr::Ident { name, .. } if name == "y"));
 }
+
+#[test]
+fn parses_inherent_impl() {
+    let src = "impl String { fn len(self): Number := str_len(self) }";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    assert_eq!(parsed.file.items.len(), 1);
+    let Item::Impl(i) = &parsed.file.items[0] else {
+        panic!("expected impl, got {:?}", parsed.file.items[0])
+    };
+    assert!(i.name.is_none());
+    assert!(i.capability.is_none());
+    assert_eq!(i.target_type.repr.trim(), "String");
+    assert_eq!(i.methods.len(), 1);
+    assert_eq!(i.methods[0].name, "len");
+    assert_eq!(i.methods[0].params.len(), 1);
+    assert_eq!(i.methods[0].params[0].name, "self");
+    // self has synthetic "Self" type
+    assert_eq!(i.methods[0].params[0].ty.repr, "Self");
+    assert_eq!(
+        i.methods[0].return_type.as_ref().map(|t| t.repr.trim()),
+        Some("Number")
+    );
+}
+
+#[test]
+fn parses_capability_impl() {
+    let src = "impl String: Clone { fn clone(self): String := self }";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    let Item::Impl(i) = &parsed.file.items[0] else {
+        panic!("expected impl")
+    };
+    assert!(i.name.is_none());
+    assert_eq!(i.target_type.repr.trim(), "String");
+    assert_eq!(i.capability.as_ref().unwrap().repr.trim(), "Clone");
+}
+
+#[test]
+fn parses_named_impl() {
+    let src = "impl MyClone = String: Clone { fn clone(self): String := self }";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    let Item::Impl(i) = &parsed.file.items[0] else {
+        panic!("expected impl")
+    };
+    assert_eq!(i.name.as_deref(), Some("MyClone"));
+    assert_eq!(i.target_type.repr.trim(), "String");
+    assert_eq!(i.capability.as_ref().unwrap().repr.trim(), "Clone");
+}
+
+#[test]
+fn parses_generic_impl() {
+    let src = "impl[T: Clone] List[T]: Clone { fn clone(self): List[T] := self }";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    let Item::Impl(i) = &parsed.file.items[0] else {
+        panic!("expected impl")
+    };
+    assert_eq!(i.generics.len(), 1);
+    assert_eq!(i.generics[0].name, "T");
+    assert_eq!(
+        i.generics[0].constraint.as_ref().map(|c| c.repr.trim()),
+        Some("Clone")
+    );
+    assert!(i.target_type.repr.contains("List"));
+    assert_eq!(i.capability.as_ref().unwrap().repr.trim(), "Clone");
+}
+
+#[test]
+fn parses_impl_with_typed_self() {
+    // self can also have an explicit type
+    let src = "impl String { fn len(self: String): Number := str_len(self) }";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    let Item::Impl(i) = &parsed.file.items[0] else {
+        panic!("expected impl")
+    };
+    assert_eq!(i.methods[0].params[0].name, "self");
+    assert_eq!(i.methods[0].params[0].ty.repr.trim(), "String");
+}

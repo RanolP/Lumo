@@ -3,16 +3,28 @@ use lumo_compiler::{
     query::QueryEngine,
 };
 
-const PRELUDE_SRC: &str = include_str!("../../../packages/lumo-std/prelude.lumo");
-const IO_SRC: &str = include_str!("../../../packages/lumo-std/io.lumo");
+const PRELUDE_SRC: &str = include_str!("../../../packages/lumo-std/src/prelude.lumo");
+const IO_SRC: &str = include_str!("../../../packages/lumo-std/src/io.lumo");
+const STRING_SRC: &str = include_str!("../../../packages/lumo-std/src/string.lumo");
+const NUMBER_SRC: &str = include_str!("../../../packages/lumo-std/src/number.lumo");
+const FS_SRC: &str = include_str!("../../../packages/lumo-std/src/fs.lumo");
+const PROCESS_SRC: &str = include_str!("../../../packages/lumo-std/src/process.lumo");
+const LIST_SRC: &str = include_str!("../../../packages/lumo-std/src/list.lumo");
 
 fn stdlib_resolver(path: &[String]) -> Option<(String, String)> {
     match path {
-        [pkg, module] if pkg == "lumo_std" && module == "prelude" => {
-            Some(("lumo_std/prelude.lumo".into(), PRELUDE_SRC.into()))
-        }
-        [pkg, module] if pkg == "lumo_std" && module == "io" => {
-            Some(("lumo_std/io.lumo".into(), IO_SRC.into()))
+        [pkg, module] if pkg == "lumo_std" => {
+            let (file, src) = match module.as_str() {
+                "prelude" => ("prelude.lumo", PRELUDE_SRC),
+                "io" => ("io.lumo", IO_SRC),
+                "string" => ("string.lumo", STRING_SRC),
+                "number" => ("number.lumo", NUMBER_SRC),
+                "fs" => ("fs.lumo", FS_SRC),
+                "process" => ("process.lumo", PROCESS_SRC),
+                "list" => ("list.lumo", LIST_SRC),
+                _ => return None,
+            };
+            Some((format!("lumo_std/{file}"), src.into()))
         }
         _ => None,
     }
@@ -78,6 +90,74 @@ fn main() := println("Hello, World!")"#,
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
         "Hello, World!"
+    );
+}
+
+#[test]
+fn stdlib_string_ops_compile_to_rust() {
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"use lumo_std.prelude.{String, Number, Bool};
+use lumo_std.io.{println};
+use lumo_std.string.{str_len, str_eq, str_concat, num_to_string};
+
+fn main() :=
+  let greeting = str_concat("Hello", " World") in
+  let len = str_len(greeting) in
+  println(str_concat(greeting, str_concat(" len=", num_to_string(len))))"#,
+    );
+
+    let lir = q
+        .compile_with_deps(&["main.lumo"], stdlib_resolver)
+        .expect("compilation should succeed");
+    let rs = backend::emit(&lir, CodegenTarget::Rust).expect("rust codegen should succeed");
+
+    assert!(
+        rs.contains("fn str_concat("),
+        "Rust should contain str_concat, got:\n{rs}"
+    );
+    assert!(
+        rs.contains("fn str_len("),
+        "Rust should contain str_len, got:\n{rs}"
+    );
+    assert!(
+        rs.contains("fn main()"),
+        "Rust should contain main, got:\n{rs}"
+    );
+}
+
+#[test]
+fn stdlib_list_compiles_to_rust() {
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"use lumo_std.prelude.{String, Number, Bool};
+use lumo_std.io.{println};
+use lumo_std.list.{List};
+use lumo_std.string.{num_to_string};
+use lumo_std.number.{num_add};
+
+fn list_length[A](xs: List[A]): Number :=
+  match xs { List.nil => produce 0, List.cons(_, t) => produce num_add(1, list_length(t)) }
+
+fn main() :=
+  let xs = List.cons("a", List.cons("b", List.nil)) in
+  println(num_to_string(list_length(xs)))"#,
+    );
+
+    let lir = q
+        .compile_with_deps(&["main.lumo"], stdlib_resolver)
+        .expect("compilation should succeed");
+    let rs = backend::emit(&lir, CodegenTarget::Rust).expect("rust codegen should succeed");
+
+    assert!(
+        rs.contains("Box<List"),
+        "Rust should have Box for recursive List, got:\n{rs}"
+    );
+    assert!(
+        rs.contains("Box::new("),
+        "Rust should have Box::new for List ctor, got:\n{rs}"
     );
 }
 

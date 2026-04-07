@@ -213,7 +213,15 @@ impl Emitter {
     fn emit_expr(&self, expr: &Expr, target: EmitTarget) -> String {
         match expr {
             Expr::Ident(name) => name.clone(),
-            Expr::String(value) => format!("\"{}\"", value.replace('"', "\\\"")),
+            Expr::String(value) => {
+                let escaped = value
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\n', "\\n")
+                    .replace('\r', "\\r")
+                    .replace('\t', "\\t");
+                format!("\"{escaped}\"")
+            }
             Expr::Number(value) => value.to_string(),
             Expr::Bool(value) => value.to_string(),
             Expr::Null => "null".to_string(),

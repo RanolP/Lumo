@@ -1,0 +1,16 @@
+impl String { fn len(self): Number := str_len(self) }
+---
+Impl(name=_, target="String", cap="_", methods=["len"])
+==========
+impl String: Clone { fn clone(self): String := self }
+---
+Impl(name=_, target="String", cap="Clone", methods=["clone"])
+==========
+impl MyClone = String: Clone { fn clone(self): String := self }
+---
+Impl(name=MyClone, target="String", cap="Clone", methods=["clone"])
+==========
+impl String { fn len(self): Number := str_len(self); fn upper(self): String := to_upper(self) }
+---
+Impl(name=_, target="String", cap="_", methods=["len", "upper"])
+==========

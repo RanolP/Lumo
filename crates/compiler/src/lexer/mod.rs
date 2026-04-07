@@ -41,6 +41,7 @@ pub enum Keyword {
     Handle,
     Bundle,
     Use,
+    Impl,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -220,6 +221,7 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
                 "handle" => LosslessTokenKind::Keyword(Keyword::Handle),
                 "bundle" => LosslessTokenKind::Keyword(Keyword::Bundle),
                 "use" => LosslessTokenKind::Keyword(Keyword::Use),
+                "impl" => LosslessTokenKind::Keyword(Keyword::Impl),
                 _ => LosslessTokenKind::Ident,
             };
 
@@ -285,6 +287,26 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
             }
             output.tokens.push(LosslessToken {
                 kind: LosslessTokenKind::NumberLit,
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+
+        // Line comments: // ...
+        if starts_with_at(input, index, "//") {
+            let start = index;
+            index += 2;
+            while index < input.len() {
+                let c = next_char(input, index);
+                if c == '\n' {
+                    break;
+                }
+                index += c.len_utf8();
+            }
+            // Emit comment as whitespace (trivia) so it's ignored
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Whitespace,
                 span: Span::new(start, index),
                 text: input[start..index].to_owned(),
             });

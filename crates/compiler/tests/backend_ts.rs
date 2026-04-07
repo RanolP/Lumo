@@ -54,8 +54,8 @@ fn unsupported_backend_target_is_explicit() {
     let file = lower_typed("fn f() := x");
 
     let err =
-        backend::emit(&file, CodegenTarget::Rust).expect_err("rust backend is not implemented");
-    assert_eq!(err, BackendError::UnsupportedTarget(CodegenTarget::Rust));
+        backend::emit(&file, CodegenTarget::Python).expect_err("python backend is not implemented");
+    assert_eq!(err, BackendError::UnsupportedTarget(CodegenTarget::Python));
 }
 
 #[test]
@@ -108,8 +108,8 @@ fn ts_backend_match_checks_variant_tag_without_dot() {
         "data Bool { .true, .false } fn not(x: Bool): Bool := match x { .true => Bool.false(), .false => Bool.true() }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    assert!(js.contains("__lumo_is(__match, \"true\")"), "{js}");
-    assert!(js.contains("__lumo_is(__match, \"false\")"), "{js}");
+    assert!(js.contains("__lumo_is(__match_0, \"true\")"), "{js}");
+    assert!(js.contains("__lumo_is(__match_0, \"false\")"), "{js}");
 }
 
 #[test]
@@ -118,11 +118,11 @@ fn ts_backend_lowers_nested_match_patterns_as_tree() {
         "data Nat { .zero, .succ(Nat) } fn down2(n: Nat): produce Nat := match n { .succ(.succ(let m)) => produce m, .succ(.zero) => produce Nat.zero(), .zero => produce Nat.zero() }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    assert!(js.contains("__lumo_is(__match, \"succ\")"), "{js}");
-    assert!(js.contains("__lumo_is(__match.args[0], \"succ\")"), "{js}");
+    assert!(js.contains("__lumo_is(__match_0, \"succ\")"), "{js}");
+    assert!(js.contains("__lumo_is(__match_0.args[0], \"succ\")"), "{js}");
     assert!(js.contains("return m;"), "{js}");
-    assert!(js.contains(")(__match.args[0].args[0]);"), "{js}");
-    assert!(js.contains("__lumo_is(__match.args[0], \"zero\")"), "{js}");
+    assert!(js.contains("const m = __match_0.args[0].args[0];"), "{js}");
+    assert!(js.contains("__lumo_is(__match_0.args[0], \"zero\")"), "{js}");
 }
 
 #[test]
@@ -336,5 +336,47 @@ fn ts_backend_pure_fn_unchanged() {
     assert!(
         !js.contains("__k"),
         "pure fn should not have __k param: {js}"
+    );
+}
+
+#[test]
+fn ts_backend_emits_inherent_impl_as_const_object() {
+    let file = lower_typed(
+        "#[extern = \"string\"] extern type String; #[extern = \"number\"] extern type Number; #[extern = \"String.length\"] extern fn str_len(s: String): produce Number; impl String { fn len(self: String): Number := str_len(self) }",
+    );
+    let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    // Inherent impl named after target type
+    assert!(ts.contains("export const String"), "should export const named after target: {ts}");
+    assert!(js.contains("len"), "should contain len method: {js}");
+    assert!(js.contains("str_len(self)"), "method body calls str_len: {js}");
+}
+
+#[test]
+fn ts_backend_emits_unnamed_cap_impl() {
+    let file = lower_typed(
+        "cap Clone { fn clone(self: A): produce A } impl String: Clone { fn clone(self: String): String := self }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    assert!(
+        js.contains("__impl_String_Clone"),
+        "unnamed cap impl should be named __impl_Target_Cap: {js}"
+    );
+    assert!(js.contains("clone"), "should contain clone method: {js}");
+}
+
+#[test]
+fn ts_backend_emits_named_cap_impl() {
+    let file = lower_typed(
+        "cap Clone { fn clone(self: A): produce A } impl MyClone = String: Clone { fn clone(self: String): String := self }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    assert!(
+        js.contains("MyClone"),
+        "named impl should use given name: {js}"
+    );
+    assert!(
+        !js.contains("__impl_"),
+        "named impl should not have mangled name: {js}"
     );
 }

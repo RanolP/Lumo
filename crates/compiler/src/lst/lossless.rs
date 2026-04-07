@@ -26,6 +26,7 @@ pub enum SyntaxKind {
     BundleExpr,
     NumberExpr,
     UseDecl,
+    ImplDecl,
     Error,
 }
 
@@ -115,6 +116,11 @@ impl Parser {
             }
             if self.at_keyword(Keyword::Use) {
                 let node = self.parse_use_decl();
+                children.push(SyntaxElement::Node(Box::new(node)));
+                continue;
+            }
+            if self.at_keyword(Keyword::Impl) {
+                let node = self.parse_impl_decl();
                 children.push(SyntaxElement::Node(Box::new(node)));
                 continue;
             }
@@ -244,6 +250,48 @@ impl Parser {
         }
 
         node_from_children(SyntaxKind::UseDecl, children)
+    }
+
+    fn parse_impl_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Token(self.bump().unwrap())); // impl
+
+        // Consume everything until `{`
+        while !self.eof() {
+            if self.at_symbol_text("{") {
+                break;
+            }
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        if !self.eof() {
+            children.push(SyntaxElement::Token(self.bump().unwrap())); // {
+        } else {
+            self.error_here("expected `{` in impl declaration");
+            return node_from_children(SyntaxKind::ImplDecl, children);
+        }
+
+        // Consume tokens until matching }
+        let mut depth = 1usize;
+        while !self.eof() && depth > 0 {
+            if self.at_symbol_text("{") {
+                depth += 1;
+            } else if self.at_symbol_text("}") {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+
+        if self.at_symbol_text("}") {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else {
+            self.error_here("expected `}` in impl declaration");
+        }
+
+        node_from_children(SyntaxKind::ImplDecl, children)
     }
 
     fn consume_attribute_tokens(&mut self, children: &mut Vec<SyntaxElement>) {
