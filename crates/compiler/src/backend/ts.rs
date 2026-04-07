@@ -1,8 +1,10 @@
 use crate::{
     backend::{Backend, BackendError, BackendKind, CodegenTarget},
     lir,
+    types::{Pattern, TypeExpr},
 };
 use simple_ts_ast as tsast;
+use std::cell::Cell;
 use std::collections::HashMap;
 
 #[derive(Debug, Default)]
@@ -12,18 +14,14 @@ struct LoweringContext {
     direct_callable_arities: HashMap<String, usize>,
     /// Maps function name → cap name (if effectful). `Some("E")` = performs E, `None` = pure.
     fn_caps: HashMap<String, Option<String>>,
+    match_counter: Cell<usize>,
 }
 
-/// Extract the cap name from a cap_repr string like `"{ E }"`, `"E"`, or `"{}"`.
-fn extract_cap_name(repr: &str) -> Option<String> {
-    let s = repr.trim();
-    let s = s.strip_prefix('{').unwrap_or(s);
-    let s = s.strip_suffix('}').unwrap_or(s);
-    let s = s.trim();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s.to_owned())
+impl LoweringContext {
+    fn next_match_name(&self) -> String {
+        let n = self.match_counter.get();
+        self.match_counter.set(n + 1);
+        format!("__match_{n}")
     }
 }
 
@@ -38,6 +36,7 @@ impl TypeScriptBackend {
         let ctx = LoweringContext {
             direct_callable_arities: collect_direct_callable_arities(file),
             fn_caps: collect_fn_caps(file),
+            match_counter: Cell::new(0),
         };
 
         for item in &file.items {
@@ -55,16 +54,16 @@ impl TypeScriptBackend {
                         .params
                         .iter()
                         .map(|param| {
-                            let ty = parse_lumo_type_text(&param.ty_repr);
                             tsast::Param::new(&param.name)
-                                .with_type(lower_lumo_type_to_ts_type(&ty))
+                                .with_type(lower_type_expr_to_ts_type(&param.ty.value))
                         })
                         .collect::<Vec<_>>();
+                    let unit_ty = TypeExpr::Named("Unit".to_owned());
                     let return_ty = func
-                        .return_type_repr
+                        .return_type
                         .as_ref()
-                        .map(|repr| parse_lumo_type_text(repr))
-                        .unwrap_or_else(|| LumoType::Named("Unit".to_owned()));
+                        .map(|s| &s.value)
+                        .unwrap_or(&unit_ty);
                     let extern_path = func
                         .extern_name
                         .clone()
@@ -83,7 +82,7 @@ impl TypeScriptBackend {
                         name: func.name.clone(),
                         type_params: Vec::new(),
                         params,
-                        return_type: Some(lower_lumo_type_to_ts_type(&return_ty)),
+                        return_type: Some(lower_type_expr_to_ts_type(return_ty)),
                         body: tsast::FunctionBody::Expr(Box::new(body_expr)),
                     }));
                 }
@@ -102,6 +101,9 @@ impl TypeScriptBackend {
                 lir::Item::Fn(func) => {
                     body.push(tsast::Stmt::Function(lower_fn_decl(func, &ctx)?));
                 }
+                lir::Item::Impl(impl_decl) => {
+                    body.push(tsast::Stmt::Const(lower_impl_const(impl_decl, &ctx)?));
+                }
             }
         }
 
@@ -111,6 +113,7 @@ impl TypeScriptBackend {
         tsast::flatten_iifes(&mut program);
         tsast::return_lifting(&mut program);
         tsast::return_lifting(&mut program);
+        tsast::flatten_iifes(&mut program); // catch IIFEs exposed by return_lifting
         validate_program_has_no_any_or_unknown(&program)?;
         Ok(program)
     }
@@ -126,10 +129,9 @@ fn collect_direct_callable_arities(file: &lir::File) -> HashMap<String, usize> {
             lir::Item::Fn(func) => {
                 // Exclude effectful functions — they need CPS handling at call sites
                 let is_effectful = func
-                    .cap_repr
+                    .cap
                     .as_ref()
-                    .and_then(|e| extract_cap_name(e))
-                    .is_some();
+                    .map_or(false, |c| c.is_effectful());
                 if !is_effectful {
                     out.insert(func.name.clone(), func.params.len());
                 }
@@ -146,16 +148,18 @@ fn collect_fn_caps(file: &lir::File) -> HashMap<String, Option<String>> {
         match item {
             lir::Item::ExternFn(func) => {
                 let cap = func
-                    .cap_repr
+                    .cap
                     .as_ref()
-                    .and_then(|e| extract_cap_name(e));
+                    .and_then(|c| c.name())
+                    .map(|s| s.to_owned());
                 out.insert(func.name.clone(), cap);
             }
             lir::Item::Fn(func) => {
                 let cap = func
-                    .cap_repr
+                    .cap
                     .as_ref()
-                    .and_then(|e| extract_cap_name(e));
+                    .and_then(|c| c.name())
+                    .map(|s| s.to_owned());
                 out.insert(func.name.clone(), cap);
             }
             _ => {}
@@ -183,15 +187,15 @@ fn lower_fn_decl(
         .iter()
         .zip(lowered_params.iter())
         .map(|(param, lowered_name)| {
-            let ty = parse_lumo_type_text(&param.ty_repr);
-            tsast::Param::new(lowered_name).with_type(lower_lumo_type_to_ts_type(&ty))
+            tsast::Param::new(lowered_name).with_type(lower_type_expr_to_ts_type(&param.ty.value))
         })
         .collect();
 
     let cap_name = func
-        .cap_repr
+        .cap
         .as_ref()
-        .and_then(|e| extract_cap_name(e));
+        .and_then(|c| c.name())
+        .map(|s| s.to_owned());
 
     if let Some(cap) = &cap_name {
         // Effectful function: add __cap_E and __k params, CPS-compile body
@@ -212,19 +216,87 @@ fn lower_fn_decl(
             body: tsast::FunctionBody::Expr(Box::new(cps_body)),
         })
     } else {
+        let unit_ty = TypeExpr::Named("Unit".to_owned());
         let return_ty = func
-            .return_type_repr
+            .return_type
             .as_ref()
-            .map(|repr| parse_lumo_type_text(repr))
-            .unwrap_or_else(|| LumoType::Named("Unit".to_owned()));
+            .map(|s| &s.value)
+            .unwrap_or(&unit_ty);
         Ok(tsast::FunctionDecl {
             export: true,
             name: func.name.clone(),
             type_params: func.generics.clone(),
             params,
-            return_type: Some(lower_lumo_type_to_ts_type(&return_ty)),
+            return_type: Some(lower_type_expr_to_ts_type(return_ty)),
             body: tsast::FunctionBody::Expr(Box::new(lower_expr(lowered_body, ctx))),
         })
+    }
+}
+
+fn lower_impl_const(
+    impl_decl: &lir::ImplDecl,
+    ctx: &LoweringContext,
+) -> Result<tsast::ConstDecl, BackendError> {
+    let const_name = impl_const_name(impl_decl);
+
+    let mut properties = Vec::new();
+    for method in &impl_decl.methods {
+        let (lowered_params, lowered_body) = unwrap_fn_value(&method.value)?;
+        if lowered_params.len() != method.params.len() {
+            return Err(BackendError::EmitFailed(format!(
+                "impl method `{}` lowered to {} lambda params but signature has {} params",
+                method.name,
+                lowered_params.len(),
+                method.params.len()
+            )));
+        }
+        let params: Vec<tsast::Param> = method
+            .params
+            .iter()
+            .zip(lowered_params.iter())
+            .map(|(param, lowered_name)| {
+                tsast::Param::new(lowered_name)
+                    .with_type(lower_type_expr_to_ts_type(&param.ty.value))
+            })
+            .collect();
+        let unit_ty = TypeExpr::Named("Unit".to_owned());
+        let return_ty = method
+            .return_type
+            .as_ref()
+            .map(|s| &s.value)
+            .unwrap_or(&unit_ty);
+        let body_expr = lower_expr(lowered_body, ctx);
+        properties.push(tsast::ObjectProp {
+            key: tsast::ObjectKey::Ident(method.name.clone()),
+            value: tsast::Expr::Arrow {
+                params,
+                return_type: Some(lower_type_expr_to_ts_type(return_ty)),
+                body: Box::new(tsast::FunctionBody::Expr(Box::new(body_expr))),
+            },
+        });
+    }
+
+    Ok(tsast::ConstDecl {
+        export: true,
+        name: const_name,
+        type_ann: None,
+        init: tsast::Expr::Object(properties),
+    })
+}
+
+/// Compute the JS/TS const name for an impl block.
+fn impl_const_name(impl_decl: &lir::ImplDecl) -> String {
+    if let Some(name) = &impl_decl.name {
+        // Named impl: use the given name
+        name.clone()
+    } else if let Some(cap) = &impl_decl.capability {
+        // Unnamed cap impl: __impl_{Target}_{Cap}
+        let target = impl_decl.target_type.value.display();
+        let cap = cap.value.display();
+        format!("__impl_{target}_{cap}")
+    } else {
+        // Inherent impl: name after target type
+        impl_decl.target_type.value.display()
     }
 }
 
@@ -285,11 +357,17 @@ const __lumo_error = (): never => { throw new Error(\"lumo runtime error\"); };
 "
         }
         tsast::EmitTarget::JavaScript => {
-            "const LUMO_TAG = Symbol.for(\"Lumo/tag\");
+            "import { readFileSync as __fs_readFileSync, writeFileSync as __fs_writeFileSync } from \"node:fs\";
+const LUMO_TAG = Symbol.for(\"Lumo/tag\");
 const __lumo_is = (value, pattern) =>
   !!value && typeof value === \"object\" && LUMO_TAG in value && value[LUMO_TAG] === pattern;
 const __lumo_match_error = (value) => { throw new Error(\"non-exhaustive match: \" + JSON.stringify(value)); };
 const __lumo_error = () => { throw new Error(\"lumo runtime error\"); };
+const str = { len: (s) => s.length, char_at: (s, i) => s[i] ?? \"\", slice: (s, a, b) => s.slice(a, b), concat: (a, b) => a + b, eq: (a, b) => a === b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, starts_with: (s, p) => s.startsWith(p) ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, contains: (s, p) => s.includes(p) ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, index_of: (s, p) => s.indexOf(p), trim: (s) => s.trim(), char_code_at: (s, i) => s.charCodeAt(i), from_char_code: (c) => String.fromCharCode(c), replace_all: (s, f, t) => s.replaceAll(f, t) };
+const num = { eq: (a, b) => a === b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, lt: (a, b) => a < b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, gt: (a, b) => a > b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, lte: (a, b) => a <= b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, gte: (a, b) => a >= b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, add: (a, b) => a + b, sub: (a, b) => a - b, mul: (a, b) => a * b, floor: (a) => Math.floor(a), to_string: (n) => String(n) };
+const console = globalThis.console;
+const fs = { read_file: (p) => __fs_readFileSync(p, \"utf8\"), write_file: (p, c) => __fs_writeFileSync(p, c, \"utf8\") };
+const process = { ...globalThis.process, arg_at: (i) => globalThis.process.argv[i + 1] ?? \"\", args_count: () => globalThis.process.argv.length - 1, exit: (c) => globalThis.process.exit(c), panic: (m) => { console.error(m); globalThis.process.exit(1); } };
 
 "
         }
@@ -297,67 +375,21 @@ const __lumo_error = () => { throw new Error(\"lumo runtime error\"); };
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum LumoType {
-    Named(String),
-    App { head: String, args: Vec<LumoType> },
-    Produce(Box<LumoType>),
-    Thunk(Box<LumoType>),
-}
-
-fn parse_lumo_type_text(text: &str) -> LumoType {
-    let text = text.trim();
-    if let Some(rest) = text.strip_prefix("produce") {
-        return LumoType::Produce(Box::new(parse_lumo_type_text(rest)));
-    }
-    if let Some(rest) = text.strip_prefix("thunk") {
-        return LumoType::Thunk(Box::new(parse_lumo_type_text(rest)));
-    }
-    parse_named_type_text(&canonicalize_lumo_named_type(&lumo_type_text_to_ts(text)))
-}
-
-fn lumo_type_text_to_ts(text: &str) -> String {
-    text.chars()
-        .map(|ch| match ch {
-            '[' => '<',
-            ']' => '>',
-            _ => ch,
-        })
-        .collect()
-}
-
-fn parse_named_type_text(text: &str) -> LumoType {
-    let canonical = canonicalize_lumo_named_type(text);
-    let (head, args_text) = split_type_args(&canonical);
-    if args_text.is_empty() {
-        LumoType::Named(head)
-    } else {
-        LumoType::App {
-            head,
-            args: args_text
-                .into_iter()
-                .map(|arg| parse_named_type_text(&arg))
-                .collect(),
-        }
-    }
-}
-
-fn lower_lumo_type_to_ts_type(ty: &LumoType) -> tsast::TsType {
+fn lower_type_expr_to_ts_type(ty: &TypeExpr) -> tsast::TsType {
     match ty {
-        LumoType::Named(name) if name == "Unit" => tsast::TsType::Void,
-        LumoType::Named(name) => tsast::TsType::TypeRef(name.clone()),
-        LumoType::App { head, args } => tsast::TsType::TypeRef(format!(
+        TypeExpr::Named(name) if name == "Unit" => tsast::TsType::Void,
+        TypeExpr::Named(name) => tsast::TsType::TypeRef(name.clone()),
+        TypeExpr::App { head, args } => tsast::TsType::TypeRef(format!(
             "{head}<{}>",
             args.iter()
-                .map(lower_lumo_type_to_ts_text)
+                .map(type_expr_to_ts_text)
                 .collect::<Vec<_>>()
                 .join(", ")
         )),
-        LumoType::Produce(inner) => lower_lumo_type_to_ts_type(inner),
-        LumoType::Thunk(inner) => tsast::TsType::Func {
-            params: Vec::new(),
-            ret: Box::new(lower_lumo_type_to_ts_type(inner)),
-        },
+        // `produce T` → just the inner type in TS
+        TypeExpr::Produce(inner) => lower_type_expr_to_ts_type(inner),
+        // `thunk produce T` → `() => T` in TS
+        TypeExpr::Thunk(inner) => lower_type_expr_to_ts_type(inner),
     }
 }
 
@@ -369,13 +401,13 @@ fn lower_data_type(data: &lir::DataDecl) -> tsast::TsType {
         .variants
         .iter()
         .map(|variant| {
-            if variant.payload_types.is_empty() {
+            if variant.payload.is_empty() {
                 format!("{{ [LUMO_TAG]: '{}' }}", variant.name)
             } else {
                 let payloads = variant
-                    .payload_types
+                    .payload
                     .iter()
-                    .map(|payload| lower_lumo_type_to_ts_text(&parse_lumo_type_text(payload)))
+                    .map(|payload| type_expr_to_ts_text(&payload.value))
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("{{ [LUMO_TAG]: '{}', args: [{}] }}", variant.name, payloads)
@@ -448,10 +480,117 @@ fn specialize_operator_extern_wrappers(
         let Some(extern_name) = extern_names.get(&func.name) else {
             continue;
         };
-        let Some(expr) = specialize_operator_wrapper_expr(extern_name, &func.params) else {
+        if let Some(expr) = specialize_operator_wrapper_expr(extern_name, &func.params) {
+            func.body = tsast::FunctionBody::Expr(Box::new(expr));
             continue;
-        };
-        func.body = tsast::FunctionBody::Expr(Box::new(expr));
+        }
+        if let Some(expr) = specialize_stdlib_extern_body(extern_name, &func.params) {
+            func.body = tsast::FunctionBody::Expr(Box::new(expr));
+        }
+    }
+}
+
+/// Inline implementations for stdlib extern functions that don't have
+/// corresponding JS globals (e.g., `str.len` → `s.length`).
+fn specialize_stdlib_extern_body(
+    extern_name: &str,
+    params: &[tsast::Param],
+) -> Option<tsast::Expr> {
+    let p = |i: usize| -> tsast::Expr { tsast::Expr::Ident(params[i].name.clone()) };
+
+    let method_call = |obj: tsast::Expr, method: &str, args: Vec<tsast::Expr>| -> tsast::Expr {
+        tsast::Expr::Call {
+            callee: Box::new(tsast::Expr::Member {
+                object: Box::new(obj),
+                property: method.to_owned(),
+            }),
+            args,
+        }
+    };
+
+    // Wrap a JS boolean expression in a Lumo Bool ADT:
+    // `cond ? Bool["true"] : Bool["false"]`
+    let bool_wrap = |cond: tsast::Expr| -> tsast::Expr {
+        tsast::Expr::IfElse {
+            cond: Box::new(cond),
+            then_expr: Box::new(tsast::Expr::Index {
+                object: Box::new(tsast::Expr::Ident("Bool".to_owned())),
+                index: Box::new(tsast::Expr::String("true".to_owned())),
+            }),
+            else_expr: Box::new(tsast::Expr::Index {
+                object: Box::new(tsast::Expr::Ident("Bool".to_owned())),
+                index: Box::new(tsast::Expr::String("false".to_owned())),
+            }),
+        }
+    };
+
+    let cmp = |op: tsast::BinaryOp| -> tsast::Expr {
+        bool_wrap(tsast::Expr::Binary {
+            left: Box::new(p(0)),
+            op,
+            right: Box::new(p(1)),
+        })
+    };
+
+    match extern_name {
+        // String operations
+        "str.len" => Some(tsast::Expr::Member {
+            object: Box::new(p(0)),
+            property: "length".to_owned(),
+        }),
+        "str.char_at" => Some(method_call(p(0), "charAt", vec![p(1)])),
+        "str.slice" => Some(method_call(p(0), "slice", vec![p(1), p(2)])),
+        "str.concat" => Some(tsast::Expr::Binary {
+            left: Box::new(p(0)),
+            op: tsast::BinaryOp::Add,
+            right: Box::new(p(1)),
+        }),
+        "str.eq" => Some(cmp(tsast::BinaryOp::EqEqEq)),
+        "str.starts_with" => Some(bool_wrap(method_call(p(0), "startsWith", vec![p(1)]))),
+        "str.contains" => Some(bool_wrap(method_call(p(0), "includes", vec![p(1)]))),
+        "str.index_of" => Some(method_call(p(0), "indexOf", vec![p(1)])),
+        "str.trim" => Some(method_call(p(0), "trim", vec![])),
+        "str.char_code_at" => Some(method_call(p(0), "charCodeAt", vec![p(1)])),
+        "str.from_char_code" => Some(tsast::Expr::Call {
+            callee: Box::new(tsast::Expr::Member {
+                object: Box::new(tsast::Expr::Ident("String".to_owned())),
+                property: "fromCharCode".to_owned(),
+            }),
+            args: vec![p(0)],
+        }),
+        "str.replace_all" => Some(method_call(p(0), "replaceAll", vec![p(1), p(2)])),
+        "num.to_string" => Some(method_call(p(0), "toString", vec![])),
+
+        // Number operations (comparisons return Lumo Bool ADT)
+        "num.eq" => Some(cmp(tsast::BinaryOp::EqEqEq)),
+        "num.lt" => Some(cmp(tsast::BinaryOp::Lt)),
+        "num.gt" => Some(cmp(tsast::BinaryOp::Gt)),
+        "num.lte" => Some(cmp(tsast::BinaryOp::Lte)),
+        "num.gte" => Some(cmp(tsast::BinaryOp::Gte)),
+        "num.add" => Some(tsast::Expr::Binary {
+            left: Box::new(p(0)),
+            op: tsast::BinaryOp::Add,
+            right: Box::new(p(1)),
+        }),
+        "num.sub" => Some(tsast::Expr::Binary {
+            left: Box::new(p(0)),
+            op: tsast::BinaryOp::Sub,
+            right: Box::new(p(1)),
+        }),
+        "num.mul" => Some(tsast::Expr::Binary {
+            left: Box::new(p(0)),
+            op: tsast::BinaryOp::Mul,
+            right: Box::new(p(1)),
+        }),
+        "num.floor" => Some(tsast::Expr::Call {
+            callee: Box::new(tsast::Expr::Member {
+                object: Box::new(tsast::Expr::Ident("Math".to_owned())),
+                property: "floor".to_owned(),
+            }),
+            args: vec![p(0)],
+        }),
+
+        _ => None,
     }
 }
 
@@ -539,7 +678,7 @@ fn lower_data_bundle_const(data: &lir::DataDecl) -> tsast::ConstDecl {
 }
 
 fn lower_variant_ctor_expr(_data: &lir::DataDecl, variant: &lir::VariantDecl) -> tsast::Expr {
-    if variant.payload_types.is_empty() {
+    if variant.payload.is_empty() {
         let fields = vec![tsast::ObjectProp {
             key: tsast::ObjectKey::Computed(Box::new(tsast::Expr::Ident("LUMO_TAG".to_owned()))),
             value: tsast::Expr::String(variant.name.clone()),
@@ -548,7 +687,7 @@ fn lower_variant_ctor_expr(_data: &lir::DataDecl, variant: &lir::VariantDecl) ->
     }
 
     let params = variant
-        .payload_types
+        .payload
         .iter()
         .enumerate()
         .map(|(index, _)| tsast::Param::new(format!("arg{index}")))
@@ -587,16 +726,16 @@ fn render_data_bundle_type(data: &lir::DataDecl) -> String {
         .iter()
         .map(|variant| {
             let params = variant
-                .payload_types
+                .payload
                 .iter()
                 .enumerate()
                 .map(|(index, payload)| {
-                    let payload = lower_lumo_type_to_ts_text(&parse_lumo_type_text(payload));
+                    let payload = type_expr_to_ts_text(&payload.value);
                     format!("arg{index}: {payload}")
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            if variant.payload_types.is_empty() {
+            if variant.payload.is_empty() {
                 if data.generics.is_empty() {
                     format!("\"{}\": {result_type}", variant.name)
                 } else {
@@ -617,55 +756,20 @@ fn render_data_bundle_type(data: &lir::DataDecl) -> String {
     format!("{{ {members} }}")
 }
 
-fn lower_lumo_type_to_ts_text(ty: &LumoType) -> String {
+fn type_expr_to_ts_text(ty: &TypeExpr) -> String {
     match ty {
-        LumoType::Named(name) if name == "Unit" => "void".to_owned(),
-        LumoType::Named(name) => name.clone(),
-        LumoType::App { head, args } => format!(
+        TypeExpr::Named(name) if name == "Unit" => "void".to_owned(),
+        TypeExpr::Named(name) => name.clone(),
+        TypeExpr::App { head, args } => format!(
             "{head}<{}>",
             args.iter()
-                .map(lower_lumo_type_to_ts_text)
+                .map(type_expr_to_ts_text)
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        LumoType::Produce(inner) => lower_lumo_type_to_ts_text(inner),
-        LumoType::Thunk(inner) => format!("() => {}", lower_lumo_type_to_ts_text(inner)),
+        TypeExpr::Produce(inner) => type_expr_to_ts_text(inner),
+        TypeExpr::Thunk(inner) => type_expr_to_ts_text(inner),
     }
-}
-
-fn canonicalize_lumo_named_type(text: &str) -> String {
-    text.chars().filter(|ch| !ch.is_whitespace()).collect()
-}
-
-fn split_type_args(text: &str) -> (String, Vec<String>) {
-    let text = text.trim();
-    let Some(start) = text.find('<') else {
-        return (text.to_owned(), Vec::new());
-    };
-    if !text.ends_with('>') {
-        return (text.to_owned(), Vec::new());
-    }
-    let head = text[..start].to_owned();
-    let inner = &text[start + 1..text.len() - 1];
-    let mut out = Vec::new();
-    let mut depth = 0usize;
-    let mut begin = 0usize;
-    for (idx, ch) in inner.char_indices() {
-        match ch {
-            '<' => depth += 1,
-            '>' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                out.push(canonicalize_lumo_named_type(&inner[begin..idx]));
-                begin = idx + 1;
-            }
-            _ => {}
-        }
-    }
-    let tail = canonicalize_lumo_named_type(&inner[begin..]);
-    if !tail.is_empty() {
-        out.push(tail);
-    }
-    (head, out)
 }
 
 fn validate_program_has_no_any_or_unknown(program: &tsast::Program) -> Result<(), BackendError> {
@@ -898,7 +1002,7 @@ fn lower_expr(expr: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
         lir::Expr::Apply { callee, arg, .. } => lower_apply_expr(callee, arg, ctx),
         lir::Expr::Unroll { expr, .. } => lower_expr(expr, ctx),
         lir::Expr::Roll { expr, .. } => lower_expr(expr, ctx),
-        lir::Expr::LetIn {
+        lir::Expr::Let {
             name, value, body, ..
         } => iife(name, lower_expr(body, ctx), lower_expr(value, ctx)),
         lir::Expr::Match {
@@ -1025,12 +1129,12 @@ fn lower_match_expr(
     ctx: &LoweringContext,
 ) -> tsast::Expr {
     let lowered_scrutinee = lower_expr(scrutinee, ctx);
-    let scrutinee_name = "__match";
-    let scrutinee_expr = tsast::Expr::Ident(scrutinee_name.to_owned());
+    let scrutinee_name = ctx.next_match_name();
+    let scrutinee_expr = tsast::Expr::Ident(scrutinee_name.clone());
     let rows = arms
         .iter()
         .map(|arm| MatchRow {
-            patterns: vec![parse_match_pattern(&arm.pattern).unwrap_or(MatchPattern::Wildcard)],
+            patterns: vec![pattern_to_match_pattern(&arm.pattern)],
             bindings: Vec::new(),
             body: arm.body.clone(),
         })
@@ -1040,7 +1144,7 @@ fn lower_match_expr(
         wrap_bindings(lower_expr(body, ctx), bindings)
     });
 
-    iife(scrutinee_name, lowered, lowered_scrutinee)
+    iife(&scrutinee_name, lowered, lowered_scrutinee)
 }
 
 
@@ -1388,7 +1492,7 @@ fn lower_cps_expr(
                 args: vec![lower_expr(inner, ctx)],
             }
         }
-        lir::Expr::LetIn {
+        lir::Expr::Let {
             name, value, body, ..
         } => {
             // let x = comp in body → CPS[comp]((x) => CPS[body](k))
@@ -1439,13 +1543,13 @@ fn lower_cps_match_expr(
     let k_ident = tsast::Expr::Ident(k_name.to_owned());
 
     let lowered_scrutinee = lower_expr(scrutinee, ctx);
-    let scrutinee_name = "__match";
-    let scrutinee_expr = tsast::Expr::Ident(scrutinee_name.to_owned());
+    let scrutinee_name = ctx.next_match_name();
+    let scrutinee_expr = tsast::Expr::Ident(scrutinee_name.clone());
 
     let rows = arms
         .iter()
         .map(|arm| MatchRow {
-            patterns: vec![parse_match_pattern(&arm.pattern).unwrap_or(MatchPattern::Wildcard)],
+            patterns: vec![pattern_to_match_pattern(&arm.pattern)],
             bindings: Vec::new(),
             body: arm.body.clone(),
         })
@@ -1455,8 +1559,8 @@ fn lower_cps_match_expr(
         wrap_bindings(lower_cps_expr(body, k_ident.clone(), handled_cap, ctx), bindings)
     });
 
-    // ((__k) => ((__match) => lowered)(scrutinee))(k)
-    let inner = iife(scrutinee_name, lowered, lowered_scrutinee);
+    // ((__k) => ((__match_N) => lowered)(scrutinee))(k)
+    let inner = iife(&scrutinee_name, lowered, lowered_scrutinee);
     iife(k_name, inner, k)
 }
 
@@ -1520,182 +1624,16 @@ enum MatchPattern {
     },
 }
 
-fn parse_match_pattern(pattern: &str) -> Option<MatchPattern> {
-    let mut parser = MatchPatternParser::new(pattern);
-    let pat = parser.parse_pattern();
-    if parser.failed || parser.peek().is_some() {
-        None
-    } else {
-        Some(pat)
+/// Convert from shared `Pattern` type to backend-local `MatchPattern`.
+fn pattern_to_match_pattern(pattern: &Pattern) -> MatchPattern {
+    match pattern {
+        Pattern::Wildcard => MatchPattern::Wildcard,
+        Pattern::Bind(name) => MatchPattern::Bind(name.clone()),
+        Pattern::Ctor { name, args } => MatchPattern::Ctor {
+            name: name.clone(),
+            args: args.iter().map(pattern_to_match_pattern).collect(),
+        },
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum MatchPatternToken {
-    Ident(String),
-    Underscore,
-    Dot,
-    LParen,
-    RParen,
-    Comma,
-}
-
-struct MatchPatternParser {
-    tokens: Vec<MatchPatternToken>,
-    index: usize,
-    failed: bool,
-}
-
-impl MatchPatternParser {
-    fn new(text: &str) -> Self {
-        Self {
-            tokens: lex_match_pattern(text),
-            index: 0,
-            failed: false,
-        }
-    }
-
-    fn parse_pattern(&mut self) -> MatchPattern {
-        let Some(token) = self.bump() else {
-            self.failed = true;
-            return MatchPattern::Wildcard;
-        };
-        match token {
-            MatchPatternToken::Underscore => MatchPattern::Wildcard,
-            MatchPatternToken::Dot => {
-                let Some(MatchPatternToken::Ident(name)) = self.bump() else {
-                    self.failed = true;
-                    return MatchPattern::Wildcard;
-                };
-                self.parse_ctor_pattern(name)
-            }
-            MatchPatternToken::Ident(head) => {
-                if head == "let" || head == "mut" {
-                    let Some(MatchPatternToken::Ident(name)) = self.bump() else {
-                        self.failed = true;
-                        return MatchPattern::Wildcard;
-                    };
-                    if is_pattern_binding_name(&name) {
-                        MatchPattern::Bind(name)
-                    } else {
-                        self.failed = true;
-                        MatchPattern::Wildcard
-                    }
-                } else if is_pattern_binding_name(&head) {
-                    MatchPattern::Bind(head)
-                } else {
-                    self.failed = true;
-                    MatchPattern::Wildcard
-                }
-            }
-            _ => {
-                self.failed = true;
-                MatchPattern::Wildcard
-            }
-        }
-    }
-
-    fn parse_ctor_pattern(&mut self, name: String) -> MatchPattern {
-        if self.peek() == Some(&MatchPatternToken::LParen) {
-            self.bump();
-            let mut args = Vec::new();
-            if self.peek() != Some(&MatchPatternToken::RParen) {
-                loop {
-                    args.push(self.parse_pattern());
-                    if self.peek() == Some(&MatchPatternToken::Comma) {
-                        self.bump();
-                        continue;
-                    }
-                    break;
-                }
-            }
-            if self.peek() == Some(&MatchPatternToken::RParen) {
-                self.bump();
-                MatchPattern::Ctor { name, args }
-            } else {
-                self.failed = true;
-                MatchPattern::Wildcard
-            }
-        } else {
-            MatchPattern::Ctor {
-                name,
-                args: Vec::new(),
-            }
-        }
-    }
-
-    fn peek(&self) -> Option<&MatchPatternToken> {
-        self.tokens.get(self.index)
-    }
-
-    fn bump(&mut self) -> Option<MatchPatternToken> {
-        let out = self.tokens.get(self.index).cloned();
-        if out.is_some() {
-            self.index += 1;
-        }
-        out
-    }
-}
-
-fn lex_match_pattern(text: &str) -> Vec<MatchPatternToken> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    let bytes = text.as_bytes();
-    while i < bytes.len() {
-        let ch = text[i..].chars().next().unwrap_or('\0');
-        if ch.is_whitespace() {
-            i += ch.len_utf8();
-            continue;
-        }
-        match ch {
-            '_' => {
-                out.push(MatchPatternToken::Underscore);
-                i += 1;
-            }
-            '.' => {
-                out.push(MatchPatternToken::Dot);
-                i += 1;
-            }
-            '(' => {
-                out.push(MatchPatternToken::LParen);
-                i += 1;
-            }
-            ')' => {
-                out.push(MatchPatternToken::RParen);
-                i += 1;
-            }
-            ',' => {
-                out.push(MatchPatternToken::Comma);
-                i += 1;
-            }
-            _ => {
-                if ch == '_' || ch.is_alphabetic() {
-                    let start = i;
-                    i += ch.len_utf8();
-                    while i < bytes.len() {
-                        let next = text[i..].chars().next().unwrap_or('\0');
-                        if next == '_' || next.is_alphanumeric() {
-                            i += next.len_utf8();
-                        } else {
-                            break;
-                        }
-                    }
-                    out.push(MatchPatternToken::Ident(text[start..i].to_owned()));
-                } else {
-                    i += ch.len_utf8();
-                }
-            }
-        }
-    }
-    out
-}
-
-fn is_pattern_binding_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first == '_' || first.is_alphabetic()) && chars.all(|ch| ch == '_' || ch.is_alphanumeric())
 }
 
 fn runtime_call(name: &str, args: Vec<tsast::Expr>) -> tsast::Expr {

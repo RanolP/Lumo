@@ -39,28 +39,32 @@ fn typecheck_fixtures() {
         let lir = lir::lower(&hir);
         let (bindings, errors) = typecheck_and_bindings(&lir);
 
+        // Collect all errors: HIR lowering errors + typecheck errors
+        let mut all_error_msgs: Vec<String> = hir
+            .errors
+            .iter()
+            .map(|e| e.message.clone())
+            .collect();
+        all_error_msgs.extend(errors.iter().map(|e| e.message.clone()));
+
         if expected.starts_with("ERROR:") {
             let expected_messages = expected
                 .lines()
                 .filter_map(|l| l.strip_prefix("ERROR:"))
                 .map(str::trim)
                 .collect::<Vec<_>>();
-            let actual = errors
-                .iter()
-                .map(|e| e.message.as_str())
-                .collect::<Vec<_>>();
             for msg in expected_messages {
                 assert!(
-                    actual.iter().any(|m| m.contains(msg)),
-                    "missing expected error `{msg}` in {case_name}; actual={actual:?}"
+                    all_error_msgs.iter().any(|m| m.contains(msg)),
+                    "missing expected error `{msg}` in {case_name}; actual={all_error_msgs:?}"
                 );
             }
             continue;
         }
 
         assert!(
-            errors.is_empty(),
-            "unexpected errors in {case_name}: {errors:?}"
+            all_error_msgs.is_empty(),
+            "unexpected errors in {case_name}: {all_error_msgs:?}"
         );
         let actual = bindings
             .iter()

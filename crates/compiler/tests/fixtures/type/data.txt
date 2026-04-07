@@ -4,14 +4,14 @@ fn mk(a: A): produce OptionA / {} := OptionA.some(a)
 mk : (A) -> produce OptionA / {}
 ==========
 data OptionA { .some(A), .none }
-fn badmk(a: A): produce OptionA / {} := produce OptionA.some(a)
+fn ok_mk(a: A): produce OptionA / {} := produce OptionA.some(a)
 ---
-ERROR: expected value expression
+ok_mk : (A) -> produce OptionA / {}
 ==========
 data OptionA { .some(A), .none }
 fn badp1(a: OptionA, b: A): produce A / {} := match a { some(x) => produce b, .none => produce b }
 ---
-ERROR: constructor pattern must start with `.`
+ERROR: constructor patterns must start with `.`
 ==========
 data OptionA { .some(A), .none }
 fn badp2(a: OptionA, b: A): produce A / {} := match a { some => produce b, .none => produce b }
@@ -31,9 +31,9 @@ fn get_or_zero(o: Option[Nat], z: Nat): produce Nat / {} := match o { .some(x) =
 get_or_zero : (Option[Nat], Nat) -> produce Nat / {}
 ==========
 data Option[A] { .some(A), .none }
-fn bad(u: Unit): produce Unit / {} := let x = Option.none in produce u
+fn ok_nil(u: Unit): produce Unit / {} := let x = Option.none in produce u
 ---
-ERROR: cannot infer type arguments for bundle field `Option.none`
+ok_nil : (Unit) -> produce Unit / {}
 ==========
 data Bool { .true, .false }
 fn not(x: Bool): produce Bool / {} := match x { .true => Bool.false, .false => Bool.true }

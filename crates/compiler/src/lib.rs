@@ -7,3 +7,4 @@ pub mod lst;
 pub mod parser;
 pub mod query;
 pub mod typecheck;
+pub mod types;

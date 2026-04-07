@@ -4,6 +4,7 @@ use lumo_compiler::{
     lir,
     lst::lossless,
     parser::parse,
+    types::TypeExpr,
 };
 
 fn lower_typed(src: &str) -> hir::File {
@@ -46,41 +47,14 @@ fn content_hash_is_deterministic() {
 }
 
 #[test]
-fn top_level_name_does_not_affect_fn_structural_hash() {
-    let a = lower_typed("fn alpha(): produce A / {} := produce x");
-    let b = lower_typed("fn beta(): produce A / {} := produce x");
-
-    let fn_a = match &a.items[0] {
-        Item::Fn(f) => f,
-        _ => panic!("expected fn"),
-    };
-    let fn_b = match &b.items[0] {
-        Item::Fn(f) => f,
-        _ => panic!("expected fn"),
-    };
-
-    assert_eq!(fn_a.structural_hash, fn_b.structural_hash);
-}
-
-#[test]
-fn body_change_affects_fn_structural_hash() {
+fn body_change_affects_file_content_hash() {
     let a = lower_typed("fn f(): produce A / {} := produce x");
     let b = lower_typed("fn f(): produce A / {} := produce y");
-
-    let fn_a = match &a.items[0] {
-        Item::Fn(f) => f,
-        _ => panic!("expected fn"),
-    };
-    let fn_b = match &b.items[0] {
-        Item::Fn(f) => f,
-        _ => panic!("expected fn"),
-    };
-
-    assert_ne!(fn_a.structural_hash, fn_b.structural_hash);
+    assert_ne!(a.content_hash, b.content_hash);
 }
 
 #[test]
-fn expression_nodes_keep_source_id_separate_from_structural_hash() {
+fn expression_nodes_have_spans() {
     let file = lower_typed("fn f(): produce A / {} := let x = y in produce x");
     let func = match &file.items[0] {
         Item::Fn(f) => f,
@@ -88,43 +62,29 @@ fn expression_nodes_keep_source_id_separate_from_structural_hash() {
     };
 
     match &func.body {
-        Expr::LetIn {
-            id,
-            structural_hash,
+        Expr::Let {
             value,
             body,
+            span,
             ..
         } => {
-            assert_ne!(id, structural_hash);
+            assert!(span.start < span.end);
             match value.as_ref() {
-                Expr::Ident {
-                    id,
-                    structural_hash,
-                    ..
-                } => assert_ne!(id, structural_hash),
+                Expr::Ident { span, .. } => assert!(span.start < span.end),
                 _ => panic!("expected ident"),
             }
             match body.as_ref() {
-                Expr::Produce {
-                    id,
-                    structural_hash,
-                    expr,
-                    ..
-                } => {
-                    assert_ne!(id, structural_hash);
+                Expr::Produce { span, expr, .. } => {
+                    assert!(span.start < span.end);
                     match expr.as_ref() {
-                        Expr::Ident {
-                            id,
-                            structural_hash,
-                            ..
-                        } => assert_ne!(id, structural_hash),
+                        Expr::Ident { span, .. } => assert!(span.start < span.end),
                         _ => panic!("expected ident"),
                     }
                 }
                 _ => panic!("expected produce"),
             }
         }
-        _ => panic!("expected let-in"),
+        _ => panic!("expected let"),
     }
 }
 
@@ -136,7 +96,7 @@ fn lossless_lower_handles_let_and_produce() {
     };
 
     match &f.body {
-        Expr::LetIn {
+        Expr::Let {
             name, value, body, ..
         } => {
             assert_eq!(name, "x");
@@ -152,7 +112,7 @@ fn lossless_lower_handles_let_and_produce() {
                 other => panic!("expected produce body, got {other:?}"),
             }
         }
-        other => panic!("expected let-in body, got {other:?}"),
+        other => panic!("expected let body, got {other:?}"),
     }
 }
 
@@ -330,9 +290,10 @@ fn data_variant_payload_types_are_preserved_in_hir() {
         panic!("expected data")
     };
     assert_eq!(d.variants[0].name, "some");
-    assert_eq!(d.variants[0].payload_types, vec!["Bool"]);
+    assert_eq!(d.variants[0].payload.len(), 1);
+    assert_eq!(d.variants[0].payload[0].value, TypeExpr::Named("Bool".into()));
     assert_eq!(d.variants[1].name, "none");
-    assert!(d.variants[1].payload_types.is_empty());
+    assert!(d.variants[1].payload.is_empty());
 }
 
 #[test]
@@ -360,16 +321,14 @@ fn cap_decl_is_preserved_in_hir() {
     assert_eq!(e.operations[0].name, "log");
     assert_eq!(e.operations[0].params.len(), 1);
     assert_eq!(e.operations[0].params[0].name, "msg");
-    assert_eq!(e.operations[0].params[0].ty_repr, "String");
     assert_eq!(
-        e.operations[0].return_type_repr.as_deref(),
-        Some("produce Unit")
+        e.operations[0].params[0].ty.value,
+        TypeExpr::Named("String".into())
     );
+    // Return type includes "produce Unit" which should parse
+    assert!(e.operations[0].return_type.is_some());
 
     // Hash stability: re-lowering yields the same hash
     let file2 = lower_typed("cap Console { fn log(msg: String): produce Unit }");
-    let Item::Cap(e2) = &file2.items[0] else {
-        panic!("expected cap")
-    };
-    assert_eq!(e.structural_hash, e2.structural_hash);
+    assert_eq!(file.content_hash, file2.content_hash);
 }

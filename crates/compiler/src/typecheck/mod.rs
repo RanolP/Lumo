@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::lexer::Span;
 use crate::lir::{self, Expr};
+use crate::types::{CapRef, Pattern, TypeExpr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeError {
@@ -112,14 +113,10 @@ fn render_c_type(ty: &CompType) -> String {
                 .map(render_v_type)
                 .collect::<Vec<_>>()
                 .join(", ");
-            if let Some(e) = cap {
-                if !e.is_empty() {
-                    format!("({ps}) -> {} / {e}", render_c_type(ret))
-                } else {
-                    format!("({ps}) -> {}", render_c_type(ret))
-                }
-            } else {
-                format!("({ps}) -> {}", render_c_type(ret))
+            match cap.as_deref() {
+                Some(e) if !e.is_empty() => format!("({ps}) -> {} / {e}", render_c_type(ret)),
+                Some(_) => format!("({ps}) -> {} / {{}}", render_c_type(ret)),
+                None => format!("({ps}) -> {}", render_c_type(ret)),
             }
         }
     }
@@ -161,14 +158,15 @@ impl TypeChecker {
                 let mut variants = HashMap::new();
                 for v in &d.variants {
                     let mut payload = Vec::new();
-                    for (payload_index, t) in v.payload_types.iter().enumerate() {
-                        match parse_v_type(t) {
+                    for spanned_ty in &v.payload {
+                        match v_type_from_type_expr(&spanned_ty.value) {
                             Some(ty) => payload.push(ty),
-                            None => self.errors.push(TypeError::new(
-                                payload_node_id(v, payload_index),
+                            None => self.errors.push(TypeError::with_span(
+                                0,
+                                spanned_ty.span,
                                 format!(
                                     "variant payload type must be a value type, got {}",
-                                    normalize_type_text(t)
+                                    spanned_ty.value.display()
                                 ),
                             )),
                         }
@@ -189,11 +187,12 @@ impl TypeChecker {
                     let params = op
                         .params
                         .iter()
-                        .map(|p| match parse_v_type(&p.ty_repr) {
+                        .map(|p| match v_type_from_type_expr(&p.ty.value) {
                             Some(ty) => ty,
                             None => {
-                                self.errors.push(TypeError::new(
-                                    lir::source_id("param", p.source_span).0,
+                                self.errors.push(TypeError::with_span(
+                                    0,
+                                    p.span,
                                     format!(
                                         "operation parameter `{}` must be a value type",
                                         p.name
@@ -203,16 +202,17 @@ impl TypeChecker {
                             }
                         })
                         .collect::<Vec<_>>();
-                    let ret = match op.return_type_repr.as_ref() {
-                        Some(r) => match parse_c_type(r) {
+                    let ret = match op.return_type.as_ref() {
+                        Some(r) => match c_type_from_type_expr(&r.value) {
                             Some(ct) => ct,
                             None => {
-                                self.errors.push(TypeError::new(
-                                    op.id.0,
+                                self.errors.push(TypeError::with_span(
+                                    0,
+                                    r.span,
                                     format!(
                                         "operation return type must be a computation type (e.g. `produce {}`), got `{}`",
-                                        normalize_type_text(r),
-                                        normalize_type_text(r),
+                                        r.value.display(),
+                                        r.value.display(),
                                     ),
                                 ));
                                 CompType::Produce(Box::new(ValueType::Named("__invalid".to_owned())))
@@ -256,29 +256,29 @@ impl TypeChecker {
     fn predeclare_fn_common(
         &mut self,
         name: &str,
-        params: &[lir::ParamDecl],
-        return_type_repr: Option<&str>,
-        cap_repr: Option<&str>,
+        params: &[lir::Param],
+        return_type: Option<&TypeExpr>,
+        cap: Option<&CapRef>,
     ) {
         let param_types = params
             .iter()
             .map(|p| {
-                parse_v_type(&p.ty_repr).unwrap_or_else(|| ValueType::Named("__invalid".to_owned()))
+                v_type_from_type_expr(&p.ty.value).unwrap_or_else(|| ValueType::Named("__invalid".to_owned()))
             })
             .collect::<Vec<_>>();
-        let ret = match return_type_repr {
-            Some(ret) => parse_c_type(ret).unwrap_or_else(|| {
+        let ret = match return_type {
+            Some(te) => c_type_from_type_expr(te).unwrap_or_else(|| {
                 CompType::Produce(Box::new(ValueType::Named("Unit".to_owned())))
             }),
             None => CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))),
         };
-        let cap = cap_repr.map(|e| normalize_cap_text(&normalize_type_text(e)));
+        let cap_str = cap.map(|c| c.name().unwrap_or("").to_owned());
         self.fn_defs.insert(
             name.to_owned(),
             CompType::Fn {
                 params: param_types,
                 ret: Box::new(ret),
-                cap,
+                cap: cap_str,
             },
         );
     }
@@ -287,8 +287,8 @@ impl TypeChecker {
         self.predeclare_fn_common(
             &f.name,
             &f.params,
-            f.return_type_repr.as_deref(),
-            f.cap_repr.as_deref(),
+            f.return_type.as_ref().map(|t| &t.value),
+            f.cap.as_ref(),
         );
     }
 
@@ -296,8 +296,8 @@ impl TypeChecker {
         self.predeclare_fn_common(
             &f.name,
             &f.params,
-            f.return_type_repr.as_deref(),
-            f.cap_repr.as_deref(),
+            f.return_type.as_ref().map(|t| &t.value),
+            f.cap.as_ref(),
         );
     }
 
@@ -305,9 +305,10 @@ impl TypeChecker {
         let mut env = HashMap::new();
         let mut param_types = Vec::new();
         for p in &f.params {
-            let Some(ty) = parse_v_type(&p.ty_repr) else {
-                self.errors.push(TypeError::new(
-                    param_node_id(p),
+            let Some(ty) = v_type_from_type_expr(&p.ty.value) else {
+                self.errors.push(TypeError::with_span(
+                    0,
+                    p.span,
                     format!("function parameter `{}` must be a value type", p.name),
                 ));
                 continue;
@@ -316,14 +317,12 @@ impl TypeChecker {
             param_types.push(ty);
         }
 
-        let cap = f
-            .cap_repr
-            .as_ref()
-            .map(|e| normalize_cap_text(&normalize_type_text(e)));
-        let expected = if let Some(ret) = &f.return_type_repr {
-            let Some(expected) = parse_c_type(ret) else {
-                self.errors.push(TypeError::new(
-                    type_sig_node_id("fn-return", f.return_type_span, f.id),
+        let cap = f.cap.as_ref().map(|c| c.name().unwrap_or("").to_owned());
+        let expected = if let Some(ret) = &f.return_type {
+            let Some(expected) = c_type_from_type_expr(&ret.value) else {
+                self.errors.push(TypeError::with_span(
+                    0,
+                    ret.span,
                     "function return type must be a computation type".to_owned(),
                 ));
                 return;
@@ -341,8 +340,9 @@ impl TypeChecker {
         self.fn_defs.insert(f.name.clone(), fn_ty.clone());
 
         let Some(body) = unwrap_fn_body(f) else {
-            self.errors.push(TypeError::new(
-                f.id.0,
+            self.errors.push(TypeError::with_span(
+                0,
+                f.span,
                 "malformed LIR function value: expected thunk/lambda spine".to_owned(),
             ));
             return;
@@ -357,23 +357,22 @@ impl TypeChecker {
     fn check_extern_fn(&mut self, f: &lir::ExternFnDecl) {
         let mut param_types = Vec::new();
         for p in &f.params {
-            let Some(ty) = parse_v_type(&p.ty_repr) else {
-                self.errors.push(TypeError::new(
-                    param_node_id(p),
+            let Some(ty) = v_type_from_type_expr(&p.ty.value) else {
+                self.errors.push(TypeError::with_span(
+                    0,
+                    p.span,
                     format!("function parameter `{}` must be a value type", p.name),
                 ));
                 continue;
             };
             param_types.push(ty);
         }
-        let cap = f
-            .cap_repr
-            .as_ref()
-            .map(|e| normalize_cap_text(&normalize_type_text(e)));
-        let ret = if let Some(ret) = &f.return_type_repr {
-            let Some(expected) = parse_c_type(ret) else {
-                self.errors.push(TypeError::new(
-                    type_sig_node_id("extern-fn-return", f.return_type_span, f.id),
+        let cap = f.cap.as_ref().map(|c| c.name().unwrap_or("").to_owned());
+        let ret = if let Some(ret) = &f.return_type {
+            let Some(expected) = c_type_from_type_expr(&ret.value) else {
+                self.errors.push(TypeError::with_span(
+                    0,
+                    ret.span,
                     "function return type must be a computation type".to_owned(),
                 ));
                 return;
@@ -411,8 +410,31 @@ impl TypeChecker {
         ) = (expr, expected)
         {
             if let Some(def) = self.cap_defs.get(cap_name).cloned() {
-                self.check_bundle_against_cap(entries, &def, cap_name, id.0, env, None);
+                self.check_bundle_against_cap(entries, &def, cap_name, id.0 as u64, env, None);
                 return;
+            }
+        }
+        // For constructor expressions, pass expected type to resolve generics
+        if matches!(expr, Expr::Ctor { .. } | Expr::Roll { .. }) {
+            let expected_ct = CompType::Produce(Box::new(expected.clone()));
+            match self.infer_bundle_expr_as_comp(expr, env, Some(&expected_ct)) {
+                BundleExprInferResult::Typed(ct) => {
+                    if let CompType::Produce(actual) = ct {
+                        if &*actual != expected {
+                            self.errors.push(TypeError::new(
+                                expr_node_id(expr),
+                                format!(
+                                    "type mismatch: expected {}, got {}",
+                                    render_v_type(expected),
+                                    render_v_type(&actual)
+                                ),
+                            ));
+                        }
+                    }
+                    return;
+                }
+                BundleExprInferResult::Error => return,
+                BundleExprInferResult::NotBundleExpr => {}
             }
         }
         if let Some(actual) = self.infer_v_expr(expr, env) {
@@ -431,7 +453,7 @@ impl TypeChecker {
 
     fn check_bundle_against_cap(
         &mut self,
-        entries: &[lir::LirBundleEntry],
+        entries: &[lir::BundleEntry],
         def: &CapDef,
         cap_name: &str,
         node_id: u64,
@@ -544,20 +566,6 @@ impl TypeChecker {
             ));
             return BundleExprInferResult::Error;
         };
-        let Some(owner_by_variant) = self.variant_owner.get(&member) else {
-            self.errors.push(TypeError::new(
-                node_id,
-                format!("unknown constructor `{owner}.{member}`"),
-            ));
-            return BundleExprInferResult::Error;
-        };
-        if owner_by_variant != &owner {
-            self.errors.push(TypeError::new(
-                node_id,
-                format!("constructor `{owner}.{member}` does not belong to `{owner}`"),
-            ));
-            return BundleExprInferResult::Error;
-        }
         let Some(payload_types) = def.variants.get(&member).cloned() else {
             self.errors.push(TypeError::new(
                 node_id,
@@ -649,7 +657,10 @@ impl TypeChecker {
                 unresolved.push(generic.clone());
             }
         }
-        if !unresolved.is_empty() {
+        // For zero-payload constructors (e.g. List.nil), unresolved generics
+        // are allowed — the type parameter can only be inferred from context.
+        // Use the generic name as-is for the result type.
+        if !unresolved.is_empty() && !payload_types.is_empty() {
             self.errors.push(TypeError::new(
                 node_id,
                 format!(
@@ -666,8 +677,12 @@ impl TypeChecker {
             let resolved_args = def
                 .generics
                 .iter()
-                .filter_map(|generic| subst.get(generic))
-                .map(render_v_type)
+                .map(|generic| {
+                    subst
+                        .get(generic)
+                        .map(render_v_type)
+                        .unwrap_or_else(|| generic.clone())
+                })
                 .collect::<Vec<_>>();
             ValueType::Named(format!("{owner}[{}]", resolved_args.join(", ")))
         };
@@ -687,7 +702,7 @@ impl TypeChecker {
         BundleExprInferResult::Typed(resolved)
     }
 
-    /// Shared match-arm preparation: infer scrutinee, check exhaustiveness, parse patterns,
+    /// Shared match-arm preparation: infer scrutinee, check exhaustiveness, validate patterns,
     /// validate variant-as-binding, and build per-arm environments.
     fn prepare_match_arms<'a>(
         &mut self,
@@ -708,35 +723,27 @@ impl TypeChecker {
         }
         arms.iter()
             .map(|arm| {
-                let mut parsed_pattern = parse_match_pattern(&arm.pattern);
-                if parsed_pattern.is_none() {
-                    self.errors.push(TypeError::new(
-                        arm_node_id(arm),
-                        invalid_pattern_message(&arm.pattern),
-                    ));
-                }
-                if let (Some(data_def), Some(Pattern::Bind(name))) =
-                    (scrutinee_data.as_ref(), parsed_pattern.as_ref())
+                let pat = &arm.pattern;
+                let mut skip_bind = false;
+                if let (Some(data_def), Pattern::Bind(name)) =
+                    (scrutinee_data.as_ref(), pat)
                 {
                     if data_def.variants.contains_key(name) {
-                        self.errors.push(TypeError::new(
-                            arm_node_id(arm),
+                        self.errors.push(TypeError::with_span(
+                            0,
+                            arm.span,
                             format!("variant pattern `{name}` must be written `.{name}`"),
                         ));
-                        parsed_pattern = None;
+                        skip_bind = true;
                     }
                 }
                 let mut arm_env = env.clone();
-                if let (Some(ty), Some(pattern)) =
-                    (scrutinee_ty.as_ref(), parsed_pattern.as_ref())
-                {
-                    self.bind_pattern(pattern, ty, &mut arm_env, arm_node_id(arm));
+                if !skip_bind {
+                    if let Some(ty) = scrutinee_ty.as_ref() {
+                        self.bind_pattern(pat, ty, &mut arm_env, arm.span);
+                    }
                 } else if let Some(ty) = &scrutinee_ty {
-                    for binding in parsed_pattern
-                        .as_ref()
-                        .map(pattern_bindings)
-                        .unwrap_or_default()
-                    {
+                    for binding in pat.bindings() {
                         arm_env.insert(binding, ty.clone());
                     }
                 }
@@ -778,7 +785,12 @@ impl TypeChecker {
 
         if let CompType::Produce(inner) = expected {
             if let Expr::Produce { expr, .. } = expr {
-                self.check_v_expr(expr, inner, env);
+                if is_syntactic_computation_expr(expr) {
+                    // Implicit sequencing: `produce comp` checks comp against `produce T`
+                    self.check_c_expr(expr, expected, env);
+                } else {
+                    self.check_v_expr(expr, inner, env);
+                }
                 return;
             }
             if is_syntactic_value_expr(expr) {
@@ -788,7 +800,7 @@ impl TypeChecker {
         }
 
         match expr {
-            Expr::LetIn {
+            Expr::Let {
                 name, value, body, ..
             } => {
                 let Some(inner) = self.infer_let_value_type(value, env) else {
@@ -804,7 +816,7 @@ impl TypeChecker {
                 id,
                 ..
             } => {
-                let prepared = self.prepare_match_arms(scrutinee, arms, env, id.0);
+                let prepared = self.prepare_match_arms(scrutinee, arms, env, id.0 as u64);
                 for (body, arm_env) in prepared {
                     self.check_c_expr(body, expected, &arm_env);
                 }
@@ -818,7 +830,7 @@ impl TypeChecker {
             } => {
                 if self.cap_defs.get(cap).is_none() {
                     self.errors.push(TypeError::new(
-                        id.0,
+                        id.0 as u64,
                         format!("unknown cap `{cap}`"),
                     ));
                     let _ = self.infer_c_expr(handler, env);
@@ -845,7 +857,7 @@ impl TypeChecker {
                                 entries,
                                 &def,
                                 cap,
-                                bundle_id.0,
+                                bundle_id.0 as u64,
                                 env,
                                 Some(expected),
                             );
@@ -881,7 +893,7 @@ impl TypeChecker {
                     Some(ty.clone())
                 } else {
                     self.errors.push(TypeError::new(
-                        id.0,
+                        id.0 as u64,
                         format!("unknown variable `{name}`"),
                     ));
                     None
@@ -895,17 +907,17 @@ impl TypeChecker {
             }
             Expr::Unroll { expr, .. } => self.infer_v_expr(expr, env),
             Expr::Ann {
-                expr, ty_repr, id, ..
+                expr, ty, id, ..
             } => {
-                if let Some(v_ty) = parse_v_type(ty_repr) {
+                if let Some(v_ty) = v_type_from_type_expr(ty) {
                     self.check_v_expr(expr, &v_ty, env);
                     Some(v_ty)
                 } else {
                     self.errors.push(TypeError::new(
-                        id.0,
+                        id.0 as u64,
                         format!(
                             "annotation type `{}` is not a valid value type",
-                            normalize_type_text(ty_repr)
+                            ty.display()
                         ),
                     ));
                     None
@@ -913,7 +925,7 @@ impl TypeChecker {
             }
             Expr::Bundle { id, .. } => {
                 self.errors.push(TypeError::new(
-                    id.0,
+                    id.0 as u64,
                     "cannot infer type of bundle expression; provide type context".to_owned(),
                 ));
                 None
@@ -925,20 +937,50 @@ impl TypeChecker {
             | Expr::Perform { .. }
             | Expr::Handle { .. }
             | Expr::Member { .. } => {
-                self.errors.push(TypeError::new(
-                    expr_node_id(expr),
-                    format!(
-                        "expected value expression, got computation `{}`; if you need its result, bind it first with `let`",
-                        render_expr_head(expr)
-                    ),
-                ));
-                None
+                self.implicit_sequence_as_value(expr, env)
             }
             Expr::Error { .. } => None,
             _ => {
+                if is_syntactic_computation_expr(expr) {
+                    self.implicit_sequence_as_value(expr, env)
+                } else {
+                    self.errors.push(TypeError::new(
+                        expr_node_id(expr),
+                        "expected value expression".to_owned(),
+                    ));
+                    None
+                }
+            }
+        }
+    }
+
+    /// Implicit ANF sequencing: computation in value position.
+    /// `f(x)` as a value ≡ `let tmp = f(x) in tmp`.
+    /// Zero-arg functions `f()` are auto-applied.
+    fn implicit_sequence_as_value(
+        &mut self,
+        expr: &Expr,
+        env: &HashMap<String, ValueType>,
+    ) -> Option<ValueType> {
+        let ct = self.infer_c_expr(expr, env)?;
+        self.extract_produced_value(&ct, expr)
+    }
+
+    fn extract_produced_value(&mut self, ct: &CompType, expr: &Expr) -> Option<ValueType> {
+        match ct {
+            CompType::Produce(vt) => Some(*vt.clone()),
+            // Auto-apply zero-arg functions: `f` with type `() -> produce T` gives `T`
+            CompType::Fn {
+                params, ret, ..
+            } if params.is_empty() => self.extract_produced_value(ret, expr),
+            other => {
                 self.errors.push(TypeError::new(
                     expr_node_id(expr),
-                    "expected value expression".to_owned(),
+                    format!(
+                        "expected value expression, got computation `{}` of type `{}`",
+                        render_expr_head(expr),
+                        render_c_type(other)
+                    ),
                 ));
                 None
             }
@@ -950,7 +992,7 @@ impl TypeChecker {
             Expr::Ident { name, id, .. } => {
                 if env.contains_key(name) {
                     self.errors.push(TypeError::new(
-                        id.0,
+                        id.0 as u64,
                         format!("`{name}` is a value, not a computation"),
                     ));
                     None
@@ -958,7 +1000,7 @@ impl TypeChecker {
                     Some(ty.clone())
                 } else {
                     self.errors.push(TypeError::new(
-                        id.0,
+                        id.0 as u64,
                         format!("unknown computation `{name}`"),
                     ));
                     None
@@ -972,28 +1014,34 @@ impl TypeChecker {
                 None
             }
             Expr::Ann {
-                expr, ty_repr, id, ..
+                expr, ty, id, ..
             } => {
-                if let Some(c_ty) = parse_c_type(ty_repr) {
+                if let Some(c_ty) = c_type_from_type_expr(ty) {
                     self.check_c_expr(expr, &c_ty, env);
                     Some(c_ty)
-                } else if let Some(v_ty) = parse_v_type(ty_repr) {
+                } else if let Some(v_ty) = v_type_from_type_expr(ty) {
                     self.check_v_expr(expr, &v_ty, env);
                     Some(CompType::Produce(Box::new(v_ty)))
                 } else {
                     self.errors.push(TypeError::new(
-                        id.0,
+                        id.0 as u64,
                         format!(
                             "annotation type `{}` is not a valid type",
-                            normalize_type_text(ty_repr)
+                            ty.display()
                         ),
                     ));
                     None
                 }
             }
             Expr::Produce { expr, .. } => {
-                let inner = self.infer_v_expr(expr, env)?;
-                Some(CompType::Produce(Box::new(inner)))
+                // If inner is a syntactic value, infer as value
+                if !is_syntactic_computation_expr(expr) {
+                    let inner = self.infer_v_expr(expr, env)?;
+                    return Some(CompType::Produce(Box::new(inner)));
+                }
+                // Implicit sequencing: `produce comp` ≡ `let x = comp in produce x`
+                let vt = self.implicit_sequence_as_value(expr, env)?;
+                Some(CompType::Produce(Box::new(vt)))
             }
             Expr::Force { expr, .. } => {
                 if let Expr::Ident { name, .. } = expr.as_ref() {
@@ -1061,7 +1109,7 @@ impl TypeChecker {
                 }
                 Some(*ret)
             }
-            Expr::LetIn {
+            Expr::Let {
                 name, value, body, ..
             } => {
                 let inner = self.infer_let_value_type(value, env)?;
@@ -1075,14 +1123,14 @@ impl TypeChecker {
                 id,
                 ..
             } => {
-                let prepared = self.prepare_match_arms(scrutinee, arms, env, id.0);
+                let prepared = self.prepare_match_arms(scrutinee, arms, env, id.0 as u64);
                 let mut body_ty = None;
                 for (body, arm_env) in prepared {
                     let arm_ty = self.infer_c_expr(body, &arm_env)?;
                     if let Some(expected) = &body_ty {
                         if *expected != arm_ty {
                             self.errors.push(TypeError::new(
-                                id.0,
+                                id.0 as u64,
                                 format!(
                                     "match arm type mismatch: expected {}, got {}",
                                     render_c_type(expected),
@@ -1100,7 +1148,7 @@ impl TypeChecker {
             Expr::Perform { cap, id, .. } => {
                 if self.cap_defs.get(cap).is_none() {
                     self.errors.push(TypeError::new(
-                        id.0,
+                        id.0 as u64,
                         format!("unknown cap `{cap}`"),
                     ));
                     return None;
@@ -1110,7 +1158,7 @@ impl TypeChecker {
                     Some(CompType::Produce(Box::new(handler_ty.clone())))
                 } else {
                     self.errors.push(TypeError::new(
-                        id.0,
+                        id.0 as u64,
                         format!(
                             "cap `{cap}` is not handled in this context; \
                              wrap in `handle {cap} with <handler> in ...`"
@@ -1128,7 +1176,7 @@ impl TypeChecker {
             } => {
                 if self.cap_defs.get(cap).is_none() {
                     self.errors.push(TypeError::new(
-                        id.0,
+                        id.0 as u64,
                         format!("unknown cap `{cap}`"),
                     ));
                     let _ = self.infer_c_expr(handler, env);
@@ -1154,7 +1202,7 @@ impl TypeChecker {
                                 entries,
                                 &def,
                                 cap,
-                                bundle_id.0,
+                                bundle_id.0 as u64,
                                 env,
                                 body_comp_type.as_ref(),
                             );
@@ -1180,7 +1228,7 @@ impl TypeChecker {
                         CompType::Produce(inner) => *inner,
                         other => {
                             self.errors.push(TypeError::new(
-                                id.0,
+                                id.0 as u64,
                                 format!(
                                     "member access `.{field}` on computation `{}`",
                                     render_c_type(&other)
@@ -1197,7 +1245,7 @@ impl TypeChecker {
                             return Some(op_ty.clone());
                         }
                         self.errors.push(TypeError::new(
-                            id.0,
+                            id.0 as u64,
                             format!("cap `{name}` has no operation `{field}`"),
                         ));
                         return None;
@@ -1205,7 +1253,7 @@ impl TypeChecker {
                 }
 
                 self.errors.push(TypeError::new(
-                    id.0,
+                    id.0 as u64,
                     format!(
                         "member access `.{field}` on type `{}`",
                         render_v_type(&obj_ty)
@@ -1232,7 +1280,7 @@ impl TypeChecker {
         pattern: &Pattern,
         expected: &ValueType,
         env: &mut HashMap<String, ValueType>,
-        node_id: u64,
+        span: Span,
     ) {
         match pattern {
             Pattern::Wildcard => {}
@@ -1241,8 +1289,9 @@ impl TypeChecker {
             }
             Pattern::Ctor { name, args } => {
                 let Some(data_name) = nominal_head_name(expected) else {
-                    self.errors.push(TypeError::new(
-                        node_id,
+                    self.errors.push(TypeError::with_span(
+                        0,
+                        span,
                         format!(
                             "constructor pattern `{name}` used on non-data type {}",
                             render_v_type(expected)
@@ -1251,16 +1300,18 @@ impl TypeChecker {
                     return;
                 };
                 let Some(data_def) = self.data_defs.get(&data_name).cloned() else {
-                    self.errors.push(TypeError::new(
-                        node_id,
+                    self.errors.push(TypeError::with_span(
+                        0,
+                        span,
                         format!("unknown data type `{data_name}` in match scrutinee"),
                     ));
                     return;
                 };
                 if let Some(payload_types) = data_def.variants.get(name) {
                     if payload_types.len() != args.len() {
-                        self.errors.push(TypeError::new(
-                            node_id,
+                        self.errors.push(TypeError::with_span(
+                            0,
+                            span,
                             format!(
                                 "pattern `{name}` expects {} args, got {}",
                                 payload_types.len(),
@@ -1275,7 +1326,7 @@ impl TypeChecker {
                         ValueType::Named(named) => {
                             let (head, args_text) = split_nominal_type_args(named);
                             self.generic_subst_from_named_type(
-                                &head, &args_text, &data_def, node_id,
+                                &head, &args_text, &data_def, span,
                             )
                             .unwrap_or_default()
                         }
@@ -1283,11 +1334,12 @@ impl TypeChecker {
                     };
                     for (arg, payload_ty) in args.iter().zip(payload_types.iter()) {
                         let expected_payload = subst_v_type(payload_ty, &subst);
-                        self.bind_pattern(arg, &expected_payload, env, node_id);
+                        self.bind_pattern(arg, &expected_payload, env, span);
                     }
                 } else {
-                    self.errors.push(TypeError::new(
-                        node_id,
+                    self.errors.push(TypeError::with_span(
+                        0,
+                        span,
                         format!("unknown variant `{name}` in match pattern"),
                     ));
                 }
@@ -1300,14 +1352,15 @@ impl TypeChecker {
         expected_head: &str,
         expected_args_text: &[String],
         data_def: &DataDef,
-        node_id: u64,
+        span: Span,
     ) -> Option<HashMap<String, ValueType>> {
         if data_def.generics.is_empty() {
             return Some(HashMap::new());
         }
         if expected_args_text.len() != data_def.generics.len() {
-            self.errors.push(TypeError::new(
-                node_id,
+            self.errors.push(TypeError::with_span(
+                0,
+                span,
                 format!(
                     "type argument count mismatch for `{expected_head}`: expected {}, got {}",
                     data_def.generics.len(),
@@ -1319,8 +1372,9 @@ impl TypeChecker {
         let mut subst = HashMap::with_capacity(data_def.generics.len());
         for (generic, arg_text) in data_def.generics.iter().zip(expected_args_text.iter()) {
             let Some(arg_ty) = parse_v_type(arg_text) else {
-                self.errors.push(TypeError::new(
-                    node_id,
+                self.errors.push(TypeError::with_span(
+                    0,
+                    span,
                     format!("invalid type argument `{arg_text}` for `{expected_head}`"),
                 ));
                 return None;
@@ -1537,20 +1591,19 @@ impl TypeChecker {
         let mut matrix = Vec::new();
 
         for arm in arms {
-            let Some(pattern) = parse_match_pattern(&arm.pattern) else {
-                continue;
-            };
-            if !self.pattern_compatible_with_type(&pattern, scrutinee_ty) {
+            let pattern = &arm.pattern;
+            if !self.pattern_compatible_with_type(pattern, scrutinee_ty) {
                 continue;
             }
-            if !self.is_useful_pattern(&matrix, scrutinee_ty, &pattern) {
-                self.errors.push(TypeError::new(
-                    arm_node_id(arm),
+            if !self.is_useful_pattern(&matrix, scrutinee_ty, pattern) {
+                self.errors.push(TypeError::with_span(
+                    0,
+                    arm.span,
                     "unreachable match arm: pattern already covered".to_owned(),
                 ));
                 continue;
             }
-            matrix.push(vec![pattern]);
+            matrix.push(vec![pattern.clone()]);
         }
 
         let uncovered = if matrix.is_empty() {
@@ -1823,6 +1876,39 @@ impl TypeChecker {
     }
 }
 
+/// Convert a `TypeExpr` to a `ValueType`.
+/// TypeExpr only represents named/parameterized types, so we always succeed.
+fn v_type_from_type_expr(te: &TypeExpr) -> Option<ValueType> {
+    match te {
+        TypeExpr::Named(n) => Some(ValueType::Named(n.clone())),
+        TypeExpr::App { head, args } => {
+            let args_str = args
+                .iter()
+                .map(|a| a.display())
+                .collect::<Vec<_>>()
+                .join(", ");
+            Some(ValueType::Named(format!("{head}[{args_str}]")))
+        }
+        TypeExpr::Thunk(inner) => {
+            let ct = c_type_from_type_expr(inner)?;
+            Some(ValueType::Thunk(Box::new(ct)))
+        }
+        TypeExpr::Produce(_) => None, // `produce T` is not a value type
+    }
+}
+
+/// Convert a `TypeExpr` to a `CompType`.
+fn c_type_from_type_expr(te: &TypeExpr) -> Option<CompType> {
+    match te {
+        TypeExpr::Produce(inner) => {
+            let vt = v_type_from_type_expr(inner)?;
+            Some(CompType::Produce(Box::new(vt)))
+        }
+        // Bare value type is shorthand for `produce T`
+        _ => v_type_from_type_expr(te).map(|vt| CompType::Produce(Box::new(vt))),
+    }
+}
+
 fn parse_v_type(repr: &str) -> Option<ValueType> {
     let text = repr.trim();
     if let Some(rest) = text.strip_prefix("produce") {
@@ -1840,7 +1926,8 @@ fn parse_c_type(repr: &str) -> Option<CompType> {
     if let Some(rest) = text.strip_prefix("produce") {
         return Some(CompType::Produce(Box::new(parse_v_type(rest)?)));
     }
-    None
+    // Bare value type is shorthand for `produce T`
+    parse_v_type(text).map(|vt| CompType::Produce(Box::new(vt)))
 }
 
 fn canonicalize_named_type_text(text: &str) -> String {
@@ -1920,57 +2007,6 @@ fn subst_c_type(ty: &CompType, subst: &HashMap<String, ValueType>) -> CompType {
     }
 }
 
-fn normalize_type_text(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn normalize_cap_text(text: &str) -> String {
-    text.replace("{ }", "{}")
-}
-
-fn parse_match_pattern(pattern: &str) -> Option<Pattern> {
-    let mut parser = PatternParser::new(pattern);
-    let pat = parser.parse_pattern();
-    if parser.failed || parser.peek().is_some() {
-        return None;
-    }
-    Some(pat)
-}
-
-fn invalid_pattern_message(pattern: &str) -> String {
-    let text = pattern.trim();
-    if text.contains('(') && !text.starts_with('.') {
-        "constructor pattern must start with `.`".to_owned()
-    } else {
-        "invalid match pattern".to_owned()
-    }
-}
-
-fn pattern_bindings(pat: &Pattern) -> Vec<String> {
-    let mut out = Vec::new();
-    collect_pattern_bindings(pat, &mut out);
-    out
-}
-
-fn collect_pattern_bindings(pat: &Pattern, out: &mut Vec<String>) {
-    match pat {
-        Pattern::Wildcard => {}
-        Pattern::Bind(name) => out.push(name.clone()),
-        Pattern::Ctor { args, .. } => {
-            for arg in args {
-                collect_pattern_bindings(arg, out);
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Pattern {
-    Wildcard,
-    Bind(String),
-    Ctor { name: String, args: Vec<Pattern> },
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ConstructorSig {
     name: String,
@@ -1984,180 +2020,11 @@ fn render_pattern(pattern: &Pattern) -> String {
         Pattern::Ctor { name, args } => format!(
             ".{name}({})",
             args.iter()
-                .map(render_pattern)
+                .map(|p| render_pattern(p))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PatternToken {
-    Ident(String),
-    Underscore,
-    Dot,
-    LParen,
-    RParen,
-    Comma,
-}
-
-struct PatternParser {
-    tokens: Vec<PatternToken>,
-    index: usize,
-    failed: bool,
-}
-
-impl PatternParser {
-    fn new(text: &str) -> Self {
-        Self {
-            tokens: lex_pattern(text),
-            index: 0,
-            failed: false,
-        }
-    }
-
-    fn parse_pattern(&mut self) -> Pattern {
-        let Some(token) = self.bump() else {
-            self.failed = true;
-            return Pattern::Wildcard;
-        };
-        match token {
-            PatternToken::Underscore => Pattern::Wildcard,
-            PatternToken::Dot => {
-                let Some(PatternToken::Ident(name)) = self.bump() else {
-                    self.failed = true;
-                    return Pattern::Wildcard;
-                };
-                self.parse_constructor_pattern(name)
-            }
-            PatternToken::Ident(head) => {
-                if head == "let" || head == "mut" {
-                    let Some(PatternToken::Ident(name)) = self.bump() else {
-                        self.failed = true;
-                        return Pattern::Wildcard;
-                    };
-                    if is_binding_name(&name) {
-                        Pattern::Bind(name)
-                    } else {
-                        self.failed = true;
-                        Pattern::Wildcard
-                    }
-                } else if is_binding_name(&head) {
-                    Pattern::Bind(head)
-                } else {
-                    self.failed = true;
-                    Pattern::Wildcard
-                }
-            }
-            _ => {
-                self.failed = true;
-                Pattern::Wildcard
-            }
-        }
-    }
-
-    fn peek(&self) -> Option<&PatternToken> {
-        self.tokens.get(self.index)
-    }
-
-    fn parse_constructor_pattern(&mut self, name: String) -> Pattern {
-        if self.peek() == Some(&PatternToken::LParen) {
-            self.bump(); // (
-            let mut args = Vec::new();
-            if self.peek() != Some(&PatternToken::RParen) {
-                loop {
-                    let arg = self.parse_pattern();
-                    args.push(arg);
-                    if self.peek() == Some(&PatternToken::Comma) {
-                        self.bump();
-                        continue;
-                    }
-                    break;
-                }
-            }
-            if self.peek() == Some(&PatternToken::RParen) {
-                self.bump();
-                Pattern::Ctor { name, args }
-            } else {
-                self.failed = true;
-                Pattern::Wildcard
-            }
-        } else {
-            Pattern::Ctor {
-                name,
-                args: Vec::new(),
-            }
-        }
-    }
-
-    fn bump(&mut self) -> Option<PatternToken> {
-        let out = self.tokens.get(self.index).cloned();
-        if out.is_some() {
-            self.index += 1;
-        }
-        out
-    }
-}
-
-fn lex_pattern(text: &str) -> Vec<PatternToken> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    let bytes = text.as_bytes();
-    while i < bytes.len() {
-        let ch = text[i..].chars().next().unwrap_or('\0');
-        if ch.is_whitespace() {
-            i += ch.len_utf8();
-            continue;
-        }
-        match ch {
-            '_' => {
-                out.push(PatternToken::Underscore);
-                i += 1;
-            }
-            '.' => {
-                out.push(PatternToken::Dot);
-                i += 1;
-            }
-            '(' => {
-                out.push(PatternToken::LParen);
-                i += 1;
-            }
-            ')' => {
-                out.push(PatternToken::RParen);
-                i += 1;
-            }
-            ',' => {
-                out.push(PatternToken::Comma);
-                i += 1;
-            }
-            _ => {
-                if ch == '_' || ch.is_alphabetic() {
-                    let start = i;
-                    i += ch.len_utf8();
-                    while i < bytes.len() {
-                        let c = text[i..].chars().next().unwrap_or('\0');
-                        if c == '_' || c.is_alphanumeric() {
-                            i += c.len_utf8();
-                        } else {
-                            break;
-                        }
-                    }
-                    out.push(PatternToken::Ident(text[start..i].to_owned()));
-                } else {
-                    i += ch.len_utf8();
-                }
-            }
-        }
-    }
-    out
-}
-
-fn is_binding_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first == '_' || first.is_alphabetic()) && chars.all(|c| c == '_' || c.is_alphanumeric())
 }
 
 fn nominal_head_name(ty: &ValueType) -> Option<String> {
@@ -2184,7 +2051,7 @@ fn is_syntactic_computation_expr(expr: &Expr) -> bool {
         Expr::Produce { .. }
             | Expr::Force { .. }
             | Expr::Apply { .. }
-            | Expr::LetIn { .. }
+            | Expr::Let { .. }
             | Expr::Match { .. }
             | Expr::Ctor { .. }
             | Expr::Roll { .. }
@@ -2225,7 +2092,7 @@ fn decompose_bundle_expr(expr: &Expr) -> Option<(String, String, &[Expr], u64, b
                 owner.to_owned(),
                 member.to_owned(),
                 args.as_slice(),
-                id.0,
+                id.0 as u64,
                 *called,
             ))
         }
@@ -2238,7 +2105,7 @@ fn decompose_bundle_expr(expr: &Expr) -> Option<(String, String, &[Expr], u64, b
                     owner.to_owned(),
                     member.to_owned(),
                     args.as_slice(),
-                    id.0,
+                    id.0 as u64,
                     *called,
                 ))
             }
@@ -2268,53 +2135,7 @@ fn decompose_apply_chain(expr: &Expr) -> Option<(&Expr, Vec<&Expr>, u64)> {
 }
 
 fn expr_node_id(expr: &Expr) -> u64 {
-    match expr {
-        Expr::Ident { id, .. } => id.0,
-        Expr::String { id, .. } => id.0,
-        Expr::Produce { id, .. } => id.0,
-        Expr::Thunk { id, .. } => id.0,
-        Expr::Force { id, .. } => id.0,
-        Expr::Lambda { id, .. } => id.0,
-        Expr::Apply { id, .. } => id.0,
-        Expr::Unroll { id, .. } => id.0,
-        Expr::LetIn { id, .. } => id.0,
-        Expr::Match { id, .. } => id.0,
-        Expr::Ctor { id, .. } => id.0,
-        Expr::Roll { id, .. } => id.0,
-        Expr::Perform { id, .. } => id.0,
-        Expr::Handle { id, .. } => id.0,
-        Expr::Number { id, .. } => id.0,
-        Expr::Ann { id, .. } => id.0,
-        Expr::Error { id, .. } => id.0,
-        Expr::Bundle { id, .. } => id.0,
-        Expr::Member { id, .. } => id.0,
-    }
-}
-
-fn param_node_id(param: &lir::ParamDecl) -> u64 {
-    lir::source_id("param", param.source_span).0
-}
-
-fn payload_node_id(variant: &lir::VariantDecl, index: usize) -> u64 {
-    variant
-        .payload_spans
-        .get(index)
-        .copied()
-        .map(|span| lir::source_id("variant-payload", span).0)
-        .unwrap_or(variant.id.0)
-}
-
-fn type_sig_node_id(
-    tag: &str,
-    span: Option<Span>,
-    fallback: lir::ContentHash,
-) -> u64 {
-    span.map(|span| lir::source_id(tag, span).0)
-        .unwrap_or(fallback.0)
-}
-
-fn arm_node_id(arm: &lir::MatchArm) -> u64 {
-    lir::source_id("match-arm", arm.source_span).0
+    expr.id().0 as u64
 }
 
 fn unwrap_fn_body<'a>(func: &'a lir::FnDecl) -> Option<&'a Expr> {
