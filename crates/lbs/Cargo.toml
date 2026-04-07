@@ -1,0 +1,11 @@
+[package]
+name = "lbs"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lbs"
+path = "src/main.rs"
+
+[dependencies]
+lumo-compiler = { path = "../compiler" }
