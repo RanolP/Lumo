@@ -1,4 +1,4 @@
-use crate::lexer::Span;
+use lumo_span::Span;
 
 // ---------------------------------------------------------------------------
 // Content hash (used for file-level caching in query engine)

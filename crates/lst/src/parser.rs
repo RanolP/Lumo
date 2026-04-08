@@ -1,4 +1,4 @@
-use crate::lexer::{Keyword, LexError, Span, Symbol, Token, TokenKind};
+use lumo_lexer::{Keyword, LexError, Span, Symbol, Token, TokenKind};
 
 /// Binding power for prefix unary operators (-, !)
 const PREFIX_BP: u8 = 15;
@@ -358,7 +358,7 @@ pub fn parse(tokens: &[Token], lex_errors: &[LexError]) -> ParseOutput {
     }
 }
 
-pub fn parse_lossless(lossless: &crate::lst::lossless::ParseOutput) -> ParseOutput {
+pub fn parse_lossless(lossless: &crate::lossless::ParseOutput) -> ParseOutput {
     let mut tokens = Vec::new();
     let mut lex_errors = Vec::new();
     collect_lossless_tokens(&lossless.root, &mut tokens, &mut lex_errors);
@@ -373,39 +373,39 @@ pub fn parse_lossless(lossless: &crate::lst::lossless::ParseOutput) -> ParseOutp
 }
 
 fn collect_lossless_tokens(
-    node: &crate::lst::lossless::SyntaxNode,
+    node: &crate::lossless::SyntaxNode,
     tokens: &mut Vec<Token>,
     lex_errors: &mut Vec<LexError>,
 ) {
     for child in &node.children {
         match child {
-            crate::lst::lossless::SyntaxElement::Node(n) => {
+            crate::lossless::SyntaxElement::Node(n) => {
                 collect_lossless_tokens(n, tokens, lex_errors);
             }
-            crate::lst::lossless::SyntaxElement::Token(t) => match &t.kind {
-                crate::lexer::LosslessTokenKind::Keyword(kw) => tokens.push(Token {
+            crate::lossless::SyntaxElement::Token(t) => match &t.kind {
+                lumo_lexer::LosslessTokenKind::Keyword(kw) => tokens.push(Token {
                     kind: TokenKind::Keyword(*kw),
                     span: t.span,
                 }),
-                crate::lexer::LosslessTokenKind::Ident => tokens.push(Token {
+                lumo_lexer::LosslessTokenKind::Ident => tokens.push(Token {
                     kind: TokenKind::Ident(t.text.clone()),
                     span: t.span,
                 }),
-                crate::lexer::LosslessTokenKind::StringLit => tokens.push(Token {
+                lumo_lexer::LosslessTokenKind::StringLit => tokens.push(Token {
                     kind: TokenKind::StringLit(t.text.clone()),
                     span: t.span,
                 }),
-                crate::lexer::LosslessTokenKind::NumberLit => tokens.push(Token {
+                lumo_lexer::LosslessTokenKind::NumberLit => tokens.push(Token {
                     kind: TokenKind::NumberLit(t.text.clone()),
                     span: t.span,
                 }),
-                crate::lexer::LosslessTokenKind::Symbol(sym) => tokens.push(Token {
+                lumo_lexer::LosslessTokenKind::Symbol(sym) => tokens.push(Token {
                     kind: TokenKind::Symbol(*sym),
                     span: t.span,
                 }),
-                crate::lexer::LosslessTokenKind::Whitespace
-                | crate::lexer::LosslessTokenKind::Newline => {}
-                crate::lexer::LosslessTokenKind::Unknown => {
+                lumo_lexer::LosslessTokenKind::Whitespace
+                | lumo_lexer::LosslessTokenKind::Newline => {}
+                lumo_lexer::LosslessTokenKind::Unknown => {
                     let message = match t.text.chars().next() {
                         Some(ch) if t.text.chars().count() == 1 => {
                             format!("unexpected character: {ch:?}")

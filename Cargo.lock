@@ -130,7 +130,39 @@ name = "lumo-compiler"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "lumo-hir",
+ "lumo-lexer",
+ "lumo-lir",
+ "lumo-lst",
+ "lumo-span",
+ "lumo-types",
  "simple-ts-ast",
+]
+
+[[package]]
+name = "lumo-hir"
+version = "0.1.0"
+dependencies = [
+ "lumo-lexer",
+ "lumo-lst",
+ "lumo-span",
+ "lumo-types",
+]
+
+[[package]]
+name = "lumo-lexer"
+version = "0.1.0"
+dependencies = [
+ "lumo-span",
+]
+
+[[package]]
+name = "lumo-lir"
+version = "0.1.0"
+dependencies = [
+ "lumo-hir",
+ "lumo-span",
+ "lumo-types",
 ]
 
 [[package]]
@@ -145,6 +177,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumo-lst"
+version = "0.1.0"
+dependencies = [
+ "lumo-lexer",
+ "lumo-span",
+]
+
+[[package]]
 name = "lumo-playground-wasm"
 version = "0.1.0"
 dependencies = [
@@ -153,6 +193,17 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "lumo-span"
+version = "0.1.0"
+
+[[package]]
+name = "lumo-types"
+version = "0.1.0"
+dependencies = [
+ "lumo-span",
 ]
 
 [[package]]

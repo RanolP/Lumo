@@ -1,6 +1,6 @@
-use crate::hir;
-use crate::lexer::Span;
-use crate::types::{CapRef, ContentHash, ExprId, Pattern, Spanned, TypeExpr};
+use lumo_hir as hir;
+use lumo_span::Span;
+use lumo_types::{CapRef, ContentHash, ExprId, Pattern, Spanned, TypeExpr};
 
 // ---------------------------------------------------------------------------
 // LIR types
@@ -42,6 +42,7 @@ pub struct ExternTypeDecl {
 pub struct ExternFnDecl {
     pub name: String,
     pub extern_name: Option<String>,
+    pub inline: bool,
     pub params: Vec<Param>,
     pub return_type: Option<Spanned<TypeExpr>>,
     pub cap: Option<CapRef>,
@@ -287,6 +288,7 @@ fn lower_item(ctx: &mut LoweringCtx, item: &hir::Item) -> Item {
         hir::Item::ExternFn(ext) => Item::ExternFn(ExternFnDecl {
             name: ext.name.clone(),
             extern_name: ext.extern_name.clone(),
+            inline: ext.inline,
             params: ext.params.iter().map(lower_param).collect(),
             return_type: ext.return_type.clone(),
             cap: ext.cap.clone(),

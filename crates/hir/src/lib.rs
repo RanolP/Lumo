@@ -1,7 +1,7 @@
-use crate::lexer::Span;
-use crate::lst;
-use crate::parser;
-use crate::types::{CapRef, ContentHash, Pattern, Spanned, TypeExpr};
+use lumo_span::Span;
+use lumo_lst as lst;
+use lumo_lst::parser;
+use lumo_types::{CapRef, ContentHash, Pattern, Spanned, TypeExpr};
 
 // ---------------------------------------------------------------------------
 // HIR types
@@ -42,6 +42,7 @@ pub struct ExternTypeDecl {
 pub struct ExternFnDecl {
     pub name: String,
     pub extern_name: Option<String>,
+    pub inline: bool,
     pub params: Vec<Param>,
     pub return_type: Option<Spanned<TypeExpr>>,
     pub cap: Option<CapRef>,
@@ -255,6 +256,7 @@ fn lower_extern_fn(ext: &lst::ExternFnDecl) -> ExternFnDecl {
     ExternFnDecl {
         name: ext.name.clone(),
         extern_name: find_extern_name(&ext.attrs),
+        inline: find_inline_hint(&ext.attrs),
         params: ext.params.iter().map(lower_param).collect(),
         return_type: ext.return_type.as_ref().and_then(lower_type_sig),
         cap: ext.cap.as_ref().map(lower_cap_sig),
@@ -332,21 +334,25 @@ fn lower_impl(impl_decl: &lst::ImplDecl, ctx: &mut LowerCtx) -> ImplDecl {
                 .params
                 .iter()
                 .map(|p| {
-                    if p.name == "self" && p.ty.repr == "Self" {
-                        Param {
-                            name: p.name.clone(),
-                            ty: lower_type_sig_with_fallback(target_repr, p.ty.span),
-                            span: p.span,
-                        }
-                    } else {
-                        lower_param(p)
+                    let resolved_repr = p.ty.repr.replace("Self", target_repr);
+                    Param {
+                        name: p.name.clone(),
+                        ty: lower_type_sig_with_fallback(&resolved_repr, p.ty.span),
+                        span: p.span,
                     }
                 })
                 .collect();
+            let return_type = m.return_type.as_ref().and_then(|rt| {
+                let resolved = rt.repr.replace("Self", target_repr);
+                lower_type_sig(&lst::TypeSig {
+                    repr: resolved,
+                    span: rt.span,
+                })
+            });
             ImplMethodDecl {
                 name: m.name.clone(),
                 params,
-                return_type: m.return_type.as_ref().and_then(lower_type_sig),
+                return_type,
                 body: lower_expr(&m.body, ctx),
                 span: m.span,
             }
@@ -493,10 +499,9 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
             span: *span,
         },
         lst::Expr::Binary { left, op, right, span } => {
-            let (cap_name, method_name) = op_to_cap_method(*op);
             let left = lower_expr(left, ctx);
             let right = lower_expr(right, ctx);
-            desugar_binary_call(*span, cap_name, method_name, left, right)
+            desugar_binary_op(*span, *op, left, right)
         }
         lst::Expr::Unary { op, expr: inner, span } => {
             let (cap_name, method_name) = unary_op_to_cap_method(*op);
@@ -517,21 +522,96 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
 // Operator desugaring
 // ---------------------------------------------------------------------------
 
-fn op_to_cap_method(op: lst::BinaryOp) -> (&'static str, &'static str) {
+/// Desugar binary operators.
+/// Simple ops (arithmetic, ==, &&, ||) → `perform Cap.method(a, b)`
+/// `!=` → `match perform PartialEq.eq(a, b) { .true => Bool.false, .false => Bool.true }`
+/// `<`, `<=`, `>`, `>=` → `match perform PartialOrd.cmp(a, b) { ... }`
+fn desugar_binary_op(span: Span, op: lst::BinaryOp, left: Expr, right: Expr) -> Expr {
     match op {
-        lst::BinaryOp::Add => ("Add", "add"),
-        lst::BinaryOp::Sub => ("Sub", "sub"),
-        lst::BinaryOp::Mul => ("Mul", "mul"),
-        lst::BinaryOp::Div => ("Div", "div"),
-        lst::BinaryOp::Mod => ("Mod", "mod_"),
-        lst::BinaryOp::EqEq => ("Eq", "eq"),
-        lst::BinaryOp::NotEq => ("Eq", "neq"),
-        lst::BinaryOp::Lt => ("Ord", "lt"),
-        lst::BinaryOp::LtEq => ("Ord", "lte"),
-        lst::BinaryOp::Gt => ("Ord", "gt"),
-        lst::BinaryOp::GtEq => ("Ord", "gte"),
-        lst::BinaryOp::AndAnd => ("Bool", "and"),
-        lst::BinaryOp::OrOr => ("Bool", "or"),
+        lst::BinaryOp::Add => desugar_binary_call(span, "Add", "add", left, right),
+        lst::BinaryOp::Sub => desugar_binary_call(span, "Sub", "sub", left, right),
+        lst::BinaryOp::Mul => desugar_binary_call(span, "Mul", "mul", left, right),
+        lst::BinaryOp::Div => desugar_binary_call(span, "Div", "div", left, right),
+        lst::BinaryOp::Mod => desugar_binary_call(span, "Mod", "mod_", left, right),
+        lst::BinaryOp::EqEq => desugar_binary_call(span, "PartialEq", "eq", left, right),
+        lst::BinaryOp::AndAnd => desugar_binary_call(span, "Bool", "and", left, right),
+        lst::BinaryOp::OrOr => desugar_binary_call(span, "Bool", "or", left, right),
+        // != → match perform PartialEq.eq(a, b) { .true => Bool.false, .false => Bool.true }
+        lst::BinaryOp::NotEq => {
+            let eq_call = desugar_binary_call(span, "PartialEq", "eq", left, right);
+            desugar_negate_bool(span, eq_call)
+        }
+        // Comparison → match perform PartialOrd.cmp(a, b) { ... }
+        lst::BinaryOp::Lt => {
+            let cmp = desugar_binary_call(span, "PartialOrd", "cmp", left, right);
+            desugar_ordering_match(span, cmp, true, false, false)
+        }
+        lst::BinaryOp::LtEq => {
+            let cmp = desugar_binary_call(span, "PartialOrd", "cmp", left, right);
+            desugar_ordering_match(span, cmp, true, true, false)
+        }
+        lst::BinaryOp::Gt => {
+            let cmp = desugar_binary_call(span, "PartialOrd", "cmp", left, right);
+            desugar_ordering_match(span, cmp, false, false, true)
+        }
+        lst::BinaryOp::GtEq => {
+            let cmp = desugar_binary_call(span, "PartialOrd", "cmp", left, right);
+            desugar_ordering_match(span, cmp, false, true, true)
+        }
+    }
+}
+
+fn bool_expr(span: Span, val: bool) -> Expr {
+    let variant = if val { "true" } else { "false" };
+    Expr::Member {
+        object: Box::new(Expr::Ident { name: "Bool".into(), span }),
+        member: variant.into(),
+        span,
+    }
+}
+
+/// `match scrutinee { .true => produce Bool.false, .false => produce Bool.true }`
+fn desugar_negate_bool(span: Span, scrutinee: Expr) -> Expr {
+    Expr::Match {
+        scrutinee: Box::new(scrutinee),
+        arms: vec![
+            MatchArm {
+                pattern: Pattern::Ctor { name: "true".into(), args: vec![] },
+                body: Expr::Produce { expr: Box::new(bool_expr(span, false)), span },
+                span,
+            },
+            MatchArm {
+                pattern: Pattern::Ctor { name: "false".into(), args: vec![] },
+                body: Expr::Produce { expr: Box::new(bool_expr(span, true)), span },
+                span,
+            },
+        ],
+        span,
+    }
+}
+
+/// `match scrutinee { .less => produce Bool.T/F, .equal => ..., .greater => ... }`
+fn desugar_ordering_match(span: Span, scrutinee: Expr, less: bool, equal: bool, greater: bool) -> Expr {
+    Expr::Match {
+        scrutinee: Box::new(scrutinee),
+        arms: vec![
+            MatchArm {
+                pattern: Pattern::Ctor { name: "less".into(), args: vec![] },
+                body: Expr::Produce { expr: Box::new(bool_expr(span, less)), span },
+                span,
+            },
+            MatchArm {
+                pattern: Pattern::Ctor { name: "equal".into(), args: vec![] },
+                body: Expr::Produce { expr: Box::new(bool_expr(span, equal)), span },
+                span,
+            },
+            MatchArm {
+                pattern: Pattern::Ctor { name: "greater".into(), args: vec![] },
+                body: Expr::Produce { expr: Box::new(bool_expr(span, greater)), span },
+                span,
+            },
+        ],
+        span,
     }
 }
 
@@ -592,6 +672,14 @@ fn desugar_unary_call(
 // ---------------------------------------------------------------------------
 // Attribute helpers
 // ---------------------------------------------------------------------------
+
+fn find_inline_hint(attrs: &[lst::Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        attr.name == "inline"
+            && (attr.args.iter().any(|arg| arg.key == "always")
+                || matches!(&attr.value, Some(lst::Expr::String { value, .. }) if value == "always"))
+    })
+}
 
 fn find_extern_name(attrs: &[lst::Attribute]) -> Option<String> {
     attrs

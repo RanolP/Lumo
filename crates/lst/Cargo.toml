@@ -1,0 +1,12 @@
+[package]
+name = "lumo-lst"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "lumo_lst"
+path = "src/lib.rs"
+
+[dependencies]
+lumo-span = { path = "../span" }
+lumo-lexer = { path = "../lexer" }

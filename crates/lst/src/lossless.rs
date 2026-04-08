@@ -1,4 +1,4 @@
-use crate::lexer::{lex_lossless, Keyword, LosslessToken, LosslessTokenKind, Span};
+use lumo_lexer::{lex_lossless, Keyword, LosslessToken, LosslessTokenKind, Span};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {

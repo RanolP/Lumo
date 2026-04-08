@@ -1,18 +1,14 @@
 [package]
-name = "lumo-compiler"
+name = "lumo-hir"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "lumo_compiler"
+name = "lumo_hir"
 path = "src/lib.rs"
 
 [dependencies]
-derive_more = { version = "2", features = ["debug"] }
-simple-ts-ast = { path = "../simple-ts-ast" }
 lumo-span = { path = "../span" }
 lumo-types = { path = "../types" }
 lumo-lexer = { path = "../lexer" }
 lumo-lst = { path = "../lst" }
-lumo-hir = { path = "../hir" }
-lumo-lir = { path = "../lir" }
