@@ -1,0 +1,29 @@
+#[extern(name = "str.len")] extern fn __str_len(s: String): Number;
+#[extern(name = "str.char_at")] extern fn __str_char_at(s: String, idx: Number): String;
+#[extern(name = "str.slice")] extern fn __str_slice(s: String, start: Number, end: Number): String;
+#[extern(name = "str.concat")] extern fn __str_concat(a: String, b: String): String;
+#[extern(name = "str.eq")] extern fn __str_eq(a: String, b: String): Bool;
+#[extern(name = "str.starts_with")] extern fn __str_starts_with(s: String, prefix: String): Bool;
+#[extern(name = "str.contains")] extern fn __str_contains(s: String, sub: String): Bool;
+#[extern(name = "str.index_of")] extern fn __str_index_of(s: String, sub: String): Number;
+#[extern(name = "str.trim")] extern fn __str_trim(s: String): String;
+#[extern(name = "str.char_code_at")] extern fn __char_code_at(s: String, idx: Number): Number;
+#[extern(name = "str.from_char_code")] extern fn __string_from_char_code(code: Number): String;
+#[extern(name = "str.replace_all")] extern fn __str_replace_all(s: String, from: String, to: String): String;
+#[extern(name = "num.to_string")] extern fn __num_to_string(n: Number): String;
+
+impl String: StrOps {
+  fn str_len(s: String): Number := __str_len(s);
+  fn str_char_at(s: String, idx: Number): String := __str_char_at(s, idx);
+  fn str_slice(s: String, start: Number, end: Number): String := __str_slice(s, start, end);
+  fn str_concat(a: String, b: String): String := __str_concat(a, b);
+  fn str_eq(a: String, b: String): Bool := __str_eq(a, b);
+  fn str_starts_with(s: String, prefix: String): Bool := __str_starts_with(s, prefix);
+  fn str_contains(s: String, sub: String): Bool := __str_contains(s, sub);
+  fn str_index_of(s: String, sub: String): Number := __str_index_of(s, sub);
+  fn str_trim(s: String): String := __str_trim(s);
+  fn char_code_at(s: String, idx: Number): Number := __char_code_at(s, idx);
+  fn string_from_char_code(code: Number): String := __string_from_char_code(code);
+  fn str_replace_all(s: String, from: String, to: String): String := __str_replace_all(s, from, to);
+  fn num_to_string(n: Number): String := __num_to_string(n)
+}

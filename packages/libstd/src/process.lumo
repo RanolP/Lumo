@@ -1,0 +1,8 @@
+use libcore.prelude.{String, Number};
+
+cap Process {
+  fn arg_at(idx: Number): String;
+  fn args_count(): Number;
+  fn exit_process(code: Number);
+  fn panic_with(msg: String)
+}

@@ -1,4 +1,7 @@
-use lumo_std.prelude.{String};
-use lumo_std.io.{println};
+use libcore.prelude.{String};
+use libstd.io.{IO};
+use libstd.io.{__println};
 
-fn main() := println("Hello, World!")
+fn main() :=
+  handle IO with bundle { fn println(msg) := __println(msg) }
+  in perform IO.println("Hello, World!")

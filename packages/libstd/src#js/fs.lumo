@@ -1,0 +1,7 @@
+#[extern(name = "fs.read_file")] extern fn __read_file(path: String): String;
+#[extern(name = "fs.write_file")] extern fn __write_file(path: String, content: String);
+
+impl StdFS: FS {
+  fn read_file(path: String): String := __read_file(path);
+  fn write_file(path: String, content: String) := __write_file(path, content)
+}

@@ -1,0 +1,6 @@
+use libcore.prelude.{String};
+
+cap FS {
+  fn read_file(path: String): String;
+  fn write_file(path: String, content: String)
+}

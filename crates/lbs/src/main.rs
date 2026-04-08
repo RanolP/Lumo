@@ -23,7 +23,7 @@ fn main() {
     let subcommand = args.first().map(|s| s.as_str());
     match subcommand {
         Some("build") => cmd_build(&args[1..]),
-        Some("check") => cmd_check(),
+        Some("check") => cmd_check(&args[1..]),
         Some(other) => {
             eprintln!("unknown command: {other}");
             eprintln!("usage: lbs <build|check> [--target js|rust]");
@@ -74,53 +74,120 @@ fn find_manifest() -> Result<(PathBuf, manifest::Manifest), String> {
     }
 }
 
-fn entry_path(entry: &EntryKind) -> &std::path::Path {
-    match entry {
-        EntryKind::Bin(p) | EntryKind::Lib(p) => p,
+fn target_suffix(target: Target) -> &'static str {
+    match target {
+        Target::Js => "js",
+        Target::Rust => "rs",
     }
 }
 
-fn compile(manifest: &manifest::Manifest, project_root: &std::path::Path) -> lir::File {
+fn compile(
+    manifest: &manifest::Manifest,
+    project_root: &std::path::Path,
+    target: Target,
+) -> lir::File {
     let mut engine = QueryEngine::new();
-    let mut file_names = Vec::new();
+    let mut sources: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
-    // Load all .lumo files in src/ — they form a single compilation unit.
+    let suffix = target_suffix(target);
+
+    // Load common .lumo files from src/
     let src_dir = project_root.join("src");
-    if let Ok(entries) = std::fs::read_dir(&src_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("lumo") {
-                let source = match std::fs::read_to_string(&path) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("error: cannot read {}: {e}", path.display());
-                        process::exit(1);
-                    }
-                };
-                let name = path
-                    .strip_prefix(project_root)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .to_string();
-                engine.set_file(&name, &source);
-                file_names.push(name);
-            }
-        }
-    }
+    collect_lumo_files(&src_dir, &mut sources);
 
-    if file_names.is_empty() {
+    // Merge platform-specific .lumo files from src#{target}/ with common sources
+    let platform_dir = project_root.join(format!("src#{suffix}"));
+    merge_lumo_files(&platform_dir, &mut sources);
+
+    if sources.is_empty() {
         eprintln!("error: no .lumo files found in {}", src_dir.display());
         process::exit(1);
     }
 
+    let mut file_names = Vec::new();
+    for (name, source) in &sources {
+        engine.set_file(name, source);
+        file_names.push(name.clone());
+    }
+
     let file_refs: Vec<&str> = file_names.iter().map(|s| s.as_str()).collect();
-    let mut resolver = resolve::make_resolver(manifest.deps.clone());
+    let mut resolver = resolve::make_resolver(manifest.deps.clone(), suffix);
     match engine.compile_with_deps(&file_refs, &mut resolver) {
         Some(lir) => lir,
         None => {
             eprintln!("error: compilation failed");
             process::exit(1);
         }
+    }
+}
+
+/// Scan a directory for .lumo files and collect their sources.
+fn collect_lumo_files(
+    dir: &std::path::Path,
+    sources: &mut std::collections::HashMap<String, String>,
+) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("lumo") {
+            continue;
+        }
+        let source = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("error: cannot read {}: {e}", path.display());
+                process::exit(1);
+            }
+        };
+        let basename = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let name = format!("src/{basename}");
+        sources.insert(name, source);
+    }
+}
+
+/// Scan a platform directory for .lumo files and merge them with common sources.
+/// If a common file with the same basename exists, the platform source is appended.
+/// If no common file exists, the platform source stands alone.
+fn merge_lumo_files(
+    dir: &std::path::Path,
+    sources: &mut std::collections::HashMap<String, String>,
+) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("lumo") {
+            continue;
+        }
+        let source = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("error: cannot read {}: {e}", path.display());
+                process::exit(1);
+            }
+        };
+        let basename = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let name = format!("src/{basename}");
+        sources
+            .entry(name)
+            .and_modify(|existing| {
+                existing.push('\n');
+                existing.push_str(&source);
+            })
+            .or_insert(source);
     }
 }
 
@@ -145,7 +212,7 @@ fn cmd_build(args: &[String]) {
         }
     };
 
-    let lir = compile(&manifest, &project_root);
+    let lir = compile(&manifest, &project_root, target);
     typecheck_or_exit(&lir);
 
     match target {
@@ -229,7 +296,8 @@ fn build_rust(manifest: &manifest::Manifest, lir: &lir::File) {
     eprintln!("built {}", manifest.out_dir.display());
 }
 
-fn cmd_check() {
+fn cmd_check(args: &[String]) {
+    let target = parse_target(args);
     let (project_root, manifest) = match find_manifest() {
         Ok(v) => v,
         Err(e) => {
@@ -238,7 +306,7 @@ fn cmd_check() {
         }
     };
 
-    let lir = compile(&manifest, &project_root);
+    let lir = compile(&manifest, &project_root, target);
 
     let type_errors = typecheck::typecheck_file(&lir);
     if type_errors.is_empty() {

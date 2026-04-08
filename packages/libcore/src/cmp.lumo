@@ -1,0 +1,11 @@
+use libcore.prelude.{Bool};
+
+data Ordering { .less, .equal, .greater }
+
+cap PartialEq {
+  fn eq(a: Self, b: Self): Bool
+}
+
+cap PartialOrd {
+  fn cmp(a: Self, b: Self): Ordering
+}

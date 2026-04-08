@@ -1,0 +1,21 @@
+#[extern(name = "num.add")] extern fn __num_add(a: Number, b: Number): Number;
+#[extern(name = "num.sub")] extern fn __num_sub(a: Number, b: Number): Number;
+#[extern(name = "num.mul")] extern fn __num_mul(a: Number, b: Number): Number;
+#[extern(name = "num.div")] extern fn __num_div(a: Number, b: Number): Number;
+#[extern(name = "num.mod")] extern fn __num_mod(a: Number, b: Number): Number;
+#[extern(name = "num.neg")] extern fn __num_neg(a: Number): Number;
+#[extern(name = "num.floor")] extern fn __num_floor(a: Number): Number;
+#[extern(name = "num.eq")] extern fn __num_eq(a: Number, b: Number): Bool;
+#[extern(name = "num.cmp")] extern fn __num_cmp(a: Number, b: Number): Ordering;
+
+impl Number: NumOps {
+  fn num_add(a: Number, b: Number): Number := __num_add(a, b);
+  fn num_sub(a: Number, b: Number): Number := __num_sub(a, b);
+  fn num_mul(a: Number, b: Number): Number := __num_mul(a, b);
+  fn num_div(a: Number, b: Number): Number := __num_div(a, b);
+  fn num_mod(a: Number, b: Number): Number := __num_mod(a, b);
+  fn num_neg(a: Number): Number := __num_neg(a);
+  fn num_floor(a: Number): Number := __num_floor(a);
+  fn num_eq(a: Number, b: Number): Bool := __num_eq(a, b);
+  fn num_cmp(a: Number, b: Number): Ordering := __num_cmp(a, b)
+}

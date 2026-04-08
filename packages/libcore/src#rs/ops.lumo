@@ -1,0 +1,6 @@
+use libcore.prelude.{Bool};
+use libcore.ops.{Not};
+
+#[extern(name = "bool.not")] extern fn __not(a: Bool): Bool;
+
+impl Bool: Not { fn not(self): Self := __not(self) }

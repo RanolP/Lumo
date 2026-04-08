@@ -1,0 +1,7 @@
+cap Add { fn add(a: Self, b: Self): Self }
+cap Sub { fn sub(a: Self, b: Self): Self }
+cap Mul { fn mul(a: Self, b: Self): Self }
+cap Div { fn div(a: Self, b: Self): Self }
+cap Mod { fn mod_(a: Self, b: Self): Self }
+cap Neg { fn neg(a: Self): Self }
+cap Not { fn not(a: Self): Self }

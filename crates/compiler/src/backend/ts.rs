@@ -39,15 +39,35 @@ impl TypeScriptBackend {
             match_counter: Cell::new(0),
         };
 
+        // Deduplicate extern types: prefer annotated over bare
+        let mut deduped_extern_types: HashMap<String, &lir::ExternTypeDecl> = HashMap::new();
+        for item in &file.items {
+            if let lir::Item::ExternType(ext) = item {
+                deduped_extern_types
+                    .entry(ext.name.clone())
+                    .and_modify(|existing| {
+                        if ext.extern_name.is_some() {
+                            *existing = ext;
+                        }
+                    })
+                    .or_insert(ext);
+            }
+        }
+
+        // Emit deduplicated extern types
+        for ext in deduped_extern_types.values() {
+            body.push(tsast::Stmt::TypeAlias(tsast::TypeAlias {
+                export: true,
+                name: ext.name.clone(),
+                type_params: Vec::new(),
+                ty: ts_type_from_extern_name(ext),
+            }));
+        }
+
         for item in &file.items {
             match item {
-                lir::Item::ExternType(ext) => {
-                    body.push(tsast::Stmt::TypeAlias(tsast::TypeAlias {
-                        export: true,
-                        name: ext.name.clone(),
-                        type_params: Vec::new(),
-                        ty: ts_type_from_extern_name(ext),
-                    }));
+                lir::Item::ExternType(_) => {
+                    // Already emitted above (deduplicated)
                 }
                 lir::Item::ExternFn(func) => {
                     let params = func
@@ -561,12 +581,34 @@ fn specialize_stdlib_extern_body(
         "str.replace_all" => Some(method_call(p(0), "replaceAll", vec![p(1), p(2)])),
         "num.to_string" => Some(method_call(p(0), "toString", vec![])),
 
-        // Number operations (comparisons return Lumo Bool ADT)
+        // Number operations
         "num.eq" => Some(cmp(tsast::BinaryOp::EqEqEq)),
-        "num.lt" => Some(cmp(tsast::BinaryOp::Lt)),
-        "num.gt" => Some(cmp(tsast::BinaryOp::Gt)),
-        "num.lte" => Some(cmp(tsast::BinaryOp::Lte)),
-        "num.gte" => Some(cmp(tsast::BinaryOp::Gte)),
+        "num.cmp" => {
+            // a < b ? Ordering.less : a === b ? Ordering.equal : Ordering.greater
+            let ordering_ctor = |variant: &str| -> tsast::Expr {
+                tsast::Expr::Index {
+                    object: Box::new(tsast::Expr::Ident("Ordering".to_owned())),
+                    index: Box::new(tsast::Expr::String(variant.to_owned())),
+                }
+            };
+            Some(tsast::Expr::IfElse {
+                cond: Box::new(tsast::Expr::Binary {
+                    left: Box::new(p(0)),
+                    op: tsast::BinaryOp::Lt,
+                    right: Box::new(p(1)),
+                }),
+                then_expr: Box::new(ordering_ctor("less")),
+                else_expr: Box::new(tsast::Expr::IfElse {
+                    cond: Box::new(tsast::Expr::Binary {
+                        left: Box::new(p(0)),
+                        op: tsast::BinaryOp::EqEqEq,
+                        right: Box::new(p(1)),
+                    }),
+                    then_expr: Box::new(ordering_ctor("equal")),
+                    else_expr: Box::new(ordering_ctor("greater")),
+                }),
+            })
+        }
         "num.add" => Some(tsast::Expr::Binary {
             left: Box::new(p(0)),
             op: tsast::BinaryOp::Add,
@@ -582,6 +624,20 @@ fn specialize_stdlib_extern_body(
             op: tsast::BinaryOp::Mul,
             right: Box::new(p(1)),
         }),
+        "num.div" => Some(tsast::Expr::Binary {
+            left: Box::new(p(0)),
+            op: tsast::BinaryOp::Div,
+            right: Box::new(p(1)),
+        }),
+        "num.mod" => Some(tsast::Expr::Binary {
+            left: Box::new(p(0)),
+            op: tsast::BinaryOp::Mod,
+            right: Box::new(p(1)),
+        }),
+        "num.neg" => Some(tsast::Expr::Unary {
+            op: tsast::UnaryOp::Minus,
+            expr: Box::new(p(0)),
+        }),
         "num.floor" => Some(tsast::Expr::Call {
             callee: Box::new(tsast::Expr::Member {
                 object: Box::new(tsast::Expr::Ident("Math".to_owned())),
@@ -589,6 +645,19 @@ fn specialize_stdlib_extern_body(
             }),
             args: vec![p(0)],
         }),
+
+        // Bool operations — Lumo Bool is an ADT: not(true) → false, not(false) → true
+        "bool.not" => {
+            // p(0)[LUMO_TAG] === "false" ? Bool["true"] : Bool["false"]
+            Some(bool_wrap(tsast::Expr::Binary {
+                left: Box::new(tsast::Expr::Index {
+                    object: Box::new(p(0)),
+                    index: Box::new(tsast::Expr::Ident("LUMO_TAG".to_owned())),
+                }),
+                op: tsast::BinaryOp::EqEqEq,
+                right: Box::new(tsast::Expr::String("false".to_owned())),
+            }))
+        }
 
         _ => None,
     }

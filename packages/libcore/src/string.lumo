@@ -1,0 +1,22 @@
+use libcore.prelude.{String, Number, Bool};
+use libcore.cmp.{PartialEq};
+
+cap StrOps {
+  fn str_len(s: String): Number;
+  fn str_char_at(s: String, idx: Number): String;
+  fn str_slice(s: String, start: Number, end: Number): String;
+  fn str_concat(a: String, b: String): String;
+  fn str_eq(a: String, b: String): Bool;
+  fn str_starts_with(s: String, prefix: String): Bool;
+  fn str_contains(s: String, sub: String): Bool;
+  fn str_index_of(s: String, sub: String): Number;
+  fn str_trim(s: String): String;
+  fn char_code_at(s: String, idx: Number): Number;
+  fn string_from_char_code(code: Number): String;
+  fn str_replace_all(s: String, from: String, to: String): String;
+  fn num_to_string(n: Number): String
+}
+
+impl String: PartialEq {
+  fn eq(self, other: Self): Bool := perform StrOps.str_eq(self, other)
+}

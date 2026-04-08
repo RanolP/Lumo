@@ -66,13 +66,25 @@ fn emit_file(file: &lir::File) -> Result<String, BackendError> {
     // Collect context: which names are data types, extern fns, etc.
     let ctx = LoweringContext::from_file(file);
 
-    // Extern types (skip built-in String/Number)
+    // Extern types (deduplicate: prefer annotated over bare, skip built-in String/Number)
+    let mut deduped_extern_types: std::collections::HashMap<String, &lir::ExternTypeDecl> =
+        std::collections::HashMap::new();
     for item in &file.items {
         if let lir::Item::ExternType(ext) = item {
-            if let Some(s) = emit_extern_type(ext) {
-                out.push_str(&s);
-                out.push('\n');
-            }
+            deduped_extern_types
+                .entry(ext.name.clone())
+                .and_modify(|existing| {
+                    if ext.extern_name.is_some() {
+                        *existing = ext;
+                    }
+                })
+                .or_insert(ext);
+        }
+    }
+    for ext in deduped_extern_types.values() {
+        if let Some(s) = emit_extern_type(ext) {
+            out.push_str(&s);
+            out.push('\n');
         }
     }
 
@@ -173,7 +185,9 @@ impl LoweringContext {
 // ---------------------------------------------------------------------------
 
 fn emit_extern_type(ext: &lir::ExternTypeDecl) -> Option<String> {
-    let extern_name = ext.extern_name.as_deref().unwrap_or("");
+    let Some(extern_name) = ext.extern_name.as_deref() else {
+        return None; // bare extern type (no annotation) — skip, platform file provides it
+    };
     match extern_name {
         "string" | "number" => None, // built-in, no alias needed
         _ => Some(format!(
@@ -353,26 +367,23 @@ fn emit_extern_fn(func: &lir::ExternFnDecl) -> String {
             "if {} == {} {{ Bool::True }} else {{ Bool::False }}",
             p(0), p(1)
         ),
-        "num.lt" => format!(
-            "if {} < {} {{ Bool::True }} else {{ Bool::False }}",
-            p(0), p(1)
-        ),
-        "num.gt" => format!(
-            "if {} > {} {{ Bool::True }} else {{ Bool::False }}",
-            p(0), p(1)
-        ),
-        "num.lte" => format!(
-            "if {} <= {} {{ Bool::True }} else {{ Bool::False }}",
-            p(0), p(1)
-        ),
-        "num.gte" => format!(
-            "if {} >= {} {{ Bool::True }} else {{ Bool::False }}",
-            p(0), p(1)
+        "num.cmp" => format!(
+            "if {} < {} {{ Ordering::Less }} else if {} == {} {{ Ordering::Equal }} else {{ Ordering::Greater }}",
+            p(0), p(1), p(0), p(1)
         ),
         "num.add" => format!("{} + {}", p(0), p(1)),
         "num.sub" => format!("{} - {}", p(0), p(1)),
         "num.mul" => format!("{} * {}", p(0), p(1)),
+        "num.div" => format!("{} / {}", p(0), p(1)),
+        "num.mod" => format!("{} % {}", p(0), p(1)),
+        "num.neg" => format!("-{}", p(0)),
         "num.floor" => format!("{}.floor()", p(0)),
+
+        // Bool operations
+        "bool.not" => format!(
+            "match {} {{ Bool::True => Bool::False, Bool::False => Bool::True }}",
+            p(0)
+        ),
 
         // File I/O
         "fs.read_file" => format!(

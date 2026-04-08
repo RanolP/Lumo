@@ -1,0 +1,4 @@
+extern type String;
+extern type Number;
+
+data Bool { .true, .false }

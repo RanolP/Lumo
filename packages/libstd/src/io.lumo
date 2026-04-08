@@ -1,0 +1,3 @@
+use libcore.prelude.{String};
+
+cap IO { fn println(msg: String) }

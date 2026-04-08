@@ -3,17 +3,22 @@ use std::path::PathBuf;
 
 /// Filesystem-based module resolver for `compile_with_deps`.
 ///
-/// Maps use-paths like `["lumo_std", "io"]` to `(filename, source)` pairs
+/// Maps use-paths like `["libcore", "io"]` to `(filename, source)` pairs
 /// by looking up the package name in the deps table and reading the file.
+/// Platform-specific source sets (`src#{target}/`) are checked first,
+/// falling back to `src/`.
 pub struct FsResolver {
     deps: HashMap<String, PathBuf>,
+    /// Target suffix for platform source sets (e.g. "js", "rs").
+    target: String,
     cache: HashMap<String, (String, String)>,
 }
 
 impl FsResolver {
-    pub fn new(deps: HashMap<String, PathBuf>) -> Self {
+    pub fn new(deps: HashMap<String, PathBuf>, target: &str) -> Self {
         Self {
             deps,
+            target: target.to_owned(),
             cache: HashMap::new(),
         }
     }
@@ -25,16 +30,30 @@ impl FsResolver {
 
         let pkg = &path[0];
         let module = &path[1];
-
-        let dep_path = self.deps.get(pkg)?;
-        let file_path = dep_path.join("src").join(format!("{module}.lumo"));
         let canonical_name = format!("{pkg}/{module}.lumo");
 
         if let Some(cached) = self.cache.get(&canonical_name) {
             return Some(cached.clone());
         }
 
-        let source = std::fs::read_to_string(&file_path).ok()?;
+        let dep_path = self.deps.get(pkg)?;
+
+        // Load common and platform sources, merge if both exist
+        let common_path = dep_path.join("src").join(format!("{module}.lumo"));
+        let platform_path = dep_path
+            .join(format!("src#{}", self.target))
+            .join(format!("{module}.lumo"));
+
+        let common_source = std::fs::read_to_string(&common_path).ok();
+        let platform_source = std::fs::read_to_string(&platform_path).ok();
+
+        let source = match (common_source, platform_source) {
+            (Some(common), Some(platform)) => format!("{common}\n{platform}"),
+            (Some(common), None) => common,
+            (None, Some(platform)) => platform,
+            (None, None) => return None,
+        };
+
         let entry = (canonical_name.clone(), source);
         self.cache.insert(canonical_name, entry.clone());
         Some(entry)
@@ -44,8 +63,9 @@ impl FsResolver {
 /// Create a resolver closure suitable for `QueryEngine::compile_with_deps`.
 pub fn make_resolver(
     deps: HashMap<String, PathBuf>,
+    target: &str,
 ) -> impl FnMut(&[String]) -> Option<(String, String)> {
-    let mut resolver = FsResolver::new(deps);
+    let mut resolver = FsResolver::new(deps, target);
     move |path: &[String]| resolver.resolve(path)
 }
 
@@ -64,7 +84,7 @@ mod tests {
         let mut deps = HashMap::new();
         deps.insert("lumo_std".to_owned(), tmp.clone());
 
-        let mut resolver = FsResolver::new(deps);
+        let mut resolver = FsResolver::new(deps, "js");
         let result = resolver.resolve(&["lumo_std".into(), "io".into()]);
         assert!(result.is_some());
         let (name, source) = result.unwrap();
@@ -76,7 +96,7 @@ mod tests {
 
     #[test]
     fn returns_none_for_unknown_package() {
-        let mut resolver = FsResolver::new(HashMap::new());
+        let mut resolver = FsResolver::new(HashMap::new(), "js");
         assert!(resolver
             .resolve(&["unknown".into(), "mod".into()])
             .is_none());
