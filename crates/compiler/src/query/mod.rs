@@ -190,7 +190,7 @@ impl QueryEngine {
 
     /// Compile entry files with transitive `use` resolution.
     ///
-    /// The `resolve` callback maps a use-path (e.g. `["lumo_std", "io"]`) to
+    /// The `resolve` callback maps a use-path (e.g. `["libstd", "io"]`) to
     /// a `(filename, source)` pair. Resolution is applied iteratively until
     /// all dependencies are loaded, then all files are merged via `lower_module`.
     pub fn compile_with_deps<F>(

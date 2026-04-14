@@ -1,3 +1,0 @@
-use lumo_std.prelude.{String};
-
-#[extern(name = "console.log")] extern fn println(msg: String);

@@ -82,13 +82,13 @@ mod tests {
         fs::write(src.join("io.lumo"), "extern fn println(msg: String);").unwrap();
 
         let mut deps = HashMap::new();
-        deps.insert("lumo_std".to_owned(), tmp.clone());
+        deps.insert("libstd".to_owned(), tmp.clone());
 
         let mut resolver = FsResolver::new(deps, "js");
-        let result = resolver.resolve(&["lumo_std".into(), "io".into()]);
+        let result = resolver.resolve(&["libstd".into(), "io".into()]);
         assert!(result.is_some());
         let (name, source) = result.unwrap();
-        assert_eq!(name, "lumo_std/io.lumo");
+        assert_eq!(name, "libstd/io.lumo");
         assert!(source.contains("println"));
 
         let _ = fs::remove_dir_all(&tmp);

@@ -3,28 +3,45 @@ use lumo_compiler::{
     query::QueryEngine,
 };
 
-const PRELUDE_SRC: &str = include_str!("../../../packages/lumo-std/src/prelude.lumo");
-const IO_SRC: &str = include_str!("../../../packages/lumo-std/src/io.lumo");
-const STRING_SRC: &str = include_str!("../../../packages/lumo-std/src/string.lumo");
-const NUMBER_SRC: &str = include_str!("../../../packages/lumo-std/src/number.lumo");
-const FS_SRC: &str = include_str!("../../../packages/lumo-std/src/fs.lumo");
-const PROCESS_SRC: &str = include_str!("../../../packages/lumo-std/src/process.lumo");
-const LIST_SRC: &str = include_str!("../../../packages/lumo-std/src/list.lumo");
+// ---------------------------------------------------------------------------
+// libcore sources (common + JS platform)
+// ---------------------------------------------------------------------------
+const PRELUDE_SRC: &str = include_str!("../../../packages/libcore/src/prelude.lumo");
+const CMP_SRC: &str = include_str!("../../../packages/libcore/src/cmp.lumo");
+const OPS_SRC: &str = include_str!("../../../packages/libcore/src/ops.lumo");
+const OPS_JS_SRC: &str = include_str!("../../../packages/libcore/src#js/ops.lumo");
+const STRING_SRC: &str = include_str!("../../../packages/libcore/src/string.lumo");
+const STRING_JS_SRC: &str = include_str!("../../../packages/libcore/src#js/string.lumo");
+const NUMBER_SRC: &str = include_str!("../../../packages/libcore/src/number.lumo");
+const NUMBER_JS_SRC: &str = include_str!("../../../packages/libcore/src#js/number.lumo");
+
+// ---------------------------------------------------------------------------
+// libstd sources (common + JS platform)
+// ---------------------------------------------------------------------------
+const IO_SRC: &str = include_str!("../../../packages/libstd/src/io.lumo");
+const IO_JS_SRC: &str = include_str!("../../../packages/libstd/src#js/io.lumo");
+const LIST_SRC: &str = include_str!("../../../packages/libstd/src/list.lumo");
 
 fn stdlib_resolver(path: &[String]) -> Option<(String, String)> {
     match path {
-        [pkg, module] if pkg == "lumo_std" => {
+        [pkg, module] if pkg == "libcore" => {
             let (file, src) = match module.as_str() {
-                "prelude" => ("prelude.lumo", PRELUDE_SRC),
-                "io" => ("io.lumo", IO_SRC),
-                "string" => ("string.lumo", STRING_SRC),
-                "number" => ("number.lumo", NUMBER_SRC),
-                "fs" => ("fs.lumo", FS_SRC),
-                "process" => ("process.lumo", PROCESS_SRC),
-                "list" => ("list.lumo", LIST_SRC),
+                "prelude" => ("prelude.lumo", PRELUDE_SRC.to_owned()),
+                "cmp" => ("cmp.lumo", CMP_SRC.to_owned()),
+                "ops" => ("ops.lumo", format!("{OPS_SRC}\n{OPS_JS_SRC}")),
+                "string" => ("string.lumo", format!("{STRING_SRC}\n{STRING_JS_SRC}")),
+                "number" => ("number.lumo", format!("{NUMBER_SRC}\n{NUMBER_JS_SRC}")),
                 _ => return None,
             };
-            Some((format!("lumo_std/{file}"), src.into()))
+            Some((format!("libcore/{file}"), src))
+        }
+        [pkg, module] if pkg == "libstd" => {
+            let (file, src) = match module.as_str() {
+                "io" => ("io.lumo", format!("{IO_SRC}\n{IO_JS_SRC}")),
+                "list" => ("list.lumo", LIST_SRC.to_owned()),
+                _ => return None,
+            };
+            Some((format!("libstd/{file}"), src))
         }
         _ => None,
     }
@@ -35,9 +52,9 @@ fn hello_world_compiles_to_js() {
     let mut q = QueryEngine::new();
     q.set_file(
         "main.lumo",
-        r#"use lumo_std.io.{println};
+        r#"use libstd.io.{IO};
 
-fn main() { println("Hello, World!") }"#,
+fn main() { IO.println("Hello, World!") }"#,
     );
 
     let lir = q
@@ -65,9 +82,9 @@ fn hello_world_runs_on_node() {
     let mut q = QueryEngine::new();
     q.set_file(
         "main.lumo",
-        r#"use lumo_std.io.{println};
+        r#"use libstd.io.{IO};
 
-fn main() { println("Hello, World!") }"#,
+fn main() { IO.println("Hello, World!") }"#,
     );
 
     let lir = q
@@ -94,73 +111,64 @@ fn main() { println("Hello, World!") }"#,
 }
 
 #[test]
-fn stdlib_string_ops_compile_to_rust() {
+fn stdlib_string_ops_compile_to_js() {
     let mut q = QueryEngine::new();
     q.set_file(
         "main.lumo",
-        r#"use lumo_std.prelude.{String, Number, Bool};
-use lumo_std.io.{println};
-use lumo_std.string.{str_len, str_eq, str_concat, num_to_string};
+        r#"use libcore.prelude.{String, Number};
+use libstd.io.{IO};
+use libcore.string.{StrOps};
 
 fn main() {
-  let greeting = str_concat("Hello", " World");
-  let len = str_len(greeting);
-  println(str_concat(greeting, str_concat(" len=", num_to_string(len))))
+  let greeting = "Hello" + " World";
+  let len = StrOps.str_len(greeting);
+  IO.println(greeting + " len=" + StrOps.num_to_string(len))
 }"#,
     );
 
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let rs = backend::emit(&lir, CodegenTarget::Rust).expect("rust codegen should succeed");
+    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
 
     assert!(
-        rs.contains("fn str_concat("),
-        "Rust should contain str_concat, got:\n{rs}"
+        js.contains("function main()"),
+        "JS should contain main, got:\n{js}"
     );
     assert!(
-        rs.contains("fn str_len("),
-        "Rust should contain str_len, got:\n{rs}"
-    );
-    assert!(
-        rs.contains("fn main()"),
-        "Rust should contain main, got:\n{rs}"
+        js.contains("console.log"),
+        "JS should reference console.log, got:\n{js}"
     );
 }
 
 #[test]
-fn stdlib_list_compiles_to_rust() {
+fn stdlib_list_compiles_to_js() {
     let mut q = QueryEngine::new();
     q.set_file(
         "main.lumo",
-        r#"use lumo_std.prelude.{String, Number, Bool};
-use lumo_std.io.{println};
-use lumo_std.list.{List};
-use lumo_std.string.{num_to_string};
-use lumo_std.number.{num_add};
+        r#"use libcore.prelude.{Number};
+use libcore.string.{StrOps};
+use libstd.io.{IO};
+use libstd.list.{List};
 
 fn list_length[A](xs: List[A]): Number {
-  match xs { List.nil => 0, List.cons(_, t) => num_add(1, list_length(t)) }
+  match xs { .nil => 0, .cons(_, t) => 1 + list_length(t) }
 }
 
 fn main() {
   let xs = List.cons("a", List.cons("b", List.nil));
-  println(num_to_string(list_length(xs)))
+  IO.println(StrOps.num_to_string(list_length(xs)))
 }"#,
     );
 
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let rs = backend::emit(&lir, CodegenTarget::Rust).expect("rust codegen should succeed");
+    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
 
     assert!(
-        rs.contains("Box<List"),
-        "Rust should have Box for recursive List, got:\n{rs}"
-    );
-    assert!(
-        rs.contains("Box::new("),
-        "Rust should have Box::new for List ctor, got:\n{rs}"
+        js.contains("function main()"),
+        "JS should contain main, got:\n{js}"
     );
 }
 

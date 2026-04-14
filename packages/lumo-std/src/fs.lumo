@@ -1,4 +1,0 @@
-use lumo_std.prelude.{String};
-
-#[extern(name = "fs.read_file")] extern fn read_file(path: String): String;
-#[extern(name = "fs.write_file")] extern fn write_file(path: String, content: String);

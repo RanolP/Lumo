@@ -1,6 +1,0 @@
-use lumo_std.prelude.{String, Number};
-
-#[extern(name = "process.arg_at")] extern fn arg_at(idx: Number): String;
-#[extern(name = "process.args_count")] extern fn args_count(): Number;
-#[extern(name = "process.exit")] extern fn exit_process(code: Number);
-#[extern(name = "process.panic")] extern fn panic_with(msg: String);

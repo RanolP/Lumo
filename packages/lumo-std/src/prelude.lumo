@@ -1,4 +1,0 @@
-#[extern = "string"] extern type String;
-#[extern = "number"] extern type Number;
-
-data Bool { .true, .false }
