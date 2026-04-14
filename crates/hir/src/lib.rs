@@ -1,3 +1,7 @@
+pub mod check;
+pub mod parse;
+pub mod print;
+
 use lumo_span::Span;
 use lumo_lst as lst;
 use lumo_lst::parser;
@@ -136,7 +140,7 @@ pub enum Expr {
     Let { name: String, value: Box<Expr>, body: Box<Expr>, span: Span },
     Match { scrutinee: Box<Expr>, arms: Vec<MatchArm>, span: Span },
     Perform { cap: String, span: Span },
-    Handle { cap: String, handler: Box<Expr>, body: Box<Expr>, span: Span },
+    Handle { cap: String, for_type: Option<String>, handler: Box<Expr>, body: Box<Expr>, span: Span },
     Bundle { entries: Vec<BundleEntry>, span: Span },
     Ann { expr: Box<Expr>, ty: Spanned<TypeExpr>, span: Span },
     Error { span: Span },
@@ -398,9 +402,38 @@ fn lower_cap_sig(cap: &lst::CapSig) -> CapRef {
     CapRef::parse(&cap.repr)
 }
 
+/// Parse a handle's cap string: "Add for Number" → ("Add", Some("Number")), "IO" → ("IO", None)
+fn parse_handle_cap(cap: &str) -> (String, Option<String>) {
+    let s = cap.trim();
+    if let Some((name, ty)) = s.split_once(" for ") {
+        (name.trim().to_owned(), Some(ty.trim().to_owned()))
+    } else {
+        (s.to_owned(), None)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Expression lowering
 // ---------------------------------------------------------------------------
+
+/// Wrap a value-form expression in `Produce`. Computation forms pass through.
+fn maybe_produce(expr: Expr, span: Span) -> Expr {
+    match &expr {
+        Expr::Produce { .. }
+        | Expr::Force { .. }
+        | Expr::Call { .. }
+        | Expr::Let { .. }
+        | Expr::Match { .. }
+        | Expr::Perform { .. }
+        | Expr::Handle { .. }
+        | Expr::Member { .. }
+        | Expr::Error { .. } => expr,
+        _ => Expr::Produce {
+            expr: Box::new(expr),
+            span,
+        },
+    }
+}
 
 fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
     match expr {
@@ -426,10 +459,6 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
             args: args.iter().map(|a| lower_expr(a, ctx)).collect(),
             span: *span,
         },
-        lst::Expr::Produce { expr: inner, span } => Expr::Produce {
-            expr: Box::new(lower_expr(inner, ctx)),
-            span: *span,
-        },
         lst::Expr::Thunk { expr: inner, span } => Expr::Thunk {
             expr: Box::new(lower_expr(inner, ctx)),
             span: *span,
@@ -438,11 +467,16 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
             expr: Box::new(lower_expr(inner, ctx)),
             span: *span,
         },
-        lst::Expr::LetIn { name, value, body, span } => Expr::Let {
-            name: name.clone(),
-            value: Box::new(lower_expr(value, ctx)),
-            body: Box::new(lower_expr(body, ctx)),
-            span: *span,
+        lst::Expr::Let { name, value, span } => {
+            // Standalone let without body — only meaningful inside blocks
+            // (blocks desugar Let stmts into HIR Let with body).
+            // If reached here, treat as a let binding with an error body.
+            Expr::Let {
+                name: name.clone(),
+                value: Box::new(lower_expr(value, ctx)),
+                body: Box::new(Expr::Error { span: *span }),
+                span: *span,
+            }
         },
         lst::Expr::Match { scrutinee, arms, span } => Expr::Match {
             scrutinee: Box::new(lower_expr(scrutinee, ctx)),
@@ -464,7 +498,7 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
                     };
                     MatchArm {
                         pattern,
-                        body: lower_expr(&arm.body, ctx),
+                        body: maybe_produce(lower_expr(&arm.body, ctx), arm.span),
                         span: arm.span,
                     }
                 })
@@ -475,11 +509,15 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
             cap: cap.clone(),
             span: *span,
         },
-        lst::Expr::Handle { cap, handler, body, span } => Expr::Handle {
-            cap: cap.clone(),
-            handler: Box::new(lower_expr(handler, ctx)),
-            body: Box::new(lower_expr(body, ctx)),
-            span: *span,
+        lst::Expr::Handle { cap, handler, body, span } => {
+            let (cap_name, for_type) = parse_handle_cap(cap);
+            Expr::Handle {
+                cap: cap_name,
+                for_type,
+                handler: Box::new(lower_expr(handler, ctx)),
+                body: Box::new(maybe_produce(lower_expr(body, ctx), *span)),
+                span: *span,
+            }
         },
         lst::Expr::Bundle { entries, span } => Expr::Bundle {
             entries: entries
@@ -487,7 +525,7 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
                 .map(|e| BundleEntry {
                     name: e.name.clone(),
                     params: e.params.iter().map(lower_param).collect(),
-                    body: lower_expr(&e.body, ctx),
+                    body: maybe_produce(lower_expr(&e.body, ctx), e.span),
                     span: e.span,
                 })
                 .collect(),
@@ -513,6 +551,62 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
             value: Box::new(lower_expr(value, ctx)),
             body: Box::new(lower_expr(body, ctx)),
             span: *span,
+        },
+        lst::Expr::Block { stmts, result, span } => {
+            // Desugar block to nested Let:
+            //   { let x = e1; e2; result } → Let(x, e1, Let("_", e2, result))
+            let mut body = maybe_produce(lower_expr(result, ctx), *span);
+            for stmt in stmts.iter().rev() {
+                match stmt {
+                    lst::BlockStmt::Let { name, value, span: stmt_span } => {
+                        body = Expr::Let {
+                            name: name.clone(),
+                            value: Box::new(lower_expr(value, ctx)),
+                            body: Box::new(body),
+                            span: *stmt_span,
+                        };
+                    }
+                    lst::BlockStmt::Expr { expr, span: stmt_span } => {
+                        body = Expr::Let {
+                            name: "_".to_string(),
+                            value: Box::new(lower_expr(expr, ctx)),
+                            body: Box::new(body),
+                            span: *stmt_span,
+                        };
+                    }
+                }
+            }
+            // Rewrap with outer span if there were statements
+            if !stmts.is_empty() {
+                if let Expr::Let { name, value, body: inner, .. } = body {
+                    body = Expr::Let { name, value, body: inner, span: *span };
+                }
+            }
+            body
+        },
+        lst::Expr::IfElse { condition, then_body, else_body, span } => {
+            let scrutinee = lower_expr(condition, ctx);
+            let then_arm = MatchArm {
+                pattern: Pattern::Ctor { name: "true".into(), args: vec![] },
+                body: maybe_produce(lower_expr(then_body, ctx), *span),
+                span: *span,
+            };
+            let else_arm = MatchArm {
+                pattern: Pattern::Ctor { name: "false".into(), args: vec![] },
+                body: match else_body {
+                    Some(e) => maybe_produce(lower_expr(e, ctx), *span),
+                    None => Expr::Produce {
+                        expr: Box::new(Expr::Ident { name: "unit".into(), span: *span }),
+                        span: *span,
+                    },
+                },
+                span: *span,
+            };
+            Expr::Match {
+                scrutinee: Box::new(scrutinee),
+                arms: vec![then_arm, else_arm],
+                span: *span,
+            }
         },
         lst::Expr::Error { span } => Expr::Error { span: *span },
     }

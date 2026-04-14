@@ -31,7 +31,7 @@ VariantFields = '(' fields:TypeExpr* ')'
 
 // === Functions ===
 
-FnDecl = attrs:Attribute* 'fn' name:Ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? ':=' body:Expr
+FnDecl = attrs:Attribute* 'fn' name:Ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? body:BlockExpr
 
 // === Generics ===
 
@@ -57,13 +57,13 @@ ExternFnDecl = attrs:Attribute* 'extern' 'fn' name:Ident param_list:ParamList ('
 // === Use declarations ===
 
 UseDecl = 'use' path:UsePath ';'
-UsePath = segments:Ident UseTree?
+UsePath = segments:Ident* use_tree:UseTree?
 UseTree = '.' '{' names:Ident* '}'
 
 // === Impl blocks ===
 
 ImplDecl = 'impl' generic_params:GenericParams? name:Ident? target:TypeExpr (':' cap:TypeExpr)? '{' methods:ImplMethod* '}'
-ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? ':=' body:Expr
+ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? body:BlockExpr
 
 // === Expressions ===
 
@@ -72,7 +72,6 @@ Expr =
   | StringExpr
   | NumberExpr
   | LetExpr
-  | ProduceExpr
   | ThunkExpr
   | ForceExpr
   | MatchExpr
@@ -80,18 +79,18 @@ Expr =
   | MemberExpr
   | BinaryExpr
   | UnaryExpr
-  | PerformExpr
   | HandleExpr
   | BundleExpr
   | ParenExpr
   | AnnotationExpr
+  | BlockExpr
+  | IfElseExpr
 
 IdentExpr = name:Ident
 StringExpr = value:StringLit
 NumberExpr = value:NumberLit
 
-LetExpr = 'let' name:Ident (':' ty:TypeExpr)? '=' value:Expr 'in' body:Expr
-ProduceExpr = 'produce' value:Expr
+LetExpr = 'let' name:Ident (':' ty:TypeExpr)? '=' value:Expr
 ThunkExpr = 'thunk' body:Expr
 ForceExpr = 'force' expr:Expr
 
@@ -103,13 +102,23 @@ MemberExpr = object:Expr '.' member:Ident
 BinaryExpr = lhs:Expr op:BinaryOp rhs:Expr
 UnaryExpr = op:UnaryOp operand:Expr
 
-PerformExpr = 'perform' expr:Expr
 HandleExpr = 'handle' cap_expr:Expr 'with' handler:Expr 'in' body:Expr
 BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
-BundleEntry = 'fn' name:Ident param_list:ParamList ':=' body:Expr
+BundleEntry = 'fn' name:Ident param_list:ParamList body:BlockExpr
 
 ParenExpr = '(' inner:Expr ')'
 AnnotationExpr = '(' expr:Expr ':' ty:TypeExpr ')'
+BlockExpr = '{' stmts:BlockStmt* result:Expr '}'
+
+IfElseExpr = 'if' condition:Expr then_body:BlockExpr ('else' else_clause:ElseClause)?
+ElseClause =
+  | IfElseExpr
+  | BlockExpr
+BlockStmt =
+  | LetStmt
+  | ExprStmt
+LetStmt = 'let' name:Ident '=' value:Expr ';'
+ExprStmt = expr:Expr ';'
 
 // === Patterns ===
 

@@ -2,4 +2,5 @@
 name = "langue"
 
 [deps]
-lumo_std = "../lumo-std"
+libcore = "../libcore"
+libstd = "../libstd"

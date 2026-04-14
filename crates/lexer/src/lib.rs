@@ -32,6 +32,13 @@ pub enum Keyword {
     Bundle,
     Use,
     Impl,
+    If,
+    Else,
+    // LIR-specific keywords
+    Lambda,
+    Roll,
+    Unroll,
+    Ctor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,6 +219,12 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
                 "bundle" => LosslessTokenKind::Keyword(Keyword::Bundle),
                 "use" => LosslessTokenKind::Keyword(Keyword::Use),
                 "impl" => LosslessTokenKind::Keyword(Keyword::Impl),
+                "if" => LosslessTokenKind::Keyword(Keyword::If),
+                "else" => LosslessTokenKind::Keyword(Keyword::Else),
+                "lambda" => LosslessTokenKind::Keyword(Keyword::Lambda),
+                "roll" => LosslessTokenKind::Keyword(Keyword::Roll),
+                "unroll" => LosslessTokenKind::Keyword(Keyword::Unroll),
+                "ctor" => LosslessTokenKind::Keyword(Keyword::Ctor),
                 _ => LosslessTokenKind::Ident,
             };
 

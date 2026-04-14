@@ -1,0 +1,11 @@
+data Bool { .true, .false }
+fn f(x: Bool) { if x { Bool.true } else { Bool.false } }
+---
+Data(name="Bool", variants=["true", "false"])
+Fn(name="f", body=If(cond=Variable("x"), then=Member(object=Variable("Bool"), member="true"), else=Member(object=Variable("Bool"), member="false")))
+==========
+data Bool { .true, .false }
+fn f(x: Bool, y: Bool) { if x { Bool.true } else if y { Bool.true } else { Bool.false } }
+---
+Data(name="Bool", variants=["true", "false"])
+Fn(name="f", body=If(cond=Variable("x"), then=Member(object=Variable("Bool"), member="true"), else=If(cond=Variable("y"), then=Member(object=Variable("Bool"), member="true"), else=Member(object=Variable("Bool"), member="false"))))

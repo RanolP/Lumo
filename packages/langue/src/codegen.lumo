@@ -1,612 +1,634 @@
-use lumo_std.prelude.{String, Number, Bool};
-use lumo_std.list.{List};
-use lumo_std.string.{str_len, str_char_at, str_slice, str_concat, str_eq, char_code_at, string_from_char_code, num_to_string};
-use lumo_std.number.{num_eq, num_lt, num_gte, num_lte, num_add, num_sub};
+use libcore.prelude.{String, Number, Bool};
+use libcore.string.{StrOps};
+use libcore.cmp.{PartialEq, PartialOrd};
+use libcore.ops.{Add, Sub};
+use libstd.list.{List};
 
 // ---------------------------------------------------------------------------
 // Naming helpers
 // ---------------------------------------------------------------------------
 
 // PascalCase to SCREAMING_SNAKE_CASE
-fn to_screaming_snake(name: String): produce String :=
-  produce to_screaming_snake_loop(name, 0, "")
+fn to_screaming_snake(name: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+  to_screaming_snake_loop(name, 0, "")
+}
 
-fn to_screaming_snake_loop(name: String, i: Number, acc: String): produce String :=
-  match num_gte(i, str_len(name)) {
-    .true => produce acc,
-    .false =>
-      let c = str_char_at(name, i) in
-      let code = char_code_at(c, 0) in
-      let is_upper = match num_gte(code, 65) { .true => produce num_lte(code, 90), .false => produce Bool.false } in
-      match is_upper {
-        .true =>
-          match num_lt(0, i) {
-            .true =>
-              // Check if previous char was lowercase or digit
-              let prev_code = char_code_at(str_char_at(name, num_sub(i, 1)), 0) in
-              let prev_lower = match num_gte(prev_code, 97) { .true => produce num_lte(prev_code, 122), .false => produce Bool.false } in
-              let prev_digit = match num_gte(prev_code, 48) { .true => produce num_lte(prev_code, 57), .false => produce Bool.false } in
-              match prev_lower { .true => produce to_screaming_snake_loop(name, num_add(i, 1), str_concat(acc, str_concat("_", to_upper_char(c)))),
-              .false => match prev_digit { .true => produce to_screaming_snake_loop(name, num_add(i, 1), str_concat(acc, str_concat("_", to_upper_char(c)))),
-              .false => produce to_screaming_snake_loop(name, num_add(i, 1), str_concat(acc, to_upper_char(c))) }},
-            .false => produce to_screaming_snake_loop(name, num_add(i, 1), str_concat(acc, to_upper_char(c)))
-          },
-        .false => produce to_screaming_snake_loop(name, num_add(i, 1), str_concat(acc, to_upper_char(c)))
-      }
+fn to_screaming_snake_loop(name: String, i: Number, acc: String): String / { StrOps, Add for String, Add for Number, PartialOrd for Number, Sub for Number } {
+  if i >= StrOps.str_len(name) { acc } else {
+    let c = StrOps.str_char_at(name, i);
+    let code = StrOps.char_code_at(c, 0);
+    let is_upper = if code >= 65 { code <= 90 } else { Bool.false };
+    if is_upper {
+      if 0 < i {
+        // Check if previous char was lowercase or digit
+        let prev_code = StrOps.char_code_at(StrOps.str_char_at(name, i - 1), 0);
+        let prev_lower = if prev_code >= 97 { prev_code <= 122 } else { Bool.false };
+        let prev_digit = if prev_code >= 48 { prev_code <= 57 } else { Bool.false };
+        if prev_lower { to_screaming_snake_loop(name, i + 1, acc + "_" + to_upper_char(c)) }
+        else if prev_digit { to_screaming_snake_loop(name, i + 1, acc + "_" + to_upper_char(c)) }
+        else { to_screaming_snake_loop(name, i + 1, acc + to_upper_char(c)) }
+      } else { to_screaming_snake_loop(name, i + 1, acc + to_upper_char(c)) }
+    } else { to_screaming_snake_loop(name, i + 1, acc + to_upper_char(c)) }
   }
+}
 
-fn to_upper_char(c: String): produce String :=
-  let code = char_code_at(c, 0) in
-  match num_gte(code, 97) {
-    .true => match num_lte(code, 122) {
-      .true => produce string_from_char_code(num_sub(code, 32)),
-      .false => produce c
-    },
-    .false => produce c
-  }
+fn to_upper_char(c: String): String / { StrOps, PartialOrd for Number, Sub for Number } {
+  let code = StrOps.char_code_at(c, 0);
+  if code >= 97 {
+    if code <= 122 { StrOps.string_from_char_code(code - 32) } else { c }
+  } else { c }
+}
 
-fn keyword_variant(kw: String): produce String :=
-  produce str_concat(to_upper_string(kw), "_KW")
+fn keyword_variant(kw: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+  to_upper_string(kw) + "_KW"
+}
 
-fn to_upper_string(s: String): produce String :=
-  produce to_upper_string_loop(s, 0, "")
+fn to_upper_string(s: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+  to_upper_string_loop(s, 0, "")
+}
 
-fn to_upper_string_loop(s: String, i: Number, acc: String): produce String :=
-  match num_gte(i, str_len(s)) {
-    .true => produce acc,
-    .false => produce to_upper_string_loop(s, num_add(i, 1), str_concat(acc, to_upper_char(str_char_at(s, i))))
-  }
+fn to_upper_string_loop(s: String, i: Number, acc: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+  if i >= StrOps.str_len(s) { acc }
+  else { to_upper_string_loop(s, i + 1, acc + to_upper_char(StrOps.str_char_at(s, i))) }
+}
 
-fn symbol_variant(sym: String): produce String :=
-  match str_eq(sym, "#") { .true => produce "HASH", .false =>
-  match str_eq(sym, "(") { .true => produce "L_PAREN", .false =>
-  match str_eq(sym, ")") { .true => produce "R_PAREN", .false =>
-  match str_eq(sym, "[") { .true => produce "L_BRACKET", .false =>
-  match str_eq(sym, "]") { .true => produce "R_BRACKET", .false =>
-  match str_eq(sym, "{") { .true => produce "L_BRACE", .false =>
-  match str_eq(sym, "}") { .true => produce "R_BRACE", .false =>
-  match str_eq(sym, ";") { .true => produce "SEMICOLON", .false =>
-  match str_eq(sym, ":") { .true => produce "COLON", .false =>
-  match str_eq(sym, ",") { .true => produce "COMMA", .false =>
-  match str_eq(sym, "=") { .true => produce "EQUALS", .false =>
-  match str_eq(sym, ":=") { .true => produce "COLON_EQ", .false =>
-  match str_eq(sym, "=>") { .true => produce "FAT_ARROW", .false =>
-  match str_eq(sym, "->") { .true => produce "ARROW", .false =>
-  match str_eq(sym, ".") { .true => produce "DOT", .false =>
-  match str_eq(sym, "+") { .true => produce "PLUS", .false =>
-  match str_eq(sym, "-") { .true => produce "MINUS", .false =>
-  match str_eq(sym, "*") { .true => produce "STAR", .false =>
-  match str_eq(sym, "/") { .true => produce "SLASH", .false =>
-  match str_eq(sym, "%") { .true => produce "PERCENT", .false =>
-  match str_eq(sym, "!") { .true => produce "BANG", .false =>
-  match str_eq(sym, "<") { .true => produce "LT", .false =>
-  match str_eq(sym, ">") { .true => produce "GT", .false =>
-  match str_eq(sym, "<=") { .true => produce "LT_EQ", .false =>
-  match str_eq(sym, ">=") { .true => produce "GT_EQ", .false =>
-  match str_eq(sym, "==") { .true => produce "EQ_EQ", .false =>
-  match str_eq(sym, "!=") { .true => produce "BANG_EQ", .false =>
-  match str_eq(sym, "&&") { .true => produce "AMP_AMP", .false =>
-  match str_eq(sym, "||") { .true => produce "PIPE_PIPE", .false =>
-  match str_eq(sym, "_") { .true => produce "UNDERSCORE", .false =>
-  produce str_concat("SYM_", sym)
-  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+fn symbol_variant(sym: String): String / { PartialEq for String, Add for String } {
+  if sym == "#" { "HASH" }
+  else if sym == "(" { "L_PAREN" }
+  else if sym == ")" { "R_PAREN" }
+  else if sym == "[" { "L_BRACKET" }
+  else if sym == "]" { "R_BRACKET" }
+  else if sym == "{" { "L_BRACE" }
+  else if sym == "}" { "R_BRACE" }
+  else if sym == ";" { "SEMICOLON" }
+  else if sym == ":" { "COLON" }
+  else if sym == "," { "COMMA" }
+  else if sym == "=" { "EQUALS" }
+  else if sym == ":=" { "COLON_EQ" }
+  else if sym == "=>" { "FAT_ARROW" }
+  else if sym == "->" { "ARROW" }
+  else if sym == "." { "DOT" }
+  else if sym == "+" { "PLUS" }
+  else if sym == "-" { "MINUS" }
+  else if sym == "*" { "STAR" }
+  else if sym == "/" { "SLASH" }
+  else if sym == "%" { "PERCENT" }
+  else if sym == "!" { "BANG" }
+  else if sym == "<" { "LT" }
+  else if sym == ">" { "GT" }
+  else if sym == "<=" { "LT_EQ" }
+  else if sym == ">=" { "GT_EQ" }
+  else if sym == "==" { "EQ_EQ" }
+  else if sym == "!=" { "BANG_EQ" }
+  else if sym == "&&" { "AMP_AMP" }
+  else if sym == "||" { "PIPE_PIPE" }
+  else if sym == "_" { "UNDERSCORE" }
+  else { "SYM_" + sym }
+}
 
 // ---------------------------------------------------------------------------
 // Token collection: gather all keywords and symbols from rules
 // ---------------------------------------------------------------------------
 
 // Collect unique, sorted keywords and symbols from all rules
-fn collect_tokens(grammar: Grammar): produce CollectedTokens :=
-  match grammar { .mk(token_defs, rules) =>
-    let pair = collect_tokens_from_rules(rules, List.nil, List.nil) in
+fn collect_tokens(grammar: Grammar): CollectedTokens / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  match grammar { .mk(token_defs, rules) => {
+    let pair = collect_tokens_from_rules(rules, List.nil, List.nil);
     match pair { .mk(kws, syms) =>
-      produce CollectedTokens.mk(sort_strings(dedupe_strings(kws)), sort_strings(dedupe_strings(syms)))
+      CollectedTokens.mk(sort_strings(dedupe_strings(kws)), sort_strings(dedupe_strings(syms)))
     }
-  }
+  }}
+}
 
 data CollectedTokens { .mk(List[String], List[String]) }
 
 data StringPair { .mk(List[String], List[String]) }
 
-fn collect_tokens_from_rules(rules: List[Rule], kws: List[String], syms: List[String]): produce StringPair :=
+fn collect_tokens_from_rules(rules: List[Rule], kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } {
   match rules {
-    .nil => produce StringPair.mk(kws, syms),
+    .nil => StringPair.mk(kws, syms),
     .cons(rule, rest) =>
-      match rule { .mk(name, body) =>
-        let pair = collect_tokens_from_body(body, kws, syms) in
+      match rule { .mk(name, body) => {
+        let pair = collect_tokens_from_body(body, kws, syms);
         match pair { .mk(kws2, syms2) =>
-          produce collect_tokens_from_rules(rest, kws2, syms2)
+          collect_tokens_from_rules(rest, kws2, syms2)
         }
-      }
+      }}
   }
+}
 
-fn collect_tokens_from_body(body: RuleBody, kws: List[String], syms: List[String]): produce StringPair :=
+fn collect_tokens_from_body(body: RuleBody, kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } {
   match body {
-    .sequence(elems) => produce collect_tokens_from_elements(elems, kws, syms),
-    .alternatives(alts) => produce collect_tokens_from_alts(alts, kws, syms)
+    .sequence(elems) => collect_tokens_from_elements(elems, kws, syms),
+    .alternatives(alts) => collect_tokens_from_alts(alts, kws, syms)
   }
+}
 
-fn collect_tokens_from_alts(alts: List[Alternative], kws: List[String], syms: List[String]): produce StringPair :=
+fn collect_tokens_from_alts(alts: List[Alternative], kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } {
   match alts {
-    .nil => produce StringPair.mk(kws, syms),
+    .nil => StringPair.mk(kws, syms),
     .cons(alt, rest) =>
-      match alt { .mk(name) =>
+      match alt { .mk(name) => {
         // If name starts with uppercase (A-Z, 65-90), it's a rule reference — skip.
         // Otherwise it's a quoted token literal — classify as keyword or symbol.
-        let code = char_code_at(name, 0) in
-        match num_gte(code, 65) {
-          .true => match num_lte(code, 90) {
-            .true => produce collect_tokens_from_alts(rest, kws, syms),
-            .false => produce collect_alt_token(name, rest, kws, syms)
-          },
-          .false => produce collect_alt_token(name, rest, kws, syms)
-        }
-      }
+        let code = StrOps.char_code_at(name, 0);
+        if code >= 65 {
+          if code <= 90 { collect_tokens_from_alts(rest, kws, syms) }
+          else { collect_alt_token(name, rest, kws, syms) }
+        } else { collect_alt_token(name, rest, kws, syms) }
+      }}
   }
+}
 
-fn collect_alt_token(name: String, rest: List[Alternative], kws: List[String], syms: List[String]): produce StringPair :=
-  match has_alpha(name, 0) {
-    .true => produce collect_tokens_from_alts(rest, List.cons(name, kws), syms),
-    .false => produce collect_tokens_from_alts(rest, kws, List.cons(name, syms))
-  }
+fn collect_alt_token(name: String, rest: List[Alternative], kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } {
+  if has_alpha(name, 0) { collect_tokens_from_alts(rest, List.cons(name, kws), syms) }
+  else { collect_tokens_from_alts(rest, kws, List.cons(name, syms)) }
+}
 
-fn collect_tokens_from_elements(elems: List[Element], kws: List[String], syms: List[String]): produce StringPair :=
+fn collect_tokens_from_elements(elems: List[Element], kws: List[String], syms: List[String]): StringPair {
   match elems {
-    .nil => produce StringPair.mk(kws, syms),
-    .cons(elem, rest) =>
-      let pair = collect_tokens_from_element(elem, kws, syms) in
+    .nil => StringPair.mk(kws, syms),
+    .cons(elem, rest) => {
+      let pair = collect_tokens_from_element(elem, kws, syms);
       match pair { .mk(kws2, syms2) =>
-        produce collect_tokens_from_elements(rest, kws2, syms2)
+        collect_tokens_from_elements(rest, kws2, syms2)
       }
+    }
   }
+}
 
-fn collect_tokens_from_element(elem: Element, kws: List[String], syms: List[String]): produce StringPair :=
+fn collect_tokens_from_element(elem: Element, kws: List[String], syms: List[String]): StringPair {
   match elem {
     .token(t) =>
       match t {
-        .keyword(k) => produce StringPair.mk(List.cons(k, kws), syms),
-        .symbol(s) => produce StringPair.mk(kws, List.cons(s, syms)),
-        .named(n) => produce StringPair.mk(kws, syms)
+        .keyword(k) => StringPair.mk(List.cons(k, kws), syms),
+        .symbol(s) => StringPair.mk(kws, List.cons(s, syms)),
+        .named(n) => StringPair.mk(kws, syms)
       },
-    .node(ref) => produce StringPair.mk(kws, syms),
-    .labeled(label, inner) => produce collect_tokens_from_element(inner, kws, syms),
-    .optional(inner) => produce collect_tokens_from_element(inner, kws, syms),
-    .repeated(inner) => produce collect_tokens_from_element(inner, kws, syms),
-    .group(elems) => produce collect_tokens_from_elements(elems, kws, syms)
+    .node(ref) => StringPair.mk(kws, syms),
+    .labeled(label, inner) => collect_tokens_from_element(inner, kws, syms),
+    .optional(inner) => collect_tokens_from_element(inner, kws, syms),
+    .repeated(inner) => collect_tokens_from_element(inner, kws, syms),
+    .group(elems) => collect_tokens_from_elements(elems, kws, syms)
   }
+}
 
 // ---------------------------------------------------------------------------
 // String utilities: dedupe and sort
 // ---------------------------------------------------------------------------
 
-fn dedupe_strings(xs: List[String]): produce List[String] :=
-  produce dedupe_strings_acc(xs, List.nil)
+fn dedupe_strings(xs: List[String]): List[String] / { PartialEq for String } {
+  dedupe_strings_acc(xs, List.nil)
+}
 
-fn dedupe_strings_acc(xs: List[String], acc: List[String]): produce List[String] :=
+fn dedupe_strings_acc(xs: List[String], acc: List[String]): List[String] / { PartialEq for String } {
   match xs {
-    .nil => produce acc,
+    .nil => acc,
     .cons(x, rest) =>
-      match list_contains_string(acc, x) {
-        .true => produce dedupe_strings_acc(rest, acc),
-        .false => produce dedupe_strings_acc(rest, List.cons(x, acc))
-      }
+      if list_contains_string(acc, x) { dedupe_strings_acc(rest, acc) }
+      else { dedupe_strings_acc(rest, List.cons(x, acc)) }
   }
+}
 
 // Simple insertion sort for strings
-fn sort_strings(xs: List[String]): produce List[String] :=
-  produce sort_strings_acc(xs, List.nil)
+fn sort_strings(xs: List[String]): List[String] / { Add for Number, PartialOrd for Number, StrOps } {
+  sort_strings_acc(xs, List.nil)
+}
 
-fn sort_strings_acc(xs: List[String], sorted: List[String]): produce List[String] :=
+fn sort_strings_acc(xs: List[String], sorted: List[String]): List[String] / { Add for Number, PartialOrd for Number, StrOps } {
   match xs {
-    .nil => produce sorted,
-    .cons(x, rest) => produce sort_strings_acc(rest, insert_sorted(x, sorted))
+    .nil => sorted,
+    .cons(x, rest) => sort_strings_acc(rest, insert_sorted(x, sorted))
   }
+}
 
-fn insert_sorted(s: String, xs: List[String]): produce List[String] :=
+fn insert_sorted(s: String, xs: List[String]): List[String] / { Add for Number, PartialOrd for Number, StrOps } {
   match xs {
-    .nil => produce List.cons(s, xs),
+    .nil => List.cons(s, xs),
     .cons(x, rest) =>
-      match string_lt(s, x) {
-        .true => produce List.cons(s, xs),
-        .false => produce List.cons(x, insert_sorted(s, rest))
-      }
+      if string_lt(s, x) { List.cons(s, xs) }
+      else { List.cons(x, insert_sorted(s, rest)) }
   }
+}
 
-fn string_lt(a: String, b: String): produce Bool :=
-  produce string_lt_loop(a, b, 0)
+fn string_lt(a: String, b: String): Bool / { Add for Number, PartialOrd for Number, StrOps } {
+  string_lt_loop(a, b, 0)
+}
 
-fn string_lt_loop(a: String, b: String, i: Number): produce Bool :=
-  match num_gte(i, str_len(a)) {
-    .true => match num_gte(i, str_len(b)) { .true => produce Bool.false, .false => produce Bool.true },
-    .false =>
-      match num_gte(i, str_len(b)) {
-        .true => produce Bool.false,
-        .false =>
-          let ca = char_code_at(a, i) in
-          let cb = char_code_at(b, i) in
-          match num_lt(ca, cb) { .true => produce Bool.true, .false =>
-          match num_lt(cb, ca) { .true => produce Bool.false, .false =>
-          produce string_lt_loop(a, b, num_add(i, 1)) }}
-      }
+fn string_lt_loop(a: String, b: String, i: Number): Bool / { StrOps, Add for Number, PartialOrd for Number } {
+  if i >= StrOps.str_len(a) {
+    if i >= StrOps.str_len(b) { Bool.false } else { Bool.true }
+  } else if i >= StrOps.str_len(b) { Bool.false }
+  else {
+    let ca = StrOps.char_code_at(a, i);
+    let cb = StrOps.char_code_at(b, i);
+    if ca < cb { Bool.true }
+    else if cb < ca { Bool.false }
+    else { string_lt_loop(a, b, i + 1) }
   }
+}
 
 // Check if rule alternatives are all token literals
-fn is_token_only_alternatives(alts: List[Alternative]): produce Bool :=
+fn is_token_only_alternatives(alts: List[Alternative]): Bool / { StrOps, PartialOrd for Number } {
   match alts {
-    .nil => produce Bool.true,
+    .nil => Bool.true,
     .cons(alt, rest) =>
-      match alt { .mk(name) =>
+      match alt { .mk(name) => {
         // Simple heuristic: if name starts with lowercase or has symbols, it's a token
         // For now, we check if the name matches a known token pattern
         // Actually we need to check if all alternatives are quoted in the grammar
         // Since our parser resolves them, we can check if name looks like a reference
         // to a sequence rule. For now, treat as token-only if name has no uppercase start.
-        let code = char_code_at(name, 0) in
-        let is_upper = match num_gte(code, 65) { .true => produce num_lte(code, 90), .false => produce Bool.false } in
-        match is_upper {
-          .true => produce Bool.false,
-          .false => produce is_token_only_alternatives(rest)
-        }
-      }
+        let code = StrOps.char_code_at(name, 0);
+        let is_upper = if code >= 65 { code <= 90 } else { Bool.false };
+        if is_upper { Bool.false } else { is_token_only_alternatives(rest) }
+      }}
   }
+}
 
 // ---------------------------------------------------------------------------
 // Generate syntax_kind.rs
 // ---------------------------------------------------------------------------
 
-fn generate_syntax_kind(grammar: Grammar): produce String :=
-  let collected = collect_tokens(grammar) in
+fn generate_syntax_kind(grammar: Grammar): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let collected = collect_tokens(grammar);
   match collected { .mk(keywords, symbols) =>
-  match grammar { .mk(token_defs, rules) =>
-    let s = "// Auto-generated by langue. Do not edit.\n\n" in
-    let s = str_concat(s, "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\n") in
-    let s = str_concat(s, "#[repr(u16)]\n") in
-    let s = str_concat(s, "pub enum SyntaxKind {\n") in
+  match grammar { .mk(token_defs, rules) => {
+    let s = "// Auto-generated by langue. Do not edit.\n\n";
+    let s = s + "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\n";
+    let s = s + "#[repr(u16)]\n";
+    let s = s + "pub enum SyntaxKind {\n";
     // Named tokens
-    let s = str_concat(s, "    // Named tokens\n") in
-    let s = emit_named_tokens(s, token_defs) in
+    let s = s + "    // Named tokens\n";
+    let s = emit_named_tokens(s, token_defs);
     // Trivia
-    let s = str_concat(s, "    // Trivia\n") in
-    let s = str_concat(s, "    WHITESPACE,\n    NEWLINE,\n    UNKNOWN,\n") in
+    let s = s + "    // Trivia\n";
+    let s = s + "    WHITESPACE,\n    NEWLINE,\n    UNKNOWN,\n";
     // Keywords
-    let s = emit_keywords(s, keywords) in
+    let s = emit_keywords(s, keywords);
     // Symbols
-    let s = emit_symbols(s, symbols) in
+    let s = emit_symbols(s, symbols);
     // Nodes
-    let s = str_concat(s, "    // Nodes\n") in
-    let s = emit_node_kinds(s, rules) in
+    let s = s + "    // Nodes\n";
+    let s = emit_node_kinds(s, rules);
     // Sentinel
-    let s = str_concat(s, "    // Sentinel\n    ERROR,\n") in
-    let s = str_concat(s, "}\n") in
+    let s = s + "    // Sentinel\n    ERROR,\n";
+    let s = s + "}\n";
     // impl block
-    let s = str_concat(s, "\nimpl SyntaxKind {\n") in
-    let s = str_concat(s, "    pub fn is_trivia(self) -> bool {\n") in
-    let s = str_concat(s, "        matches!(self, Self::WHITESPACE | Self::NEWLINE)\n") in
-    let s = str_concat(s, "    }\n") in
+    let s = s + "\nimpl SyntaxKind {\n";
+    let s = s + "    pub fn is_trivia(self) -> bool {\n";
+    let s = s + "        matches!(self, Self::WHITESPACE | Self::NEWLINE)\n";
+    let s = s + "    }\n";
     // from_keyword
-    let s = emit_from_keyword(s, keywords) in
+    let s = emit_from_keyword(s, keywords);
     // from_symbol
-    let s = emit_from_symbol(s, symbols) in
-    let s = str_concat(s, "}\n") in
-    produce s
-  }}
+    let s = emit_from_symbol(s, symbols);
+    let s = s + "}\n";
+    s
+  }}}
+}
 
-fn emit_named_tokens(s: String, tokens: List[String]): produce String :=
+fn emit_named_tokens(s: String, tokens: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
   match tokens {
-    .nil => produce s,
+    .nil => s,
     .cons(tok, rest) =>
-      produce emit_named_tokens(str_concat(s, str_concat("    ", str_concat(to_screaming_snake(tok), ",\n"))), rest)
+      emit_named_tokens(s + "    " + to_screaming_snake(tok) + ",\n", rest)
   }
+}
 
-fn emit_keywords(s: String, kws: List[String]): produce String :=
+fn emit_keywords(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
   match kws {
-    .nil => produce s,
-    _ =>
-      let s2 = str_concat(s, "    // Keywords\n") in
-      produce emit_keywords_items(s2, kws)
+    .nil => s,
+    _ => {
+      let s2 = s + "    // Keywords\n";
+      emit_keywords_items(s2, kws)
+    }
   }
+}
 
-fn emit_keywords_items(s: String, kws: List[String]): produce String :=
+fn emit_keywords_items(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
   match kws {
-    .nil => produce s,
-    .cons(kw, rest) =>
-      let line = str_concat("    ", str_concat(keyword_variant(kw), str_concat(", // '", str_concat(kw, "'\n")))) in
-      produce emit_keywords_items(str_concat(s, line), rest)
+    .nil => s,
+    .cons(kw, rest) => {
+      let line = "    " + keyword_variant(kw) + ", // '" + kw + "'\n";
+      emit_keywords_items(s + line, rest)
+    }
   }
+}
 
-fn emit_symbols(s: String, syms: List[String]): produce String :=
+fn emit_symbols(s: String, syms: List[String]): String / { Add for String, PartialEq for String } {
   match syms {
-    .nil => produce s,
-    .cons(sym, rest) =>
-      let s2 = match rest { .nil => produce s, _ => match syms { _ => produce str_concat(s, "    // Symbols\n") } } in
-      produce emit_symbols_items(s2, syms)
+    .nil => s,
+    .cons(sym, rest) => {
+      let s2 = match rest { .nil => s, _ => match syms { _ => s + "    // Symbols\n" } };
+      emit_symbols_items(s2, syms)
+    }
   }
+}
 
-fn emit_symbols_items(s: String, syms: List[String]): produce String :=
+fn emit_symbols_items(s: String, syms: List[String]): String / { Add for String, PartialEq for String } {
   match syms {
-    .nil => produce s,
-    .cons(sym, rest) =>
-      let line = str_concat("    ", str_concat(symbol_variant(sym), str_concat(", // '", str_concat(sym, "'\n")))) in
-      produce emit_symbols_items(str_concat(s, line), rest)
+    .nil => s,
+    .cons(sym, rest) => {
+      let line = "    " + symbol_variant(sym) + ", // '" + sym + "'\n";
+      emit_symbols_items(s + line, rest)
+    }
   }
+}
 
-fn emit_node_kinds(s: String, rules: List[Rule]): produce String :=
+fn emit_node_kinds(s: String, rules: List[Rule]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
   match rules {
-    .nil => produce s,
+    .nil => s,
     .cons(rule, rest) =>
       match rule { .mk(name, body) =>
         match body {
-          .sequence(elems) =>
-            let line = str_concat("    ", str_concat(to_screaming_snake(name), str_concat(", // ", str_concat(name, "\n")))) in
-            produce emit_node_kinds(str_concat(s, line), rest),
+          .sequence(elems) => {
+            let line = "    " + to_screaming_snake(name) + ", // " + name + "\n";
+            emit_node_kinds(s + line, rest)
+          },
           .alternatives(alts) =>
-            match is_token_only_alternatives(alts) {
-              .true =>
-                let line = str_concat("    ", str_concat(to_screaming_snake(name), str_concat(", // ", str_concat(name, " (token wrapper)\n")))) in
-                produce emit_node_kinds(str_concat(s, line), rest),
-              .false =>
-                // Alternative-only rules don't get SyntaxKind variants
-                produce emit_node_kinds(s, rest)
+            if is_token_only_alternatives(alts) {
+              let line = "    " + to_screaming_snake(name) + ", // " + name + " (token wrapper)\n";
+              emit_node_kinds(s + line, rest)
+            } else {
+              // Alternative-only rules don't get SyntaxKind variants
+              emit_node_kinds(s, rest)
             }
         }
       }
   }
+}
 
-fn emit_from_keyword(s: String, kws: List[String]): produce String :=
+fn emit_from_keyword(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
   match kws {
-    .nil => produce s,
-    _ =>
-      let s = str_concat(s, "\n    pub fn from_keyword(text: &str) -> Option<Self> {\n") in
-      let s = str_concat(s, "        match text {\n") in
-      let s = emit_keyword_arms(s, kws) in
-      let s = str_concat(s, "            _ => None,\n") in
-      let s = str_concat(s, "        }\n") in
-      let s = str_concat(s, "    }\n") in
-      produce s
+    .nil => s,
+    _ => {
+      let s = s + "\n    pub fn from_keyword(text: &str) -> Option<Self> {\n";
+      let s = s + "        match text {\n";
+      let s = emit_keyword_arms(s, kws);
+      let s = s + "            _ => None,\n";
+      let s = s + "        }\n";
+      let s = s + "    }\n";
+      s
+    }
   }
+}
 
-fn emit_keyword_arms(s: String, kws: List[String]): produce String :=
+fn emit_keyword_arms(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
   match kws {
-    .nil => produce s,
-    .cons(kw, rest) =>
-      let line = str_concat("            \"", str_concat(kw, str_concat("\" => Some(Self::", str_concat(keyword_variant(kw), "),\n")))) in
-      produce emit_keyword_arms(str_concat(s, line), rest)
+    .nil => s,
+    .cons(kw, rest) => {
+      let line = "            \"" + kw + "\" => Some(Self::" + keyword_variant(kw) + "),\n";
+      emit_keyword_arms(s + line, rest)
+    }
   }
+}
 
-fn emit_from_symbol(s: String, syms: List[String]): produce String :=
+fn emit_from_symbol(s: String, syms: List[String]): String / { Add for String, PartialEq for String } {
   match syms {
-    .nil => produce s,
-    _ =>
-      let s = str_concat(s, "\n    pub fn from_symbol(text: &str) -> Option<Self> {\n") in
-      let s = str_concat(s, "        match text {\n") in
-      let s = emit_symbol_arms(s, syms) in
-      let s = str_concat(s, "            _ => None,\n") in
-      let s = str_concat(s, "        }\n") in
-      let s = str_concat(s, "    }\n") in
-      produce s
+    .nil => s,
+    _ => {
+      let s = s + "\n    pub fn from_symbol(text: &str) -> Option<Self> {\n";
+      let s = s + "        match text {\n";
+      let s = emit_symbol_arms(s, syms);
+      let s = s + "            _ => None,\n";
+      let s = s + "        }\n";
+      let s = s + "    }\n";
+      s
+    }
   }
+}
 
-fn emit_symbol_arms(s: String, syms: List[String]): produce String :=
+fn emit_symbol_arms(s: String, syms: List[String]): String / { Add for String, PartialEq for String } {
   match syms {
-    .nil => produce s,
-    .cons(sym, rest) =>
-      let line = str_concat("            \"", str_concat(sym, str_concat("\" => Some(Self::", str_concat(symbol_variant(sym), "),\n")))) in
-      produce emit_symbol_arms(str_concat(s, line), rest)
+    .nil => s,
+    .cons(sym, rest) => {
+      let line = "            \"" + sym + "\" => Some(Self::" + symbol_variant(sym) + "),\n";
+      emit_symbol_arms(s + line, rest)
+    }
   }
+}
 
 // ---------------------------------------------------------------------------
 // Generate ast.rs
 // ---------------------------------------------------------------------------
 
-fn generate_ast(grammar: Grammar): produce String :=
-  match grammar { .mk(token_defs, rules) =>
-    let s = "// Auto-generated by langue. Do not edit.\n\n" in
-    let s = str_concat(s, "use super::SyntaxKind;\n") in
-    let s = str_concat(s, "use super::{SyntaxNode, SyntaxElement, LosslessToken};\n\n") in
-    let s = str_concat(s, "pub trait AstNode<'a>: Sized {\n") in
-    let s = str_concat(s, "    fn cast(node: &'a SyntaxNode) -> Option<Self>;\n") in
-    let s = str_concat(s, "    fn syntax(&self) -> &'a SyntaxNode;\n") in
-    let s = str_concat(s, "}\n\n") in
-    produce emit_ast_rules(s, token_defs, rules)
-  }
+fn generate_ast(grammar: Grammar): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  match grammar { .mk(token_defs, rules) => {
+    let s = "// Auto-generated by langue. Do not edit.\n\n";
+    let s = s + "use super::SyntaxKind;\n";
+    let s = s + "use super::{SyntaxNode, SyntaxElement, LosslessToken};\n\n";
+    let s = s + "pub trait AstNode<'a>: Sized {\n";
+    let s = s + "    fn cast(node: &'a SyntaxNode) -> Option<Self>;\n";
+    let s = s + "    fn syntax(&self) -> &'a SyntaxNode;\n";
+    let s = s + "}\n\n";
+    emit_ast_rules(s, token_defs, rules)
+  }}
+}
 
-fn emit_ast_rules(s: String, token_defs: List[String], rules: List[Rule]): produce String :=
+fn emit_ast_rules(s: String, token_defs: List[String], rules: List[Rule]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   match rules {
-    .nil => produce s,
+    .nil => s,
     .cons(rule, rest) =>
-      match rule { .mk(name, body) =>
+      match rule { .mk(name, body) => {
         let s2 = match body {
-          .sequence(elems) => produce emit_struct_node(s, name, elems, token_defs),
+          .sequence(elems) => emit_struct_node(s, name, elems, token_defs),
           .alternatives(alts) =>
-            match is_token_only_alternatives(alts) {
-              .true => produce emit_token_wrapper_node(s, name),
-              .false => produce emit_enum_node(s, name, alts)
-            }
-        } in
-        produce emit_ast_rules(s2, token_defs, rest)
-      }
+            if is_token_only_alternatives(alts) { emit_token_wrapper_node(s, name) }
+            else { emit_enum_node(s, name, alts) }
+        };
+        emit_ast_rules(s2, token_defs, rest)
+      }}
   }
+}
 
 // Struct node for sequence rules
-fn emit_struct_node(s: String, name: String, elems: List[Element], token_defs: List[String]): produce String :=
-  let kind = to_screaming_snake(name) in
-  let s = str_concat(s, str_concat("pub struct ", str_concat(name, "<'a>(pub(crate) &'a SyntaxNode);\n\n"))) in
-  let s = str_concat(s, str_concat("impl<'a> AstNode<'a> for ", str_concat(name, "<'a> {\n"))) in
-  let s = str_concat(s, "    fn cast(node: &'a SyntaxNode) -> Option<Self> {\n") in
-  let s = str_concat(s, str_concat("        (node.kind == SyntaxKind::", str_concat(kind, ").then(|| Self(node))\n"))) in
-  let s = str_concat(s, "    }\n") in
-  let s = str_concat(s, "    fn syntax(&self) -> &'a SyntaxNode { self.0 }\n") in
-  let s = str_concat(s, "}\n\n") in
+fn emit_struct_node(s: String, name: String, elems: List[Element], token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let kind = to_screaming_snake(name);
+  let s = s + "pub struct " + name + "<'a>(pub(crate) &'a SyntaxNode);\n\n";
+  let s = s + "impl<'a> AstNode<'a> for " + name + "<'a> {\n";
+  let s = s + "    fn cast(node: &'a SyntaxNode) -> Option<Self> {\n";
+  let s = s + "        (node.kind == SyntaxKind::" + kind + ").then(|| Self(node))\n";
+  let s = s + "    }\n";
+  let s = s + "    fn syntax(&self) -> &'a SyntaxNode { self.0 }\n";
+  let s = s + "}\n\n";
   // Accessor methods
-  produce emit_accessors(s, name, elems, token_defs)
+  emit_accessors(s, name, elems, token_defs)
+}
 
-fn emit_accessors(s: String, struct_name: String, elems: List[Element], token_defs: List[String]): produce String :=
-  let has_labeled = has_labeled_elements(elems) in
-  match has_labeled {
-    .false => produce s,
-    .true =>
-      let s = str_concat(s, str_concat("impl<'a> ", str_concat(struct_name, "<'a> {\n"))) in
-      let s = emit_accessors_for_elements(s, elems, token_defs) in
-      let s = str_concat(s, "}\n\n") in
-      produce s
-  }
+fn emit_accessors(s: String, struct_name: String, elems: List[Element], token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let has_labeled = has_labeled_elements(elems);
+  if has_labeled {
+    let s = s + "impl<'a> " + struct_name + "<'a> {\n";
+    let s = emit_accessors_for_elements(s, elems, token_defs);
+    let s = s + "}\n\n";
+    s
+  } else { s }
+}
 
-fn has_labeled_elements(elems: List[Element]): produce Bool :=
+fn has_labeled_elements(elems: List[Element]): Bool {
   match elems {
-    .nil => produce Bool.false,
+    .nil => Bool.false,
     .cons(elem, rest) =>
       match elem {
-        .labeled(_, _) => produce Bool.true,
-        _ => produce has_labeled_elements(rest)
+        .labeled(_, _) => Bool.true,
+        _ => has_labeled_elements(rest)
       }
   }
+}
 
-fn emit_accessors_for_elements(s: String, elems: List[Element], token_defs: List[String]): produce String :=
+fn emit_accessors_for_elements(s: String, elems: List[Element], token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   match elems {
-    .nil => produce s,
+    .nil => s,
     .cons(elem, rest) =>
       match elem {
-        .labeled(label, inner) =>
-          let s2 = emit_single_accessor(s, label, inner, token_defs) in
-          produce emit_accessors_for_elements(s2, rest, token_defs),
-        _ => produce emit_accessors_for_elements(s, rest, token_defs)
+        .labeled(label, inner) => {
+          let s2 = emit_single_accessor(s, label, inner, token_defs);
+          emit_accessors_for_elements(s2, rest, token_defs)
+        },
+        _ => emit_accessors_for_elements(s, rest, token_defs)
       }
   }
+}
 
 // Emit a single accessor method for a labeled element
-fn emit_single_accessor(s: String, label: String, elem: Element, token_defs: List[String]): produce String :=
+fn emit_single_accessor(s: String, label: String, elem: Element, token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   match elem {
-    .token(t) => produce emit_token_accessor(s, label, t, Bool.false),
+    .token(t) => emit_token_accessor(s, label, t, Bool.false),
     .node(n) =>
       match n { .mk(name) =>
-        match list_contains_string(token_defs, name) {
-          .true => produce emit_token_accessor(s, label, TokenRef.named(name), Bool.false),
-          .false => produce emit_node_accessor(s, label, name, Bool.false)
-        }
+        if list_contains_string(token_defs, name) { emit_token_accessor(s, label, TokenRef.named(name), Bool.false) }
+        else { emit_node_accessor(s, label, name, Bool.false) }
       },
-    .optional(inner) => produce emit_single_accessor(s, label, inner, token_defs),
-    .repeated(inner) => produce emit_single_accessor_repeated(s, label, inner, token_defs),
-    .labeled(_, inner) => produce emit_single_accessor(s, label, inner, token_defs),
-    .group(elems) => produce s
+    .optional(inner) => emit_single_accessor(s, label, inner, token_defs),
+    .repeated(inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
+    .labeled(_, inner) => emit_single_accessor(s, label, inner, token_defs),
+    .group(elems) => s
   }
+}
 
-fn emit_single_accessor_repeated(s: String, label: String, elem: Element, token_defs: List[String]): produce String :=
+fn emit_single_accessor_repeated(s: String, label: String, elem: Element, token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   match elem {
-    .token(t) => produce emit_token_accessor(s, label, t, Bool.true),
+    .token(t) => emit_token_accessor(s, label, t, Bool.true),
     .node(n) =>
       match n { .mk(name) =>
-        match list_contains_string(token_defs, name) {
-          .true => produce emit_token_accessor(s, label, TokenRef.named(name), Bool.true),
-          .false => produce emit_node_accessor(s, label, name, Bool.true)
-        }
+        if list_contains_string(token_defs, name) { emit_token_accessor(s, label, TokenRef.named(name), Bool.true) }
+        else { emit_node_accessor(s, label, name, Bool.true) }
       },
-    .optional(inner) => produce emit_single_accessor_repeated(s, label, inner, token_defs),
-    .repeated(inner) => produce emit_single_accessor_repeated(s, label, inner, token_defs),
-    .labeled(_, inner) => produce emit_single_accessor_repeated(s, label, inner, token_defs),
-    .group(elems) => produce s
+    .optional(inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
+    .repeated(inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
+    .labeled(_, inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
+    .group(elems) => s
   }
+}
 
-fn token_kind_from_ref(t: TokenRef): produce String :=
+fn token_kind_from_ref(t: TokenRef): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   match t {
-    .named(name) => produce to_screaming_snake(name),
-    .keyword(kw) => produce keyword_variant(kw),
-    .symbol(sym) => produce symbol_variant(sym)
+    .named(name) => to_screaming_snake(name),
+    .keyword(kw) => keyword_variant(kw),
+    .symbol(sym) => symbol_variant(sym)
   }
+}
 
-fn emit_token_accessor(s: String, label: String, t: TokenRef, repeated: Bool): produce String :=
-  let kind = token_kind_from_ref(t) in
-  match repeated {
-    .false =>
-      let s = str_concat(s, str_concat("    pub fn ", str_concat(label, "(&self) -> Option<&'a LosslessToken> {\n"))) in
-      let s = str_concat(s, "        self.0.children.iter().find_map(|c| match c {\n") in
-      let s = str_concat(s, str_concat("            SyntaxElement::Token(t) if t.kind == SyntaxKind::", str_concat(kind, " => Some(t),\n"))) in
-      let s = str_concat(s, "            _ => None,\n") in
-      let s = str_concat(s, "        })\n") in
-      produce str_concat(s, "    }\n"),
-    .true =>
-      let s = str_concat(s, str_concat("    pub fn ", str_concat(label, "(&self) -> impl Iterator<Item = &'a LosslessToken> + 'a {\n"))) in
-      let s = str_concat(s, "        self.0.children.iter().filter_map(|c| match c {\n") in
-      let s = str_concat(s, str_concat("            SyntaxElement::Token(t) if t.kind == SyntaxKind::", str_concat(kind, " => Some(t),\n"))) in
-      let s = str_concat(s, "            _ => None,\n") in
-      let s = str_concat(s, "        })\n") in
-      produce str_concat(s, "    }\n")
+fn emit_token_accessor(s: String, label: String, t: TokenRef, repeated: Bool): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let kind = token_kind_from_ref(t);
+  if repeated {
+    let s = s + "    pub fn " + label + "(&self) -> impl Iterator<Item = &'a LosslessToken> + 'a {\n";
+    let s = s + "        self.0.children.iter().filter_map(|c| match c {\n";
+    let s = s + "            SyntaxElement::Token(t) if t.kind == SyntaxKind::" + kind + " => Some(t),\n";
+    let s = s + "            _ => None,\n";
+    let s = s + "        })\n";
+    s + "    }\n"
+  } else {
+    let s = s + "    pub fn " + label + "(&self) -> Option<&'a LosslessToken> {\n";
+    let s = s + "        self.0.children.iter().find_map(|c| match c {\n";
+    let s = s + "            SyntaxElement::Token(t) if t.kind == SyntaxKind::" + kind + " => Some(t),\n";
+    let s = s + "            _ => None,\n";
+    let s = s + "        })\n";
+    s + "    }\n"
   }
+}
 
-fn emit_node_accessor(s: String, label: String, node_name: String, repeated: Bool): produce String :=
-  match repeated {
-    .false =>
-      let s = str_concat(s, str_concat("    pub fn ", str_concat(label, str_concat("(&self) -> Option<", str_concat(node_name, "<'a>> {\n"))))) in
-      let s = str_concat(s, "        self.0.children.iter().find_map(|c| match c {\n") in
-      let s = str_concat(s, str_concat("            SyntaxElement::Node(n) => ", str_concat(node_name, "::cast(n),\n"))) in
-      let s = str_concat(s, "            _ => None,\n") in
-      let s = str_concat(s, "        })\n") in
-      produce str_concat(s, "    }\n"),
-    .true =>
-      let s = str_concat(s, str_concat("    pub fn ", str_concat(label, str_concat("(&self) -> impl Iterator<Item = ", str_concat(node_name, "<'a>> + 'a {\n"))))) in
-      let s = str_concat(s, "        self.0.children.iter().filter_map(|c| match c {\n") in
-      let s = str_concat(s, str_concat("            SyntaxElement::Node(n) => ", str_concat(node_name, "::cast(n),\n"))) in
-      let s = str_concat(s, "            _ => None,\n") in
-      let s = str_concat(s, "        })\n") in
-      produce str_concat(s, "    }\n")
+fn emit_node_accessor(s: String, label: String, node_name: String, repeated: Bool): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  if repeated {
+    let s = s + "    pub fn " + label + "(&self) -> impl Iterator<Item = " + node_name + "<'a>> + 'a {\n";
+    let s = s + "        self.0.children.iter().filter_map(|c| match c {\n";
+    let s = s + "            SyntaxElement::Node(n) => " + node_name + "::cast(n),\n";
+    let s = s + "            _ => None,\n";
+    let s = s + "        })\n";
+    s + "    }\n"
+  } else {
+    let s = s + "    pub fn " + label + "(&self) -> Option<" + node_name + "<'a>> {\n";
+    let s = s + "        self.0.children.iter().find_map(|c| match c {\n";
+    let s = s + "            SyntaxElement::Node(n) => " + node_name + "::cast(n),\n";
+    let s = s + "            _ => None,\n";
+    let s = s + "        })\n";
+    s + "    }\n"
   }
+}
 
 // Enum node for alternative rules
-fn emit_enum_node(s: String, name: String, alts: List[Alternative]): produce String :=
+fn emit_enum_node(s: String, name: String, alts: List[Alternative]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   // enum definition
-  let s = str_concat(s, str_concat("pub enum ", str_concat(name, "<'a> {\n"))) in
-  let s = emit_enum_variants(s, alts) in
-  let s = str_concat(s, "}\n\n") in
+  let s = s + "pub enum " + name + "<'a> {\n";
+  let s = emit_enum_variants(s, alts);
+  let s = s + "}\n\n";
   // AstNode impl
-  let s = str_concat(s, str_concat("impl<'a> AstNode<'a> for ", str_concat(name, "<'a> {\n"))) in
-  let s = str_concat(s, "    fn cast(node: &'a SyntaxNode) -> Option<Self> {\n") in
-  let s = str_concat(s, "        None\n") in
-  let s = emit_enum_cast_chain(s, alts) in
-  let s = str_concat(s, "    }\n") in
-  let s = str_concat(s, "    fn syntax(&self) -> &'a SyntaxNode {\n") in
-  let s = str_concat(s, "        match self {\n") in
-  let s = emit_enum_syntax_arms(s, alts) in
-  let s = str_concat(s, "        }\n") in
-  let s = str_concat(s, "    }\n") in
-  let s = str_concat(s, "}\n\n") in
-  produce s
+  let s = s + "impl<'a> AstNode<'a> for " + name + "<'a> {\n";
+  let s = s + "    fn cast(node: &'a SyntaxNode) -> Option<Self> {\n";
+  let s = s + "        None\n";
+  let s = emit_enum_cast_chain(s, alts);
+  let s = s + "    }\n";
+  let s = s + "    fn syntax(&self) -> &'a SyntaxNode {\n";
+  let s = s + "        match self {\n";
+  let s = emit_enum_syntax_arms(s, alts);
+  let s = s + "        }\n";
+  let s = s + "    }\n";
+  let s = s + "}\n\n";
+  s
+}
 
-fn emit_enum_variants(s: String, alts: List[Alternative]): produce String :=
+fn emit_enum_variants(s: String, alts: List[Alternative]): String / { Add for String } {
   match alts {
-    .nil => produce s,
+    .nil => s,
     .cons(alt, rest) =>
       match alt { .mk(name) =>
-        produce emit_enum_variants(str_concat(s, str_concat("    ", str_concat(name, str_concat("(", str_concat(name, "<'a>),\n"))))), rest)
+        emit_enum_variants(s + "    " + name + "(" + name + "<'a>),\n", rest)
       }
   }
+}
 
-fn emit_enum_cast_chain(s: String, alts: List[Alternative]): produce String :=
+fn emit_enum_cast_chain(s: String, alts: List[Alternative]): String / { Add for String } {
   match alts {
-    .nil => produce s,
+    .nil => s,
     .cons(alt, rest) =>
-      match alt { .mk(name) =>
-        let line = str_concat("            .or_else(|| ", str_concat(name, str_concat("::cast(node).map(Self::", str_concat(name, "))\n")))) in
-        produce emit_enum_cast_chain(str_concat(s, line), rest)
-      }
+      match alt { .mk(name) => {
+        let line = "            .or_else(|| " + name + "::cast(node).map(Self::" + name + "))\n";
+        emit_enum_cast_chain(s + line, rest)
+      }}
   }
+}
 
-fn emit_enum_syntax_arms(s: String, alts: List[Alternative]): produce String :=
+fn emit_enum_syntax_arms(s: String, alts: List[Alternative]): String / { Add for String } {
   match alts {
-    .nil => produce s,
+    .nil => s,
     .cons(alt, rest) =>
-      match alt { .mk(name) =>
-        let line = str_concat("            Self::", str_concat(name, "(n) => n.syntax(),\n")) in
-        produce emit_enum_syntax_arms(str_concat(s, line), rest)
-      }
+      match alt { .mk(name) => {
+        let line = "            Self::" + name + "(n) => n.syntax(),\n";
+        emit_enum_syntax_arms(s + line, rest)
+      }}
   }
+}
 
 // Token wrapper node
-fn emit_token_wrapper_node(s: String, name: String): produce String :=
-  let kind = to_screaming_snake(name) in
-  let s = str_concat(s, str_concat("pub struct ", str_concat(name, "<'a>(pub(crate) &'a SyntaxNode);\n\n"))) in
-  let s = str_concat(s, str_concat("impl<'a> AstNode<'a> for ", str_concat(name, "<'a> {\n"))) in
-  let s = str_concat(s, "    fn cast(node: &'a SyntaxNode) -> Option<Self> {\n") in
-  let s = str_concat(s, str_concat("        (node.kind == SyntaxKind::", str_concat(kind, ").then(|| Self(node))\n"))) in
-  let s = str_concat(s, "    }\n") in
-  let s = str_concat(s, "    fn syntax(&self) -> &'a SyntaxNode { self.0 }\n") in
-  let s = str_concat(s, "}\n\n") in
-  produce s
+fn emit_token_wrapper_node(s: String, name: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+  let kind = to_screaming_snake(name);
+  let s = s + "pub struct " + name + "<'a>(pub(crate) &'a SyntaxNode);\n\n";
+  let s = s + "impl<'a> AstNode<'a> for " + name + "<'a> {\n";
+  let s = s + "    fn cast(node: &'a SyntaxNode) -> Option<Self> {\n";
+  let s = s + "        (node.kind == SyntaxKind::" + kind + ").then(|| Self(node))\n";
+  let s = s + "    }\n";
+  let s = s + "    fn syntax(&self) -> &'a SyntaxNode { self.0 }\n";
+  let s = s + "}\n\n";
+  s
+}

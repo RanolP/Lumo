@@ -19,7 +19,7 @@ use myapp.utils.{a, b, self};
 Use(path="myapp.utils", names=[a, b, self])
 ==========
 use myapp;
-fn id() := produce x
+fn id() { x }
 ---
 Use(path="myapp")
-Fn(name="id", body=Produce(Variable("x")))
+Fn(name="id", body=Variable("x"))

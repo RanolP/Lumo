@@ -1,12 +1,12 @@
 data Nat { .zero, .succ(Nat) }
-fn add(n: Nat, m: Nat): produce Nat / {} := match n { .zero => produce m, .succ(let n) => let next = Nat.succ(m) in add(n, next) }
+fn add(n: Nat, m: Nat): Nat / {} { match n { .zero => m, .succ(let n) => { let next = Nat.succ(m); add(n, next) } } }
 ---
-add : (Nat, Nat) -> produce Nat / {}
+add : (Nat, Nat) -> Nat
 ==========
 data Bool { .true, .false }
 data Nat { .zero, .succ(Nat) }
-fn even(n: Nat): produce Bool / {} := match n { .zero => Bool.true, .succ(let n) => odd(n) }
-fn odd(n: Nat): produce Bool / {} := match n { .zero => Bool.false, .succ(let n) => even(n) }
+fn even(n: Nat): Bool / {} { match n { .zero => Bool.true, .succ(let n) => odd(n) } }
+fn odd(n: Nat): Bool / {} { match n { .zero => Bool.false, .succ(let n) => even(n) } }
 ---
-even : (Nat) -> produce Bool / {}
-odd : (Nat) -> produce Bool / {}
+even : (Nat) -> Bool
+odd : (Nat) -> Bool

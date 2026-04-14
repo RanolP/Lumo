@@ -195,10 +195,6 @@ pub enum Expr {
         args: Vec<Expr>,
         span: Span,
     },
-    Produce {
-        expr: Box<Expr>,
-        span: Span,
-    },
     Thunk {
         expr: Box<Expr>,
         span: Span,
@@ -207,10 +203,9 @@ pub enum Expr {
         expr: Box<Expr>,
         span: Span,
     },
-    LetIn {
+    Let {
         name: String,
         value: Box<Expr>,
-        body: Box<Expr>,
         span: Span,
     },
     Match {
@@ -258,7 +253,31 @@ pub enum Expr {
         ty: TypeSig,
         span: Span,
     },
+    Block {
+        stmts: Vec<BlockStmt>,
+        result: Box<Expr>,
+        span: Span,
+    },
+    IfElse {
+        condition: Box<Expr>,
+        then_body: Box<Expr>,
+        else_body: Option<Box<Expr>>,
+        span: Span,
+    },
     Error {
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockStmt {
+    Let {
+        name: String,
+        value: Expr,
+        span: Span,
+    },
+    Expr {
+        expr: Expr,
         span: Span,
     },
 }
@@ -813,7 +832,7 @@ impl<'a> Parser<'a> {
         if self.at_symbol(Symbol::Colon) {
             self.bump();
             let (repr, span) = self.collect_signature_until(|p| {
-                p.at_symbol(Symbol::Slash) || p.at_symbol(Symbol::ColonEquals)
+                p.at_symbol(Symbol::Slash) || p.at_symbol(Symbol::LBrace)
             });
             if let Some(span) = span {
                 return_type = Some(TypeSig { repr, span });
@@ -824,7 +843,7 @@ impl<'a> Parser<'a> {
         let mut cap = None;
         if self.at_symbol(Symbol::Slash) {
             self.bump();
-            let (repr, span) = self.collect_signature_until(|p| p.at_symbol(Symbol::ColonEquals));
+            let (repr, span) = self.collect_balanced_signature_until_lbrace();
             if let Some(span) = span {
                 cap = Some(CapSig { repr, span });
             } else {
@@ -832,20 +851,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        while !self.eof() && !self.at_symbol(Symbol::ColonEquals) {
-            if self.at_keyword(Keyword::Data)
-                || self.at_keyword(Keyword::Cap)
-                || self.at_keyword(Keyword::Fn)
-                || self.at_keyword(Keyword::Extern)
-                || self.at_keyword(Keyword::Use)
-            {
-                break;
-            }
-            self.bump();
-        }
-        self.expect_symbol(Symbol::ColonEquals);
-
-        let body = self.parse_expr();
+        let body = self.parse_block();
         let body_span = expr_span(&body);
         FnDecl {
             name,
@@ -1015,7 +1021,7 @@ impl<'a> Parser<'a> {
             if self.at_symbol(Symbol::Colon) {
                 self.bump();
                 let (repr, span) =
-                    self.collect_signature_until(|p| p.at_symbol(Symbol::ColonEquals));
+                    self.collect_signature_until(|p| p.at_symbol(Symbol::LBrace));
                 if let Some(span) = span {
                     return_type = Some(TypeSig { repr, span });
                 } else {
@@ -1023,8 +1029,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            self.expect_symbol(Symbol::ColonEquals);
-            let body = self.parse_expr();
+            let body = self.parse_block();
             let body_end = expr_span(&body);
 
             methods.push(ImplMethod {
@@ -1216,6 +1221,62 @@ impl<'a> Parser<'a> {
         (repr, span)
     }
 
+    /// Collect tokens for a capability annotation (after `/`) until the next
+    /// unbalanced `{` that starts the function body block.  This handles the
+    /// common `/ {}` and `/ { E1, E2 }` forms: the `{ ... }` is consumed as
+    /// part of the capability signature, and the *next* `{` begins the body.
+    fn collect_balanced_signature_until_lbrace(&mut self) -> (String, Option<Span>) {
+        let mut parts = Vec::new();
+        let mut start = None;
+        let mut end = None;
+        let mut depth: usize = 0;
+
+        while !self.eof() {
+            if self.at_symbol(Symbol::LBrace) {
+                if depth == 0 && !parts.is_empty() {
+                    // We already have tokens and we're at depth 0:
+                    // this `{` is the body block, stop.
+                    break;
+                }
+                depth += 1;
+                let t = self.bump().unwrap();
+                start.get_or_insert(t.span.start);
+                end = Some(t.span.end);
+                parts.push(token_text(t));
+                continue;
+            }
+            if self.at_symbol(Symbol::RBrace) {
+                if depth == 0 {
+                    break; // unexpected
+                }
+                depth -= 1;
+                let t = self.bump().unwrap();
+                end = Some(t.span.end);
+                parts.push(token_text(t));
+                if depth == 0 {
+                    // Finished a balanced `{ ... }`.  If the next token is `{`,
+                    // that starts the body — stop here.
+                    if self.at_symbol(Symbol::LBrace) {
+                        break;
+                    }
+                }
+                continue;
+            }
+            // Non-brace tokens
+            let token = match self.bump() {
+                Some(t) => t,
+                None => break,
+            };
+            start.get_or_insert(token.span.start);
+            end = Some(token.span.end);
+            parts.push(token_text(token));
+        }
+
+        let repr = parts.join(" ");
+        let span = start.zip(end).map(|(s, e)| Span::new(s, e));
+        (repr, span)
+    }
+
     fn parse_expr(&mut self) -> Expr {
         self.parse_expr_bp(0)
     }
@@ -1227,23 +1288,10 @@ impl<'a> Parser<'a> {
             let name = self.expect_ident();
             self.expect_symbol(Symbol::Equals);
             let value = self.parse_expr();
-            self.expect_keyword(Keyword::In);
-            let body = self.parse_expr();
-            let end = expr_span(&body);
-            return Expr::LetIn {
+            let end = expr_span(&value);
+            return Expr::Let {
                 name,
                 value: Box::new(value),
-                body: Box::new(body),
-                span: Span::new(start.start, end.end),
-            };
-        }
-
-        if self.at_keyword(Keyword::Produce) {
-            let start = self.expect_keyword(Keyword::Produce);
-            let expr = self.parse_expr();
-            let end = expr_span(&expr);
-            return Expr::Produce {
-                expr: Box::new(expr),
                 span: Span::new(start.start, end.end),
             };
         }
@@ -1270,6 +1318,10 @@ impl<'a> Parser<'a> {
 
         if self.at_keyword(Keyword::Match) {
             return self.parse_match_expr();
+        }
+
+        if self.at_keyword(Keyword::If) {
+            return self.parse_if_expr();
         }
 
         if self.at_keyword(Keyword::Handle) {
@@ -1310,27 +1362,10 @@ impl<'a> Parser<'a> {
                 expr: Box::new(operand),
                 span: Span::new(op_token.span.start, end.end),
             }
-        } else if self.at_keyword(Keyword::Perform) {
-            let start = self.expect_keyword(Keyword::Perform);
-            let (cap, cap_span) = self.collect_signature_until(|p| {
-                p.at_symbol(Symbol::Dot)
-                    || p.at_symbol(Symbol::RParen)
-                    || p.at_symbol(Symbol::Comma)
-                    || p.at_symbol(Symbol::Semi)
-                    || p.at_symbol(Symbol::RBrace)
-                    || p.at_keyword(Keyword::In)
-                    || p.at_keyword(Keyword::Let)
-                    || p.at_infix_operator()
-            });
-            let end = cap_span
-                .map(|s| s.end)
-                .unwrap_or(start.end);
-            Expr::Perform {
-                cap,
-                span: Span::new(start.start, end),
-            }
         } else if self.at_keyword(Keyword::Bundle) {
             self.parse_bundle_expr()
+        } else if self.at_symbol(Symbol::LBrace) {
+            self.parse_block()
         } else if self.at_ident() {
             let token = self.bump().expect("checked at_ident").clone();
             Expr::Ident {
@@ -1525,6 +1560,78 @@ impl<'a> Parser<'a> {
         Some((op, l_bp, r_bp))
     }
 
+    fn parse_block(&mut self) -> Expr {
+        let start = self.expect_symbol(Symbol::LBrace);
+        let mut stmts = Vec::new();
+
+        loop {
+            if self.eof() || self.at_symbol(Symbol::RBrace) {
+                // Empty block or trailing — error, but produce Error result
+                self.error_here("expected expression in block");
+                let end = self.expect_symbol(Symbol::RBrace);
+                return Expr::Block {
+                    stmts,
+                    result: Box::new(Expr::Error {
+                        span: Span::new(end.start, end.end),
+                    }),
+                    span: Span::new(start.start, end.end),
+                };
+            }
+
+            // Try `let name = expr ;`
+            if self.at_keyword(Keyword::Let) {
+                let let_start = self.expect_keyword(Keyword::Let);
+                let name = self.expect_ident();
+                self.expect_symbol(Symbol::Equals);
+                let value = self.parse_expr();
+                let value_span = expr_span(&value);
+                if self.at_symbol(Symbol::Semi) {
+                    self.bump();
+                    stmts.push(BlockStmt::Let {
+                        name,
+                        value,
+                        span: Span::new(let_start.start, value_span.end),
+                    });
+                    continue;
+                }
+                // No semicolon — treat `let x = expr` as the block result
+                self.error_here("expected `;` after let binding in block");
+                let end = self.expect_symbol(Symbol::RBrace);
+                return Expr::Block {
+                    stmts,
+                    result: Box::new(Expr::Let {
+                        name,
+                        value: Box::new(value),
+                        span: Span::new(let_start.start, value_span.end),
+                    }),
+                    span: Span::new(start.start, end.end),
+                };
+            }
+
+            // Parse an expression
+            let expr = self.parse_expr();
+            let expr_span_val = expr_span(&expr);
+
+            if self.at_symbol(Symbol::Semi) {
+                // Expression statement
+                self.bump();
+                stmts.push(BlockStmt::Expr {
+                    expr,
+                    span: expr_span_val,
+                });
+                continue;
+            }
+
+            // No semicolon — this is the result expression
+            let end = self.expect_symbol(Symbol::RBrace);
+            return Expr::Block {
+                stmts,
+                result: Box::new(expr),
+                span: Span::new(start.start, end.end),
+            };
+        }
+    }
+
     fn parse_match_expr(&mut self) -> Expr {
         let start = self.expect_keyword(Keyword::Match);
         let scrutinee = self.parse_expr();
@@ -1565,6 +1672,35 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_if_expr(&mut self) -> Expr {
+        let start = self.expect_keyword(Keyword::If);
+        let condition = self.parse_expr_bp(0);
+        let then_body = self.parse_block();
+        let then_end = expr_span(&then_body);
+
+        let (else_body, end) = if self.at_keyword(Keyword::Else) {
+            self.bump();
+            if self.at_keyword(Keyword::If) {
+                let e = self.parse_if_expr();
+                let s = expr_span(&e);
+                (Some(Box::new(e)), s)
+            } else {
+                let e = self.parse_block();
+                let s = expr_span(&e);
+                (Some(Box::new(e)), s)
+            }
+        } else {
+            (None, then_end)
+        };
+
+        Expr::IfElse {
+            condition: Box::new(condition),
+            then_body: Box::new(then_body),
+            else_body,
+            span: Span::new(start.start, end.end),
+        }
+    }
+
     fn parse_bundle_expr(&mut self) -> Expr {
         let start = self.expect_keyword(Keyword::Bundle);
         self.expect_symbol(Symbol::LBrace);
@@ -1586,8 +1722,7 @@ impl<'a> Parser<'a> {
                 Vec::new()
             };
 
-            self.expect_symbol(Symbol::ColonEquals);
-            let body = self.parse_expr();
+            let body = self.parse_block();
             let body_end = expr_span(&body);
 
             entries.push(BundleEntry {
@@ -1753,10 +1888,9 @@ fn expr_span(expr: &Expr) -> Span {
         Expr::String { span, .. } => *span,
         Expr::Member { span, .. } => *span,
         Expr::Call { span, .. } => *span,
-        Expr::Produce { span, .. } => *span,
         Expr::Thunk { span, .. } => *span,
         Expr::Force { span, .. } => *span,
-        Expr::LetIn { span, .. } => *span,
+        Expr::Let { span, .. } => *span,
         Expr::Match { span, .. } => *span,
         Expr::Perform { span, .. } => *span,
         Expr::Handle { span, .. } => *span,
@@ -1766,6 +1900,8 @@ fn expr_span(expr: &Expr) -> Span {
         Expr::Unary { span, .. } => *span,
         Expr::Assign { span, .. } => *span,
         Expr::Ann { span, .. } => *span,
+        Expr::Block { span, .. } => *span,
+        Expr::IfElse { span, .. } => *span,
         Expr::Error { span } => *span,
     }
 }
@@ -1815,6 +1951,12 @@ fn token_text(token: &Token) -> String {
         TokenKind::Keyword(Keyword::Bundle) => "bundle".to_owned(),
         TokenKind::Keyword(Keyword::Use) => "use".to_owned(),
         TokenKind::Keyword(Keyword::Impl) => "impl".to_owned(),
+        TokenKind::Keyword(Keyword::If) => "if".to_owned(),
+        TokenKind::Keyword(Keyword::Else) => "else".to_owned(),
+        TokenKind::Keyword(Keyword::Lambda) => "lambda".to_owned(),
+        TokenKind::Keyword(Keyword::Roll) => "roll".to_owned(),
+        TokenKind::Keyword(Keyword::Unroll) => "unroll".to_owned(),
+        TokenKind::Keyword(Keyword::Ctor) => "ctor".to_owned(),
         TokenKind::Ident(s) => s.clone(),
         TokenKind::StringLit(s) => s.clone(),
         TokenKind::Symbol(Symbol::Hash) => "#".to_owned(),

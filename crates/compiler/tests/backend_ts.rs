@@ -15,7 +15,7 @@ fn lower_typed(src: &str) -> lir::File {
 
 #[test]
 fn ts_backend_emits_ts_js_and_dts() {
-    let file = lower_typed("data Bool { .true, .false } fn id(x: Bool): produce Bool := produce x");
+    let file = lower_typed("data Bool { .true, .false } fn id(x: Bool): Bool { x }");
 
     let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
@@ -51,7 +51,7 @@ fn ts_backend_emits_ts_js_and_dts() {
 
 #[test]
 fn unsupported_backend_target_is_explicit() {
-    let file = lower_typed("fn f() := x");
+    let file = lower_typed("fn f() { x }");
 
     let err =
         backend::emit(&file, CodegenTarget::Python).expect_err("python backend is not implemented");
@@ -60,7 +60,7 @@ fn unsupported_backend_target_is_explicit() {
 
 #[test]
 fn ts_backend_emits_even_without_semantic_checks() {
-    let file = lower_typed("fn f() := x");
+    let file = lower_typed("fn f() { x }");
     let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
     assert!(ts.contains("export function f(): void"), "{ts}");
     assert!(ts.contains("return x;"), "{ts}");
@@ -68,14 +68,14 @@ fn ts_backend_emits_even_without_semantic_checks() {
 
 #[test]
 fn ts_backend_treats_missing_return_type_as_unit() {
-    let file = lower_typed("data Bool { .true, .false } fn id(x: Bool) := x");
+    let file = lower_typed("data Bool { .true, .false } fn id(x: Bool) { x }");
     let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
     assert!(ts.contains("export function id(x: Bool): void"), "{ts}");
 }
 
 #[test]
 fn ts_backend_lowers_unit_value_expr_to_void_zero() {
-    let file = lower_typed("fn unit(): produce Unit := produce Unit");
+    let file = lower_typed("fn unit(): Unit { Unit }");
     let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
     assert!(ts.contains("export function unit(): void"), "{ts}");
     assert!(ts.contains("return void 0;"), "{ts}");
@@ -83,7 +83,7 @@ fn ts_backend_lowers_unit_value_expr_to_void_zero() {
 
 #[test]
 fn ts_backend_ctor_uses_variant_tag() {
-    let file = lower_typed("data Bool { .true, .false } fn t(): Bool := Bool.true()");
+    let file = lower_typed("data Bool { .true, .false } fn t(): Bool { Bool.true() }");
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(js.contains("Bool[\"true\"]"), "{js}");
     assert!(!js.contains("Bool[\"true\"]()"), "{js}");
@@ -105,7 +105,7 @@ fn ts_backend_emits_recursive_data_payload_shape() {
 #[test]
 fn ts_backend_match_checks_variant_tag_without_dot() {
     let file = lower_typed(
-        "data Bool { .true, .false } fn not(x: Bool): Bool := match x { .true => Bool.false(), .false => Bool.true() }",
+        "data Bool { .true, .false } fn not(x: Bool): Bool { match x { .true => Bool.false(), .false => Bool.true() } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(js.contains("__lumo_is(__match_0, \"true\")"), "{js}");
@@ -115,7 +115,7 @@ fn ts_backend_match_checks_variant_tag_without_dot() {
 #[test]
 fn ts_backend_lowers_nested_match_patterns_as_tree() {
     let file = lower_typed(
-        "data Nat { .zero, .succ(Nat) } fn down2(n: Nat): produce Nat := match n { .succ(.succ(let m)) => produce m, .succ(.zero) => produce Nat.zero(), .zero => produce Nat.zero() }",
+        "data Nat { .zero, .succ(Nat) } fn down2(n: Nat): Nat { match n { .succ(.succ(let m)) => m, .succ(.zero) => Nat.zero(), .zero => Nat.zero() } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(js.contains("__lumo_is(__match_0, \"succ\")"), "{js}");
@@ -145,7 +145,7 @@ fn ts_backend_emits_generic_data_alias() {
 
 #[test]
 fn ts_backend_thunk_is_lowered_lazily() {
-    let file = lower_typed("fn f(x: A): thunk A := thunk x");
+    let file = lower_typed("fn f(x: A): thunk A { thunk x }");
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(js.contains("return () => {"), "{js}");
     assert!(js.contains("return x;"), "{js}");
@@ -153,7 +153,7 @@ fn ts_backend_thunk_is_lowered_lazily() {
 
 #[test]
 fn ts_backend_emits_generic_function_type_params_only_in_ts_targets() {
-    let file = lower_typed("fn id[A](x: A): produce A := produce x");
+    let file = lower_typed("fn id[A](x: A): A { x }");
     let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
     let dts = backend::emit(&file, CodegenTarget::TypeScriptDefinition).expect("dts emit");
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
@@ -169,7 +169,7 @@ fn ts_backend_emits_generic_function_type_params_only_in_ts_targets() {
 #[test]
 fn ts_backend_accepts_generic_none_branch_when_return_type_is_constrained() {
     let file = lower_typed(
-        "data Nat { .zero, .succ(Nat) } data Option[A] { .some(A), .none } fn sub1(x: Nat): produce Option[Nat] := match x { .zero => produce Option.none(), .succ(let x) => produce Option.some(x) }",
+        "data Nat { .zero, .succ(Nat) } data Option[A] { .some(A), .none } fn sub1(x: Nat): Option[Nat] { match x { .zero => Option.none(), .succ(let x) => Option.some(x) } }",
     );
     let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
     assert!(
@@ -181,7 +181,7 @@ fn ts_backend_accepts_generic_none_branch_when_return_type_is_constrained() {
 #[test]
 fn ts_backend_emits_extern_type_and_extern_fn() {
     let file = lower_typed(
-        "#[extern = \"string\"] extern type String; #[extern = \"console.log\"] extern fn console_log(msg: String); fn main(msg: String): produce Unit := console_log(msg)",
+        "#[extern = \"string\"] extern type String; #[extern = \"console.log\"] extern fn console_log(msg: String); fn main(msg: String): Unit { console_log(msg) }",
     );
     let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
@@ -196,7 +196,7 @@ fn ts_backend_emits_extern_type_and_extern_fn() {
 #[test]
 fn ts_backend_specializes_binary_operator_externs() {
     let file = lower_typed(
-        "#[extern = \"string\"] extern type String; #[extern = \"number\"] extern type Number; #[extern = \"String._+_\"] extern fn String_concat(a: String, b: String): produce String; #[extern = \"Number._*_\"] extern fn Number_mul(a: Number, b: Number): produce Number; #[extern = \"Number._^_\"] extern fn Number_pow(a: Number, b: Number): produce Number; fn main(): produce String := String_concat(\"Hello, \", \"world!\")",
+        "#[extern = \"string\"] extern type String; #[extern = \"number\"] extern type Number; #[extern = \"String._+_\"] extern fn String_concat(a: String, b: String): String; #[extern = \"Number._*_\"] extern fn Number_mul(a: Number, b: Number): Number; #[extern = \"Number._^_\"] extern fn Number_pow(a: Number, b: Number): Number; fn main(): String { String_concat(\"Hello, \", \"world!\") }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(js.contains("return (a + b);"), "{js}");
@@ -212,7 +212,7 @@ fn ts_backend_specializes_binary_operator_externs() {
 #[test]
 fn ts_backend_specializes_unary_operator_externs() {
     let file = lower_typed(
-        "#[extern = \"boolean\"] extern type Boolean; #[extern = \"Boolean.!_\"] extern fn Boolean_not(value: Boolean): produce Boolean; fn main(value: Boolean): produce Boolean := Boolean_not(value)",
+        "#[extern = \"boolean\"] extern type Boolean; #[extern = \"Boolean.!_\"] extern fn Boolean_not(value: Boolean): Boolean; fn main(value: Boolean): Boolean { Boolean_not(value) }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(js.contains("return (!value);"), "{js}");
@@ -221,7 +221,7 @@ fn ts_backend_specializes_unary_operator_externs() {
 #[test]
 fn ts_backend_flattens_let_iife_to_const() {
     let file = lower_typed(
-        "#[extern = \"string\"] extern type String; #[extern = \"String._+_\"] extern fn String_concat(a: String, b: String): produce String; fn main(): produce String := let s = String_concat(\"Hello, \", \"world!\") in String_concat(s, \"!\")",
+        "#[extern = \"string\"] extern type String; #[extern = \"String._+_\"] extern fn String_concat(a: String, b: String): String; fn main(): String { let s = String_concat(\"Hello, \", \"world!\"); String_concat(s, \"!\") }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // IIFE is flattened: ((s) => ...)(expr) → const s = expr; ...
@@ -236,7 +236,7 @@ fn ts_backend_flattens_let_iife_to_const() {
 #[test]
 fn ts_backend_handle_always_uses_cps() {
     let file = lower_typed(
-        "cap E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a } in perform E.op",
+        "cap E { fn op(): A } fn f(a: A): A / {} { handle E with bundle { fn op() { a } } in E.op }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // Deep CPS: ALL handles use CPS, even without resume
@@ -249,7 +249,7 @@ fn ts_backend_handle_always_uses_cps() {
 #[test]
 fn ts_backend_handle_with_resume_uses_cps() {
     let file = lower_typed(
-        "cap E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in perform E.op",
+        "cap E { fn op(): A } fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in E.op }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // CPS: handler entries get __k param, body is CPS-transformed
@@ -263,10 +263,10 @@ fn ts_backend_handle_with_resume_uses_cps() {
 #[test]
 fn ts_backend_cps_handle_with_let_perform() {
     let file = lower_typed(
-        "cap E { fn op(): produce A } fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in let x = perform E.op in produce x",
+        "cap E { fn op(): A } fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in { let x = E.op; x } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // CPS transforms: let x = perform E.op in produce x
+    // CPS transforms: let x = E.op; x
     // → __cap_E.op((x) => ((v) => v)(x))
     assert!(js.contains("__cap_E.op"), "CPS perform call: {js}");
     assert!(js.contains("__k"), "handler has __k: {js}");
@@ -275,7 +275,7 @@ fn ts_backend_cps_handle_with_let_perform() {
 #[test]
 fn ts_backend_mixed_resume_entries() {
     let file = lower_typed(
-        "cap E { fn op1(): produce A; fn op2(x: A): produce B } fn f(a: A, b: B): produce A / {} := handle E with bundle { fn op1() := resume(a); fn op2(x) := produce b } in perform E.op1",
+        "cap E { fn op1(): A; fn op2(x: A): B } fn f(a: A, b: B): A / {} { handle E with bundle { fn op1() { resume(a) }; fn op2(x) { b } } in E.op1 }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // op1 uses resume → gets ((resume) => ...) wrapper
@@ -287,7 +287,7 @@ fn ts_backend_mixed_resume_entries() {
 #[test]
 fn ts_backend_effectful_fn_decl_has_extra_params() {
     let file = lower_typed(
-        "cap E { fn op(): produce A } fn inner(): produce A / E := perform E.op",
+        "cap E { fn op(): A } fn inner(): A / { E } { E.op }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // Effectful function should have __cap_E and __k params
@@ -299,7 +299,7 @@ fn ts_backend_effectful_fn_decl_has_extra_params() {
         js.contains("__k"),
         "effectful fn should have __k param: {js}"
     );
-    // Body should be CPS-transformed: perform E.op → __cap_E.op(__k)
+    // Body should be CPS-transformed: E.op → __cap_E.op(__k)
     assert!(
         js.contains("__cap_E.op"),
         "body should call handler op: {js}"
@@ -309,7 +309,7 @@ fn ts_backend_effectful_fn_decl_has_extra_params() {
 #[test]
 fn ts_backend_deep_cps_effectful_fn_call() {
     let file = lower_typed(
-        "cap E { fn op(): produce A } fn inner(): produce A / E := perform E.op fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in let x = force (thunk inner) in produce x",
+        "cap E { fn op(): A } fn inner(): A / { E } { E.op } fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in { let x = force (thunk inner); x } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // inner should be called with __cap_E and continuation
@@ -326,7 +326,7 @@ fn ts_backend_deep_cps_effectful_fn_call() {
 
 #[test]
 fn ts_backend_pure_fn_unchanged() {
-    let file = lower_typed("fn f(a: A): produce A / {} := produce a");
+    let file = lower_typed("fn f(a: A): A / {} { a }");
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // Pure function should NOT have __cap or __k params
     assert!(
@@ -342,7 +342,7 @@ fn ts_backend_pure_fn_unchanged() {
 #[test]
 fn ts_backend_emits_inherent_impl_as_const_object() {
     let file = lower_typed(
-        "#[extern = \"string\"] extern type String; #[extern = \"number\"] extern type Number; #[extern = \"String.length\"] extern fn str_len(s: String): produce Number; impl String { fn len(self: String): Number := str_len(self) }",
+        "#[extern = \"string\"] extern type String; #[extern = \"number\"] extern type Number; #[extern = \"String.length\"] extern fn str_len(s: String): Number; impl String { fn len(self: String): Number { str_len(self) } }",
     );
     let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
@@ -355,7 +355,7 @@ fn ts_backend_emits_inherent_impl_as_const_object() {
 #[test]
 fn ts_backend_emits_unnamed_cap_impl() {
     let file = lower_typed(
-        "cap Clone { fn clone(self: A): produce A } impl String: Clone { fn clone(self: String): String := self }",
+        "cap Clone { fn clone(self: A): A } impl String: Clone { fn clone(self: String): String { self } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(
@@ -368,7 +368,7 @@ fn ts_backend_emits_unnamed_cap_impl() {
 #[test]
 fn ts_backend_emits_named_cap_impl() {
     let file = lower_typed(
-        "cap Clone { fn clone(self: A): produce A } impl MyClone = String: Clone { fn clone(self: String): String := self }",
+        "cap Clone { fn clone(self: A): A } impl MyClone = String: Clone { fn clone(self: String): String { self } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(

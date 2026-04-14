@@ -4,8 +4,8 @@
 #[extern(name = "process.panic")] extern fn __panic_with(msg: String);
 
 impl StdProcess: Process {
-  fn arg_at(idx: Number): String := __arg_at(idx);
-  fn args_count(): Number := __args_count();
-  fn exit_process(code: Number) := __exit_process(code);
-  fn panic_with(msg: String) := __panic_with(msg)
+  fn arg_at(idx: Number): String { __arg_at(idx) }
+  fn args_count(): Number { __args_count() }
+  fn exit_process(code: Number) { __exit_process(code) }
+  fn panic_with(msg: String) { __panic_with(msg) }
 }

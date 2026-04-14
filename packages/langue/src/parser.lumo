@@ -1,7 +1,6 @@
-use lumo_std.prelude.{String, Number, Bool};
-use lumo_std.list.{List};
-use lumo_std.string.{str_len, str_char_at, str_slice, str_concat, str_eq, char_code_at, num_to_string};
-use lumo_std.number.{num_eq, num_lt, num_gte, num_lte, num_add, num_sub};
+use libcore.prelude.{String, Number, Bool};
+use libcore.string.{StrOps};
+use libstd.list.{List};
 
 // ---------------------------------------------------------------------------
 // Parser state and result types
@@ -18,502 +17,471 @@ data ParseResult[A] {
 // Character classification
 // ---------------------------------------------------------------------------
 
-fn is_whitespace(c: String): produce Bool :=
-  match str_eq(c, " ") { .true => produce Bool.true, .false =>
-  match str_eq(c, "\n") { .true => produce Bool.true, .false =>
-  match str_eq(c, "\t") { .true => produce Bool.true, .false =>
-  match str_eq(c, "\r") { .true => produce Bool.true, .false =>
-  produce Bool.false }}}}
+fn is_whitespace(c: String): Bool / { PartialEq for String } {
+  if c == " " { Bool.true }
+  else if c == "\n" { Bool.true }
+  else if c == "\t" { Bool.true }
+  else if c == "\r" { Bool.true }
+  else { Bool.false }
+}
 
-fn is_alpha(c: String): produce Bool :=
-  let code = char_code_at(c, 0) in
-  match num_gte(code, 97) {
-    .true => produce num_lte(code, 122),
-    .false => match num_gte(code, 65) {
-      .true => produce num_lte(code, 90),
-      .false => produce Bool.false
-    }
-  }
+fn is_alpha(c: String): Bool / { StrOps, PartialOrd for Number } {
+  let code = StrOps.char_code_at(c, 0);
+  if code >= 97 { code <= 122 }
+  else if code >= 65 { code <= 90 }
+  else { Bool.false }
+}
 
-fn is_ident_start(c: String): produce Bool := produce is_alpha(c)
+fn is_ident_start(c: String): Bool / { StrOps, PartialOrd for Number } { is_alpha(c) }
 
-fn is_ident_continue(c: String): produce Bool :=
-  match is_alpha(c) { .true => produce Bool.true, .false =>
-  match str_eq(c, "_") { .true => produce Bool.true, .false =>
-  produce Bool.false }}
+fn is_ident_continue(c: String): Bool / { PartialEq for String, StrOps, PartialOrd for Number } {
+  if is_alpha(c) { Bool.true }
+  else if c == "_" { Bool.true }
+  else { Bool.false }
+}
 
 // ---------------------------------------------------------------------------
 // Low-level helpers
 // ---------------------------------------------------------------------------
 
-fn state_src(st: ParseState): produce String :=
-  match st { .mk(src, pos) => produce src }
+fn state_src(st: ParseState): String {
+  match st { .mk(src, pos) => src }
+}
 
-fn state_pos(st: ParseState): produce Number :=
-  match st { .mk(src, pos) => produce pos }
+fn state_pos(st: ParseState): Number {
+  match st { .mk(src, pos) => pos }
+}
 
-fn state_eof(st: ParseState): produce Bool :=
-  match st { .mk(src, pos) => produce num_gte(pos, str_len(src)) }
+fn state_eof(st: ParseState): Bool / { StrOps, PartialOrd for Number } {
+  match st { .mk(src, pos) => pos >= StrOps.str_len(src) }
+}
 
-fn state_peek(st: ParseState): produce String :=
+fn state_peek(st: ParseState): String / { StrOps, PartialOrd for Number } {
   match st { .mk(src, pos) =>
-    match num_lt(pos, str_len(src)) {
-      .true => produce str_char_at(src, pos),
-      .false => produce ""
-    }
+    if pos < StrOps.str_len(src) { StrOps.str_char_at(src, pos) }
+    else { "" }
   }
+}
 
-fn state_advance(st: ParseState, n: Number): produce ParseState :=
-  match st { .mk(src, pos) => produce ParseState.mk(src, num_add(pos, n)) }
+fn state_advance(st: ParseState, n: Number): ParseState / { Add for Number } {
+  match st { .mk(src, pos) => ParseState.mk(src, pos + n) }
+}
 
 // Skip whitespace and line comments (// ...)
-fn skip_ws(st: ParseState): produce ParseState :=
-  match state_eof(st) {
-    .true => produce st,
-    .false =>
-      let c = state_peek(st) in
-      match is_whitespace(c) {
-        .true => produce skip_ws(state_advance(st, 1)),
-        .false =>
-          match str_eq(c, "/") {
-            .true =>
-              let next_pos = num_add(state_pos(st), 1) in
-              match num_lt(next_pos, str_len(state_src(st))) {
-                .true =>
-                  match str_eq(str_char_at(state_src(st), next_pos), "/") {
-                    .true => produce skip_ws(skip_line(state_advance(st, 2))),
-                    .false => produce st
-                  },
-                .false => produce st
-              },
-            .false => produce st
-          }
-      }
+fn skip_ws(st: ParseState): ParseState / { StrOps, PartialEq for String, PartialOrd for Number, Add for Number } {
+  if state_eof(st) { st }
+  else {
+    let c = state_peek(st);
+    if is_whitespace(c) { skip_ws(state_advance(st, 1)) }
+    else if c == "/" {
+      let next_pos = state_pos(st) + 1;
+      if next_pos < StrOps.str_len(state_src(st)) {
+        if StrOps.str_char_at(state_src(st), next_pos) == "/" { skip_ws(skip_line(state_advance(st, 2))) }
+        else { st }
+      } else { st }
+    }
+    else { st }
   }
+}
 
-fn skip_line(st: ParseState): produce ParseState :=
-  match state_eof(st) {
-    .true => produce st,
-    .false =>
-      match str_eq(state_peek(st), "\n") {
-        .true => produce state_advance(st, 1),
-        .false => produce skip_line(state_advance(st, 1))
-      }
-  }
+fn skip_line(st: ParseState): ParseState / { Add for Number, PartialEq for String, StrOps, PartialOrd for Number } {
+  if state_eof(st) { st }
+  else if state_peek(st) == "\n" { state_advance(st, 1) }
+  else { skip_line(state_advance(st, 1)) }
+}
 
 // ---------------------------------------------------------------------------
 // Token-level parsing
 // ---------------------------------------------------------------------------
 
-fn parse_ident(st: ParseState): produce ParseResult[String] :=
-  let st2 = skip_ws(st) in
-  match state_eof(st2) {
-    .true => produce ParseResult.err("expected identifier, got EOF", state_pos(st2)),
-    .false =>
-      match is_ident_start(state_peek(st2)) {
-        .false => produce ParseResult.err(str_concat("expected identifier, got '", str_concat(state_peek(st2), "'")), state_pos(st2)),
-        .true =>
-          let start = state_pos(st2) in
-          let end_st = scan_ident_rest(state_advance(st2, 1)) in
-          let end_pos = state_pos(end_st) in
-          produce ParseResult.ok(str_slice(state_src(st2), start, end_pos), end_st)
-      }
+fn parse_ident(st: ParseState): ParseResult[String] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  let st2 = skip_ws(st);
+  if state_eof(st2) { ParseResult.err("expected identifier, got EOF", state_pos(st2)) }
+  else if is_ident_start(state_peek(st2)) {
+    let start = state_pos(st2);
+    let end_st = scan_ident_rest(state_advance(st2, 1));
+    let end_pos = state_pos(end_st);
+    ParseResult.ok(StrOps.str_slice(state_src(st2), start, end_pos), end_st)
   }
+  else { ParseResult.err("expected identifier, got '" + state_peek(st2) + "'", state_pos(st2)) }
+}
 
-fn scan_ident_rest(st: ParseState): produce ParseState :=
-  match state_eof(st) {
-    .true => produce st,
-    .false =>
-      match is_ident_continue(state_peek(st)) {
-        .true => produce scan_ident_rest(state_advance(st, 1)),
-        .false => produce st
-      }
+fn scan_ident_rest(st: ParseState): ParseState / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  if state_eof(st) { st }
+  else if is_ident_continue(state_peek(st)) { scan_ident_rest(state_advance(st, 1)) }
+  else { st }
+}
+
+fn expect(st: ParseState, expected: String): ParseResult[String] / { StrOps, Sub for Number, PartialOrd for Number, PartialEq for String, Add for String, Add for Number } {
+  let st2 = skip_ws(st);
+  let len = StrOps.str_len(expected);
+  let src = state_src(st2);
+  let pos = state_pos(st2);
+  let remaining = StrOps.str_len(src) - pos;
+  if remaining >= len {
+    let slice = StrOps.str_slice(src, pos, pos + len);
+    if slice == expected { ParseResult.ok(expected, state_advance(st2, len)) }
+    else { ParseResult.err("expected '" + expected + "', got '" + slice + "'", pos) }
   }
+  else { ParseResult.err("expected '" + expected + "'", pos) }
+}
 
-fn expect(st: ParseState, expected: String): produce ParseResult[String] :=
-  let st2 = skip_ws(st) in
-  let len = str_len(expected) in
-  let src = state_src(st2) in
-  let pos = state_pos(st2) in
-  let remaining = num_sub(str_len(src), pos) in
-  match num_gte(remaining, len) {
-    .false => produce ParseResult.err(str_concat("expected '", str_concat(expected, "'")), pos),
-    .true =>
-      let slice = str_slice(src, pos, num_add(pos, len)) in
-      match str_eq(slice, expected) {
-        .true => produce ParseResult.ok(expected, state_advance(st2, len)),
-        .false => produce ParseResult.err(str_concat("expected '", str_concat(expected, str_concat("', got '", str_concat(slice, "'")))), pos)
-      }
+fn parse_quoted(st: ParseState): ParseResult[String] / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  let st2 = skip_ws(st);
+  if state_peek(st2) == "'" {
+    let start = state_pos(st2) + 1;
+    let end_st = scan_until_quote(state_advance(st2, 1));
+    let end_pos = state_pos(end_st);
+    let content = StrOps.str_slice(state_src(st2), start, end_pos);
+    ParseResult.ok(content, state_advance(end_st, 1))
   }
+  else { ParseResult.err("expected quoted literal", state_pos(st2)) }
+}
 
-fn parse_quoted(st: ParseState): produce ParseResult[String] :=
-  let st2 = skip_ws(st) in
-  match str_eq(state_peek(st2), "'") {
-    .false => produce ParseResult.err("expected quoted literal", state_pos(st2)),
-    .true =>
-      let start = num_add(state_pos(st2), 1) in
-      let end_st = scan_until_quote(state_advance(st2, 1)) in
-      let end_pos = state_pos(end_st) in
-      let content = str_slice(state_src(st2), start, end_pos) in
-      produce ParseResult.ok(content, state_advance(end_st, 1))
-  }
+fn scan_until_quote(st: ParseState): ParseState / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  if state_eof(st) { st }
+  else if state_peek(st) == "'" { st }
+  else { scan_until_quote(state_advance(st, 1)) }
+}
 
-fn scan_until_quote(st: ParseState): produce ParseState :=
-  match state_eof(st) {
-    .true => produce st,
-    .false =>
-      match str_eq(state_peek(st), "'") {
-        .true => produce st,
-        .false => produce scan_until_quote(state_advance(st, 1))
-      }
-  }
-
-fn peek_char(st: ParseState): produce String :=
-  produce state_peek(skip_ws(st))
+fn peek_char(st: ParseState): String / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  state_peek(skip_ws(st))
+}
 
 // Check if the next non-whitespace chars form `Ident =`  (start of a rule)
-fn peek_is_rule_start(st: ParseState): produce Bool :=
-  let st2 = skip_ws(st) in
-  match is_ident_start(state_peek(st2)) {
-    .false => produce Bool.false,
-    .true =>
-      let st3 = scan_ident_rest(state_advance(st2, 1)) in
-      let st4 = skip_ws(st3) in
-      produce str_eq(state_peek(st4), "=")
+fn peek_is_rule_start(st: ParseState): Bool / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  let st2 = skip_ws(st);
+  if is_ident_start(state_peek(st2)) {
+    let st3 = scan_ident_rest(state_advance(st2, 1));
+    let st4 = skip_ws(st3);
+    state_peek(st4) == "="
   }
+  else { Bool.false }
+}
 
 // Classify a quoted literal as keyword or symbol
-fn classify_literal(text: String): produce TokenRef :=
-  match has_alpha(text, 0) {
-    .true => produce TokenRef.keyword(text),
-    .false => produce TokenRef.symbol(text)
-  }
+fn classify_literal(text: String): TokenRef / { Add for Number, PartialOrd for Number, StrOps } {
+  if has_alpha(text, 0) { TokenRef.keyword(text) }
+  else { TokenRef.symbol(text) }
+}
 
-fn has_alpha(s: String, i: Number): produce Bool :=
-  match num_gte(i, str_len(s)) {
-    .true => produce Bool.false,
-    .false =>
-      match is_alpha(str_char_at(s, i)) {
-        .true => produce Bool.true,
-        .false => produce has_alpha(s, num_add(i, 1))
-      }
-  }
+fn has_alpha(s: String, i: Number): Bool / { StrOps, PartialOrd for Number, Add for Number } {
+  if i >= StrOps.str_len(s) { Bool.false }
+  else if is_alpha(StrOps.str_char_at(s, i)) { Bool.true }
+  else { has_alpha(s, i + 1) }
+}
 
 // ---------------------------------------------------------------------------
 // Grammar parsing
 // ---------------------------------------------------------------------------
 
 // grammar = (token_def | rule)*
-fn parse_grammar(src: String): produce ParseResult[Grammar] :=
-  let st = ParseState.mk(src, 0) in
-  produce parse_grammar_items(st, List.nil, List.nil)
+fn parse_grammar(src: String): ParseResult[Grammar] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let st = ParseState.mk(src, 0);
+  parse_grammar_items(st, List.nil, List.nil)
+}
 
-fn parse_grammar_items(st: ParseState, tokens: List[String], rules: List[Rule]): produce ParseResult[Grammar] :=
-  let st2 = skip_ws(st) in
-  match state_eof(st2) {
-    .true => produce ParseResult.ok(Grammar.mk(list_reverse_string(tokens), list_reverse_rule(rules)), st2),
-    .false =>
-      match str_eq(state_peek(st2), "@") {
-        .true =>
-          // @token declaration
-          match parse_token_def(st2) {
-            .ok(new_tokens, st3) => produce parse_grammar_items(st3, list_concat_string(new_tokens, tokens), rules),
-            .err(msg, pos) => produce ParseResult.err(msg, pos)
-          },
-        .false =>
-          // Rule
-          match parse_rule(st2) {
-            .ok(rule, st3) => produce parse_grammar_items(st3, tokens, List.cons(rule, rules)),
-            .err(msg, pos) => produce ParseResult.err(msg, pos)
-          }
-      }
+fn parse_grammar_items(st: ParseState, tokens: List[String], rules: List[Rule]): ParseResult[Grammar] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let st2 = skip_ws(st);
+  if state_eof(st2) { ParseResult.ok(Grammar.mk(list_reverse_string(tokens), list_reverse_rule(rules)), st2) }
+  else if state_peek(st2) == "@" {
+    // @token declaration
+    match parse_token_def(st2) {
+      .ok(new_tokens, st3) => parse_grammar_items(st3, list_concat_string(new_tokens, tokens), rules),
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
   }
+  else {
+    // Rule
+    match parse_rule(st2) {
+      .ok(rule, st3) => parse_grammar_items(st3, tokens, List.cons(rule, rules)),
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
+  }
+}
 
 // @token Ident StringLit NumberLit
-fn parse_token_def(st: ParseState): produce ParseResult[List[String]] :=
+fn parse_token_def(st: ParseState): ParseResult[List[String]] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   match expect(st, "@token") {
-    .err(msg, pos) => produce ParseResult.err(msg, pos),
-    .ok(_, st2) => produce parse_token_names(st2, List.nil)
+    .err(msg, pos) => ParseResult.err(msg, pos),
+    .ok(_, st2) => parse_token_names(st2, List.nil)
   }
+}
 
-fn parse_token_names(st: ParseState, acc: List[String]): produce ParseResult[List[String]] :=
-  let st2 = skip_ws(st) in
-  match state_eof(st2) {
-    .true => produce ParseResult.ok(list_reverse_string(acc), st2),
-    .false =>
-      // Stop if next thing is a rule start (Ident =) or another @token
-      match peek_is_rule_start(st2) {
-        .true => produce ParseResult.ok(list_reverse_string(acc), st2),
-        .false =>
-          match str_eq(state_peek(st2), "@") {
-            .true => produce ParseResult.ok(list_reverse_string(acc), st2),
-            .false =>
-              match is_ident_start(state_peek(st2)) {
-                .false => produce ParseResult.ok(list_reverse_string(acc), st2),
-                .true =>
-                  match parse_ident(st2) {
-                    .ok(name, st3) => produce parse_token_names(st3, List.cons(name, acc)),
-                    .err(msg, pos) => produce ParseResult.err(msg, pos)
-                  }
-              }
-          }
-      }
+fn parse_token_names(st: ParseState, acc: List[String]): ParseResult[List[String]] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  let st2 = skip_ws(st);
+  if state_eof(st2) { ParseResult.ok(list_reverse_string(acc), st2) }
+  // Stop if next thing is a rule start (Ident =) or another @token
+  else if peek_is_rule_start(st2) { ParseResult.ok(list_reverse_string(acc), st2) }
+  else if state_peek(st2) == "@" { ParseResult.ok(list_reverse_string(acc), st2) }
+  else if is_ident_start(state_peek(st2)) {
+    match parse_ident(st2) {
+      .ok(name, st3) => parse_token_names(st3, List.cons(name, acc)),
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
   }
+  else { ParseResult.ok(list_reverse_string(acc), st2) }
+}
 
 // Rule = Ident '=' rule_body
-fn parse_rule(st: ParseState): produce ParseResult[Rule] :=
+fn parse_rule(st: ParseState): ParseResult[Rule] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   match parse_ident(st) {
-    .err(msg, pos) => produce ParseResult.err(msg, pos),
+    .err(msg, pos) => ParseResult.err(msg, pos),
     .ok(name, st2) =>
       match expect(st2, "=") {
-        .err(msg, pos) => produce ParseResult.err(msg, pos),
+        .err(msg, pos) => ParseResult.err(msg, pos),
         .ok(_, st3) =>
           match parse_rule_body(st3, name) {
-            .err(msg, pos) => produce ParseResult.err(msg, pos),
-            .ok(body, st4) => produce ParseResult.ok(Rule.mk(name, body), st4)
+            .err(msg, pos) => ParseResult.err(msg, pos),
+            .ok(body, st4) => ParseResult.ok(Rule.mk(name, body), st4)
           }
       }
   }
+}
 
 // Determine if rule body is alternatives (starts with |) or sequence
-fn parse_rule_body(st: ParseState, rule_name: String): produce ParseResult[RuleBody] :=
-  let st2 = skip_ws(st) in
-  match str_eq(peek_char(st2), "|") {
-    .true => produce parse_alternatives(st2),
-    .false => produce parse_sequence(st2)
-  }
+fn parse_rule_body(st: ParseState, rule_name: String): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let st2 = skip_ws(st);
+  if peek_char(st2) == "|" { parse_alternatives(st2) }
+  else { parse_sequence(st2) }
+}
 
 // Alternatives: | A | B | C
-fn parse_alternatives(st: ParseState): produce ParseResult[RuleBody] :=
-  produce parse_alt_items(st, List.nil)
+fn parse_alternatives(st: ParseState): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  parse_alt_items(st, List.nil)
+}
 
-fn parse_alt_items(st: ParseState, acc: List[Alternative]): produce ParseResult[RuleBody] :=
-  let st2 = skip_ws(st) in
-  match str_eq(peek_char(st2), "|") {
-    .false => produce ParseResult.ok(RuleBody.alternatives(list_reverse_alt(acc)), st2),
-    .true =>
-      let st3 = state_advance(skip_ws(st2), 1) in
-      // Each alternative is either a quoted literal or an identifier
-      let st4 = skip_ws(st3) in
-      match str_eq(state_peek(st4), "'") {
-        .true =>
-          // Quoted token alternative like | '+'
-          match parse_quoted(st4) {
-            .ok(lit, st5) => produce parse_alt_items(st5, List.cons(Alternative.mk(lit), acc)),
-            .err(msg, pos) => produce ParseResult.err(msg, pos)
-          },
-        .false =>
-          match parse_ident(st3) {
-            .ok(name, st5) => produce parse_alt_items(st5, List.cons(Alternative.mk(name), acc)),
-            .err(msg, pos) => produce ParseResult.err(msg, pos)
-          }
+fn parse_alt_items(st: ParseState, acc: List[Alternative]): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  let st2 = skip_ws(st);
+  if peek_char(st2) == "|" {
+    let st3 = state_advance(skip_ws(st2), 1);
+    // Each alternative is either a quoted literal or an identifier
+    let st4 = skip_ws(st3);
+    if state_peek(st4) == "'" {
+      // Quoted token alternative like | '+'
+      match parse_quoted(st4) {
+        .ok(lit, st5) => parse_alt_items(st5, List.cons(Alternative.mk(lit), acc)),
+        .err(msg, pos) => ParseResult.err(msg, pos)
       }
+    }
+    else {
+      match parse_ident(st3) {
+        .ok(name, st5) => parse_alt_items(st5, List.cons(Alternative.mk(name), acc)),
+        .err(msg, pos) => ParseResult.err(msg, pos)
+      }
+    }
   }
+  else { ParseResult.ok(RuleBody.alternatives(list_reverse_alt(acc)), st2) }
+}
 
 // Sequence: elem elem elem ...
-fn parse_sequence(st: ParseState): produce ParseResult[RuleBody] :=
-  produce parse_seq_elements(st, List.nil)
+fn parse_sequence(st: ParseState): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  parse_seq_elements(st, List.nil)
+}
 
-fn parse_seq_elements(st: ParseState, acc: List[Element]): produce ParseResult[RuleBody] :=
-  let st2 = skip_ws(st) in
-  match state_eof(st2) {
-    .true => produce ParseResult.ok(RuleBody.sequence(list_reverse_elem(acc)), st2),
-    .false =>
-      // Stop at things that indicate end of this sequence
-      match is_seq_terminator(st2) {
-        .true => produce ParseResult.ok(RuleBody.sequence(list_reverse_elem(acc)), st2),
-        .false =>
-          match parse_element(st2) {
-            .ok(elem, st3) => produce parse_seq_elements(st3, List.cons(elem, acc)),
-            .err(msg, pos) => produce ParseResult.err(msg, pos)
-          }
-      }
+fn parse_seq_elements(st: ParseState, acc: List[Element]): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let st2 = skip_ws(st);
+  if state_eof(st2) { ParseResult.ok(RuleBody.sequence(list_reverse_elem(acc)), st2) }
+  // Stop at things that indicate end of this sequence
+  else if is_seq_terminator(st2) { ParseResult.ok(RuleBody.sequence(list_reverse_elem(acc)), st2) }
+  else {
+    match parse_element(st2) {
+      .ok(elem, st3) => parse_seq_elements(st3, List.cons(elem, acc)),
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
   }
+}
 
-fn is_seq_terminator(st: ParseState): produce Bool :=
-  let c = peek_char(st) in
-  match str_eq(c, ")") { .true => produce Bool.true, .false =>
+fn is_seq_terminator(st: ParseState): Bool / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+  let c = peek_char(st);
+  if c == ")" { Bool.true }
   // Check for next rule start or EOF
-  match peek_is_rule_start(st) { .true => produce Bool.true, .false =>
-  match str_eq(c, "@") { .true => produce Bool.true, .false =>
-  produce Bool.false }}}
+  else if peek_is_rule_start(st) { Bool.true }
+  else if c == "@" { Bool.true }
+  else { Bool.false }
+}
 
 // Parse a single element with optional postfix (? or *)
-fn parse_element(st: ParseState): produce ParseResult[Element] :=
+fn parse_element(st: ParseState): ParseResult[Element] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   match parse_atom(st) {
-    .err(msg, pos) => produce ParseResult.err(msg, pos),
-    .ok(elem, st2) => produce apply_postfix_elem(elem, st2)
+    .err(msg, pos) => ParseResult.err(msg, pos),
+    .ok(elem, st2) => apply_postfix_elem(elem, st2)
   }
+}
 
-fn apply_postfix_elem(elem: Element, st: ParseState): produce ParseResult[Element] :=
+fn apply_postfix_elem(elem: Element, st: ParseState): ParseResult[Element] / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
   // Don't skip whitespace before postfix — ? and * bind tightly
-  match state_eof(st) {
-    .true => produce ParseResult.ok(elem, st),
-    .false =>
-      match str_eq(state_peek(st), "?") {
-        .true => produce apply_postfix_elem(Element.optional(elem), state_advance(st, 1)),
-        .false =>
-          match str_eq(state_peek(st), "*") {
-            .true => produce apply_postfix_elem(Element.repeated(elem), state_advance(st, 1)),
-            .false => produce ParseResult.ok(elem, st)
-          }
-      }
-  }
+  if state_eof(st) { ParseResult.ok(elem, st) }
+  else if state_peek(st) == "?" { apply_postfix_elem(Element.optional(elem), state_advance(st, 1)) }
+  else if state_peek(st) == "*" { apply_postfix_elem(Element.repeated(elem), state_advance(st, 1)) }
+  else { ParseResult.ok(elem, st) }
+}
 
 // Parse an atom: quoted literal, grouped sequence, or ident (possibly labeled)
-fn parse_atom(st: ParseState): produce ParseResult[Element] :=
-  let st2 = skip_ws(st) in
-  match str_eq(state_peek(st2), "'") {
-    .true =>
-      // Quoted token literal: 'data', '(', ':='
-      match parse_quoted(st2) {
-        .ok(lit, st3) => produce ParseResult.ok(Element.token(classify_literal(lit)), st3),
-        .err(msg, pos) => produce ParseResult.err(msg, pos)
-      },
-    .false =>
-  match str_eq(state_peek(st2), "(") {
-    .true =>
-      // Grouped sequence: (A B C)
-      let st3 = state_advance(st2, 1) in
-      match parse_group_elements(st3, List.nil) {
-        .ok(elems, st4) =>
-          match expect(st4, ")") {
-            .ok(_, st5) => produce ParseResult.ok(Element.group(elems), st5),
-            .err(msg, pos) => produce ParseResult.err(msg, pos)
-          },
-        .err(msg, pos) => produce ParseResult.err(msg, pos)
-      },
-    .false =>
-      // Identifier: could be label:Element, token name, or node name
-      match parse_ident(st2) {
-        .err(msg, pos) => produce ParseResult.err(msg, pos),
-        .ok(name, st3) =>
-          // Check for label: name:Element
-          match str_eq(state_peek(st3), ":") {
-            .true =>
-              let st4 = state_advance(st3, 1) in
-              match parse_element(st4) {
-                .ok(inner, st5) => produce ParseResult.ok(Element.labeled(name, inner), st5),
-                .err(msg, pos) => produce ParseResult.err(msg, pos)
-              },
-            .false =>
-              // Bare identifier — will be resolved to token or node later
-              produce ParseResult.ok(Element.node(NodeRef.mk(name)), st3)
-          }
-      }
-  }}
-
-fn parse_group_elements(st: ParseState, acc: List[Element]): produce ParseResult[List[Element]] :=
-  let st2 = skip_ws(st) in
-  match str_eq(state_peek(st2), ")") {
-    .true => produce ParseResult.ok(list_reverse_elem(acc), st2),
-    .false =>
-      match parse_element(st2) {
-        .ok(elem, st3) => produce parse_group_elements(st3, List.cons(elem, acc)),
-        .err(msg, pos) => produce ParseResult.err(msg, pos)
-      }
+fn parse_atom(st: ParseState): ParseResult[Element] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let st2 = skip_ws(st);
+  if state_peek(st2) == "'" {
+    // Quoted token literal: 'data', '(', ':='
+    match parse_quoted(st2) {
+      .ok(lit, st3) => ParseResult.ok(Element.token(classify_literal(lit)), st3),
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
   }
+  else if state_peek(st2) == "(" {
+    // Grouped sequence: (A B C)
+    let st3 = state_advance(st2, 1);
+    match parse_group_elements(st3, List.nil) {
+      .ok(elems, st4) =>
+        match expect(st4, ")") {
+          .ok(_, st5) => ParseResult.ok(Element.group(elems), st5),
+          .err(msg, pos) => ParseResult.err(msg, pos)
+        },
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
+  }
+  else {
+    // Identifier: could be label:Element, token name, or node name
+    match parse_ident(st2) {
+      .err(msg, pos) => ParseResult.err(msg, pos),
+      .ok(name, st3) =>
+        // Check for label: name:Element
+        if state_peek(st3) == ":" {
+          let st4 = state_advance(st3, 1);
+          match parse_element(st4) {
+            .ok(inner, st5) => ParseResult.ok(Element.labeled(name, inner), st5),
+            .err(msg, pos) => ParseResult.err(msg, pos)
+          }
+        }
+        else {
+          // Bare identifier — will be resolved to token or node later
+          ParseResult.ok(Element.node(NodeRef.mk(name)), st3)
+        }
+    }
+  }
+}
+
+fn parse_group_elements(st: ParseState, acc: List[Element]): ParseResult[List[Element]] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+  let st2 = skip_ws(st);
+  if state_peek(st2) == ")" { ParseResult.ok(list_reverse_elem(acc), st2) }
+  else {
+    match parse_element(st2) {
+      .ok(elem, st3) => parse_group_elements(st3, List.cons(elem, acc)),
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Post-parse resolution: resolve identifiers to token refs vs node refs
 // ---------------------------------------------------------------------------
 
-fn resolve_grammar(g: Grammar): produce Grammar :=
+fn resolve_grammar(g: Grammar): Grammar / { PartialEq for String } {
   match g { .mk(token_defs, rules) =>
-    produce Grammar.mk(token_defs, resolve_rules(token_defs, rules))
+    Grammar.mk(token_defs, resolve_rules(token_defs, rules))
   }
+}
 
-fn resolve_rules(token_defs: List[String], rules: List[Rule]): produce List[Rule] :=
+fn resolve_rules(token_defs: List[String], rules: List[Rule]): List[Rule] / { PartialEq for String } {
   match rules {
-    .nil => produce List.nil,
+    .nil => List.nil,
     .cons(rule, rest) =>
-      match rule { .mk(name, body) =>
-        let resolved_body = resolve_body(token_defs, body) in
-        produce List.cons(Rule.mk(name, resolved_body), resolve_rules(token_defs, rest))
-      }
+      match rule { .mk(name, body) => {
+        let resolved_body = resolve_body(token_defs, body);
+        List.cons(Rule.mk(name, resolved_body), resolve_rules(token_defs, rest))
+      }}
   }
+}
 
-fn resolve_body(token_defs: List[String], body: RuleBody): produce RuleBody :=
+fn resolve_body(token_defs: List[String], body: RuleBody): RuleBody / { PartialEq for String } {
   match body {
-    .sequence(elems) => produce RuleBody.sequence(resolve_elements(token_defs, elems)),
-    .alternatives(alts) => produce body
+    .sequence(elems) => RuleBody.sequence(resolve_elements(token_defs, elems)),
+    .alternatives(alts) => body
   }
+}
 
-fn resolve_elements(token_defs: List[String], elems: List[Element]): produce List[Element] :=
+fn resolve_elements(token_defs: List[String], elems: List[Element]): List[Element] / { PartialEq for String } {
   match elems {
-    .nil => produce List.nil,
+    .nil => List.nil,
     .cons(elem, rest) =>
-      produce List.cons(resolve_element(token_defs, elem), resolve_elements(token_defs, rest))
+      List.cons(resolve_element(token_defs, elem), resolve_elements(token_defs, rest))
   }
+}
 
-fn resolve_element(token_defs: List[String], elem: Element): produce Element :=
+fn resolve_element(token_defs: List[String], elem: Element): Element / { PartialEq for String } {
   match elem {
-    .token(t) => produce elem,
+    .token(t) => elem,
     .node(ref) =>
       match ref { .mk(name) =>
-        match list_contains_string(token_defs, name) {
-          .true => produce Element.token(TokenRef.named(name)),
-          .false => produce elem
-        }
+        if list_contains_string(token_defs, name) { Element.token(TokenRef.named(name)) }
+        else { elem }
       },
-    .labeled(label, inner) => produce Element.labeled(label, resolve_element(token_defs, inner)),
-    .optional(inner) => produce Element.optional(resolve_element(token_defs, inner)),
-    .repeated(inner) => produce Element.repeated(resolve_element(token_defs, inner)),
-    .group(elems) => produce Element.group(resolve_elements(token_defs, elems))
+    .labeled(label, inner) => Element.labeled(label, resolve_element(token_defs, inner)),
+    .optional(inner) => Element.optional(resolve_element(token_defs, inner)),
+    .repeated(inner) => Element.repeated(resolve_element(token_defs, inner)),
+    .group(elems) => Element.group(resolve_elements(token_defs, elems))
   }
+}
 
-fn list_contains_string(xs: List[String], target: String): produce Bool :=
+fn list_contains_string(xs: List[String], target: String): Bool / { PartialEq for String } {
   match xs {
-    .nil => produce Bool.false,
+    .nil => Bool.false,
     .cons(x, rest) =>
-      match str_eq(x, target) {
-        .true => produce Bool.true,
-        .false => produce list_contains_string(rest, target)
-      }
+      if x == target { Bool.true }
+      else { list_contains_string(rest, target) }
   }
+}
 
 // ---------------------------------------------------------------------------
 // List reverse helpers
 // ---------------------------------------------------------------------------
 
-fn list_reverse_string(xs: List[String]): produce List[String] :=
-  produce list_reverse_string_acc(xs, List.nil)
+fn list_reverse_string(xs: List[String]): List[String] {
+  list_reverse_string_acc(xs, List.nil)
+}
 
-fn list_reverse_string_acc(xs: List[String], acc: List[String]): produce List[String] :=
+fn list_reverse_string_acc(xs: List[String], acc: List[String]): List[String] {
   match xs {
-    .nil => produce acc,
-    .cons(x, rest) => produce list_reverse_string_acc(rest, List.cons(x, acc))
+    .nil => acc,
+    .cons(x, rest) => list_reverse_string_acc(rest, List.cons(x, acc))
   }
+}
 
-fn list_reverse_rule(xs: List[Rule]): produce List[Rule] :=
-  produce list_reverse_rule_acc(xs, List.nil)
+fn list_reverse_rule(xs: List[Rule]): List[Rule] {
+  list_reverse_rule_acc(xs, List.nil)
+}
 
-fn list_reverse_rule_acc(xs: List[Rule], acc: List[Rule]): produce List[Rule] :=
+fn list_reverse_rule_acc(xs: List[Rule], acc: List[Rule]): List[Rule] {
   match xs {
-    .nil => produce acc,
-    .cons(x, rest) => produce list_reverse_rule_acc(rest, List.cons(x, acc))
+    .nil => acc,
+    .cons(x, rest) => list_reverse_rule_acc(rest, List.cons(x, acc))
   }
+}
 
-fn list_reverse_alt(xs: List[Alternative]): produce List[Alternative] :=
-  produce list_reverse_alt_acc(xs, List.nil)
+fn list_reverse_alt(xs: List[Alternative]): List[Alternative] {
+  list_reverse_alt_acc(xs, List.nil)
+}
 
-fn list_reverse_alt_acc(xs: List[Alternative], acc: List[Alternative]): produce List[Alternative] :=
+fn list_reverse_alt_acc(xs: List[Alternative], acc: List[Alternative]): List[Alternative] {
   match xs {
-    .nil => produce acc,
-    .cons(x, rest) => produce list_reverse_alt_acc(rest, List.cons(x, acc))
+    .nil => acc,
+    .cons(x, rest) => list_reverse_alt_acc(rest, List.cons(x, acc))
   }
+}
 
-fn list_reverse_elem(xs: List[Element]): produce List[Element] :=
-  produce list_reverse_elem_acc(xs, List.nil)
+fn list_reverse_elem(xs: List[Element]): List[Element] {
+  list_reverse_elem_acc(xs, List.nil)
+}
 
-fn list_reverse_elem_acc(xs: List[Element], acc: List[Element]): produce List[Element] :=
+fn list_reverse_elem_acc(xs: List[Element], acc: List[Element]): List[Element] {
   match xs {
-    .nil => produce acc,
-    .cons(x, rest) => produce list_reverse_elem_acc(rest, List.cons(x, acc))
+    .nil => acc,
+    .cons(x, rest) => list_reverse_elem_acc(rest, List.cons(x, acc))
   }
+}
 
-fn list_concat_string(xs: List[String], ys: List[String]): produce List[String] :=
+fn list_concat_string(xs: List[String], ys: List[String]): List[String] {
   match xs {
-    .nil => produce ys,
-    .cons(x, rest) => produce List.cons(x, list_concat_string(rest, ys))
+    .nil => ys,
+    .cons(x, rest) => List.cons(x, list_concat_string(rest, ys))
   }
+}

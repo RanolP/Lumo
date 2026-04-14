@@ -1,31 +1,31 @@
-fn id() := produce x
----
-Fn(name="id", body=Produce(Variable("x")))
-==========
-fn suspend() := thunk produce x
----
-Fn(name="suspend", body=Thunk(Produce(Variable("x"))))
-==========
-fn resume() := force job
----
-Fn(name="resume", body=Force(Variable("job")))
-==========
-fn id() := x
+fn id() { x }
 ---
 Fn(name="id", body=Variable("x"))
 ==========
-fn main() := let x = y in produce x
+fn suspend() { thunk x }
 ---
-Fn(name="main", body=Let(name="x", value=Variable("y"), body=Produce(Variable("x"))))
+Fn(name="suspend", body=Thunk(Variable("x")))
 ==========
-fn id() := let x = y in z
+fn resume() { force job }
 ---
-Fn(name="id", body=Let(name="x", value=Variable("y"), body=Variable("z")))
+Fn(name="resume", body=Force(Variable("job")))
 ==========
-fn id() := let x = y in produce x
+fn id() { x }
 ---
-Fn(name="id", body=Let(name="x", value=Variable("y"), body=Produce(Variable("x"))))
+Fn(name="id", body=Variable("x"))
 ==========
-fn main() := let x = let y = z in y in produce x
+fn main() { let x = y; x }
 ---
-Fn(name="main", body=Let(name="x", value=Let(name="y", value=Variable("z"), body=Variable("y")), body=Produce(Variable("x"))))
+Fn(name="main", body=Block([let x = Variable("y")], result=Variable("x")))
+==========
+fn id() { let x = y; z }
+---
+Fn(name="id", body=Block([let x = Variable("y")], result=Variable("z")))
+==========
+fn id() { let x = y; x }
+---
+Fn(name="id", body=Block([let x = Variable("y")], result=Variable("x")))
+==========
+fn main() { let x = { let y = z; y }; x }
+---
+Fn(name="main", body=Block([let x = Block([let y = Variable("z")], result=Variable("y"))], result=Variable("x")))

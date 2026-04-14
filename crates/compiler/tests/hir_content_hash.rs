@@ -39,7 +39,7 @@ fn unwrap_lir_fn_value<'a>(func: &'a lir::FnDecl) -> (&'a lir::Expr, Vec<&'a str
 
 #[test]
 fn content_hash_is_deterministic() {
-    let src = "data Option[A] { .some(A), .none } fn id[A](a: A): produce A / {} := produce a";
+    let src = "data Option[A] { .some(A), .none } fn id[A](a: A): A / {} { a }";
     let a = lower_typed(src);
     let b = lower_typed(src);
     assert_eq!(a.content_hash, b.content_hash);
@@ -48,14 +48,14 @@ fn content_hash_is_deterministic() {
 
 #[test]
 fn body_change_affects_file_content_hash() {
-    let a = lower_typed("fn f(): produce A / {} := produce x");
-    let b = lower_typed("fn f(): produce A / {} := produce y");
+    let a = lower_typed("fn f(): A / {} { x }");
+    let b = lower_typed("fn f(): A / {} { y }");
     assert_ne!(a.content_hash, b.content_hash);
 }
 
 #[test]
 fn expression_nodes_have_spans() {
-    let file = lower_typed("fn f(): produce A / {} := let x = y in produce x");
+    let file = lower_typed("fn f(): A / {} { let x = y; x }");
     let func = match &file.items[0] {
         Item::Fn(f) => f,
         _ => panic!("expected fn"),
@@ -90,7 +90,7 @@ fn expression_nodes_have_spans() {
 
 #[test]
 fn lossless_lower_handles_let_and_produce() {
-    let file = lower_lossless("fn f() := let x = y in produce x");
+    let file = lower_lossless("fn f() { let x = y; x }");
     let Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
@@ -118,7 +118,7 @@ fn lossless_lower_handles_let_and_produce() {
 
 #[test]
 fn query_path_matches_direct_lossless_lower() {
-    let src = "data X { .a, .b } fn f() := produce x";
+    let src = "data X { .a, .b } fn f() { x }";
 
     let direct = lower_typed(src);
 
@@ -132,10 +132,10 @@ fn query_path_matches_direct_lossless_lower() {
 #[test]
 fn typed_and_lossless_lower_match_on_mvp_samples() {
     let cases = [
-        "fn f() := produce x",
-        "fn f() := let x = y in produce x",
-        "data Option[A] { .some, .none } fn id() := produce a",
-        "data Pair { .pair } fn mk() := let p = q in p",
+        "fn f() { x }",
+        "fn f() { let x = y; x }",
+        "data Option[A] { .some, .none } fn id() { a }",
+        "data Pair { .pair } fn mk() { let p = q; p }",
     ];
 
     for src in cases {
@@ -147,7 +147,7 @@ fn typed_and_lossless_lower_match_on_mvp_samples() {
 
 #[test]
 fn hir_keeps_match_scrutinee_as_user_syntax() {
-    let file = lower_typed("fn f() := match a { x => produce x }");
+    let file = lower_typed("fn f() { match a { x => x } }");
     let Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
@@ -163,7 +163,7 @@ fn hir_keeps_match_scrutinee_as_user_syntax() {
 
 #[test]
 fn hir_keeps_ctor_call_as_user_syntax() {
-    let file = lower_typed("data OptionA { .some(A), .none } fn mk() := OptionA.some(a)");
+    let file = lower_typed("data OptionA { .some(A), .none } fn mk() { OptionA.some(a) }");
     let Item::Fn(f) = &file.items[1] else {
         panic!("expected fn")
     };
@@ -186,7 +186,7 @@ fn hir_keeps_ctor_call_as_user_syntax() {
 
 #[test]
 fn lir_inserts_implicit_unroll_for_match_scrutinee() {
-    let file = lower_lir("fn f() := match a { x => produce x }");
+    let file = lower_lir("fn f() { match a { x => x } }");
     let lir::Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
@@ -207,7 +207,7 @@ fn lir_inserts_implicit_unroll_for_match_scrutinee() {
 
 #[test]
 fn lir_inlines_data_ctor_bundle_as_rolled_ctor() {
-    let file = lower_lir("data OptionA { .some(A), .none } fn mk() := OptionA.some(a)");
+    let file = lower_lir("data OptionA { .some(A), .none } fn mk() { OptionA.some(a) }");
     let lir::Item::Fn(f) = &file.items[1] else {
         panic!("expected fn")
     };
@@ -228,7 +228,7 @@ fn lir_inlines_data_ctor_bundle_as_rolled_ctor() {
 
 #[test]
 fn lir_lowers_fn_item_to_thunk_lambda_spine() {
-    let file = lower_lir("fn id(x: A, y: B): produce A := produce x");
+    let file = lower_lir("fn id(x: A, y: B): A { x }");
     let lir::Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
@@ -246,7 +246,7 @@ fn lir_lowers_fn_item_to_thunk_lambda_spine() {
 
 #[test]
 fn lir_lowers_function_call_to_force_apply_chain() {
-    let file = lower_lir("fn main(x: A, y: B): produce C := f(x, y)");
+    let file = lower_lir("fn main(x: A, y: B): C { f(x, y) }");
     let lir::Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
@@ -312,7 +312,7 @@ fn data_generics_are_preserved_in_hir() {
 
 #[test]
 fn cap_decl_is_preserved_in_hir() {
-    let file = lower_typed("cap Console { fn log(msg: String): produce Unit }");
+    let file = lower_typed("cap Console { fn log(msg: String): Unit }");
     let Item::Cap(e) = &file.items[0] else {
         panic!("expected cap, got {:?}", file.items[0])
     };
@@ -325,10 +325,10 @@ fn cap_decl_is_preserved_in_hir() {
         e.operations[0].params[0].ty.value,
         TypeExpr::Named("String".into())
     );
-    // Return type includes "produce Unit" which should parse
+    // Return type is "Unit"
     assert!(e.operations[0].return_type.is_some());
 
     // Hash stability: re-lowering yields the same hash
-    let file2 = lower_typed("cap Console { fn log(msg: String): produce Unit }");
+    let file2 = lower_typed("cap Console { fn log(msg: String): Unit }");
     assert_eq!(file.content_hash, file2.content_hash);
 }

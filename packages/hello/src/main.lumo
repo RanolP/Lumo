@@ -2,6 +2,7 @@ use libcore.prelude.{String};
 use libstd.io.{IO};
 use libstd.io.{__println};
 
-fn main() :=
-  handle IO with bundle { fn println(msg) := __println(msg) }
-  in perform IO.println("Hello, World!")
+fn main() {
+  handle IO with bundle { fn println(msg) { __println(msg) } }
+  in IO.println("Hello, World!")
+}

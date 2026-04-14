@@ -5,7 +5,7 @@ use lumo_compiler::{
 
 #[test]
 fn parses_data_and_fn() {
-    let src = "data Option[A] { .some(A), .none } fn id[A](a: A): produce A / {} := produce a";
+    let src = "data Option[A] { .some(A), .none } fn id[A](a: A): A / {} { a }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
 
@@ -28,13 +28,16 @@ fn parses_data_and_fn() {
     }
 
     match &parsed.file.items[1] {
-        Item::Fn(f) => match &f.body {
-            Expr::Produce { expr, .. } => match expr.as_ref() {
+        Item::Fn(f) => {
+            let Expr::Block { stmts, result, .. } = &f.body else {
+                panic!("expected block body, got {:?}", f.body)
+            };
+            assert!(stmts.is_empty());
+            match result.as_ref() {
                 Expr::Ident { name, .. } => assert_eq!(name, "a"),
-                other => panic!("unexpected produce payload: {other:?}"),
-            },
-            other => panic!("unexpected fn body: {other:?}"),
-        },
+                other => panic!("unexpected block result: {other:?}"),
+            }
+        }
         other => panic!("unexpected second item: {other:?}"),
     }
 
@@ -49,14 +52,14 @@ fn parses_data_and_fn() {
     assert_eq!(f.params[0].ty.repr, "A");
     assert_eq!(
         f.return_type.as_ref().map(|t| t.repr.as_str()),
-        Some("produce A")
+        Some("A")
     );
     assert_eq!(f.cap.as_ref().map(|e| e.repr.as_str()), Some("{ }"));
 }
 
 #[test]
 fn parses_let_in_expression() {
-    let src = "fn main(): produce A / {} := let x = y in produce x";
+    let src = "fn main(): A / {} { let x = y; x }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
 
@@ -67,30 +70,28 @@ fn parses_let_in_expression() {
         panic!("expected fn item")
     };
 
-    match &f.body {
-        Expr::LetIn {
-            name, value, body, ..
-        } => {
-            assert_eq!(name, "x");
-            match value.as_ref() {
-                Expr::Ident { name, .. } => assert_eq!(name, "y"),
-                other => panic!("unexpected let value: {other:?}"),
-            }
-            match body.as_ref() {
-                Expr::Produce { expr, .. } => match expr.as_ref() {
-                    Expr::Ident { name, .. } => assert_eq!(name, "x"),
-                    other => panic!("unexpected produce payload: {other:?}"),
-                },
-                other => panic!("unexpected let body: {other:?}"),
-            }
-        }
-        other => panic!("unexpected fn body: {other:?}"),
+    use lumo_compiler::parser::BlockStmt;
+    let Expr::Block { stmts, result, .. } = &f.body else {
+        panic!("expected block body, got {:?}", f.body)
+    };
+    assert_eq!(stmts.len(), 1);
+    let BlockStmt::Let { name, value, .. } = &stmts[0] else {
+        panic!("expected let stmt")
+    };
+    assert_eq!(name, "x");
+    match value {
+        Expr::Ident { name, .. } => assert_eq!(name, "y"),
+        other => panic!("unexpected let value: {other:?}"),
+    }
+    match result.as_ref() {
+        Expr::Ident { name, .. } => assert_eq!(name, "x"),
+        other => panic!("unexpected block result: {other:?}"),
     }
 }
 
 #[test]
 fn recovers_and_keeps_parsing_next_item() {
-    let src = "fn broken := produce data Good { .a }";
+    let src = "fn broken { data Good { .a } }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
 
@@ -105,7 +106,7 @@ fn recovers_and_keeps_parsing_next_item() {
 
 #[test]
 fn parses_thunk_force_match() {
-    let src = "fn f() := match x { left => thunk produce a, right => force job }";
+    let src = "fn f() { match x { left => thunk a, right => force job } }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -113,9 +114,13 @@ fn parses_thunk_force_match() {
     let Item::Fn(f) = &parsed.file.items[0] else {
         panic!("expected fn item")
     };
+    let Expr::Block { stmts, result, .. } = &f.body else {
+        panic!("expected block body")
+    };
+    assert!(stmts.is_empty());
     let Expr::Match {
         scrutinee, arms, ..
-    } = &f.body
+    } = result.as_ref()
     else {
         panic!("expected match body")
     };
@@ -130,7 +135,7 @@ fn parses_thunk_force_match() {
 
 #[test]
 fn parses_apply_expression() {
-    let src = "fn mk() := Option.some(a)";
+    let src = "fn mk() { Option.some(a) }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -138,7 +143,10 @@ fn parses_apply_expression() {
     let Item::Fn(f) = &parsed.file.items[0] else {
         panic!("expected fn item")
     };
-    let Expr::Call { callee, args, .. } = &f.body else {
+    let Expr::Block { result, .. } = &f.body else {
+        panic!("expected block body")
+    };
+    let Expr::Call { callee, args, .. } = result.as_ref() else {
         panic!("expected call body")
     };
     let Expr::Member { object, member, .. } = callee.as_ref() else {
@@ -154,7 +162,7 @@ fn parses_apply_expression() {
 
 #[test]
 fn parses_projection_without_call_for_nullary_ctor() {
-    let src = "fn t() := Bool.true";
+    let src = "fn t() { Bool.true }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -162,7 +170,10 @@ fn parses_projection_without_call_for_nullary_ctor() {
     let Item::Fn(f) = &parsed.file.items[0] else {
         panic!("expected fn item")
     };
-    let Expr::Member { object, member, .. } = &f.body else {
+    let Expr::Block { result, .. } = &f.body else {
+        panic!("expected block body")
+    };
+    let Expr::Member { object, member, .. } = result.as_ref() else {
         panic!("expected member body")
     };
     let Expr::Ident { name, .. } = object.as_ref() else {
@@ -209,7 +220,7 @@ fn parses_extern_items_with_attributes() {
 
 #[test]
 fn parses_extern_fn_without_semicolon_before_next_item() {
-    let src = "#[extern(name = \"console.log\")] extern fn console_log(msg: String) fn main(msg: String): produce Unit := console_log(msg)";
+    let src = "#[extern(name = \"console.log\")] extern fn console_log(msg: String) fn main(msg: String): Unit { console_log(msg) }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -250,7 +261,7 @@ fn parses_use_destructuring() {
 
 #[test]
 fn parses_use_alongside_fn() {
-    let src = "use myapp;\nfn id() := produce x";
+    let src = "use myapp;\nfn id() { x }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -266,13 +277,17 @@ fn parse_fn_body(src: &str) -> Expr {
     let Item::Fn(f) = &parsed.file.items[0] else {
         panic!("expected fn item")
     };
-    f.body.clone()
+    // Unwrap single-expression blocks for test convenience
+    match &f.body {
+        Expr::Block { stmts, result, .. } if stmts.is_empty() => result.as_ref().clone(),
+        other => other.clone(),
+    }
 }
 
 #[test]
 fn operator_precedence_mul_before_add() {
     // 1 + 2 * 3 → Binary(1, Add, Binary(2, Mul, 3))
-    let body = parse_fn_body("fn f() := 1 + 2 * 3");
+    let body = parse_fn_body("fn f() { 1 + 2 * 3 }");
     let Expr::Binary { op, left, right, .. } = &body else {
         panic!("expected binary, got {body:?}")
     };
@@ -287,7 +302,7 @@ fn operator_precedence_mul_before_add() {
 #[test]
 fn operator_left_associativity() {
     // 1 - 2 - 3 → Binary(Binary(1, Sub, 2), Sub, 3)
-    let body = parse_fn_body("fn f() := 1 - 2 - 3");
+    let body = parse_fn_body("fn f() { 1 - 2 - 3 }");
     let Expr::Binary { op, left, right, .. } = &body else {
         panic!("expected binary, got {body:?}")
     };
@@ -302,7 +317,7 @@ fn operator_left_associativity() {
 #[test]
 fn unary_prefix_neg() {
     // -x → Unary(Neg, x)
-    let body = parse_fn_body("fn f() := -x");
+    let body = parse_fn_body("fn f() { -x }");
     let Expr::Unary { op, expr, .. } = &body else {
         panic!("expected unary, got {body:?}")
     };
@@ -313,7 +328,7 @@ fn unary_prefix_neg() {
 #[test]
 fn unary_binds_tighter_than_binary() {
     // -a + b → Binary(Unary(Neg, a), Add, b)
-    let body = parse_fn_body("fn f() := -a + b");
+    let body = parse_fn_body("fn f() { -a + b }");
     let Expr::Binary { op, left, .. } = &body else {
         panic!("expected binary, got {body:?}")
     };
@@ -323,23 +338,23 @@ fn unary_binds_tighter_than_binary() {
 
 #[test]
 fn comparison_operators_parse() {
-    let body = parse_fn_body("fn f() := a == b");
+    let body = parse_fn_body("fn f() { a == b }");
     assert!(matches!(&body, Expr::Binary { op: BinaryOp::EqEq, .. }));
 
-    let body = parse_fn_body("fn f() := a != b");
+    let body = parse_fn_body("fn f() { a != b }");
     assert!(matches!(&body, Expr::Binary { op: BinaryOp::NotEq, .. }));
 
-    let body = parse_fn_body("fn f() := a < b");
+    let body = parse_fn_body("fn f() { a < b }");
     assert!(matches!(&body, Expr::Binary { op: BinaryOp::Lt, .. }));
 
-    let body = parse_fn_body("fn f() := a >= b");
+    let body = parse_fn_body("fn f() { a >= b }");
     assert!(matches!(&body, Expr::Binary { op: BinaryOp::GtEq, .. }));
 }
 
 #[test]
 fn logical_operators_parse() {
     // a && b || c → Binary(Binary(a, AndAnd, b), OrOr, c)
-    let body = parse_fn_body("fn f() := a && b || c");
+    let body = parse_fn_body("fn f() { a && b || c }");
     let Expr::Binary { op, left, .. } = &body else {
         panic!("expected binary, got {body:?}")
     };
@@ -349,17 +364,17 @@ fn logical_operators_parse() {
 
 #[test]
 fn number_literal_parse() {
-    let body = parse_fn_body("fn f() := 42");
+    let body = parse_fn_body("fn f() { 42 }");
     assert!(matches!(&body, Expr::Number { value, .. } if value == "42"));
 
-    let body = parse_fn_body("fn f() := 3.14");
+    let body = parse_fn_body("fn f() { 3.14 }");
     assert!(matches!(&body, Expr::Number { value, .. } if value == "3.14"));
 }
 
 #[test]
 fn postfix_binds_tighter_than_operators() {
     // a.b + c → Binary(Member(a, b), Add, c)
-    let body = parse_fn_body("fn f() := a.b + c");
+    let body = parse_fn_body("fn f() { a.b + c }");
     let Expr::Binary { op, left, .. } = &body else {
         panic!("expected binary, got {body:?}")
     };
@@ -370,7 +385,7 @@ fn postfix_binds_tighter_than_operators() {
 #[test]
 fn assignment_desugars_in_parser() {
     // x = 1; y → Assign(x, 1, y)
-    let body = parse_fn_body("fn f() := x = 1; y");
+    let body = parse_fn_body("fn f() { x = 1; y }");
     let Expr::Assign { name, value, body: body_expr, .. } = &body else {
         panic!("expected assign, got {body:?}")
     };
@@ -381,7 +396,7 @@ fn assignment_desugars_in_parser() {
 
 #[test]
 fn parses_inherent_impl() {
-    let src = "impl String { fn len(self): Number := str_len(self) }";
+    let src = "impl String { fn len(self): Number { str_len(self) } }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -406,7 +421,7 @@ fn parses_inherent_impl() {
 
 #[test]
 fn parses_capability_impl() {
-    let src = "impl String: Clone { fn clone(self): String := self }";
+    let src = "impl String: Clone { fn clone(self): String { self } }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -420,7 +435,7 @@ fn parses_capability_impl() {
 
 #[test]
 fn parses_named_impl() {
-    let src = "impl MyClone = String: Clone { fn clone(self): String := self }";
+    let src = "impl MyClone = String: Clone { fn clone(self): String { self } }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -434,7 +449,7 @@ fn parses_named_impl() {
 
 #[test]
 fn parses_generic_impl() {
-    let src = "impl[T: Clone] List[T]: Clone { fn clone(self): List[T] := self }";
+    let src = "impl[T: Clone] List[T]: Clone { fn clone(self): List[T] { self } }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -454,7 +469,7 @@ fn parses_generic_impl() {
 #[test]
 fn parses_impl_with_typed_self() {
     // self can also have an explicit type
-    let src = "impl String { fn len(self: String): Number := str_len(self) }";
+    let src = "impl String { fn len(self: String): Number { str_len(self) } }";
     let lexed = lex(src);
     let parsed = parse(&lexed.tokens, &lexed.errors);
     assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
@@ -463,4 +478,39 @@ fn parses_impl_with_typed_self() {
     };
     assert_eq!(i.methods[0].params[0].name, "self");
     assert_eq!(i.methods[0].params[0].ty.repr.trim(), "String");
+}
+
+#[test]
+fn parses_if_else_expression() {
+    let src = "fn f(x: Bool) { if x { a } else { b } }";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+
+    let Item::Fn(f) = &parsed.file.items[0] else {
+        panic!("expected fn")
+    };
+    let Expr::Block { result, .. } = &f.body else {
+        panic!("expected block, got {:?}", f.body)
+    };
+    assert!(matches!(result.as_ref(), Expr::IfElse { .. }), "expected if-else, got {:?}", result);
+}
+
+#[test]
+fn parses_if_else_if_chain() {
+    let src = "fn f(x: Bool, y: Bool) { if x { a } else if y { b } else { c } }";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+
+    let Item::Fn(f) = &parsed.file.items[0] else {
+        panic!("expected fn")
+    };
+    let Expr::Block { result, .. } = &f.body else {
+        panic!("expected block")
+    };
+    let Expr::IfElse { else_body, .. } = result.as_ref() else {
+        panic!("expected if-else, got {:?}", result)
+    };
+    assert!(matches!(else_body.as_deref(), Some(Expr::IfElse { .. })));
 }

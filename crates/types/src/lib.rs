@@ -36,10 +36,12 @@ pub enum TypeExpr {
     Named(String),
     /// Parameterized type: `List[A]`, `Option[Nat]`
     App { head: String, args: Vec<TypeExpr> },
-    /// Computation type: `produce A`
+    /// Computation type: `produce A` (HIR/LIR internal; not in surface syntax)
     Produce(Box<TypeExpr>),
-    /// Thunked computation: `thunk produce A`
+    /// Thunked computation: `thunk T`
     Thunk(Box<TypeExpr>),
+    /// Capability type: `Add for Number`, or bare `IO`
+    Cap { name: String, for_type: Option<Box<TypeExpr>> },
 }
 
 impl TypeExpr {
@@ -66,6 +68,8 @@ impl TypeExpr {
             }
             TypeExpr::Produce(inner) => format!("produce {}", inner.display()),
             TypeExpr::Thunk(inner) => format!("thunk {}", inner.display()),
+            TypeExpr::Cap { name, for_type: Some(ty) } => format!("{name} for {}", ty.display()),
+            TypeExpr::Cap { name, for_type: None } => name.clone(),
         }
     }
 
@@ -75,6 +79,7 @@ impl TypeExpr {
             TypeExpr::Named(n) => n,
             TypeExpr::App { head, .. } => head,
             TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => inner.head_name(),
+            TypeExpr::Cap { name, .. } => name,
         }
     }
 
@@ -86,11 +91,45 @@ impl TypeExpr {
                 head == target || args.iter().any(|a| a.references_name(target))
             }
             TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => inner.references_name(target),
+            TypeExpr::Cap { name, for_type } => {
+                name == target || for_type.as_ref().map_or(false, |t| t.references_name(target))
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Capability-specific helpers (for TypeExpr::Cap entries in CapRef)
+    // -----------------------------------------------------------------
+
+    /// For Cap: returns the capability name. For Named: returns the name.
+    pub fn cap_name(&self) -> &str {
+        match self {
+            TypeExpr::Cap { name, .. } => name,
+            TypeExpr::Named(name) => name,
+            _ => "",
+        }
+    }
+
+    /// For Cap: returns the for_type if present.
+    pub fn cap_for_type(&self) -> Option<&TypeExpr> {
+        match self {
+            TypeExpr::Cap { for_type, .. } => for_type.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Mangled runtime parameter name: `__cap_Add_Number` or `__cap_IO`.
+    pub fn cap_mangled_param(&self) -> String {
+        match self {
+            TypeExpr::Cap { name, for_type: Some(ty) } => format!("__cap_{}_{}", name, ty.display()),
+            TypeExpr::Cap { name, for_type: None } => format!("__cap_{}", name),
+            TypeExpr::Named(name) => format!("__cap_{}", name),
+            _ => "__cap_unknown".to_string(),
         }
     }
 }
 
-/// Parse a type expression, handling `produce` and `thunk` keywords.
+/// Parse a type expression, handling the `thunk` keyword.
 fn parse_type_expr_full(text: &str) -> TypeExpr {
     let text = text.trim();
     if let Some(rest) = text.strip_prefix("thunk") {
@@ -103,15 +142,6 @@ fn parse_type_expr_full(text: &str) -> TypeExpr {
             return TypeExpr::Thunk(Box::new(parse_type_expr_full(rest)));
         }
         // fallthrough: treat "thunk" as a type name part
-    }
-    if let Some(rest) = text.strip_prefix("produce") {
-        let rest = rest.trim_start();
-        if rest.is_empty() {
-            return TypeExpr::Named("produce".to_owned());
-        }
-        if rest.starts_with(|c: char| c.is_uppercase() || c.is_lowercase()) {
-            return TypeExpr::Produce(Box::new(parse_type_expr_full(rest)));
-        }
     }
     // No keywords — strip whitespace and parse as Named/App
     let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();
@@ -162,16 +192,19 @@ fn split_type_args(text: &str) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 /// A structured capability annotation.
+/// Each entry is a `TypeExpr::Cap { name, for_type }`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CapRef {
     /// Pure function (no capability).
     Pure,
-    /// Effectful function requiring capability `name`.
-    Named(String),
+    /// Effectful function requiring one or more capabilities.
+    /// Each element is a `TypeExpr::Cap`.
+    Named(Vec<TypeExpr>),
 }
 
 impl CapRef {
     /// Parse from the repr string the parser produces.
+    /// Supports: `"{ Add for Number, IO }"`, `"StrOps, NumOps"`, `"{ StrOps }"`.
     pub fn parse(repr: &str) -> CapRef {
         let s = repr.trim();
         let s = s.strip_prefix('{').unwrap_or(s);
@@ -180,14 +213,64 @@ impl CapRef {
         if s.is_empty() {
             CapRef::Pure
         } else {
-            CapRef::Named(s.to_owned())
+            let entries: Vec<TypeExpr> = s
+                .split(',')
+                .filter_map(|c| {
+                    let c = c.trim();
+                    if c.is_empty() {
+                        return None;
+                    }
+                    if let Some((name, ty)) = c.split_once(" for ") {
+                        Some(TypeExpr::Cap {
+                            name: name.trim().to_owned(),
+                            for_type: Some(Box::new(TypeExpr::parse(ty.trim())?)),
+                        })
+                    } else {
+                        Some(TypeExpr::Cap {
+                            name: c.to_owned(),
+                            for_type: None,
+                        })
+                    }
+                })
+                .collect();
+            if entries.is_empty() {
+                CapRef::Pure
+            } else {
+                CapRef::Named(entries)
+            }
         }
     }
 
+    /// Returns the first capability name (for backward compatibility).
     pub fn name(&self) -> Option<&str> {
         match self {
             CapRef::Pure => None,
-            CapRef::Named(n) => Some(n),
+            CapRef::Named(entries) => entries.first().map(|e| e.cap_name()),
+        }
+    }
+
+    /// Returns all capability names (without for_type info), deduplicated.
+    pub fn cap_names(&self) -> Vec<&str> {
+        match self {
+            CapRef::Pure => vec![],
+            CapRef::Named(entries) => {
+                let mut names = Vec::new();
+                for e in entries {
+                    let name = e.cap_name();
+                    if !names.contains(&name) {
+                        names.push(name);
+                    }
+                }
+                names
+            }
+        }
+    }
+
+    /// Returns all cap type entries.
+    pub fn entries(&self) -> &[TypeExpr] {
+        match self {
+            CapRef::Pure => &[],
+            CapRef::Named(entries) => entries,
         }
     }
 
@@ -512,13 +595,61 @@ mod tests {
         assert!(!ty.references_name("B"));
     }
 
+    fn bare_cap(name: &str) -> TypeExpr {
+        TypeExpr::Cap { name: name.to_owned(), for_type: None }
+    }
+
+    fn typed_cap(name: &str, ty: &str) -> TypeExpr {
+        TypeExpr::Cap { name: name.to_owned(), for_type: Some(Box::new(TypeExpr::Named(ty.to_owned()))) }
+    }
+
     #[test]
-    fn cap_ref_parse() {
-        assert_eq!(CapRef::parse("E"), CapRef::Named("E".into()));
-        assert_eq!(CapRef::parse("{ E }"), CapRef::Named("E".into()));
+    fn cap_ref_parse_bare() {
+        assert_eq!(CapRef::parse("E"), CapRef::Named(vec![bare_cap("E")]));
+        assert_eq!(CapRef::parse("{ E }"), CapRef::Named(vec![bare_cap("E")]));
         assert_eq!(CapRef::parse("{}"), CapRef::Pure);
         assert_eq!(CapRef::parse("{ }"), CapRef::Pure);
-        assert_eq!(CapRef::parse("IO"), CapRef::Named("IO".into()));
+        assert_eq!(CapRef::parse("IO"), CapRef::Named(vec![bare_cap("IO")]));
+        assert_eq!(
+            CapRef::parse("StrOps, NumOps"),
+            CapRef::Named(vec![bare_cap("StrOps"), bare_cap("NumOps")])
+        );
+        assert_eq!(
+            CapRef::parse("{ A, B, C }"),
+            CapRef::Named(vec![bare_cap("A"), bare_cap("B"), bare_cap("C")])
+        );
+    }
+
+    #[test]
+    fn cap_ref_parse_typed() {
+        assert_eq!(
+            CapRef::parse("{ Add for Number }"),
+            CapRef::Named(vec![typed_cap("Add", "Number")])
+        );
+        assert_eq!(
+            CapRef::parse("{ Add for String, IO }"),
+            CapRef::Named(vec![typed_cap("Add", "String"), bare_cap("IO")])
+        );
+        assert_eq!(
+            CapRef::parse("{ Add for Number, Add for String, IO }"),
+            CapRef::Named(vec![
+                typed_cap("Add", "Number"),
+                typed_cap("Add", "String"),
+                bare_cap("IO"),
+            ])
+        );
+    }
+
+    #[test]
+    fn cap_type_expr_mangled_param() {
+        assert_eq!(bare_cap("IO").cap_mangled_param(), "__cap_IO");
+        assert_eq!(typed_cap("Add", "Number").cap_mangled_param(), "__cap_Add_Number");
+    }
+
+    #[test]
+    fn cap_type_expr_display() {
+        assert_eq!(bare_cap("IO").display(), "IO");
+        assert_eq!(typed_cap("Add", "Number").display(), "Add for Number");
     }
 
     #[test]

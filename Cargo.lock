@@ -161,6 +161,7 @@ name = "lumo-lir"
 version = "0.1.0"
 dependencies = [
  "lumo-hir",
+ "lumo-lexer",
  "lumo-span",
  "lumo-types",
 ]

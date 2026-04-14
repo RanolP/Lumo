@@ -20,7 +20,7 @@ fn emit_rust(src: &str) -> String {
 
 #[test]
 fn rs_backend_emits_pure_function() {
-    let rs = emit_rust("fn id(x: String): String := produce x");
+    let rs = emit_rust("fn id(x: String): String { x }");
     assert!(rs.contains("fn id(x: String) -> String"), "{rs}");
     assert!(rs.contains("x"), "{rs}");
 }
@@ -45,7 +45,7 @@ fn rs_backend_emits_adt_with_payloads() {
 #[test]
 fn rs_backend_emits_match() {
     let rs = emit_rust(
-        "data Bool { .true, .false } fn not(b: Bool): Bool := match b { Bool.true => produce Bool.false, Bool.false => produce Bool.true }",
+        "data Bool { .true, .false } fn not(b: Bool): Bool { match b { Bool.true => Bool.false, Bool.false => Bool.true } }",
     );
     assert!(rs.contains("fn not(b: Bool) -> Bool"), "{rs}");
     assert!(rs.contains("match"), "{rs}");
@@ -55,20 +55,20 @@ fn rs_backend_emits_match() {
 
 #[test]
 fn rs_backend_emits_string_literal() {
-    let rs = emit_rust("fn greet(): String := produce \"hello\"");
+    let rs = emit_rust("fn greet(): String { \"hello\" }");
     assert!(rs.contains("\"hello\".to_string()"), "{rs}");
 }
 
 #[test]
 fn rs_backend_emits_number_literal() {
-    let rs = emit_rust("fn pi(): Number := produce 3.14");
+    let rs = emit_rust("fn pi(): Number { 3.14 }");
     assert!(rs.contains("3.14"), "{rs}");
     assert!(rs.contains("f64"), "{rs}");
 }
 
 #[test]
 fn rs_backend_emits_let_in() {
-    let rs = emit_rust("fn f(): String := let x = produce \"hi\" in produce x");
+    let rs = emit_rust("fn f(): String { let x = \"hi\"; x }");
     assert!(rs.contains("let x ="), "{rs}");
 }
 
@@ -82,7 +82,7 @@ fn rs_backend_extern_fn_println() {
 #[test]
 fn rs_backend_main_fn_wrapper() {
     let rs = emit_rust(
-        "#[extern(name = \"console.log\")] extern fn println(msg: String); fn main() := println(\"hi\")",
+        "#[extern(name = \"console.log\")] extern fn println(msg: String); fn main() { println(\"hi\") }",
     );
     assert!(rs.contains("fn main()"), "{rs}");
     assert!(rs.contains("println("), "{rs}");
@@ -97,14 +97,14 @@ fn rs_backend_skips_builtin_extern_types() {
 
 #[test]
 fn rs_backend_emits_unit_return() {
-    let rs = emit_rust("fn noop() := produce Unit");
+    let rs = emit_rust("fn noop() { Unit }");
     assert!(rs.contains("fn noop() -> ()"), "{rs}");
 }
 
 #[test]
 fn rs_backend_emits_ctor_call() {
     let rs = emit_rust(
-        "data Pair { .mk(String, String) } fn test(): Pair := produce Pair.mk(\"a\", \"b\")",
+        "data Pair { .mk(String, String) } fn test(): Pair { Pair.mk(\"a\", \"b\") }",
     );
     assert!(rs.contains("Pair::Mk("), "{rs}");
 }
@@ -112,7 +112,7 @@ fn rs_backend_emits_ctor_call() {
 #[test]
 fn rs_backend_emits_match_with_bindings() {
     let rs = emit_rust(
-        "data Box { .wrap(String) } fn unwrap(b: Box): String := match b { Box.wrap(x) => produce x }",
+        "data Box { .wrap(String) } fn unwrap(b: Box): String { match b { Box.wrap(x) => x } }",
     );
     assert!(rs.contains("Box::Wrap(x)"), "{rs}");
 }
@@ -137,7 +137,7 @@ fn rs_backend_emits_recursive_adt_with_box() {
 #[test]
 fn rs_backend_emits_box_new_for_recursive_ctor() {
     let rs = emit_rust(
-        "data List[A] { .nil, .cons(A, List[A]) } fn singleton(x: String): List[String] := produce List.cons(x, List.nil)",
+        "data List[A] { .nil, .cons(A, List[A]) } fn singleton(x: String): List[String] { List.cons(x, List.nil) }",
     );
     assert!(
         rs.contains("Box::new("),
@@ -148,7 +148,7 @@ fn rs_backend_emits_box_new_for_recursive_ctor() {
 #[test]
 fn rs_backend_emits_inherent_impl_as_standalone_fns() {
     let rs = emit_rust(
-        "#[extern = \"string\"] extern type String; #[extern = \"number\"] extern type Number; #[extern = \"String.length\"] extern fn str_len(s: String): produce Number; impl String { fn len(self: String): Number := str_len(self) }",
+        "#[extern = \"string\"] extern type String; #[extern = \"number\"] extern type Number; #[extern = \"String.length\"] extern fn str_len(s: String): Number; impl String { fn len(self: String): Number { str_len(self) } }",
     );
     assert!(
         rs.contains("fn string__len("),
@@ -167,7 +167,7 @@ fn rs_backend_emits_inherent_impl_as_standalone_fns() {
 #[test]
 fn rs_backend_emits_unnamed_cap_impl() {
     let rs = emit_rust(
-        "cap Clone { fn clone(self: A): produce A } impl String: Clone { fn clone(self: String): String := self }",
+        "cap Clone { fn clone(self: A): A } impl String: Clone { fn clone(self: String): String { self } }",
     );
     assert!(
         rs.contains("__impl_string_clone_clone"),
@@ -178,7 +178,7 @@ fn rs_backend_emits_unnamed_cap_impl() {
 #[test]
 fn rs_backend_emits_named_cap_impl() {
     let rs = emit_rust(
-        "cap Clone { fn clone(self: A): produce A } impl MyClone = String: Clone { fn clone(self: String): String := self }",
+        "cap Clone { fn clone(self: A): A } impl MyClone = String: Clone { fn clone(self: String): String { self } }",
     );
     assert!(
         rs.contains("myclone__clone"),

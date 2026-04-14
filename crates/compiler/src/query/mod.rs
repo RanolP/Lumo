@@ -220,6 +220,12 @@ impl QueryEngine {
         self.lower_module(&file_refs)
     }
 
+    /// Run HIR-level checks (name resolution, arity, duplicates, patterns).
+    pub fn check_hir(&mut self, file: &str) -> Option<Vec<hir::check::CheckError>> {
+        let hir_file = self.lower_hir(file)?;
+        Some(hir::check::check_file(&hir_file))
+    }
+
     pub fn diagnostics(&mut self, file: &str) -> Option<Vec<Diagnostic>> {
         let source_hash = self.files.get(file)?.source_hash;
         if self.files.get(file)?.diagnostics_at_hash == Some(source_hash) {
@@ -243,9 +249,34 @@ impl QueryEngine {
                 end: e.span.end,
                 message: e.message.clone(),
             }));
+
+            // HIR check errors (name resolution, arity, etc.)
+            let check_errors = hir::check::check_file(&hir_file);
+            diags.extend(check_errors.into_iter().map(|e| Diagnostic {
+                start: e.span.start,
+                end: e.span.end,
+                message: e.message,
+            }));
         }
 
         let lowered = self.lower(file)?;
+
+        // LIR structural validation (dev-mode warnings)
+        let lir_warnings = lir::validate::validate(&lowered);
+        if !lir_warnings.is_empty() {
+            for w in &lir_warnings {
+                let span = w
+                    .expr_id
+                    .and_then(|id| lowered.spans.get(id.0 as usize).copied())
+                    .unwrap_or(Span::new(0, 0));
+                diags.push(Diagnostic {
+                    start: span.start,
+                    end: span.end,
+                    message: format!("[LIR] {}", w.message),
+                });
+            }
+        }
+
         let span_map = build_lir_span_map(&lowered);
         let type_errors = typecheck::typecheck_file(&lowered);
         diags.extend(type_errors.into_iter().map(|e| {

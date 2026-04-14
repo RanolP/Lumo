@@ -3,13 +3,16 @@ use libcore.number.{NumOps};
 
 data List[A] { .nil, .cons(A, List[A]) }
 
-fn list_is_empty[A](xs: List[A]): Bool :=
-  match xs { .nil => produce Bool.true, .cons(_, _) => produce Bool.false }
+fn list_is_empty[A](xs: List[A]): Bool {
+  match xs { .nil => Bool.true, .cons(_, _) => Bool.false }
+}
 
-fn list_reverse_acc[A](xs: List[A], acc: List[A]): List[A] :=
-  match xs { .nil => produce acc, .cons(h, t) => list_reverse_acc(t, List.cons(h, acc)) }
+fn list_reverse_acc[A](xs: List[A], acc: List[A]): List[A] {
+  match xs { .nil => acc, .cons(h, t) => list_reverse_acc(t, List.cons(h, acc)) }
+}
 
-fn list_reverse[A](xs: List[A]): List[A] := list_reverse_acc(xs, List.nil)
+fn list_reverse[A](xs: List[A]): List[A] { list_reverse_acc(xs, List.nil) }
 
-fn list_length[A](xs: List[A]): Number / NumOps :=
-  match xs { .nil => produce 0, .cons(_, t) => produce perform NumOps.num_add(1, list_length(t)) }
+fn list_length[A](xs: List[A]): Number / { NumOps } {
+  match xs { .nil => 0, .cons(_, t) => NumOps.num_add(1, list_length(t)) }
+}

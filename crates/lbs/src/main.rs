@@ -195,7 +195,7 @@ fn typecheck_or_exit(lir: &lir::File) {
     let type_errors = typecheck::typecheck_file(lir);
     if !type_errors.is_empty() {
         for e in &type_errors {
-            eprintln!("error: {}", e.message);
+            eprintln!("error in `{}`: {}", e.fn_name, e.message);
         }
         process::exit(1);
     }
@@ -213,6 +213,17 @@ fn cmd_build(args: &[String]) {
     };
 
     let lir = compile(&manifest, &project_root, target);
+    // Debug: print LIR items with their span info
+    if std::env::var("LBS_DEBUG_SPANS").is_ok() {
+        for item in &lir.items {
+            match item {
+                lir::Item::Fn(f) => {
+                    eprintln!("FN {} span={}..{}", f.name, f.span.start, f.span.end);
+                }
+                _ => {}
+            }
+        }
+    }
     typecheck_or_exit(&lir);
 
     match target {

@@ -1,0 +1,124 @@
+// LIR (Low-level IR) grammar specification
+// CBPV-normalized: single-param lambda, single-arg apply, explicit roll/unroll.
+// Functions are curried: `fn f(a, b) := body` becomes `thunk lambda a. lambda b. body`
+
+@token Ident StringLit NumberLit
+
+// === Top-level ===
+
+File = items:Item*
+
+Item =
+  | ExternTypeDecl
+  | ExternFnDecl
+  | DataDecl
+  | CapDecl
+  | FnDecl
+  | UseDecl
+  | ImplDecl
+
+// === Extern declarations ===
+
+ExternTypeDecl = 'extern' 'type' name:Ident extern_as:ExternAs?
+ExternFnDecl = inline:InlineHint? 'extern' 'fn' name:Ident param_list:ParamList return_ann:ReturnAnn? cap_annotation:CapAnnotation? extern_as:ExternAs?
+
+ExternAs = 'as' value:StringLit
+InlineHint = '#' '[' 'inline' '(' 'always' ')' ']'
+
+// === Data types ===
+
+DataDecl = 'data' name:Ident generic_params:GenericParams? '{' variants:Variant* '}'
+Variant = '.' name:Ident variant_fields:VariantFields?
+VariantFields = '(' fields:TypeExpr* ')'
+
+// === Capabilities ===
+
+CapDecl = 'cap' name:Ident '{' operations:OperationDecl* '}'
+OperationDecl = 'fn' name:Ident param_list:ParamList return_ann:ReturnAnn?
+
+// === Functions ===
+// Note: `value` is the curried body, e.g. `thunk lambda a. lambda b. produce a`
+
+FnDecl = 'fn' name:Ident generic_params:GenericParams? param_list:ParamList return_ann:ReturnAnn? cap_annotation:CapAnnotation? ':=' value:Expr
+
+// === Use declarations ===
+
+UseDecl = 'use' path:UsePath ';'
+UsePath = segments:Ident UseTree?
+UseTree = '.' '{' names:Ident* '}'
+
+// === Impl blocks ===
+
+ImplDecl = 'impl' generic_params:GenericParams? impl_name:ImplName? target:TypeExpr impl_cap:ImplCap? '{' methods:ImplMethod* '}'
+ImplName = name:Ident '='
+ImplCap = ':' cap:TypeExpr
+ImplMethod = 'fn' name:Ident param_list:ParamList return_ann:ReturnAnn? ':=' value:Expr
+
+// === Shared ===
+
+GenericParams = '[' params:Ident* ']'
+ParamList = '(' params:Param* ')'
+Param = name:Ident ':' ty:TypeExpr
+ReturnAnn = ':' ty:TypeExpr
+CapAnnotation = '/' '{' caps:TypeExpr* '}'
+
+TypeExpr = name:Ident generic_args:GenericArgs?
+GenericArgs = '[' args:TypeExpr* ']'
+
+// === Expressions ===
+// CBPV-specific: Lambda (single param), Apply (single arg), Roll, Unroll, Ctor.
+
+Expr =
+  | IdentExpr
+  | StringExpr
+  | NumberExpr
+  | CtorExpr
+  | ThunkExpr
+  | RollExpr
+  | BundleExpr
+  | ProduceExpr
+  | ForceExpr
+  | LambdaExpr
+  | ApplyExpr
+  | LetExpr
+  | MatchExpr
+  | UnrollExpr
+  | PerformExpr
+  | HandleExpr
+  | MemberExpr
+  | AnnExpr
+  | ErrorExpr
+
+IdentExpr = name:Ident
+StringExpr = value:StringLit
+NumberExpr = value:NumberLit
+CtorExpr = 'ctor' name:Ident ctor_args:CtorArgs?
+CtorArgs = '(' args:Expr* ')'
+ThunkExpr = 'thunk' body:Expr
+RollExpr = 'roll' expr:Expr
+ProduceExpr = 'produce' value:Expr
+ForceExpr = 'force' expr:Expr
+LambdaExpr = 'lambda' param:Ident '.' body:Expr
+ApplyExpr = callee:Expr '(' arg:Expr ')'
+LetExpr = 'let' name:Ident '=' value:Expr 'in' body:Expr
+MatchExpr = 'match' scrutinee:Expr '{' arms:MatchArm* '}'
+MatchArm = pattern:Pattern '=>' body:Expr
+UnrollExpr = 'unroll' expr:Expr
+PerformExpr = 'perform' cap:Ident
+HandleExpr = 'handle' cap:Ident 'with' handler:Expr 'in' body:Expr
+BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
+BundleEntry = 'fn' name:Ident param_list:ParamList ':=' body:Expr
+MemberExpr = object:Expr '.' field:Ident
+AnnExpr = '(' expr:Expr ':' ty:TypeExpr ')'
+ErrorExpr = '<' 'error' '>'
+
+// === Patterns ===
+
+Pattern =
+  | VariantPattern
+  | BindPattern
+  | WildcardPattern
+
+VariantPattern = '.' name:Ident ('(' fields:Pattern* ')')?
+BindPattern = name:Ident
+WildcardPattern = '_'

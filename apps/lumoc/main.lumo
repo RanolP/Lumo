@@ -24,14 +24,14 @@ enum Nat {
     succ { value: Nat }
 }
 
-fn isEven(n: Nat): produce Bool {
+fn isEven(n: Nat): Bool {
     match unroll n {
         `Nat/zero as n => produce (roll `Bool/true {}) : Bool,
         `Nat/succ as n => v <- n.value; (force isOdd)(v),
     }
 }
 
-fn isOdd(n: Nat): produce Bool {
+fn isOdd(n: Nat): Bool {
     match unroll n {
         `Nat/zero as n => produce (roll `Bool/false {}) : Bool,
         `Nat/succ as n => v <- n.value; (force isEven)(v),

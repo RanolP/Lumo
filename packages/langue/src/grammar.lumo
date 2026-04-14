@@ -1,5 +1,5 @@
-use lumo_std.prelude.{String, Number, Bool};
-use lumo_std.list.{List};
+use libcore.prelude.{String, Number, Bool};
+use libstd.list.{List};
 
 // A complete grammar: token declarations + node rules
 data Grammar { .mk(List[String], List[Rule]) }

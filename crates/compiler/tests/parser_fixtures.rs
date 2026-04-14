@@ -210,16 +210,14 @@ fn render_expr(expr: &Expr) -> String {
             render_expr(callee),
             args.iter().map(render_expr).collect::<Vec<_>>().join(", ")
         ),
-        Expr::Produce { expr, .. } => format!("Produce({})", render_expr(expr)),
         Expr::Thunk { expr, .. } => format!("Thunk({})", render_expr(expr)),
         Expr::Force { expr, .. } => format!("Force({})", render_expr(expr)),
-        Expr::LetIn {
-            name, value, body, ..
+        Expr::Let {
+            name, value, ..
         } => format!(
-            "Let(name=\"{}\", value={}, body={})",
+            "Let(name=\"{}\", value={})",
             name,
             render_expr(value),
-            render_expr(body)
         ),
         Expr::Match {
             scrutinee, arms, ..
@@ -274,6 +272,34 @@ fn render_expr(expr: &Expr) -> String {
             render_expr(value),
             render_expr(body)
         ),
+        Expr::Block { stmts, result, .. } => {
+            let stmt_strs: Vec<String> = stmts
+                .iter()
+                .map(|s| match s {
+                    lumo_compiler::parser::BlockStmt::Let { name, value, .. } => {
+                        format!("let {} = {}", name, render_expr(value))
+                    }
+                    lumo_compiler::parser::BlockStmt::Expr { expr, .. } => {
+                        render_expr(expr)
+                    }
+                })
+                .collect();
+            if stmt_strs.is_empty() {
+                render_expr(result)
+            } else {
+                format!(
+                    "Block([{}], result={})",
+                    stmt_strs.join("; "),
+                    render_expr(result)
+                )
+            }
+        }
+        Expr::IfElse { condition, then_body, else_body, .. } => {
+            match else_body {
+                Some(e) => format!("If(cond={}, then={}, else={})", render_expr(condition), render_expr(then_body), render_expr(e)),
+                None => format!("If(cond={}, then={})", render_expr(condition), render_expr(then_body)),
+            }
+        }
         Expr::Error { .. } => "Error".to_owned(),
     }
 }

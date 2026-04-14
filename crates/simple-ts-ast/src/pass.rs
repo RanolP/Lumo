@@ -206,17 +206,24 @@ fn take_iife(expr: &mut Expr) -> Option<(Vec<Param>, Vec<Stmt>, Vec<Expr>)> {
 }
 
 /// Build `const` bindings from IIFE params + args.
+/// Skips identity bindings (`const x = x`) which would cause a TDZ error.
 fn param_const_stmts(params: Vec<Param>, args: Vec<Expr>) -> Vec<Stmt> {
     params
         .into_iter()
         .zip(args)
-        .map(|(p, a)| {
-            Stmt::Const(ConstDecl {
+        .filter_map(|(p, a)| {
+            // Skip `const x = x` — it's a no-op and causes TDZ in JS
+            if let Expr::Ident(ref name) = a {
+                if name == &p.name {
+                    return None;
+                }
+            }
+            Some(Stmt::Const(ConstDecl {
                 export: false,
                 name: p.name,
                 type_ann: p.type_ann,
                 init: a,
-            })
+            }))
         })
         .collect()
 }

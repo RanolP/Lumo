@@ -11,3 +11,4 @@ path = "src/lib.rs"
 lumo-span = { path = "../span" }
 lumo-types = { path = "../types" }
 lumo-hir = { path = "../hir" }
+lumo-lexer = { path = "../lexer" }

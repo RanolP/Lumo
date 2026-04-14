@@ -242,6 +242,7 @@ fn type_expr_to_rust(ty: &TypeExpr) -> String {
             format!("{}<{}>", head, args_str.join(", "))
         }
         TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => type_expr_to_rust(inner),
+        TypeExpr::Cap { name, .. } => name.clone(),
     }
 }
 

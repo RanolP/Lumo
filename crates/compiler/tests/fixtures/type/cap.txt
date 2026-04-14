@@ -1,69 +1,69 @@
-cap E { fn op(): produce A }
-fn f(h: E): produce A / {} := handle E with h in perform E.op
+cap E { fn op(): A }
+fn f(h: E): A / {} { handle E with h in E.op }
 ---
-f : (E) -> produce A / {}
+f : (E) -> A
 ==========
-cap E { fn op(): produce A }
-fn f(h: E, a: A): produce A / {} := handle E with h in produce a
+cap E { fn op(): A }
+fn f(h: E, a: A): A / {} { handle E with h in a }
 ---
-f : (E, A) -> produce A / {}
+f : (E, A) -> A
 ==========
-cap E { fn op(): produce A }
-fn f(): produce A / {} := perform E
+cap E { fn op(): A }
+fn f(): A / {} { E }
 ---
-ERROR: not handled in this context
+ERROR: unknown variable `E`
 ==========
-cap E { fn op(): produce A }
-fn f(h: thunk produce B): produce A / {} := handle E with h in produce a
+cap E { fn op(): A }
+fn f(h: thunk B): A / {} { handle E with h in a }
 ---
 ERROR: type mismatch
 ==========
-cap E { fn op(): produce A }
-fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a } in perform E.op
+cap E { fn op(): A }
+fn f(a: A): A / {} { handle E with bundle { fn op() { a } } in E.op }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A
 ==========
-cap E1 { fn op1(): produce A }
-cap E2 { fn op2(): produce B }
-fn f(h1: E1, h2: E2): produce A / {} := handle E1 with h1 in handle E2 with h2 in perform E1.op1
+cap E1 { fn op1(): A }
+cap E2 { fn op2(): B }
+fn f(h1: E1, h2: E2): A / {} { handle E1 with h1 in handle E2 with h2 in E1.op1 }
 ---
-f : (E1, E2) -> produce A / {}
+f : (E1, E2) -> A
 ==========
-cap E { fn op(): produce A }
-fn f(h1: E, h2: E): produce A / {} := handle E with h1 in handle E with h2 in perform E.op
+cap E { fn op(): A }
+fn f(h1: E, h2: E): A / {} { handle E with h1 in handle E with h2 in E.op }
 ---
-f : (E, E) -> produce A / {}
+f : (E, E) -> A
 ==========
-cap Transform { fn apply(x: A): produce B }
-fn f(a: A, b: B): produce B / {} := handle Transform with bundle { fn apply(x) := produce b } in perform Transform.apply(a)
+cap Transform { fn apply(x: A): B }
+fn f(a: A, b: B): B / {} { handle Transform with bundle { fn apply(x) { b } } in Transform.apply(a) }
 ---
-f : (A, B) -> produce B / {}
+f : (A, B) -> B
 ==========
-cap E { fn op1(): produce A; fn op2(x: A): produce B }
-fn f(a: A, b: B): produce A / {} := handle E with bundle { fn op1() := produce a; fn op2(x) := produce b } in perform E.op1
+cap E { fn op1(): A; fn op2(x: A): B }
+fn f(a: A, b: B): A / {} { handle E with bundle { fn op1() { a }; fn op2(x) { b } } in E.op1 }
 ---
-f : (A, B) -> produce A / {}
+f : (A, B) -> A
 ==========
 cap Ok { fn op(): A }
-fn f(a: A): produce A / {} := handle Ok with bundle { fn op() := produce a } in perform Ok.op
+fn f(a: A): A / {} { handle Ok with bundle { fn op() { a } } in Ok.op }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A
 ==========
-cap E { fn op1(): produce A; fn op2(): produce B }
-fn f(a: A): produce A / {} := handle E with bundle { fn op1() := produce a } in perform E.op1
+cap E { fn op1(): A; fn op2(): B }
+fn f(a: A): A / {} { handle E with bundle { fn op1() { a } } in E.op1 }
 ---
 ERROR: missing operation
 ==========
-cap E { fn op(): produce A }
-fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a; fn bogus() := produce a } in perform E.op
+cap E { fn op(): A }
+fn f(a: A): A / {} { handle E with bundle { fn op() { a }; fn bogus() { a } } in E.op }
 ---
 ERROR: not an operation
 ==========
-fn f(a: A): produce A / {} := let x = a.field in produce x
+fn f(a: A): A / {} { let x = a.field; x }
 ---
 ERROR: member access `.field` on type `A`
 ==========
-cap E { fn op(): produce A }
-fn f(h: E): produce A / {} := handle E with h in perform E.bogus
+cap E { fn op(): A }
+fn f(h: E): A / {} { handle E with h in E.bogus }
 ---
 ERROR: no operation

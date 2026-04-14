@@ -1,11 +1,11 @@
-fn choose() := match x { left => produce a, right => produce b }
+fn choose() { match x { left => a, right => b } }
 ---
-Fn(name="choose", body=Match(scrutinee=Variable("x"), arms=[left => Produce(Variable("a")), right => Produce(Variable("b"))]))
+Fn(name="choose", body=Match(scrutinee=Variable("x"), arms=[left => Variable("a"), right => Variable("b")]))
 ==========
-fn pick() := match a { x => produce x }
+fn pick() { match a { x => x } }
 ---
-Fn(name="pick", body=Match(scrutinee=Variable("a"), arms=[x => Produce(Variable("x"))]))
+Fn(name="pick", body=Match(scrutinee=Variable("a"), arms=[x => Variable("x")]))
 ==========
-fn pick2() := match a { .some(let x) => produce x, .none => produce a }
+fn pick2() { match a { .some(let x) => x, .none => a } }
 ---
-Fn(name="pick2", body=Match(scrutinee=Variable("a"), arms=[. some ( let x ) => Produce(Variable("x")), . none => Produce(Variable("a"))]))
+Fn(name="pick2", body=Match(scrutinee=Variable("a"), arms=[. some ( let x ) => Variable("x"), . none => Variable("a")]))

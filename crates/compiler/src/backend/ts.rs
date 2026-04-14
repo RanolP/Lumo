@@ -12,9 +12,10 @@ pub struct TypeScriptBackend;
 
 struct LoweringContext {
     direct_callable_arities: HashMap<String, usize>,
-    /// Maps function name → cap name (if effectful). `Some("E")` = performs E, `None` = pure.
-    fn_caps: HashMap<String, Option<String>>,
+    /// Maps function name → cap names (if effectful). Non-empty = performs those caps.
+    fn_caps: HashMap<String, Vec<String>>,
     match_counter: Cell<usize>,
+    k_counter: Cell<usize>,
 }
 
 impl LoweringContext {
@@ -22,6 +23,12 @@ impl LoweringContext {
         let n = self.match_counter.get();
         self.match_counter.set(n + 1);
         format!("__match_{n}")
+    }
+
+    fn next_k_name(&self) -> String {
+        let n = self.k_counter.get();
+        self.k_counter.set(n + 1);
+        format!("__k_{n}")
     }
 }
 
@@ -37,6 +44,7 @@ impl TypeScriptBackend {
             direct_callable_arities: collect_direct_callable_arities(file),
             fn_caps: collect_fn_caps(file),
             match_counter: Cell::new(0),
+            k_counter: Cell::new(0),
         };
 
         // Deduplicate extern types: prefer annotated over bare
@@ -162,25 +170,25 @@ fn collect_direct_callable_arities(file: &lir::File) -> HashMap<String, usize> {
     out
 }
 
-fn collect_fn_caps(file: &lir::File) -> HashMap<String, Option<String>> {
+fn collect_fn_caps(file: &lir::File) -> HashMap<String, Vec<String>> {
     let mut out = HashMap::new();
     for item in &file.items {
         match item {
             lir::Item::ExternFn(func) => {
-                let cap = func
+                let caps = func
                     .cap
                     .as_ref()
-                    .and_then(|c| c.name())
-                    .map(|s| s.to_owned());
-                out.insert(func.name.clone(), cap);
+                    .map(|c| c.cap_names().iter().map(|s| s.to_string()).collect())
+                    .unwrap_or_default();
+                out.insert(func.name.clone(), caps);
             }
             lir::Item::Fn(func) => {
-                let cap = func
+                let caps = func
                     .cap
                     .as_ref()
-                    .and_then(|c| c.name())
-                    .map(|s| s.to_owned());
-                out.insert(func.name.clone(), cap);
+                    .map(|c| c.cap_names().iter().map(|s| s.to_string()).collect())
+                    .unwrap_or_default();
+                out.insert(func.name.clone(), caps);
             }
             _ => {}
         }
@@ -211,20 +219,22 @@ fn lower_fn_decl(
         })
         .collect();
 
-    let cap_name = func
+    let caps: Vec<String> = func
         .cap
         .as_ref()
-        .and_then(|c| c.name())
-        .map(|s| s.to_owned());
+        .map(|c| c.cap_names().iter().map(|s| s.to_string()).collect())
+        .unwrap_or_default();
 
-    if let Some(cap) = &cap_name {
-        // Effectful function: add __cap_E and __k params, CPS-compile body
-        params.push(tsast::Param::new(&format!("__cap_{cap}")));
+    if !caps.is_empty() {
+        // Effectful function: add __cap_E params and __k, CPS-compile body
+        for cap in &caps {
+            params.push(tsast::Param::new(&format!("__cap_{cap}")));
+        }
         params.push(tsast::Param::new("__k"));
         let cps_body = lower_cps_expr(
             lowered_body,
             tsast::Expr::Ident("__k".to_owned()),
-            cap,
+            &caps,
             ctx,
         );
         Ok(tsast::FunctionDecl {
@@ -373,6 +383,8 @@ const __lumo_is = (value: __LumoRuntime, pattern: string): boolean =>
   !!value && typeof value === \"object\" && LUMO_TAG in value && (value as { [LUMO_TAG]: string })[LUMO_TAG] === pattern;
 const __lumo_match_error = (value: __LumoRuntime): never => { throw new Error(\"non-exhaustive match: \" + JSON.stringify(value)); };
 const __lumo_error = (): never => { throw new Error(\"lumo runtime error\"); };
+const __thunk = (fn: Function): any => { (fn as any).__t = 1; return fn; };
+const __trampoline = (v: any): any => { while (v && (v as any).__t) v = (v as () => any)(); return v; };
 
 "
         }
@@ -383,6 +395,8 @@ const __lumo_is = (value, pattern) =>
   !!value && typeof value === \"object\" && LUMO_TAG in value && value[LUMO_TAG] === pattern;
 const __lumo_match_error = (value) => { throw new Error(\"non-exhaustive match: \" + JSON.stringify(value)); };
 const __lumo_error = () => { throw new Error(\"lumo runtime error\"); };
+const __thunk = (fn) => { fn.__t = 1; return fn; };
+const __trampoline = (v) => { while (v && v.__t) v = v(); return v; };
 const str = { len: (s) => s.length, char_at: (s, i) => s[i] ?? \"\", slice: (s, a, b) => s.slice(a, b), concat: (a, b) => a + b, eq: (a, b) => a === b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, starts_with: (s, p) => s.startsWith(p) ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, contains: (s, p) => s.includes(p) ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, index_of: (s, p) => s.indexOf(p), trim: (s) => s.trim(), char_code_at: (s, i) => s.charCodeAt(i), from_char_code: (c) => String.fromCharCode(c), replace_all: (s, f, t) => s.replaceAll(f, t) };
 const num = { eq: (a, b) => a === b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, lt: (a, b) => a < b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, gt: (a, b) => a > b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, lte: (a, b) => a <= b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, gte: (a, b) => a >= b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, add: (a, b) => a + b, sub: (a, b) => a - b, mul: (a, b) => a * b, floor: (a) => Math.floor(a), to_string: (n) => String(n) };
 const console = globalThis.console;
@@ -408,8 +422,9 @@ fn lower_type_expr_to_ts_type(ty: &TypeExpr) -> tsast::TsType {
         )),
         // `produce T` → just the inner type in TS
         TypeExpr::Produce(inner) => lower_type_expr_to_ts_type(inner),
-        // `thunk produce T` → `() => T` in TS
+        // `thunk T` → `() => T` in TS
         TypeExpr::Thunk(inner) => lower_type_expr_to_ts_type(inner),
+        TypeExpr::Cap { name, .. } => tsast::TsType::TypeRef(name.clone()),
     }
 }
 
@@ -838,6 +853,7 @@ fn type_expr_to_ts_text(ty: &TypeExpr) -> String {
         ),
         TypeExpr::Produce(inner) => type_expr_to_ts_text(inner),
         TypeExpr::Thunk(inner) => type_expr_to_ts_text(inner),
+        TypeExpr::Cap { name, .. } => name.clone(),
     }
 }
 
@@ -1486,6 +1502,12 @@ fn decompose_perform_call<'a>(
     expr: &'a lir::Expr,
 ) -> Option<(&'a str, &'a str, Vec<&'a lir::Expr>)> {
     let (root, args) = unwrap_apply_chain(expr);
+    // Unwrap Force wrapper: LIR produces Apply*(Force(Member(Perform(cap), op)), args)
+    let root = if let lir::Expr::Force { expr, .. } = root {
+        expr.as_ref()
+    } else {
+        root
+    };
     if let lir::Expr::Member { object, field, .. } = root {
         if let lir::Expr::Perform { cap, .. } = object.as_ref() {
             return Some((cap.as_str(), field.as_str(), args));
@@ -1522,76 +1544,280 @@ fn lower_cps_handle(
             "__v".to_owned(),
         )))),
     };
-    let cps_body = lower_cps_expr(body, identity_k, cap, ctx);
+    let cps_body = lower_cps_expr(body, identity_k, &[cap.to_owned()], ctx);
     let handler_lowered = lower_handler_with_resume(handler, ctx);
-    iife(&param_name, cps_body, handler_lowered)
+    let bound = iife(&param_name, cps_body, handler_lowered);
+    // Wrap in trampoline to evaluate CPS thunks iteratively
+    tsast::Expr::Call {
+        callee: Box::new(tsast::Expr::Ident("__trampoline".to_owned())),
+        args: vec![bound],
+    }
 }
 
 /// CPS-transform an expression within a handle body.
 /// `k` is the continuation expression (a JS function taking a value).
+/// `handled_caps` are the caps available for CPS threading.
+/// Recursively check whether a LIR expression contains any effectful computation
+/// that requires CPS sequencing within the current handled-cap context.
+///
+/// **General rule**: In CPS mode, every sub-expression in value position (function
+/// arguments, match scrutinees, `produce` bodies) must be checked with this function.
+/// If it returns true, the sub-expression must be CPS-lowered and bound to a temp
+/// variable before use, rather than being lowered with `lower_expr`.
+fn is_effectful_expr(
+    expr: &lir::Expr,
+    handled_caps: &[String],
+    ctx: &LoweringContext,
+) -> bool {
+    // Decompose as perform call: Apply*(Member(Perform(E), op), args)
+    if let Some((cap, _, args)) = decompose_perform_call(expr) {
+        if handled_caps.iter().any(|c| c == cap) {
+            return true;
+        }
+        // Even if this cap isn't handled, args might be effectful
+        return args
+            .iter()
+            .any(|a| is_effectful_expr(a, handled_caps, ctx));
+    }
+    // Decompose as effectful function call: Apply*(Force(Ident(f)), args)
+    if let Some((fn_name, args)) = decompose_fn_call(expr) {
+        if ctx
+            .fn_caps
+            .get(fn_name)
+            .map_or(false, |c| !c.is_empty())
+        {
+            return true;
+        }
+        return args
+            .iter()
+            .any(|a| is_effectful_expr(a, handled_caps, ctx));
+    }
+    // Recurse into compound forms
+    match expr {
+        lir::Expr::Apply { callee, arg, .. } => {
+            is_effectful_expr(callee, handled_caps, ctx)
+                || is_effectful_expr(arg, handled_caps, ctx)
+        }
+        lir::Expr::Force { expr, .. } => is_effectful_expr(expr, handled_caps, ctx),
+        lir::Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            is_effectful_expr(scrutinee, handled_caps, ctx)
+                || arms
+                    .iter()
+                    .any(|a| is_effectful_expr(&a.body, handled_caps, ctx))
+        }
+        lir::Expr::Let { value, body, .. } => {
+            is_effectful_expr(value, handled_caps, ctx)
+                || is_effectful_expr(body, handled_caps, ctx)
+        }
+        lir::Expr::Produce { expr, .. } => is_effectful_expr(expr, handled_caps, ctx),
+        lir::Expr::Member { object, .. } => is_effectful_expr(object, handled_caps, ctx),
+        lir::Expr::Handle { .. } => true,
+        // Leaf values are never effectful
+        lir::Expr::Ident { .. }
+        | lir::Expr::String { .. }
+        | lir::Expr::Number { .. }
+        | lir::Expr::Perform { .. } // bare Perform (no member/apply) is just a value ref
+        | lir::Expr::Bundle { .. }
+        | lir::Expr::Lambda { .. }
+        | lir::Expr::Error { .. } => false,
+        // Wrappers: recurse into inner expression
+        lir::Expr::Ctor { args, .. } => args.iter().any(|a| is_effectful_expr(a, handled_caps, ctx)),
+        lir::Expr::Roll { expr, .. }
+        | lir::Expr::Unroll { expr, .. }
+        | lir::Expr::Thunk { expr, .. }
+        | lir::Expr::Ann { expr, .. } => is_effectful_expr(expr, handled_caps, ctx),
+    }
+}
+
+/// Lower a value-position expression within CPS context.
+///
+/// If the expression is effectful (contains perform/effectful-call), CPS-sequence
+/// it: lower it with `lower_cps_expr` into a fresh temp variable, then build the
+/// continuation with that variable.
+///
+/// If it is pure, lower it directly with `lower_expr` and build immediately.
+fn lower_cps_value(
+    expr: &lir::Expr,
+    handled_caps: &[String],
+    ctx: &LoweringContext,
+    then: impl FnOnce(tsast::Expr) -> tsast::Expr,
+) -> tsast::Expr {
+    if is_effectful_expr(expr, handled_caps, ctx) {
+        static COUNTER: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+        let tmp = format!(
+            "__cps_v_{}",
+            COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let body = then(tsast::Expr::Ident(tmp.clone()));
+        let inner_k = tsast::Expr::Arrow {
+            params: vec![tsast::Param::new(&tmp)],
+            return_type: None,
+            body: Box::new(tsast::FunctionBody::Expr(Box::new(body))),
+        };
+        lower_cps_expr(expr, inner_k, handled_caps, ctx)
+    } else {
+        then(lower_expr(expr, ctx))
+    }
+}
+
+/// Lower a list of value-position expressions within CPS context, left-to-right.
+/// Each effectful expression is CPS-sequenced before the next one is evaluated.
+fn lower_cps_values(
+    exprs: &[&lir::Expr],
+    idx: usize,
+    acc: Vec<tsast::Expr>,
+    handled_caps: &[String],
+    ctx: &LoweringContext,
+    then: &dyn Fn(Vec<tsast::Expr>) -> tsast::Expr,
+) -> tsast::Expr {
+    if idx >= exprs.len() {
+        return then(acc);
+    }
+    lower_cps_value(exprs[idx], handled_caps, ctx, |val| {
+        let mut next_acc = acc;
+        next_acc.push(val);
+        lower_cps_values(exprs, idx + 1, next_acc, handled_caps, ctx, then)
+    })
+}
+
 fn lower_cps_expr(
     expr: &lir::Expr,
     k: tsast::Expr,
-    handled_cap: &str,
+    handled_caps: &[String],
     ctx: &LoweringContext,
 ) -> tsast::Expr {
-    // Check if this is a perform of the handled cap
+    lower_cps_expr_inner(expr, k, handled_caps, ctx)
+}
+
+fn lower_cps_expr_inner(
+    expr: &lir::Expr,
+    k: tsast::Expr,
+    handled_caps: &[String],
+    ctx: &LoweringContext,
+) -> tsast::Expr {
+    // Check if this is a perform of a handled cap
     if let Some((cap, op, args)) = decompose_perform_call(expr) {
-        if cap == handled_cap {
-            // perform E.op(args) → __cap_E.op(args..., k)
-            let callee = tsast::Expr::Member {
-                object: Box::new(tsast::Expr::Ident(format!("__cap_{handled_cap}"))),
-                property: op.to_owned(),
-            };
-            let mut ts_args: Vec<tsast::Expr> =
-                args.iter().map(|a| lower_expr(a, ctx)).collect();
-            ts_args.push(k);
-            return tsast::Expr::Call {
-                callee: Box::new(callee),
-                args: ts_args,
-            };
+        if handled_caps.iter().any(|c| c == cap) {
+            let cap = cap.to_owned();
+            let op = op.to_owned();
+            // CPS-sequence all arguments, then emit the perform call
+            return lower_cps_values(&args, 0, Vec::new(), handled_caps, ctx, &|ts_args| {
+                let callee = tsast::Expr::Member {
+                    object: Box::new(tsast::Expr::Ident(format!("__cap_{}", cap))),
+                    property: op.clone(),
+                };
+                let mut final_args = ts_args;
+                final_args.push(k.clone());
+                tsast::Expr::Call {
+                    callee: Box::new(callee),
+                    args: final_args,
+                }
+            });
         }
     }
 
     match expr {
         lir::Expr::Produce { expr: inner, .. } => {
-            // produce v → k(lower_expr(v))
-            tsast::Expr::Call {
+            // produce v → CPS-lower v (in case it's effectful), then k(result)
+            lower_cps_value(inner, handled_caps, ctx, |val| tsast::Expr::Call {
                 callee: Box::new(k),
-                args: vec![lower_expr(inner, ctx)],
-            }
+                args: vec![val],
+            })
         }
         lir::Expr::Let {
             name, value, body, ..
         } => {
             // let x = comp in body → CPS[comp]((x) => CPS[body](k))
-            let body_cps = lower_cps_expr(body, k, handled_cap, ctx);
+            let body_cps = lower_cps_expr(body, k, handled_caps, ctx);
             let inner_k = tsast::Expr::Arrow {
                 params: vec![tsast::Param::new(name)],
                 return_type: None,
                 body: Box::new(tsast::FunctionBody::Expr(Box::new(body_cps))),
             };
-            lower_cps_expr(value, inner_k, handled_cap, ctx)
+            lower_cps_expr(value, inner_k, handled_caps, ctx)
         }
         lir::Expr::Match {
             scrutinee, arms, ..
-        } => lower_cps_match_expr(scrutinee, arms, k, handled_cap, ctx),
+        } => lower_cps_match_expr(scrutinee, arms, k, handled_caps, ctx),
+        // Ctor with effectful args: CPS-sequence each arg, then construct
+        lir::Expr::Ctor { name, args, .. } => {
+            let arg_refs: Vec<&lir::Expr> = args.iter().collect();
+            let name = name.clone();
+            lower_cps_values(&arg_refs, 0, Vec::new(), handled_caps, ctx, &|ts_args| {
+                let callee = if let Some((owner, variant)) = name.split_once('.') {
+                    tsast::Expr::Index {
+                        object: Box::new(tsast::Expr::Ident(owner.to_owned())),
+                        index: Box::new(tsast::Expr::String(variant.to_owned())),
+                    }
+                } else {
+                    tsast::Expr::Ident(name.clone())
+                };
+                let ctor_expr = if ts_args.is_empty() {
+                    callee
+                } else {
+                    tsast::Expr::Call {
+                        callee: Box::new(callee),
+                        args: ts_args,
+                    }
+                };
+                tsast::Expr::Call {
+                    callee: Box::new(k.clone()),
+                    args: vec![ctor_expr],
+                }
+            })
+        }
+        // Transparent wrappers: recurse into inner expression for CPS
+        lir::Expr::Unroll { expr, .. }
+        | lir::Expr::Roll { expr, .. }
+        | lir::Expr::Ann { expr, .. } => lower_cps_expr(expr, k, handled_caps, ctx),
+        lir::Expr::Handle {
+            cap, handler, body, ..
+        } => {
+            // handle Cap with handler in body → bind handler, CPS-lower body with cap added
+            let param_name = format!("__cap_{cap}");
+            let handler_lowered = lower_handler_with_resume(handler, ctx);
+            let mut extended_caps: Vec<String> =
+                handled_caps.iter().cloned().collect();
+            extended_caps.push(cap.clone());
+            let cps_body = lower_cps_expr(body, k, &extended_caps, ctx);
+            iife(&param_name, cps_body, handler_lowered)
+        }
         // Check for effectful function calls: Apply*(Force(Ident(f)), args)
         _ => {
             if let Some((fn_name, args)) = decompose_fn_call(expr) {
-                if let Some(Some(cap)) = ctx.fn_caps.get(fn_name) {
-                    // Effectful function call → f(args, __cap_X, k)
-                    let mut ts_args: Vec<tsast::Expr> =
-                        args.iter().map(|a| lower_expr(a, ctx)).collect();
-                    ts_args.push(tsast::Expr::Ident(format!("__cap_{cap}")));
-                    ts_args.push(k);
-                    return tsast::Expr::Call {
-                        callee: Box::new(tsast::Expr::Ident(fn_name.to_owned())),
-                        args: ts_args,
-                    };
+                if let Some(caps) = ctx.fn_caps.get(fn_name) {
+                    if !caps.is_empty() {
+                        let fn_name = fn_name.to_owned();
+                        let caps = caps.clone();
+                        // CPS-sequence all arguments, then emit the effectful call
+                        return lower_cps_values(
+                            &args,
+                            0,
+                            Vec::new(),
+                            handled_caps,
+                            ctx,
+                            &|ts_args| {
+                                let mut final_args = ts_args;
+                                for cap in &caps {
+                                    final_args
+                                        .push(tsast::Expr::Ident(format!("__cap_{cap}")));
+                                }
+                                final_args.push(k.clone());
+                                tsast::Expr::Call {
+                                    callee: Box::new(tsast::Expr::Ident(fn_name.clone())),
+                                    args: final_args,
+                                }
+                            },
+                        );
+                    }
                 }
             }
-            // Non-effectful: treat as opaque, pass result to k
+            // Opaque expression: lower directly and pass result to k.
+            // All effectful expression forms (Perform, Handle, Match with effects, etc.)
+            // must be handled in explicit branches above — the fallthrough is for pure values.
             tsast::Expr::Call {
                 callee: Box::new(k),
                 args: vec![lower_expr(expr, ctx)],
@@ -1600,18 +1826,19 @@ fn lower_cps_expr(
     }
 }
 
-/// CPS-transform a match expression
+/// CPS-transform a match expression.
+/// The scrutinee is CPS-lowered via `lower_cps_value` so any effectful
+/// sub-expression is correctly sequenced before the match body runs.
 fn lower_cps_match_expr(
     scrutinee: &lir::Expr,
     arms: &[lir::MatchArm],
     k: tsast::Expr,
-    handled_cap: &str,
+    handled_caps: &[String],
     ctx: &LoweringContext,
 ) -> tsast::Expr {
-    let k_name = "__k";
-    let k_ident = tsast::Expr::Ident(k_name.to_owned());
+    let k_name = ctx.next_k_name();
+    let k_ident = tsast::Expr::Ident(k_name.clone());
 
-    let lowered_scrutinee = lower_expr(scrutinee, ctx);
     let scrutinee_name = ctx.next_match_name();
     let scrutinee_expr = tsast::Expr::Ident(scrutinee_name.clone());
 
@@ -1625,12 +1852,16 @@ fn lower_cps_match_expr(
         .collect::<Vec<_>>();
     let decision = build_match_decision(vec![scrutinee_expr.clone()], rows);
     let lowered = lower_match_decision(&scrutinee_expr, decision, &|body, bindings| {
-        wrap_bindings(lower_cps_expr(body, k_ident.clone(), handled_cap, ctx), bindings)
+        wrap_bindings(
+            lower_cps_expr(body, k_ident.clone(), handled_caps, ctx),
+            bindings,
+        )
     });
 
-    // ((__k) => ((__match_N) => lowered)(scrutinee))(k)
-    let inner = iife(&scrutinee_name, lowered, lowered_scrutinee);
-    iife(k_name, inner, k)
+    lower_cps_value(scrutinee, handled_caps, ctx, |lowered_scrutinee| {
+        let inner = iife(&scrutinee_name, lowered, lowered_scrutinee);
+        iife(&k_name, inner, k.clone())
+    })
 }
 
 /// Compile handler entries with resume support.
@@ -1652,7 +1883,7 @@ fn lower_handler_with_resume(handler: &lir::Expr, ctx: &LoweringContext) -> tsas
                 .collect();
             params.push(tsast::Param::new("__k"));
 
-            let inner_body = if lir::expr_references_name(&entry.body, "resume") {
+            let raw_body = if lir::expr_references_name(&entry.body, "resume") {
                 // ((resume) => body)(() => __k)
                 let resume_binding = tsast::Expr::Arrow {
                     params: Vec::new(),
@@ -1668,6 +1899,15 @@ fn lower_handler_with_resume(handler: &lir::Expr, ctx: &LoweringContext) -> tsas
                     callee: Box::new(tsast::Expr::Ident("__k".to_owned())),
                     args: vec![body_lowered],
                 }
+            };
+            // Wrap in __thunk for trampoline bounce
+            let inner_body = tsast::Expr::Call {
+                callee: Box::new(tsast::Expr::Ident("__thunk".to_owned())),
+                args: vec![tsast::Expr::Arrow {
+                    params: vec![],
+                    return_type: None,
+                    body: Box::new(tsast::FunctionBody::Expr(Box::new(raw_body))),
+                }],
             };
 
             tsast::ObjectProp {

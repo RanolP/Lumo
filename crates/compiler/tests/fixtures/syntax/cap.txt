@@ -1,9 +1,9 @@
-cap Console { fn log(msg: String): produce Unit }
-fn f() := perform Console.log("hi")
+cap Console { fn log(msg: String): Unit }
+fn f() { Console.log("hi") }
 ---
 Cap(name="Console", ops=["log"])
-Fn(name="f", body=Call(callee=Member(object=Perform(cap="Console"), member="log"), args=[String("hi")]))
+Fn(name="f", body=Call(callee=Member(object=Variable("Console"), member="log"), args=[String("hi")]))
 ==========
-fn f() := handle E with h in produce x
+fn f() { handle E with h in x }
 ---
-Fn(name="f", body=Handle(cap="E", handler=Variable("h"), body=Produce(Variable("x"))))
+Fn(name="f", body=Handle(cap="E", handler=Variable("h"), body=Variable("x")))

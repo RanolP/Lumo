@@ -1,20 +1,20 @@
-fn f(a: A): produce A / {} := produce (a : A)
+fn f(a: A): A / {} { (a : A) }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A
 ==========
-fn f(a: A): produce B / {} := produce (a : B)
+fn f(a: A): B / {} { (a : B) }
 ---
 ERROR: type mismatch
 ==========
-fn f(a: A): produce A / {} := let x = produce (a : A) in produce x
+fn f(a: A): A / {} { let x = (a : A); x }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A
 ==========
-fn f(a: A): produce A / {} := produce (a)
+fn f(a: A): A / {} { (a) }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A
 ==========
 data Bool { .true, .false }
-fn f(b: Bool): produce A / {} := produce (b : A)
+fn f(b: Bool): A / {} { (b : A) }
 ---
 ERROR: type mismatch

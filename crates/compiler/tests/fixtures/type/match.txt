@@ -1,72 +1,72 @@
-fn pick(a: A): produce A / {} := match a { x => produce x }
+fn pick(a: A): A / {} { match a { x => x } }
 ---
-pick : (A) -> produce A / {}
+pick : (A) -> A
 ==========
 data OptionA { .some(A), .none }
-fn pick2(a: OptionA, b: A): produce A / {} := match a { .some(let x) => produce x, .none => produce b }
+fn pick2(a: OptionA, b: A): A / {} { match a { .some(let x) => x, .none => b } }
 ---
-pick2 : (OptionA, A) -> produce A / {}
+pick2 : (OptionA, A) -> A
 ==========
 data Option { .some(A), .none }
-fn bad(a: Option): produce Option / {} := match a { .some(let x, let y) => produce a, .none => produce a }
+fn bad(a: Option): Option / {} { match a { .some(let x, let y) => a, .none => a } }
 ---
 ERROR: pattern `some` expects 1 args, got 2
 ==========
 data Option { .some(A), .none }
-fn bad2(a: Option): produce Option / {} := match a { .nope => produce a }
+fn bad2(a: Option): Option / {} { match a { .nope => a } }
 ---
 ERROR: unknown variant `nope` in match pattern
 ==========
 data OptionInt { .some(B), .none }
-fn ok(a: OptionInt, b: B): produce B / {} := match a { .some(x) => produce x, .none => produce b }
+fn ok(a: OptionInt, b: B): B / {} { match a { .some(x) => x, .none => b } }
 ---
-ok : (OptionInt, B) -> produce B / {}
+ok : (OptionInt, B) -> B
 ==========
 data OptionInt { .some(B), .none }
-fn bad3(a: OptionInt, c: C): produce B / {} := match a { .some(x) => produce c, .none => produce c }
+fn bad3(a: OptionInt, c: C): B / {} { match a { .some(x) => c, .none => c } }
 ---
 ERROR: type mismatch: expected B, got C
 ==========
 data Pair { .pair(B, C) }
 data Wrap { .wrap(Pair), .empty }
-fn nested_ok(w: Wrap, b: B): produce B / {} := match w { .wrap(.pair(x, _)) => produce x, .empty => produce b }
+fn nested_ok(w: Wrap, b: B): B / {} { match w { .wrap(.pair(x, _)) => x, .empty => b } }
 ---
-nested_ok : (Wrap, B) -> produce B / {}
+nested_ok : (Wrap, B) -> B
 ==========
 data Pair { .pair(B, C) }
 data Wrap { .wrap(Pair), .empty }
-fn nested_bad(w: Wrap, b: B): produce B / {} := match w { .wrap(.nope(x)) => produce b, .empty => produce b }
+fn nested_bad(w: Wrap, b: B): B / {} { match w { .wrap(.nope(x)) => b, .empty => b } }
 ---
 ERROR: unknown variant `nope` in match pattern
 ==========
 data Bool { .true, .false }
-fn ne(b: Bool): produce Bool / {} := match b { .true => produce b }
+fn ne(b: Bool): Bool / {} { match b { .true => b } }
 ---
 ERROR: non-exhaustive match: missing patterns .false
 ==========
 data Bool { .true, .false }
-fn ex(b: Bool): produce Bool / {} := match b { .true => produce b, _ => produce b }
+fn ex(b: Bool): Bool / {} { match b { .true => b, _ => b } }
 ---
-ex : (Bool) -> produce Bool / {}
+ex : (Bool) -> Bool
 ==========
 data Bool { .true, .false }
-fn unreach1(b: Bool): produce Bool / {} := match b { _ => produce b, .true => produce b }
+fn unreach1(b: Bool): Bool / {} { match b { _ => b, .true => b } }
 ---
 ERROR: unreachable match arm: pattern already covered
 ==========
 data Bool { .true, .false }
-fn unreach2(b: Bool): produce Bool / {} := match b { .true => produce b, .true => produce b, .false => produce b }
+fn unreach2(b: Bool): Bool / {} { match b { .true => b, .true => b, .false => b } }
 ---
 ERROR: unreachable match arm: pattern already covered
 ==========
 data Bool { .true, .false }
 data Nat { .zero, .succ(Nat) }
-fn is_even(n: Nat, t: Bool, f: Bool): produce Bool / {} := match n { .zero => produce t, .succ(.zero) => produce f, .succ(.succ(let n)) => is_even(n, t, f) }
+fn is_even(n: Nat, t: Bool, f: Bool): Bool / {} { match n { .zero => t, .succ(.zero) => f, .succ(.succ(let n)) => is_even(n, t, f) } }
 ---
-is_even : (Nat, Bool, Bool) -> produce Bool / {}
+is_even : (Nat, Bool, Bool) -> Bool
 ==========
 data Bool { .true, .false }
 data Nat { .zero, .succ(Nat) }
-fn f(n: Nat, b: Bool): produce Bool / {} := match n { .succ(.zero) => produce b }
+fn f(n: Nat, b: Bool): Bool / {} { match n { .succ(.zero) => b } }
 ---
 ERROR: non-exhaustive match: missing patterns .succ(.succ(_)), .zero

@@ -37,7 +37,7 @@ fn hello_world_compiles_to_js() {
         "main.lumo",
         r#"use lumo_std.io.{println};
 
-fn main() := println("Hello, World!")"#,
+fn main() { println("Hello, World!") }"#,
     );
 
     let lir = q
@@ -67,7 +67,7 @@ fn hello_world_runs_on_node() {
         "main.lumo",
         r#"use lumo_std.io.{println};
 
-fn main() := println("Hello, World!")"#,
+fn main() { println("Hello, World!") }"#,
     );
 
     let lir = q
@@ -102,10 +102,11 @@ fn stdlib_string_ops_compile_to_rust() {
 use lumo_std.io.{println};
 use lumo_std.string.{str_len, str_eq, str_concat, num_to_string};
 
-fn main() :=
-  let greeting = str_concat("Hello", " World") in
-  let len = str_len(greeting) in
-  println(str_concat(greeting, str_concat(" len=", num_to_string(len))))"#,
+fn main() {
+  let greeting = str_concat("Hello", " World");
+  let len = str_len(greeting);
+  println(str_concat(greeting, str_concat(" len=", num_to_string(len))))
+}"#,
     );
 
     let lir = q
@@ -138,12 +139,14 @@ use lumo_std.list.{List};
 use lumo_std.string.{num_to_string};
 use lumo_std.number.{num_add};
 
-fn list_length[A](xs: List[A]): Number :=
-  match xs { List.nil => produce 0, List.cons(_, t) => produce num_add(1, list_length(t)) }
+fn list_length[A](xs: List[A]): Number {
+  match xs { List.nil => 0, List.cons(_, t) => num_add(1, list_length(t)) }
+}
 
-fn main() :=
-  let xs = List.cons("a", List.cons("b", List.nil)) in
-  println(num_to_string(list_length(xs)))"#,
+fn main() {
+  let xs = List.cons("a", List.cons("b", List.nil));
+  println(num_to_string(list_length(xs)))
+}"#,
     );
 
     let lir = q
@@ -171,11 +174,12 @@ fn arithmetic_operator_desugars_to_cap_call() {
         r#"
 cap Add { fn add(a, b) }
 
-fn sum() := 1 + 2
+fn sum() { 1 + 2 }
 
-fn main() :=
-  handle Add with bundle { fn add(a, b) := a } in
+fn main() {
+  handle Add with bundle { fn add(a, b) { a } } in
     sum()
+}
 "#,
     );
 

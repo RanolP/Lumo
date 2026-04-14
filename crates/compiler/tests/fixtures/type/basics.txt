@@ -1,23 +1,23 @@
-fn id(a: A): produce A / {} := produce a
+fn id(a: A): A / {} { a }
 ---
-id : (A) -> produce A / {}
+id : (A) -> A
 ==========
-fn keep(a: A): produce A / {} := produce a
+fn keep(a: A): A / {} { a }
 ---
-keep : (A) -> produce A / {}
+keep : (A) -> A
 ==========
-fn f(a: A): produce A / {} := let x = a in produce x
+fn f(a: A): A / {} { let x = a; x }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A
 ==========
-fn bad(): produce A / {} := produce x
+fn bad(): A / {} { x }
 ---
 ERROR: unknown variable `x`
 ==========
-fn bad(a: A): produce B / {} := produce a
+fn bad(a: A): B / {} { a }
 ---
 ERROR: type mismatch: expected B, got A
 ==========
-fn f(job: thunk produce A): produce A / {} := force job
+fn f(job: thunk A): A / {} { force job }
 ---
-f : (thunk produce A) -> produce A / {}
+f : (thunk A) -> A

@@ -1,4 +1,5 @@
 use libcore.prelude.{String, Number, Bool};
+use libcore.ops.{Add};
 use libcore.cmp.{PartialEq};
 
 cap StrOps {
@@ -17,6 +18,10 @@ cap StrOps {
   fn num_to_string(n: Number): String
 }
 
+impl String: Add {
+  fn add(self, other: Self): Self { StrOps.str_concat(self, other) }
+}
+
 impl String: PartialEq {
-  fn eq(self, other: Self): Bool := perform StrOps.str_eq(self, other)
+  fn eq(self, other: Self): Bool { StrOps.str_eq(self, other) }
 }

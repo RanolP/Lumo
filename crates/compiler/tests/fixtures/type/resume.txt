@@ -1,29 +1,29 @@
-cap E { fn op(): produce A }
-fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in perform E.op
+cap E { fn op(): A }
+fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in E.op }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A
 ==========
-cap E { fn op(): produce A }
-fn f(a: A): produce A / {} := handle E with bundle { fn op() := produce a } in perform E.op
+cap E { fn op(): A }
+fn f(a: A): A / {} { handle E with bundle { fn op() { a } } in E.op }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A
 ==========
-cap E { fn op(x: A): produce B }
-fn f(a: A, b: B): produce B / {} := handle E with bundle { fn op(x) := resume(b) } in perform E.op(a)
+cap E { fn op(x: A): B }
+fn f(a: A, b: B): B / {} { handle E with bundle { fn op(x) { resume(b) } } in E.op(a) }
 ---
-f : (A, B) -> produce B / {}
+f : (A, B) -> B
 ==========
-cap Choose { fn choose(): produce A }
-fn f(a: A): produce A / {} := handle Choose with bundle { fn choose() := produce a } in let x = perform Choose.choose in produce x
+cap Choose { fn choose(): A }
+fn f(a: A): A / {} { handle Choose with bundle { fn choose() { a } } in { let x = Choose.choose; x } }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A
 ==========
-cap E { fn op1(): produce A; fn op2(x: A): produce B }
-fn f(a: A, b: B): produce A / {} := handle E with bundle { fn op1() := resume(a); fn op2(x) := produce b } in perform E.op1
+cap E { fn op1(): A; fn op2(x: A): B }
+fn f(a: A, b: B): A / {} { handle E with bundle { fn op1() { resume(a) }; fn op2(x) { b } } in E.op1 }
 ---
-f : (A, B) -> produce A / {}
+f : (A, B) -> A
 ==========
-cap E { fn op(): produce A }
-fn f(a: A): produce A / {} := handle E with bundle { fn op() := resume(a) } in let x = perform E.op in produce x
+cap E { fn op(): A }
+fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in { let x = E.op; x } }
 ---
-f : (A) -> produce A / {}
+f : (A) -> A

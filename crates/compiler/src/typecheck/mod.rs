@@ -9,6 +9,7 @@ pub struct TypeError {
     pub node_id: u64,
     pub span: Option<Span>,
     pub message: String,
+    pub fn_name: String,
 }
 
 impl TypeError {
@@ -17,6 +18,7 @@ impl TypeError {
             node_id,
             span: None,
             message,
+            fn_name: String::new(),
         }
     }
 
@@ -25,11 +27,12 @@ impl TypeError {
             node_id,
             span: Some(span),
             message,
+            fn_name: String::new(),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub enum ValueType {
     Named(String),
     Thunk(Box<CompType>),
@@ -39,14 +42,99 @@ pub enum ValueType {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `Self` is treated as a wildcard that matches any type.
+impl PartialEq for ValueType {
+    fn eq(&self, other: &Self) -> bool {
+        v_types_match(self, other)
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
 pub enum CompType {
     Produce(Box<ValueType>),
     Fn {
         params: Vec<ValueType>,
         ret: Box<CompType>,
-        cap: Option<String>,
+        cap: Vec<TypeExpr>,
     },
+}
+
+/// `Self` is treated as a wildcard that matches any type.
+impl PartialEq for CompType {
+    fn eq(&self, other: &Self) -> bool {
+        c_types_match(self, other)
+    }
+}
+
+/// Compare two value types, treating `Self` as a wildcard that matches anything.
+fn v_types_match(a: &ValueType, b: &ValueType) -> bool {
+    match (a, b) {
+        (ValueType::Named(n), _) if n == "Self" => true,
+        (_, ValueType::Named(n)) if n == "Self" => true,
+        (ValueType::Named(a), ValueType::Named(b)) => a == b,
+        (ValueType::Thunk(a), ValueType::Thunk(b)) => c_types_match(a, b),
+        (
+            ValueType::Func { params: pa, ret: ra },
+            ValueType::Func { params: pb, ret: rb },
+        ) => pa.len() == pb.len() && pa.iter().zip(pb.iter()).all(|(a, b)| v_types_match(a, b)) && v_types_match(ra, rb),
+        _ => false,
+    }
+}
+
+/// Compare two computation types, treating `Self` as a wildcard.
+fn c_types_match(a: &CompType, b: &CompType) -> bool {
+    match (a, b) {
+        (CompType::Produce(a), CompType::Produce(b)) => v_types_match(a, b),
+        (
+            CompType::Fn { params: pa, ret: ra, .. },
+            CompType::Fn { params: pb, ret: rb, .. },
+        ) => pa.len() == pb.len() && pa.iter().zip(pb.iter()).all(|(a, b)| v_types_match(a, b)) && c_types_match(ra, rb),
+        _ => false,
+    }
+}
+
+/// Substitute `Self` in a value type with a concrete type.
+fn subst_self_v(ty: &ValueType, concrete: &ValueType) -> ValueType {
+    match ty {
+        ValueType::Named(n) if n == "Self" => concrete.clone(),
+        ValueType::Named(_) => ty.clone(),
+        ValueType::Thunk(inner) => ValueType::Thunk(Box::new(subst_self_c(inner, concrete))),
+        ValueType::Func { params, ret } => ValueType::Func {
+            params: params.iter().map(|p| subst_self_v(p, concrete)).collect(),
+            ret: Box::new(subst_self_v(ret, concrete)),
+        },
+    }
+}
+
+fn v_type_references_self(ty: &ValueType) -> bool {
+    match ty {
+        ValueType::Named(n) => n == "Self",
+        ValueType::Thunk(inner) => c_type_references_self(inner),
+        ValueType::Func { params, ret } => {
+            params.iter().any(v_type_references_self) || v_type_references_self(ret)
+        }
+    }
+}
+
+fn c_type_references_self(ty: &CompType) -> bool {
+    match ty {
+        CompType::Produce(inner) => v_type_references_self(inner),
+        CompType::Fn { params, ret, .. } => {
+            params.iter().any(v_type_references_self) || c_type_references_self(ret)
+        }
+    }
+}
+
+/// Substitute `Self` in a computation type with a concrete type.
+fn subst_self_c(ty: &CompType, concrete: &ValueType) -> CompType {
+    match ty {
+        CompType::Produce(inner) => CompType::Produce(Box::new(subst_self_v(inner, concrete))),
+        CompType::Fn { params, ret, cap } => CompType::Fn {
+            params: params.iter().map(|p| subst_self_v(p, concrete)).collect(),
+            ret: Box::new(subst_self_c(ret, concrete)),
+            cap: cap.clone(),
+        },
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +155,7 @@ pub fn typecheck_and_bindings(file: &lir::File) -> (Vec<CheckedBinding>, Vec<Typ
         variant_owner: HashMap::new(),
         fn_defs: HashMap::new(),
         cap_defs: HashMap::new(),
+        current_fn: String::new(),
     };
     tc.check_file(file);
     (tc.bindings, tc.errors)
@@ -102,7 +191,7 @@ fn render_v_type(ty: &ValueType) -> String {
 
 fn render_c_type(ty: &CompType) -> String {
     match ty {
-        CompType::Produce(inner) => format!("produce {}", render_v_type(inner)),
+        CompType::Produce(inner) => render_v_type(inner),
         CompType::Fn {
             params,
             ret,
@@ -113,10 +202,10 @@ fn render_c_type(ty: &CompType) -> String {
                 .map(render_v_type)
                 .collect::<Vec<_>>()
                 .join(", ");
-            match cap.as_deref() {
-                Some(e) if !e.is_empty() => format!("({ps}) -> {} / {e}", render_c_type(ret)),
-                Some(_) => format!("({ps}) -> {} / {{}}", render_c_type(ret)),
-                None => format!("({ps}) -> {}", render_c_type(ret)),
+            if cap.is_empty() {
+                format!("({ps}) -> {}", render_c_type(ret))
+            } else {
+                format!("({ps}) -> {} / {{{}}}", render_c_type(ret), cap.iter().map(|e| e.display()).collect::<Vec<_>>().join(", "))
             }
         }
     }
@@ -129,6 +218,7 @@ struct TypeChecker {
     variant_owner: HashMap<String, String>,
     fn_defs: HashMap<String, CompType>,
     cap_defs: HashMap<String, CapDef>,
+    current_fn: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,6 +230,7 @@ struct DataDef {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CapDef {
     operations: HashMap<String, CompType>,
+    uses_self: bool,
 }
 
 enum BundleExprInferResult {
@@ -226,13 +317,14 @@ impl TypeChecker {
                         CompType::Fn {
                             params,
                             ret: Box::new(ret),
-                            cap: None,
+                            cap: vec![],
                         }
                     };
                     operations.insert(op.name.clone(), op_ty);
                 }
+                let uses_self = operations.values().any(|op_ty| c_type_references_self(op_ty));
                 self.cap_defs
-                    .insert(e.name.clone(), CapDef { operations });
+                    .insert(e.name.clone(), CapDef { operations, uses_self });
             }
         }
 
@@ -272,13 +364,13 @@ impl TypeChecker {
             }),
             None => CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))),
         };
-        let cap_str = cap.map(|c| c.name().unwrap_or("").to_owned());
+        let caps = cap.map(|c| c.entries().to_vec()).unwrap_or_default();
         self.fn_defs.insert(
             name.to_owned(),
             CompType::Fn {
                 params: param_types,
                 ret: Box::new(ret),
-                cap: cap_str,
+                cap: caps,
             },
         );
     }
@@ -302,6 +394,7 @@ impl TypeChecker {
     }
 
     fn check_fn(&mut self, f: &lir::FnDecl) {
+        self.current_fn = f.name.clone();
         let mut env = HashMap::new();
         let mut param_types = Vec::new();
         for p in &f.params {
@@ -317,7 +410,7 @@ impl TypeChecker {
             param_types.push(ty);
         }
 
-        let cap = f.cap.as_ref().map(|c| c.name().unwrap_or("").to_owned());
+        let caps: Vec<TypeExpr> = f.cap.as_ref().map(|c| c.entries().to_vec()).unwrap_or_default();
         let expected = if let Some(ret) = &f.return_type {
             let Some(expected) = c_type_from_type_expr(&ret.value) else {
                 self.errors.push(TypeError::with_span(
@@ -335,7 +428,7 @@ impl TypeChecker {
         let fn_ty = CompType::Fn {
             params: param_types.clone(),
             ret: Box::new(expected.clone()),
-            cap: cap.clone(),
+            cap: caps.clone(),
         };
         self.fn_defs.insert(f.name.clone(), fn_ty.clone());
 
@@ -347,7 +440,19 @@ impl TypeChecker {
             ));
             return;
         };
+        // Validate and inject declared caps into env
+        self.validate_cap_entries(&caps, f.span);
+        for entry in &caps {
+            let name = entry.cap_name();
+            if let Some(ty) = self.cap_handler_type(name) {
+                env.insert(format!("__cap_{name}"), ty);
+            }
+        }
+        let err_before = self.errors.len();
         self.check_c_expr(body, &expected, &env);
+        for e in &mut self.errors[err_before..] {
+            e.fn_name = f.name.clone();
+        }
         self.bindings.push(CheckedBinding {
             name: f.name.clone(),
             ty: fn_ty,
@@ -367,7 +472,8 @@ impl TypeChecker {
             };
             param_types.push(ty);
         }
-        let cap = f.cap.as_ref().map(|c| c.name().unwrap_or("").to_owned());
+        let caps: Vec<TypeExpr> = f.cap.as_ref().map(|c| c.entries().to_vec()).unwrap_or_default();
+        self.validate_cap_entries(&caps, f.span);
         let ret = if let Some(ret) = &f.return_type {
             let Some(expected) = c_type_from_type_expr(&ret.value) else {
                 self.errors.push(TypeError::with_span(
@@ -386,7 +492,7 @@ impl TypeChecker {
             ty: CompType::Fn {
                 params: param_types,
                 ret: Box::new(ret),
-                cap,
+                cap: caps,
             },
         });
     }
@@ -485,7 +591,7 @@ impl TypeChecker {
                             let resume_ty = ValueType::Thunk(Box::new(CompType::Fn {
                                 params: vec![op_ret_val.clone()],
                                 ret: Box::new(handle_result.clone()),
-                                cap: None,
+                                cap: vec![],
                             }));
                             entry_env.insert("resume".to_owned(), resume_ty);
                         }
@@ -635,7 +741,7 @@ impl TypeChecker {
             CompType::Fn {
                 params: payload_types.clone(),
                 ret: Box::new(CompType::Produce(Box::new(result_template.clone()))),
-                cap: None,
+                cap: vec![],
             }
         };
 
@@ -695,7 +801,7 @@ impl TypeChecker {
                     .map(|payload| subst_v_type(payload, &subst))
                     .collect(),
                 ret: Box::new(CompType::Produce(Box::new(result_ty))),
-                cap: None,
+                cap: vec![],
             }
         };
 
@@ -1046,6 +1152,12 @@ impl TypeChecker {
             Expr::Force { expr, .. } => {
                 if let Expr::Ident { name, .. } = expr.as_ref() {
                     if let Some(ty) = self.fn_defs.get(name) {
+                        // Zero-arg functions: return the result type directly
+                        if let CompType::Fn { params, ret, .. } = ty {
+                            if params.is_empty() {
+                                return Some(*ret.clone());
+                            }
+                        }
                         return Some(ty.clone());
                     }
                 }
@@ -1104,10 +1216,23 @@ impl TypeChecker {
                     ));
                     return None;
                 }
+                // Infer concrete Self type from arguments matched against Self-typed params
+                let mut self_concrete: Option<ValueType> = None;
                 for (arg, param_ty) in args.iter().zip(params.iter()) {
+                    if matches!(param_ty, ValueType::Named(n) if n == "Self") {
+                        if self_concrete.is_none() {
+                            self_concrete = self.infer_v_expr(arg, env);
+                        }
+                    }
                     self.check_v_expr(arg, param_ty, env);
                 }
-                Some(*ret)
+                // Substitute Self in return type if we resolved it
+                let resolved_ret = if let Some(ref concrete) = self_concrete {
+                    subst_self_c(&ret, concrete)
+                } else {
+                    *ret
+                };
+                Some(resolved_ret)
             }
             Expr::Let {
                 name, value, body, ..
@@ -1575,6 +1700,34 @@ impl TypeChecker {
         }
     }
 
+    /// Validate cap annotation entries: caps with Self must have for_type, caps without Self must not.
+    fn validate_cap_entries(&mut self, entries: &[TypeExpr], span: Span) {
+        for entry in entries {
+            let name = entry.cap_name();
+            if let Some(def) = self.cap_defs.get(name) {
+                if def.uses_self && entry.cap_for_type().is_none() {
+                    self.errors.push(TypeError::with_span(
+                        0,
+                        span,
+                        format!(
+                            "cap `{name}` uses `Self` and requires a type: `{name} for <Type>`",
+                        ),
+                    ));
+                }
+                if !def.uses_self && entry.cap_for_type().is_some() {
+                    self.errors.push(TypeError::with_span(
+                        0,
+                        span,
+                        format!(
+                            "cap `{name}` does not use `Self`; remove `for {}`",
+                            entry.cap_for_type().unwrap().display(),
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
     /// Compute the value type that a handler for cap `name` must have.
     /// Always returns `Named(cap_name)` — caps are bundles regardless of op count.
     fn cap_handler_type(&self, name: &str) -> Option<ValueType> {
@@ -1894,6 +2047,7 @@ fn v_type_from_type_expr(te: &TypeExpr) -> Option<ValueType> {
             Some(ValueType::Thunk(Box::new(ct)))
         }
         TypeExpr::Produce(_) => None, // `produce T` is not a value type
+        TypeExpr::Cap { name, .. } => Some(ValueType::Named(name.clone())),
     }
 }
 

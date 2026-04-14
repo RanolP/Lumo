@@ -1,31 +1,31 @@
 data OptionA { .some(A), .none }
-fn mk() := OptionA.some(a)
+fn mk() { OptionA.some(a) }
 ---
 Data(name="OptionA", variants=["some", "none"])
 Fn(name="mk", body=Call(callee=Member(object=Variable("OptionA"), member="some"), args=[Variable("a")]))
 ==========
 data Option[A] { .some(A), .none }
-fn id() := produce a
+fn id() { a }
 ---
 Data(name="Option", variants=["some", "none"])
-Fn(name="id", body=Produce(Variable("a")))
+Fn(name="id", body=Variable("a"))
 ==========
 data Bool { .true, .false }
-fn id() := produce x
-fn keep() := let a = b in a
+fn id() { x }
+fn keep() { let a = b; a }
 ---
 Data(name="Bool", variants=["true", "false"])
-Fn(name="id", body=Produce(Variable("x")))
-Fn(name="keep", body=Let(name="a", value=Variable("b"), body=Variable("a")))
+Fn(name="id", body=Variable("x"))
+Fn(name="keep", body=Block([let a = Variable("b")], result=Variable("a")))
 ==========
 
 data   X   {   .a ,   .b }
 
-  fn   id()   :=   produce   x
+  fn   id()   {   x   }
 
 ---
 Data(name="X", variants=["a", "b"])
-Fn(name="id", body=Produce(Variable("x")))
+Fn(name="id", body=Variable("x"))
 ==========
 data Empty { }
 ---
@@ -40,11 +40,11 @@ data Bool { .true, .false }
 Data(name="Bool", variants=["true", "false"])
 ==========
 data A { .v }
-fn f() := produce x
+fn f() { x }
 data B { .w, .z }
-fn g() := let y = x in y
+fn g() { let y = x; y }
 ---
 Data(name="A", variants=["v"])
-Fn(name="f", body=Produce(Variable("x")))
+Fn(name="f", body=Variable("x"))
 Data(name="B", variants=["w", "z"])
-Fn(name="g", body=Let(name="y", value=Variable("x"), body=Variable("y")))
+Fn(name="g", body=Block([let y = Variable("x")], result=Variable("y")))

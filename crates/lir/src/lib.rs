@@ -1,3 +1,9 @@
+pub mod parse;
+pub mod print;
+pub mod validate;
+
+use std::collections::HashSet;
+
 use lumo_hir as hir;
 use lumo_span::Span;
 use lumo_types::{CapRef, ContentHash, ExprId, Pattern, Spanned, TypeExpr};
@@ -245,6 +251,7 @@ pub fn expr_references_name(expr: &Expr, target: &str) -> bool {
 struct LoweringCtx {
     spans: Vec<Span>,
     variants: Vec<(String, String)>,
+    caps: HashSet<String>,
 }
 
 impl LoweringCtx {
@@ -252,6 +259,7 @@ impl LoweringCtx {
         Self {
             spans: Vec::new(),
             variants: collect_variants(file),
+            caps: collect_caps(file),
         }
     }
 
@@ -465,6 +473,17 @@ fn lower_expr(ctx: &mut LoweringCtx, expr: &hir::Expr) -> Expr {
                     let ctor = mk_ctor(ctx, span, &format!("{owner}.{member}"), false, Vec::new());
                     return mk_roll(ctx, span, ctor);
                 }
+                // Check if this is a capability access (Cap.operation pattern)
+                if ctx.caps.contains(owner) {
+                    return Expr::Member {
+                        id: ctx.alloc(span),
+                        object: Box::new(Expr::Perform {
+                            id: ctx.alloc(span),
+                            cap: owner.clone(),
+                        }),
+                        field: member.clone(),
+                    };
+                }
             }
             let lowered_object = Box::new(lower_expr(ctx, object));
             Expr::Member {
@@ -630,4 +649,17 @@ fn collect_variants(file: &hir::File) -> Vec<(String, String)> {
         }
     }
     out
+}
+
+fn collect_caps(file: &hir::File) -> HashSet<String> {
+    file.items
+        .iter()
+        .filter_map(|item| {
+            if let hir::Item::Cap(c) = item {
+                Some(c.name.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
