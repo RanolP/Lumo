@@ -9,11 +9,10 @@ use libstd.list.{List};
 // ---------------------------------------------------------------------------
 
 // PascalCase to SCREAMING_SNAKE_CASE
-fn to_screaming_snake(name: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn to_screaming_snake(name: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   to_screaming_snake_loop(name, 0, "")
-}
 
-fn to_screaming_snake_loop(name: String, i: Number, acc: String): String / { StrOps, Add for String, Add for Number, PartialOrd for Number, Sub for Number } {
+fn to_screaming_snake_loop(name: String, i: Number, acc: String): String / { StrOps, Add for String, Add for Number, PartialOrd for Number, Sub for Number } =
   if i >= StrOps.str_len(name) { acc } else {
     let c = StrOps.str_char_at(name, i);
     let code = StrOps.char_code_at(c, 0);
@@ -30,7 +29,6 @@ fn to_screaming_snake_loop(name: String, i: Number, acc: String): String / { Str
       } else { to_screaming_snake_loop(name, i + 1, acc + to_upper_char(c)) }
     } else { to_screaming_snake_loop(name, i + 1, acc + to_upper_char(c)) }
   }
-}
 
 fn to_upper_char(c: String): String / { StrOps, PartialOrd for Number, Sub for Number } {
   let code = StrOps.char_code_at(c, 0);
@@ -39,20 +37,17 @@ fn to_upper_char(c: String): String / { StrOps, PartialOrd for Number, Sub for N
   } else { c }
 }
 
-fn keyword_variant(kw: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn keyword_variant(kw: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   to_upper_string(kw) + "_KW"
-}
 
-fn to_upper_string(s: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn to_upper_string(s: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   to_upper_string_loop(s, 0, "")
-}
 
-fn to_upper_string_loop(s: String, i: Number, acc: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn to_upper_string_loop(s: String, i: Number, acc: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   if i >= StrOps.str_len(s) { acc }
   else { to_upper_string_loop(s, i + 1, acc + to_upper_char(StrOps.str_char_at(s, i))) }
-}
 
-fn symbol_variant(sym: String): String / { PartialEq for String, Add for String } {
+fn symbol_variant(sym: String): String / { PartialEq for String, Add for String } =
   if sym == "#" { "HASH" }
   else if sym == "(" { "L_PAREN" }
   else if sym == ")" { "R_PAREN" }
@@ -84,27 +79,25 @@ fn symbol_variant(sym: String): String / { PartialEq for String, Add for String 
   else if sym == "||" { "PIPE_PIPE" }
   else if sym == "_" { "UNDERSCORE" }
   else { "SYM_" + sym }
-}
 
 // ---------------------------------------------------------------------------
 // Token collection: gather all keywords and symbols from rules
 // ---------------------------------------------------------------------------
 
 // Collect unique, sorted keywords and symbols from all rules
-fn collect_tokens(grammar: Grammar): CollectedTokens / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+fn collect_tokens(grammar: Grammar): CollectedTokens / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } =
   match grammar { .mk(token_defs, rules) => {
     let pair = collect_tokens_from_rules(rules, List.nil, List.nil);
     match pair { .mk(kws, syms) =>
       CollectedTokens.mk(sort_strings(dedupe_strings(kws)), sort_strings(dedupe_strings(syms)))
     }
   }}
-}
 
 data CollectedTokens { .mk(List[String], List[String]) }
 
 data StringPair { .mk(List[String], List[String]) }
 
-fn collect_tokens_from_rules(rules: List[Rule], kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } {
+fn collect_tokens_from_rules(rules: List[Rule], kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } =
   match rules {
     .nil => StringPair.mk(kws, syms),
     .cons(rule, rest) =>
@@ -115,16 +108,14 @@ fn collect_tokens_from_rules(rules: List[Rule], kws: List[String], syms: List[St
         }
       }}
   }
-}
 
-fn collect_tokens_from_body(body: RuleBody, kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } {
+fn collect_tokens_from_body(body: RuleBody, kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } =
   match body {
     .sequence(elems) => collect_tokens_from_elements(elems, kws, syms),
     .alternatives(alts) => collect_tokens_from_alts(alts, kws, syms)
   }
-}
 
-fn collect_tokens_from_alts(alts: List[Alternative], kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } {
+fn collect_tokens_from_alts(alts: List[Alternative], kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } =
   match alts {
     .nil => StringPair.mk(kws, syms),
     .cons(alt, rest) =>
@@ -138,14 +129,12 @@ fn collect_tokens_from_alts(alts: List[Alternative], kws: List[String], syms: Li
         } else { collect_alt_token(name, rest, kws, syms) }
       }}
   }
-}
 
-fn collect_alt_token(name: String, rest: List[Alternative], kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } {
+fn collect_alt_token(name: String, rest: List[Alternative], kws: List[String], syms: List[String]): StringPair / { Add for Number, PartialOrd for Number, StrOps } =
   if has_alpha(name, 0) { collect_tokens_from_alts(rest, List.cons(name, kws), syms) }
   else { collect_tokens_from_alts(rest, kws, List.cons(name, syms)) }
-}
 
-fn collect_tokens_from_elements(elems: List[Element], kws: List[String], syms: List[String]): StringPair {
+fn collect_tokens_from_elements(elems: List[Element], kws: List[String], syms: List[String]): StringPair =
   match elems {
     .nil => StringPair.mk(kws, syms),
     .cons(elem, rest) => {
@@ -155,9 +144,8 @@ fn collect_tokens_from_elements(elems: List[Element], kws: List[String], syms: L
       }
     }
   }
-}
 
-fn collect_tokens_from_element(elem: Element, kws: List[String], syms: List[String]): StringPair {
+fn collect_tokens_from_element(elem: Element, kws: List[String], syms: List[String]): StringPair =
   match elem {
     .token(t) =>
       match t {
@@ -171,51 +159,44 @@ fn collect_tokens_from_element(elem: Element, kws: List[String], syms: List[Stri
     .repeated(inner) => collect_tokens_from_element(inner, kws, syms),
     .group(elems) => collect_tokens_from_elements(elems, kws, syms)
   }
-}
 
 // ---------------------------------------------------------------------------
 // String utilities: dedupe and sort
 // ---------------------------------------------------------------------------
 
-fn dedupe_strings(xs: List[String]): List[String] / { PartialEq for String } {
+fn dedupe_strings(xs: List[String]): List[String] / { PartialEq for String } =
   dedupe_strings_acc(xs, List.nil)
-}
 
-fn dedupe_strings_acc(xs: List[String], acc: List[String]): List[String] / { PartialEq for String } {
+fn dedupe_strings_acc(xs: List[String], acc: List[String]): List[String] / { PartialEq for String } =
   match xs {
     .nil => acc,
     .cons(x, rest) =>
       if list_contains_string(acc, x) { dedupe_strings_acc(rest, acc) }
       else { dedupe_strings_acc(rest, List.cons(x, acc)) }
   }
-}
 
 // Simple insertion sort for strings
-fn sort_strings(xs: List[String]): List[String] / { Add for Number, PartialOrd for Number, StrOps } {
+fn sort_strings(xs: List[String]): List[String] / { Add for Number, PartialOrd for Number, StrOps } =
   sort_strings_acc(xs, List.nil)
-}
 
-fn sort_strings_acc(xs: List[String], sorted: List[String]): List[String] / { Add for Number, PartialOrd for Number, StrOps } {
+fn sort_strings_acc(xs: List[String], sorted: List[String]): List[String] / { Add for Number, PartialOrd for Number, StrOps } =
   match xs {
     .nil => sorted,
     .cons(x, rest) => sort_strings_acc(rest, insert_sorted(x, sorted))
   }
-}
 
-fn insert_sorted(s: String, xs: List[String]): List[String] / { Add for Number, PartialOrd for Number, StrOps } {
+fn insert_sorted(s: String, xs: List[String]): List[String] / { Add for Number, PartialOrd for Number, StrOps } =
   match xs {
     .nil => List.cons(s, xs),
     .cons(x, rest) =>
       if string_lt(s, x) { List.cons(s, xs) }
       else { List.cons(x, insert_sorted(s, rest)) }
   }
-}
 
-fn string_lt(a: String, b: String): Bool / { Add for Number, PartialOrd for Number, StrOps } {
+fn string_lt(a: String, b: String): Bool / { Add for Number, PartialOrd for Number, StrOps } =
   string_lt_loop(a, b, 0)
-}
 
-fn string_lt_loop(a: String, b: String, i: Number): Bool / { StrOps, Add for Number, PartialOrd for Number } {
+fn string_lt_loop(a: String, b: String, i: Number): Bool / { StrOps, Add for Number, PartialOrd for Number } =
   if i >= StrOps.str_len(a) {
     if i >= StrOps.str_len(b) { Bool.false } else { Bool.true }
   } else if i >= StrOps.str_len(b) { Bool.false }
@@ -226,10 +207,9 @@ fn string_lt_loop(a: String, b: String, i: Number): Bool / { StrOps, Add for Num
     else if cb < ca { Bool.false }
     else { string_lt_loop(a, b, i + 1) }
   }
-}
 
 // Check if rule alternatives are all token literals
-fn is_token_only_alternatives(alts: List[Alternative]): Bool / { StrOps, PartialOrd for Number } {
+fn is_token_only_alternatives(alts: List[Alternative]): Bool / { StrOps, PartialOrd for Number } =
   match alts {
     .nil => Bool.true,
     .cons(alt, rest) =>
@@ -244,7 +224,6 @@ fn is_token_only_alternatives(alts: List[Alternative]): Bool / { StrOps, Partial
         if is_upper { Bool.false } else { is_token_only_alternatives(rest) }
       }}
   }
-}
 
 // ---------------------------------------------------------------------------
 // Generate syntax_kind.rs
@@ -288,15 +267,14 @@ fn generate_syntax_kind(grammar: Grammar): String / { Add for String, Add for Nu
   }}}
 }
 
-fn emit_named_tokens(s: String, tokens: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_named_tokens(s: String, tokens: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   match tokens {
     .nil => s,
     .cons(tok, rest) =>
       emit_named_tokens(s + "    " + to_screaming_snake(tok) + ",\n", rest)
   }
-}
 
-fn emit_keywords(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_keywords(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   match kws {
     .nil => s,
     _ => {
@@ -304,9 +282,8 @@ fn emit_keywords(s: String, kws: List[String]): String / { Add for String, Add f
       emit_keywords_items(s2, kws)
     }
   }
-}
 
-fn emit_keywords_items(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_keywords_items(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   match kws {
     .nil => s,
     .cons(kw, rest) => {
@@ -314,9 +291,8 @@ fn emit_keywords_items(s: String, kws: List[String]): String / { Add for String,
       emit_keywords_items(s + line, rest)
     }
   }
-}
 
-fn emit_symbols(s: String, syms: List[String]): String / { Add for String, PartialEq for String } {
+fn emit_symbols(s: String, syms: List[String]): String / { Add for String, PartialEq for String } =
   match syms {
     .nil => s,
     .cons(sym, rest) => {
@@ -324,9 +300,8 @@ fn emit_symbols(s: String, syms: List[String]): String / { Add for String, Parti
       emit_symbols_items(s2, syms)
     }
   }
-}
 
-fn emit_symbols_items(s: String, syms: List[String]): String / { Add for String, PartialEq for String } {
+fn emit_symbols_items(s: String, syms: List[String]): String / { Add for String, PartialEq for String } =
   match syms {
     .nil => s,
     .cons(sym, rest) => {
@@ -334,9 +309,8 @@ fn emit_symbols_items(s: String, syms: List[String]): String / { Add for String,
       emit_symbols_items(s + line, rest)
     }
   }
-}
 
-fn emit_node_kinds(s: String, rules: List[Rule]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_node_kinds(s: String, rules: List[Rule]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   match rules {
     .nil => s,
     .cons(rule, rest) =>
@@ -357,9 +331,8 @@ fn emit_node_kinds(s: String, rules: List[Rule]): String / { Add for String, Add
         }
       }
   }
-}
 
-fn emit_from_keyword(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_from_keyword(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   match kws {
     .nil => s,
     _ => {
@@ -372,9 +345,8 @@ fn emit_from_keyword(s: String, kws: List[String]): String / { Add for String, A
       s
     }
   }
-}
 
-fn emit_keyword_arms(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_keyword_arms(s: String, kws: List[String]): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } =
   match kws {
     .nil => s,
     .cons(kw, rest) => {
@@ -382,9 +354,8 @@ fn emit_keyword_arms(s: String, kws: List[String]): String / { Add for String, A
       emit_keyword_arms(s + line, rest)
     }
   }
-}
 
-fn emit_from_symbol(s: String, syms: List[String]): String / { Add for String, PartialEq for String } {
+fn emit_from_symbol(s: String, syms: List[String]): String / { Add for String, PartialEq for String } =
   match syms {
     .nil => s,
     _ => {
@@ -397,9 +368,8 @@ fn emit_from_symbol(s: String, syms: List[String]): String / { Add for String, P
       s
     }
   }
-}
 
-fn emit_symbol_arms(s: String, syms: List[String]): String / { Add for String, PartialEq for String } {
+fn emit_symbol_arms(s: String, syms: List[String]): String / { Add for String, PartialEq for String } =
   match syms {
     .nil => s,
     .cons(sym, rest) => {
@@ -407,13 +377,12 @@ fn emit_symbol_arms(s: String, syms: List[String]): String / { Add for String, P
       emit_symbol_arms(s + line, rest)
     }
   }
-}
 
 // ---------------------------------------------------------------------------
 // Generate ast.rs
 // ---------------------------------------------------------------------------
 
-fn generate_ast(grammar: Grammar): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn generate_ast(grammar: Grammar): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
   match grammar { .mk(token_defs, rules) => {
     let s = "// Auto-generated by langue. Do not edit.\n\n";
     let s = s + "use super::SyntaxKind;\n";
@@ -424,9 +393,8 @@ fn generate_ast(grammar: Grammar): String / { Add for String, Add for Number, Pa
     let s = s + "}\n\n";
     emit_ast_rules(s, token_defs, rules)
   }}
-}
 
-fn emit_ast_rules(s: String, token_defs: List[String], rules: List[Rule]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_ast_rules(s: String, token_defs: List[String], rules: List[Rule]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
   match rules {
     .nil => s,
     .cons(rule, rest) =>
@@ -440,7 +408,6 @@ fn emit_ast_rules(s: String, token_defs: List[String], rules: List[Rule]): Strin
         emit_ast_rules(s2, token_defs, rest)
       }}
   }
-}
 
 // Struct node for sequence rules
 fn emit_struct_node(s: String, name: String, elems: List[Element], token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
@@ -466,7 +433,7 @@ fn emit_accessors(s: String, struct_name: String, elems: List[Element], token_de
   } else { s }
 }
 
-fn has_labeled_elements(elems: List[Element]): Bool {
+fn has_labeled_elements(elems: List[Element]): Bool =
   match elems {
     .nil => Bool.false,
     .cons(elem, rest) =>
@@ -475,9 +442,8 @@ fn has_labeled_elements(elems: List[Element]): Bool {
         _ => has_labeled_elements(rest)
       }
   }
-}
 
-fn emit_accessors_for_elements(s: String, elems: List[Element], token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_accessors_for_elements(s: String, elems: List[Element], token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
   match elems {
     .nil => s,
     .cons(elem, rest) =>
@@ -489,10 +455,9 @@ fn emit_accessors_for_elements(s: String, elems: List[Element], token_defs: List
         _ => emit_accessors_for_elements(s, rest, token_defs)
       }
   }
-}
 
 // Emit a single accessor method for a labeled element
-fn emit_single_accessor(s: String, label: String, elem: Element, token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_single_accessor(s: String, label: String, elem: Element, token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
   match elem {
     .token(t) => emit_token_accessor(s, label, t, Bool.false),
     .node(n) =>
@@ -505,9 +470,8 @@ fn emit_single_accessor(s: String, label: String, elem: Element, token_defs: Lis
     .labeled(_, inner) => emit_single_accessor(s, label, inner, token_defs),
     .group(elems) => s
   }
-}
 
-fn emit_single_accessor_repeated(s: String, label: String, elem: Element, token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_single_accessor_repeated(s: String, label: String, elem: Element, token_defs: List[String]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
   match elem {
     .token(t) => emit_token_accessor(s, label, t, Bool.true),
     .node(n) =>
@@ -520,15 +484,13 @@ fn emit_single_accessor_repeated(s: String, label: String, elem: Element, token_
     .labeled(_, inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
     .group(elems) => s
   }
-}
 
-fn token_kind_from_ref(t: TokenRef): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn token_kind_from_ref(t: TokenRef): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
   match t {
     .named(name) => to_screaming_snake(name),
     .keyword(kw) => keyword_variant(kw),
     .symbol(sym) => symbol_variant(sym)
   }
-}
 
 fn emit_token_accessor(s: String, label: String, t: TokenRef, repeated: Bool): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
   let kind = token_kind_from_ref(t);
@@ -549,7 +511,7 @@ fn emit_token_accessor(s: String, label: String, t: TokenRef, repeated: Bool): S
   }
 }
 
-fn emit_node_accessor(s: String, label: String, node_name: String, repeated: Bool): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn emit_node_accessor(s: String, label: String, node_name: String, repeated: Bool): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
   if repeated {
     let s = s + "    pub fn " + label + "(&self) -> impl Iterator<Item = " + node_name + "<'a>> + 'a {\n";
     let s = s + "        self.0.children.iter().filter_map(|c| match c {\n";
@@ -565,7 +527,6 @@ fn emit_node_accessor(s: String, label: String, node_name: String, repeated: Boo
     let s = s + "        })\n";
     s + "    }\n"
   }
-}
 
 // Enum node for alternative rules
 fn emit_enum_node(s: String, name: String, alts: List[Alternative]): String / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
@@ -588,7 +549,7 @@ fn emit_enum_node(s: String, name: String, alts: List[Alternative]): String / { 
   s
 }
 
-fn emit_enum_variants(s: String, alts: List[Alternative]): String / { Add for String } {
+fn emit_enum_variants(s: String, alts: List[Alternative]): String / { Add for String } =
   match alts {
     .nil => s,
     .cons(alt, rest) =>
@@ -596,9 +557,8 @@ fn emit_enum_variants(s: String, alts: List[Alternative]): String / { Add for St
         emit_enum_variants(s + "    " + name + "(" + name + "<'a>),\n", rest)
       }
   }
-}
 
-fn emit_enum_cast_chain(s: String, alts: List[Alternative]): String / { Add for String } {
+fn emit_enum_cast_chain(s: String, alts: List[Alternative]): String / { Add for String } =
   match alts {
     .nil => s,
     .cons(alt, rest) =>
@@ -607,9 +567,8 @@ fn emit_enum_cast_chain(s: String, alts: List[Alternative]): String / { Add for 
         emit_enum_cast_chain(s + line, rest)
       }}
   }
-}
 
-fn emit_enum_syntax_arms(s: String, alts: List[Alternative]): String / { Add for String } {
+fn emit_enum_syntax_arms(s: String, alts: List[Alternative]): String / { Add for String } =
   match alts {
     .nil => s,
     .cons(alt, rest) =>
@@ -618,7 +577,6 @@ fn emit_enum_syntax_arms(s: String, alts: List[Alternative]): String / { Add for
         emit_enum_syntax_arms(s + line, rest)
       }}
   }
-}
 
 // Token wrapper node
 fn emit_token_wrapper_node(s: String, name: String): String / { Add for String, Add for Number, PartialOrd for Number, StrOps, Sub for Number } {

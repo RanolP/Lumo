@@ -15,33 +15,33 @@ cap NumOps {
 }
 
 impl Number: PartialEq {
-  fn eq(self, other: Self): Bool { NumOps.num_eq(self, other) }
+  fn eq(self, other: Self): Bool = NumOps.num_eq(self, other)
 }
 
 impl Number: PartialOrd {
-  fn cmp(self, other: Self): Ordering { NumOps.num_cmp(self, other) }
+  fn cmp(self, other: Self): Ordering = NumOps.num_cmp(self, other)
 }
 
 impl Number: Add {
-  fn add(self, other: Self): Self { NumOps.num_add(self, other) }
+  fn add(self, other: Self): Self = NumOps.num_add(self, other)
 }
 
 impl Number: Sub {
-  fn sub(self, other: Self): Self { NumOps.num_sub(self, other) }
+  fn sub(self, other: Self): Self = NumOps.num_sub(self, other)
 }
 
 impl Number: Mul {
-  fn mul(self, other: Self): Self { NumOps.num_mul(self, other) }
+  fn mul(self, other: Self): Self = NumOps.num_mul(self, other)
 }
 
 impl Number: Div {
-  fn div(self, other: Self): Self { NumOps.num_div(self, other) }
+  fn div(self, other: Self): Self = NumOps.num_div(self, other)
 }
 
 impl Number: Mod {
-  fn mod_(self, other: Self): Self { NumOps.num_mod(self, other) }
+  fn mod_(self, other: Self): Self = NumOps.num_mod(self, other)
 }
 
 impl Number: Neg {
-  fn neg(self): Self { NumOps.num_neg(self) }
+  fn neg(self): Self = NumOps.num_neg(self)
 }

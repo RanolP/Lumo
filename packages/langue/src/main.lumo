@@ -56,7 +56,7 @@ fn main() {
   run()
 }
 
-fn run() / { StrOps, Add for String, Add for Number, Sub for Number, PartialEq for String, PartialOrd for Number, IO, FS, Process } {
+fn run() / { StrOps, Add for String, Add for Number, Sub for Number, PartialEq for String, PartialOrd for Number, IO, FS, Process } =
   if Process.args_count() < 2 {
     Process.panic_with("Usage: langue <input.langue> [output_dir]")
   } else {
@@ -76,16 +76,14 @@ fn run() / { StrOps, Add for String, Add for Number, Sub for Number, PartialEq f
         Process.panic_with("Parse error at position " + StrOps.num_to_string(pos) + ": " + msg)
     }
   }
-}
 
-fn run_generate(file: String, count: Number, syntax_kind_code: String, ast_code: String) / { StrOps, Add for String, PartialOrd for Number, IO, FS, Process } {
+fn run_generate(file: String, count: Number, syntax_kind_code: String, ast_code: String) / { StrOps, Add for String, PartialOrd for Number, IO, FS, Process } =
   if Process.args_count() < 3 {
     write_output(".", file, count, syntax_kind_code, ast_code)
   } else {
     let out_dir = Process.arg_at(2);
     write_output(out_dir, file, count, syntax_kind_code, ast_code)
   }
-}
 
 fn write_output(out_dir: String, file: String, count: Number, syntax_kind_code: String, ast_code: String) / { StrOps, Add for String, IO, FS } {
   let sk_path = out_dir + "/syntax_kind.rs";
@@ -97,9 +95,8 @@ fn write_output(out_dir: String, file: String, count: Number, syntax_kind_code: 
   IO.println("Wrote " + ast_path)
 }
 
-fn list_length_rules(xs: List[Rule]): Number / { Add for Number } {
+fn list_length_rules(xs: List[Rule]): Number / { Add for Number } =
   match xs {
     .nil => 0,
     .cons(_, rest) => 1 + list_length_rules(rest)
   }
-}

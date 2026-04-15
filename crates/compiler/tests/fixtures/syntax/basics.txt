@@ -29,3 +29,15 @@ Fn(name="id", body=Block([let x = Variable("y")], result=Variable("x")))
 fn main() { let x = { let y = z; y }; x }
 ---
 Fn(name="main", body=Block([let x = Block([let y = Variable("z")], result=Variable("y"))], result=Variable("x")))
+==========
+fn id() = x
+---
+Fn(name="id", body=Variable("x"))
+==========
+fn greet() = "hello"
+---
+Fn(name="greet", body=String("hello"))
+==========
+fn complex() = { let x = y; x }
+---
+Fn(name="complex", body=Block([let x = Variable("y")], result=Variable("x")))

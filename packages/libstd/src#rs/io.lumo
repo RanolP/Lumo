@@ -1,5 +1,5 @@
 #[extern(name = "console.log")] extern fn __println(msg: String);
 
 impl StdIO: IO {
-  fn println(msg: String) { __println(msg) }
+  fn println(msg: String) = __println(msg)
 }

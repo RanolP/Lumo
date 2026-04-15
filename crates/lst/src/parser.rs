@@ -832,7 +832,9 @@ impl<'a> Parser<'a> {
         if self.at_symbol(Symbol::Colon) {
             self.bump();
             let (repr, span) = self.collect_signature_until(|p| {
-                p.at_symbol(Symbol::Slash) || p.at_symbol(Symbol::LBrace)
+                p.at_symbol(Symbol::Slash)
+                    || p.at_symbol(Symbol::LBrace)
+                    || p.at_symbol(Symbol::Equals)
             });
             if let Some(span) = span {
                 return_type = Some(TypeSig { repr, span });
@@ -851,7 +853,12 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let body = self.parse_block();
+        let body = if self.at_symbol(Symbol::Equals) {
+            self.bump();
+            self.parse_expr()
+        } else {
+            self.parse_block()
+        };
         let body_span = expr_span(&body);
         FnDecl {
             name,
@@ -997,7 +1004,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        // Parse methods block: { fn name(params): RetType := body ... }
+        // Parse methods block: { fn name(params): RetType = body ... }
         self.expect_symbol(Symbol::LBrace);
         let mut methods = Vec::new();
 
@@ -1020,8 +1027,9 @@ impl<'a> Parser<'a> {
             let mut return_type = None;
             if self.at_symbol(Symbol::Colon) {
                 self.bump();
-                let (repr, span) =
-                    self.collect_signature_until(|p| p.at_symbol(Symbol::LBrace));
+                let (repr, span) = self.collect_signature_until(|p| {
+                    p.at_symbol(Symbol::LBrace) || p.at_symbol(Symbol::Equals)
+                });
                 if let Some(span) = span {
                     return_type = Some(TypeSig { repr, span });
                 } else {
@@ -1029,7 +1037,12 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            let body = self.parse_block();
+            let body = if self.at_symbol(Symbol::Equals) {
+                self.bump();
+                self.parse_expr()
+            } else {
+                self.parse_block()
+            };
             let body_end = expr_span(&body);
 
             methods.push(ImplMethod {
@@ -1232,6 +1245,10 @@ impl<'a> Parser<'a> {
         let mut depth: usize = 0;
 
         while !self.eof() {
+            if self.at_symbol(Symbol::Equals) && depth == 0 {
+                // `=` at depth 0 starts an expression body, stop.
+                break;
+            }
             if self.at_symbol(Symbol::LBrace) {
                 if depth == 0 && !parts.is_empty() {
                     // We already have tokens and we're at depth 0:
@@ -1254,9 +1271,9 @@ impl<'a> Parser<'a> {
                 end = Some(t.span.end);
                 parts.push(token_text(t));
                 if depth == 0 {
-                    // Finished a balanced `{ ... }`.  If the next token is `{`,
+                    // Finished a balanced `{ ... }`.  If the next token is `{` or `=`,
                     // that starts the body — stop here.
-                    if self.at_symbol(Symbol::LBrace) {
+                    if self.at_symbol(Symbol::LBrace) || self.at_symbol(Symbol::Equals) {
                         break;
                     }
                 }
@@ -1414,7 +1431,8 @@ impl<'a> Parser<'a> {
                 || self.at_keyword(Keyword::Cap)
                 || self.at_keyword(Keyword::Fn)
                 || self.at_keyword(Keyword::Extern)
-                || self.at_keyword(Keyword::Use))
+                || self.at_keyword(Keyword::Use)
+                || self.at_keyword(Keyword::Impl))
                 && !self.eof()
             {
                 self.bump();
@@ -1722,7 +1740,12 @@ impl<'a> Parser<'a> {
                 Vec::new()
             };
 
-            let body = self.parse_block();
+            let body = if self.at_symbol(Symbol::Equals) {
+                self.bump();
+                self.parse_expr()
+            } else {
+                self.parse_block()
+            };
             let body_end = expr_span(&body);
 
             entries.push(BundleEntry {

@@ -31,7 +31,13 @@ VariantFields = '(' fields:TypeExpr* ')'
 
 // === Functions ===
 
-FnDecl = attrs:Attribute* 'fn' name:Ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? body:BlockExpr
+FnDecl = attrs:Attribute* 'fn' name:Ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? body:FnBody
+
+FnBody =
+  | BlockExpr
+  | ExprBody
+
+ExprBody = '=' body:Expr
 
 // === Generics ===
 
@@ -63,7 +69,7 @@ UseTree = '.' '{' names:Ident* '}'
 // === Impl blocks ===
 
 ImplDecl = 'impl' generic_params:GenericParams? name:Ident? target:TypeExpr (':' cap:TypeExpr)? '{' methods:ImplMethod* '}'
-ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? body:BlockExpr
+ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? body:FnBody
 
 // === Expressions ===
 
@@ -104,7 +110,7 @@ UnaryExpr = op:UnaryOp operand:Expr
 
 HandleExpr = 'handle' cap_expr:Expr 'with' handler:Expr 'in' body:Expr
 BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
-BundleEntry = 'fn' name:Ident param_list:ParamList body:BlockExpr
+BundleEntry = 'fn' name:Ident param_list:ParamList body:FnBody
 
 ParenExpr = '(' inner:Expr ')'
 AnnotationExpr = '(' expr:Expr ':' ty:TypeExpr ')'

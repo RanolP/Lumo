@@ -514,3 +514,53 @@ fn parses_if_else_if_chain() {
     };
     assert!(matches!(else_body.as_deref(), Some(Expr::IfElse { .. })));
 }
+
+#[test]
+fn parses_fn_with_eq_body() {
+    let src = "fn id(x: A): A = x";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    assert_eq!(parsed.file.items.len(), 1);
+
+    let Item::Fn(f) = &parsed.file.items[0] else {
+        panic!("expected fn item")
+    };
+    assert_eq!(f.name, "id");
+    assert!(matches!(&f.body, Expr::Ident { name, .. } if name == "x"));
+}
+
+#[test]
+fn parses_fn_eq_body_with_cap() {
+    let src = "fn f(): Unit / { IO } = x";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    let Item::Fn(f) = &parsed.file.items[0] else {
+        panic!("expected fn item")
+    };
+    assert!(f.cap.is_some());
+    assert!(matches!(&f.body, Expr::Ident { name, .. } if name == "x"));
+}
+
+#[test]
+fn parses_eq_body_followed_by_another_fn() {
+    let src = "fn a(): A = x\nfn b(): B = y";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    assert_eq!(parsed.file.items.len(), 2);
+}
+
+#[test]
+fn parses_impl_method_eq_body() {
+    let src = "impl Foo { fn bar(self): Number = x }";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
+    let Item::Impl(i) = &parsed.file.items[0] else {
+        panic!("expected impl")
+    };
+    assert_eq!(i.methods.len(), 1);
+    assert!(matches!(&i.methods[0].body, Expr::Ident { name, .. } if name == "x"));
+}

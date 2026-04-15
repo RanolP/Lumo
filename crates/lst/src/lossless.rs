@@ -206,12 +206,16 @@ impl Parser {
         let mut children = Vec::new();
         children.push(SyntaxElement::Token(self.bump().unwrap())); // fn
 
-        // Consume signature tokens until the body `{`.
+        // Consume signature tokens until the body `{` or `=`.
         // Cap annotations like `/ {}` contain balanced braces that must be skipped.
         // When we see `/ {`, the `{` opens a cap annotation — track brace depth.
         let mut sig_depth = 0usize;
         let mut after_slash = false;
         while !self.eof() {
+            // `=` at depth 0 starts an expression body
+            if self.at_symbol_text("=") && sig_depth == 0 && !after_slash {
+                break;
+            }
             if self.at_symbol_text("{") {
                 if sig_depth == 0 && !after_slash {
                     break; // this `{` starts the body block
@@ -234,31 +238,32 @@ impl Parser {
             children.push(SyntaxElement::Token(tok));
         }
 
-        if !self.eof() && self.at_symbol_text("{") {
+        if !self.eof() && self.at_symbol_text("=") {
+            // Expression body: `= expr`
+            children.push(SyntaxElement::Token(self.bump().unwrap())); // =
+            self.consume_expr_body_tokens(&mut children);
+        } else if !self.eof() && self.at_symbol_text("{") {
+            // Block body: `{ ... }`
             children.push(SyntaxElement::Token(self.bump().unwrap())); // {
-        } else {
-            self.error_here("expected `{` in fn declaration");
-            return node_from_children(SyntaxKind::FnDecl, children);
-        }
-
-        // Consume tokens until matching }
-        let mut depth = 1usize;
-        while !self.eof() && depth > 0 {
-            if self.at_symbol_text("{") {
-                depth += 1;
-            } else if self.at_symbol_text("}") {
-                depth -= 1;
-                if depth == 0 {
-                    break;
+            let mut depth = 1usize;
+            while !self.eof() && depth > 0 {
+                if self.at_symbol_text("{") {
+                    depth += 1;
+                } else if self.at_symbol_text("}") {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
                 }
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
             }
-            children.push(SyntaxElement::Token(self.bump().unwrap()));
-        }
-
-        if self.at_symbol_text("}") {
-            children.push(SyntaxElement::Token(self.bump().unwrap()));
+            if self.at_symbol_text("}") {
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
+            } else {
+                self.error_here("expected `}` in fn declaration");
+            }
         } else {
-            self.error_here("expected `}` in fn declaration");
+            self.error_here("expected `{` or `=` in fn declaration");
         }
 
         node_from_children(SyntaxKind::FnDecl, children)
@@ -718,6 +723,36 @@ impl Parser {
 
         let token = self.bump().unwrap();
         node_from_children(SyntaxKind::Error, vec![SyntaxElement::Token(token)])
+    }
+
+    /// Consume tokens for an expression body (`= expr`) until the next top-level declaration.
+    /// Tracks brace depth so keywords inside `{ ... }` blocks are not treated as boundaries.
+    fn consume_expr_body_tokens(&mut self, children: &mut Vec<SyntaxElement>) {
+        let mut depth = 0usize;
+        while !self.eof() {
+            if self.at_symbol_text("{") {
+                depth += 1;
+            } else if self.at_symbol_text("}") {
+                if depth == 0 {
+                    break; // unbalanced } — end of enclosing impl/bundle block
+                }
+                depth -= 1;
+            }
+            // At depth 0, a top-level keyword signals the next item
+            if depth == 0 && self.at_top_level_keyword() {
+                break;
+            }
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        }
+    }
+
+    fn at_top_level_keyword(&self) -> bool {
+        self.at_keyword(Keyword::Data)
+            || self.at_keyword(Keyword::Cap)
+            || self.at_keyword(Keyword::Fn)
+            || self.at_keyword(Keyword::Extern)
+            || self.at_keyword(Keyword::Use)
+            || self.at_keyword(Keyword::Impl)
     }
 
     fn at_trivia(&self) -> bool {

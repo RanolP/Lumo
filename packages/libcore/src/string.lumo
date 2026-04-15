@@ -19,9 +19,9 @@ cap StrOps {
 }
 
 impl String: Add {
-  fn add(self, other: Self): Self { StrOps.str_concat(self, other) }
+  fn add(self, other: Self): Self = StrOps.str_concat(self, other)
 }
 
 impl String: PartialEq {
-  fn eq(self, other: Self): Bool { StrOps.str_eq(self, other) }
+  fn eq(self, other: Self): Bool = StrOps.str_eq(self, other)
 }
