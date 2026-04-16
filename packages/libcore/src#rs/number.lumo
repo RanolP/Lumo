@@ -8,7 +8,7 @@
 #[extern(name = "num.eq")] extern fn __num_eq(a: Number, b: Number): Bool;
 #[extern(name = "num.cmp")] extern fn __num_cmp(a: Number, b: Number): Ordering;
 
-impl Number: NumOps {
+impl NumOps {
   fn num_add(a: Number, b: Number): Number = __num_add(a, b)
   fn num_sub(a: Number, b: Number): Number = __num_sub(a, b)
   fn num_mul(a: Number, b: Number): Number = __num_mul(a, b)

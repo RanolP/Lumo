@@ -104,6 +104,15 @@ pub enum Stmt {
     Expr(Expr),
     Return(Option<Expr>),
     Const(ConstDecl),
+    /// `let name = init;` or `let name;` (for IIFE flattening with reassignment)
+    Let {
+        name: String,
+        export: bool,
+        type_ann: Option<TsType>,
+        init: Option<Expr>,
+    },
+    /// `name = expr;` (assignment expression as statement)
+    Assign { name: String, value: Expr },
     If {
         cond: Expr,
         then_branch: Block,

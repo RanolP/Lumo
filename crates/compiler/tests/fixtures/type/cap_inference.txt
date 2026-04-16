@@ -1,0 +1,60 @@
+cap E { fn op(): A }
+fn f(h: E): A { handle E with h in E.op }
+---
+f : (E) -> A
+==========
+cap E { fn op(): A }
+fn g(): A / { E } { E.op }
+fn f(h: E): A { handle E with h in g() }
+---
+g : () -> A / {E[E]}
+f : (E) -> A
+==========
+cap E1 { fn op1(): A }
+cap E2 { fn op2(): B }
+fn f(h1: E1, h2: E2): A { handle E1 with h1 in handle E2 with h2 in E1.op1 }
+---
+f : (E1, E2) -> A
+==========
+cap E { fn op(): A }
+fn f(a: A): A / {} { a }
+---
+f : (A) -> A
+==========
+cap E { fn op(): A }
+fn inner(): A / { E } { E.op }
+fn outer(): A / {} { inner() }
+---
+ERROR: requires cap `E`
+==========
+cap E { fn op(): A }
+fn inner(): A / { E } { E.op }
+fn outer(h: E): A { handle E with h in inner() }
+---
+inner : () -> A / {E[E]}
+outer : (E) -> A
+==========
+cap E { fn op(): A }
+fn f(): A / { .. } { E.op }
+---
+f : () -> A / {E[E]}
+==========
+cap E { fn op(): A }
+cap E2 { fn op2(): B }
+fn f(): A / { .., E2 } { E.op }
+---
+f : () -> A / {E[E], E2[E2]}
+==========
+cap E { fn op(): A }
+fn g(): A { E.op }
+fn f(h: E): A { handle E with h in g() }
+---
+g : () -> A / {E[E]}
+f : (E) -> A
+==========
+cap E { fn op(): A }
+fn g(): A { E.op }
+fn f(): A { g() }
+---
+g : () -> A / {E[E]}
+f : () -> A / {E[E]}

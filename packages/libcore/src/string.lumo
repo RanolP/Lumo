@@ -25,3 +25,20 @@ impl String: Add {
 impl String: PartialEq {
   fn eq(self, other: Self): Bool = StrOps.str_eq(self, other)
 }
+
+impl String {
+  fn len(self): Number = StrOps.str_len(self)
+  fn char_at(self, idx: Number): String = StrOps.str_char_at(self, idx)
+  fn slice(self, start: Number, end: Number): String = StrOps.str_slice(self, start, end)
+  fn starts_with(self, prefix: String): Bool = StrOps.str_starts_with(self, prefix)
+  fn contains(self, sub: String): Bool = StrOps.str_contains(self, sub)
+  fn index_of(self, sub: String): Number = StrOps.str_index_of(self, sub)
+  fn trim(self): String = StrOps.str_trim(self)
+  fn char_code_at(self, idx: Number): Number = StrOps.char_code_at(self, idx)
+  fn replace_all(self, from: String, to: String): String = StrOps.str_replace_all(self, from, to)
+}
+
+impl Number {
+  fn to_string(self): String = StrOps.num_to_string(self)
+  fn to_char(self): String = StrOps.string_from_char_code(self)
+}

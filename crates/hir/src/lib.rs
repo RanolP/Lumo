@@ -140,7 +140,7 @@ pub enum Expr {
     Let { name: String, value: Box<Expr>, body: Box<Expr>, span: Span },
     Match { scrutinee: Box<Expr>, arms: Vec<MatchArm>, span: Span },
     Perform { cap: String, span: Span },
-    Handle { cap: String, for_type: Option<String>, handler: Box<Expr>, body: Box<Expr>, span: Span },
+    Handle { cap: String, type_args: Vec<String>, handler: Box<Expr>, body: Box<Expr>, span: Span },
     Bundle { entries: Vec<BundleEntry>, span: Span },
     Ann { expr: Box<Expr>, ty: Spanned<TypeExpr>, span: Span },
     Error { span: Span },
@@ -402,13 +402,13 @@ fn lower_cap_sig(cap: &lst::CapSig) -> CapRef {
     CapRef::parse(&cap.repr)
 }
 
-/// Parse a handle's cap string: "Add for Number" → ("Add", Some("Number")), "IO" → ("IO", None)
-fn parse_handle_cap(cap: &str) -> (String, Option<String>) {
+/// Parse a handle's cap string: "Add for Number" → ("Add", vec!["Number"]), "IO" → ("IO", vec![])
+fn parse_handle_cap(cap: &str) -> (String, Vec<String>) {
     let s = cap.trim();
     if let Some((name, ty)) = s.split_once(" for ") {
-        (name.trim().to_owned(), Some(ty.trim().to_owned()))
+        (name.trim().to_owned(), vec![ty.trim().to_owned()])
     } else {
-        (s.to_owned(), None)
+        (s.to_owned(), vec![])
     }
 }
 
@@ -510,10 +510,10 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
             span: *span,
         },
         lst::Expr::Handle { cap, handler, body, span } => {
-            let (cap_name, for_type) = parse_handle_cap(cap);
+            let (cap_name, type_args) = parse_handle_cap(cap);
             Expr::Handle {
                 cap: cap_name,
-                for_type,
+                type_args,
                 handler: Box::new(lower_expr(handler, ctx)),
                 body: Box::new(maybe_produce(lower_expr(body, ctx), *span)),
                 span: *span,

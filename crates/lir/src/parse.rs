@@ -511,23 +511,34 @@ impl Parser {
         if self.eat_sym(Symbol::RBrace) {
             return Some(CapRef::Pure);
         }
+        let is_infer = self.eat_sym(Symbol::DotDot);
+        if is_infer {
+            if self.eat_sym(Symbol::RBrace) {
+                return Some(CapRef::Infer(vec![]));
+            }
+            self.eat_sym(Symbol::Comma);
+        }
         let mut entries = Vec::new();
         loop {
             let (name, _) = self.expect_ident().ok()?;
-            let for_type = if self.peek_ident_text("for") {
+            let type_args = if self.peek_ident_text("for") {
                 self.advance(); // consume "for"
                 let (ty, _) = self.expect_ident().ok()?;
-                Some(Box::new(TypeExpr::Named(ty)))
+                vec![TypeExpr::Named(ty)]
             } else {
-                None
+                vec![]
             };
-            entries.push(TypeExpr::Cap { name, for_type });
+            entries.push(TypeExpr::Cap { name, type_args });
             if !self.eat_sym(Symbol::Comma) {
                 break;
             }
         }
         self.expect_sym(Symbol::RBrace).ok()?;
-        Some(CapRef::Named(entries))
+        if is_infer {
+            Some(CapRef::Infer(entries))
+        } else {
+            Some(CapRef::Named(entries))
+        }
     }
 
     fn parse_type_expr(&mut self) -> Option<Spanned<TypeExpr>> {
@@ -820,12 +831,19 @@ impl Parser {
         let start = self.expect_kw(Keyword::Perform).ok()?;
         let (cap, _) = self.expect_ident().ok()?;
         let id = self.alloc(start);
-        Some(Expr::Perform { id, cap })
+        Some(Expr::Perform { id, cap, type_args: vec![] })
     }
 
     fn parse_handle_expr(&mut self) -> Option<Expr> {
         let start = self.expect_kw(Keyword::Handle).ok()?;
         let (cap, _) = self.expect_ident().ok()?;
+        let type_args = if self.peek_ident_text("for") {
+            self.advance(); // consume "for"
+            let (ty, _) = self.expect_ident().ok()?;
+            vec![ty]
+        } else {
+            vec![]
+        };
         if !self.eat_ident("with") {
             self.error("expected `with`".into());
             return None;
@@ -837,6 +855,7 @@ impl Parser {
         Some(Expr::Handle {
             id,
             cap,
+            type_args,
             handler: Box::new(handler),
             body: Box::new(body),
         })

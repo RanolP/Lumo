@@ -46,6 +46,7 @@ pub fn highlight(source: &str) -> Vec<HighlightToken> {
             | TokenKind::Symbol(Symbol::Star)
             | TokenKind::Symbol(Symbol::FatArrow)
             | TokenKind::Symbol(Symbol::Dot)
+            | TokenKind::Symbol(Symbol::DotDot)
             | TokenKind::Symbol(Symbol::Plus)
             | TokenKind::Symbol(Symbol::Minus)
             | TokenKind::Symbol(Symbol::Percent)

@@ -64,6 +64,28 @@ impl Emitter {
                     ));
                 }
             }
+            Stmt::Let { name, export, type_ann, init } => {
+                let export = if *export { "export " } else { "" };
+                let ty = if target == EmitTarget::TypeScript {
+                    type_ann.as_ref()
+                        .map(|t| format!(": {}", self.emit_ts_type(t)))
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                if let Some(init_expr) = init {
+                    self.line(&format!(
+                        "{}let {}{} = {};",
+                        export, name, ty,
+                        self.emit_expr(init_expr, target)
+                    ));
+                } else {
+                    self.line(&format!("{}let {}{};", export, name, ty));
+                }
+            }
+            Stmt::Assign { name, value } => {
+                self.line(&format!("{} = {};", name, self.emit_expr(value, target)));
+            }
             Stmt::If {
                 cond,
                 then_branch,

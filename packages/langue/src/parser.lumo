@@ -1,5 +1,4 @@
 use libcore.prelude.{String, Number, Bool};
-use libcore.string.{StrOps};
 use libstd.list.{List};
 
 // ---------------------------------------------------------------------------
@@ -17,23 +16,23 @@ data ParseResult[A] {
 // Character classification
 // ---------------------------------------------------------------------------
 
-fn is_whitespace(c: String): Bool / { PartialEq for String } =
+fn is_whitespace(c: String): Bool =
   if c == " " { Bool.true }
   else if c == "\n" { Bool.true }
   else if c == "\t" { Bool.true }
   else if c == "\r" { Bool.true }
   else { Bool.false }
 
-fn is_alpha(c: String): Bool / { StrOps, PartialOrd for Number } {
-  let code = StrOps.char_code_at(c, 0);
+fn is_alpha(c: String): Bool {
+  let code = c.char_code_at(0);
   if code >= 97 { code <= 122 }
   else if code >= 65 { code <= 90 }
   else { Bool.false }
 }
 
-fn is_ident_start(c: String): Bool / { StrOps, PartialOrd for Number } = is_alpha(c)
+fn is_ident_start(c: String): Bool = is_alpha(c)
 
-fn is_ident_continue(c: String): Bool / { PartialEq for String, StrOps, PartialOrd for Number } =
+fn is_ident_continue(c: String): Bool =
   if is_alpha(c) { Bool.true }
   else if c == "_" { Bool.true }
   else { Bool.false }
@@ -48,28 +47,28 @@ fn state_src(st: ParseState): String =
 fn state_pos(st: ParseState): Number =
   match st { .mk(src, pos) => pos }
 
-fn state_eof(st: ParseState): Bool / { StrOps, PartialOrd for Number } =
-  match st { .mk(src, pos) => pos >= StrOps.str_len(src) }
+fn state_eof(st: ParseState): Bool =
+  match st { .mk(src, pos) => pos >= src.len() }
 
-fn state_peek(st: ParseState): String / { StrOps, PartialOrd for Number } =
+fn state_peek(st: ParseState): String =
   match st { .mk(src, pos) =>
-    if pos < StrOps.str_len(src) { StrOps.str_char_at(src, pos) }
+    if pos < src.len() { src.char_at(pos) }
     else { "" }
   }
 
-fn state_advance(st: ParseState, n: Number): ParseState / { Add for Number } =
+fn state_advance(st: ParseState, n: Number): ParseState =
   match st { .mk(src, pos) => ParseState.mk(src, pos + n) }
 
 // Skip whitespace and line comments (// ...)
-fn skip_ws(st: ParseState): ParseState / { StrOps, PartialEq for String, PartialOrd for Number, Add for Number } {
+fn skip_ws(st: ParseState): ParseState {
   if state_eof(st) { st }
   else {
     let c = state_peek(st);
     if is_whitespace(c) { skip_ws(state_advance(st, 1)) }
     else if c == "/" {
       let next_pos = state_pos(st) + 1;
-      if next_pos < StrOps.str_len(state_src(st)) {
-        if StrOps.str_char_at(state_src(st), next_pos) == "/" { skip_ws(skip_line(state_advance(st, 2))) }
+      if next_pos < state_src(st).len() {
+        if state_src(st).char_at(next_pos) == "/" { skip_ws(skip_line(state_advance(st, 2))) }
         else { st }
       } else { st }
     }
@@ -77,7 +76,7 @@ fn skip_ws(st: ParseState): ParseState / { StrOps, PartialEq for String, Partial
   }
 }
 
-fn skip_line(st: ParseState): ParseState / { Add for Number, PartialEq for String, StrOps, PartialOrd for Number } =
+fn skip_line(st: ParseState): ParseState =
   if state_eof(st) { st }
   else if state_peek(st) == "\n" { state_advance(st, 1) }
   else { skip_line(state_advance(st, 1)) }
@@ -86,59 +85,59 @@ fn skip_line(st: ParseState): ParseState / { Add for Number, PartialEq for Strin
 // Token-level parsing
 // ---------------------------------------------------------------------------
 
-fn parse_ident(st: ParseState): ParseResult[String] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+fn parse_ident(st: ParseState): ParseResult[String] {
   let st2 = skip_ws(st);
   if state_eof(st2) { ParseResult.err("expected identifier, got EOF", state_pos(st2)) }
   else if is_ident_start(state_peek(st2)) {
     let start = state_pos(st2);
     let end_st = scan_ident_rest(state_advance(st2, 1));
     let end_pos = state_pos(end_st);
-    ParseResult.ok(StrOps.str_slice(state_src(st2), start, end_pos), end_st)
+    ParseResult.ok(state_src(st2).slice(start, end_pos), end_st)
   }
   else { ParseResult.err("expected identifier, got '" + state_peek(st2) + "'", state_pos(st2)) }
 }
 
-fn scan_ident_rest(st: ParseState): ParseState / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } =
+fn scan_ident_rest(st: ParseState): ParseState =
   if state_eof(st) { st }
   else if is_ident_continue(state_peek(st)) { scan_ident_rest(state_advance(st, 1)) }
   else { st }
 
-fn expect(st: ParseState, expected: String): ParseResult[String] / { StrOps, Sub for Number, PartialOrd for Number, PartialEq for String, Add for String, Add for Number } {
+fn expect(st: ParseState, expected: String): ParseResult[String] {
   let st2 = skip_ws(st);
-  let len = StrOps.str_len(expected);
+  let len = expected.len();
   let src = state_src(st2);
   let pos = state_pos(st2);
-  let remaining = StrOps.str_len(src) - pos;
+  let remaining = src.len() - pos;
   if remaining >= len {
-    let slice = StrOps.str_slice(src, pos, pos + len);
+    let slice = src.slice(pos, pos + len);
     if slice == expected { ParseResult.ok(expected, state_advance(st2, len)) }
     else { ParseResult.err("expected '" + expected + "', got '" + slice + "'", pos) }
   }
   else { ParseResult.err("expected '" + expected + "'", pos) }
 }
 
-fn parse_quoted(st: ParseState): ParseResult[String] / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+fn parse_quoted(st: ParseState): ParseResult[String] {
   let st2 = skip_ws(st);
   if state_peek(st2) == "'" {
     let start = state_pos(st2) + 1;
     let end_st = scan_until_quote(state_advance(st2, 1));
     let end_pos = state_pos(end_st);
-    let content = StrOps.str_slice(state_src(st2), start, end_pos);
+    let content = state_src(st2).slice(start, end_pos);
     ParseResult.ok(content, state_advance(end_st, 1))
   }
   else { ParseResult.err("expected quoted literal", state_pos(st2)) }
 }
 
-fn scan_until_quote(st: ParseState): ParseState / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } =
+fn scan_until_quote(st: ParseState): ParseState =
   if state_eof(st) { st }
   else if state_peek(st) == "'" { st }
   else { scan_until_quote(state_advance(st, 1)) }
 
-fn peek_char(st: ParseState): String / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } =
+fn peek_char(st: ParseState): String =
   state_peek(skip_ws(st))
 
 // Check if the next non-whitespace chars form `Ident =`  (start of a rule)
-fn peek_is_rule_start(st: ParseState): Bool / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+fn peek_is_rule_start(st: ParseState): Bool {
   let st2 = skip_ws(st);
   if is_ident_start(state_peek(st2)) {
     let st3 = scan_ident_rest(state_advance(st2, 1));
@@ -149,13 +148,13 @@ fn peek_is_rule_start(st: ParseState): Bool / { Add for Number, PartialEq for St
 }
 
 // Classify a quoted literal as keyword or symbol
-fn classify_literal(text: String): TokenRef / { Add for Number, PartialOrd for Number, StrOps } =
+fn classify_literal(text: String): TokenRef =
   if has_alpha(text, 0) { TokenRef.keyword(text) }
   else { TokenRef.symbol(text) }
 
-fn has_alpha(s: String, i: Number): Bool / { StrOps, PartialOrd for Number, Add for Number } =
-  if i >= StrOps.str_len(s) { Bool.false }
-  else if is_alpha(StrOps.str_char_at(s, i)) { Bool.true }
+fn has_alpha(s: String, i: Number): Bool =
+  if i >= s.len() { Bool.false }
+  else if is_alpha(s.char_at(i)) { Bool.true }
   else { has_alpha(s, i + 1) }
 
 // ---------------------------------------------------------------------------
@@ -163,12 +162,12 @@ fn has_alpha(s: String, i: Number): Bool / { StrOps, PartialOrd for Number, Add 
 // ---------------------------------------------------------------------------
 
 // grammar = (token_def | rule)*
-fn parse_grammar(src: String): ParseResult[Grammar] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn parse_grammar(src: String): ParseResult[Grammar] {
   let st = ParseState.mk(src, 0);
   parse_grammar_items(st, List.nil, List.nil)
 }
 
-fn parse_grammar_items(st: ParseState, tokens: List[String], rules: List[Rule]): ParseResult[Grammar] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn parse_grammar_items(st: ParseState, tokens: List[String], rules: List[Rule]): ParseResult[Grammar] {
   let st2 = skip_ws(st);
   if state_eof(st2) { ParseResult.ok(Grammar.mk(list_reverse_string(tokens), list_reverse_rule(rules)), st2) }
   else if state_peek(st2) == "@" {
@@ -188,13 +187,13 @@ fn parse_grammar_items(st: ParseState, tokens: List[String], rules: List[Rule]):
 }
 
 // @token Ident StringLit NumberLit
-fn parse_token_def(st: ParseState): ParseResult[List[String]] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
+fn parse_token_def(st: ParseState): ParseResult[List[String]] =
   match expect(st, "@token") {
     .err(msg, pos) => ParseResult.err(msg, pos),
     .ok(_, st2) => parse_token_names(st2, List.nil)
   }
 
-fn parse_token_names(st: ParseState, acc: List[String]): ParseResult[List[String]] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+fn parse_token_names(st: ParseState, acc: List[String]): ParseResult[List[String]] {
   let st2 = skip_ws(st);
   if state_eof(st2) { ParseResult.ok(list_reverse_string(acc), st2) }
   // Stop if next thing is a rule start (Ident =) or another @token
@@ -210,7 +209,7 @@ fn parse_token_names(st: ParseState, acc: List[String]): ParseResult[List[String
 }
 
 // Rule = Ident '=' rule_body
-fn parse_rule(st: ParseState): ParseResult[Rule] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
+fn parse_rule(st: ParseState): ParseResult[Rule] =
   match parse_ident(st) {
     .err(msg, pos) => ParseResult.err(msg, pos),
     .ok(name, st2) =>
@@ -225,17 +224,17 @@ fn parse_rule(st: ParseState): ParseResult[Rule] / { Add for String, Add for Num
   }
 
 // Determine if rule body is alternatives (starts with |) or sequence
-fn parse_rule_body(st: ParseState, rule_name: String): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn parse_rule_body(st: ParseState, rule_name: String): ParseResult[RuleBody] {
   let st2 = skip_ws(st);
   if peek_char(st2) == "|" { parse_alternatives(st2) }
   else { parse_sequence(st2) }
 }
 
 // Alternatives: | A | B | C
-fn parse_alternatives(st: ParseState): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps } =
+fn parse_alternatives(st: ParseState): ParseResult[RuleBody] =
   parse_alt_items(st, List.nil)
 
-fn parse_alt_items(st: ParseState, acc: List[Alternative]): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+fn parse_alt_items(st: ParseState, acc: List[Alternative]): ParseResult[RuleBody] {
   let st2 = skip_ws(st);
   if peek_char(st2) == "|" {
     let st3 = state_advance(skip_ws(st2), 1);
@@ -259,10 +258,10 @@ fn parse_alt_items(st: ParseState, acc: List[Alternative]): ParseResult[RuleBody
 }
 
 // Sequence: elem elem elem ...
-fn parse_sequence(st: ParseState): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
+fn parse_sequence(st: ParseState): ParseResult[RuleBody] =
   parse_seq_elements(st, List.nil)
 
-fn parse_seq_elements(st: ParseState, acc: List[Element]): ParseResult[RuleBody] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn parse_seq_elements(st: ParseState, acc: List[Element]): ParseResult[RuleBody] {
   let st2 = skip_ws(st);
   if state_eof(st2) { ParseResult.ok(RuleBody.sequence(list_reverse_elem(acc)), st2) }
   // Stop at things that indicate end of this sequence
@@ -275,7 +274,7 @@ fn parse_seq_elements(st: ParseState, acc: List[Element]): ParseResult[RuleBody]
   }
 }
 
-fn is_seq_terminator(st: ParseState): Bool / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } {
+fn is_seq_terminator(st: ParseState): Bool {
   let c = peek_char(st);
   if c == ")" { Bool.true }
   // Check for next rule start or EOF
@@ -285,13 +284,13 @@ fn is_seq_terminator(st: ParseState): Bool / { Add for Number, PartialEq for Str
 }
 
 // Parse a single element with optional postfix (? or *)
-fn parse_element(st: ParseState): ParseResult[Element] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } =
+fn parse_element(st: ParseState): ParseResult[Element] =
   match parse_atom(st) {
     .err(msg, pos) => ParseResult.err(msg, pos),
     .ok(elem, st2) => apply_postfix_elem(elem, st2)
   }
 
-fn apply_postfix_elem(elem: Element, st: ParseState): ParseResult[Element] / { Add for Number, PartialEq for String, PartialOrd for Number, StrOps } =
+fn apply_postfix_elem(elem: Element, st: ParseState): ParseResult[Element] =
   // Don't skip whitespace before postfix — ? and * bind tightly
   if state_eof(st) { ParseResult.ok(elem, st) }
   else if state_peek(st) == "?" { apply_postfix_elem(Element.optional(elem), state_advance(st, 1)) }
@@ -299,7 +298,7 @@ fn apply_postfix_elem(elem: Element, st: ParseState): ParseResult[Element] / { A
   else { ParseResult.ok(elem, st) }
 
 // Parse an atom: quoted literal, grouped sequence, or ident (possibly labeled)
-fn parse_atom(st: ParseState): ParseResult[Element] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn parse_atom(st: ParseState): ParseResult[Element] {
   let st2 = skip_ws(st);
   if state_peek(st2) == "'" {
     // Quoted token literal: 'data', '(', ':='
@@ -341,7 +340,7 @@ fn parse_atom(st: ParseState): ParseResult[Element] / { Add for String, Add for 
   }
 }
 
-fn parse_group_elements(st: ParseState, acc: List[Element]): ParseResult[List[Element]] / { Add for String, Add for Number, PartialEq for String, PartialOrd for Number, StrOps, Sub for Number } {
+fn parse_group_elements(st: ParseState, acc: List[Element]): ParseResult[List[Element]] {
   let st2 = skip_ws(st);
   if state_peek(st2) == ")" { ParseResult.ok(list_reverse_elem(acc), st2) }
   else {
@@ -356,12 +355,12 @@ fn parse_group_elements(st: ParseState, acc: List[Element]): ParseResult[List[El
 // Post-parse resolution: resolve identifiers to token refs vs node refs
 // ---------------------------------------------------------------------------
 
-fn resolve_grammar(g: Grammar): Grammar / { PartialEq for String } =
+fn resolve_grammar(g: Grammar): Grammar =
   match g { .mk(token_defs, rules) =>
     Grammar.mk(token_defs, resolve_rules(token_defs, rules))
   }
 
-fn resolve_rules(token_defs: List[String], rules: List[Rule]): List[Rule] / { PartialEq for String } =
+fn resolve_rules(token_defs: List[String], rules: List[Rule]): List[Rule] =
   match rules {
     .nil => List.nil,
     .cons(rule, rest) =>
@@ -371,20 +370,20 @@ fn resolve_rules(token_defs: List[String], rules: List[Rule]): List[Rule] / { Pa
       }}
   }
 
-fn resolve_body(token_defs: List[String], body: RuleBody): RuleBody / { PartialEq for String } =
+fn resolve_body(token_defs: List[String], body: RuleBody): RuleBody =
   match body {
     .sequence(elems) => RuleBody.sequence(resolve_elements(token_defs, elems)),
     .alternatives(alts) => body
   }
 
-fn resolve_elements(token_defs: List[String], elems: List[Element]): List[Element] / { PartialEq for String } =
+fn resolve_elements(token_defs: List[String], elems: List[Element]): List[Element] =
   match elems {
     .nil => List.nil,
     .cons(elem, rest) =>
       List.cons(resolve_element(token_defs, elem), resolve_elements(token_defs, rest))
   }
 
-fn resolve_element(token_defs: List[String], elem: Element): Element / { PartialEq for String } =
+fn resolve_element(token_defs: List[String], elem: Element): Element =
   match elem {
     .token(t) => elem,
     .node(ref) =>
@@ -398,7 +397,7 @@ fn resolve_element(token_defs: List[String], elem: Element): Element / { Partial
     .group(elems) => Element.group(resolve_elements(token_defs, elems))
   }
 
-fn list_contains_string(xs: List[String], target: String): Bool / { PartialEq for String } =
+fn list_contains_string(xs: List[String], target: String): Bool =
   match xs {
     .nil => Bool.false,
     .cons(x, rest) =>

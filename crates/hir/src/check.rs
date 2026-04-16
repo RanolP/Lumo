@@ -304,12 +304,12 @@ impl CheckCtx {
             TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => {
                 self.check_type_expr_with_generics(inner, span, generics);
             }
-            TypeExpr::Cap { name, for_type } => {
+            TypeExpr::Cap { name, type_args } => {
                 if !self.caps.contains_key(name) {
                     self.error(span, format!("unknown capability `{name}`"));
                 }
-                if let Some(ty) = for_type {
-                    self.check_type_expr_with_generics(ty, span, generics);
+                for arg in type_args {
+                    self.check_type_expr_with_generics(arg, span, generics);
                 }
             }
         }
@@ -317,7 +317,7 @@ impl CheckCtx {
 
     fn check_cap_ref(&mut self, cap: &Option<CapRef>, span: Span) {
         use lumo_types::CapRef;
-        if let Some(CapRef::Named(entries)) = cap {
+        if let Some(CapRef::Named(entries) | CapRef::Infer(entries)) = cap {
             for entry in entries {
                 let name = entry.cap_name();
                 if !self.caps.contains_key(name) {

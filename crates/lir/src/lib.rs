@@ -145,8 +145,8 @@ pub enum Expr {
     Let { id: ExprId, name: String, value: Box<Expr>, body: Box<Expr> },
     Match { id: ExprId, scrutinee: Box<Expr>, arms: Vec<MatchArm> },
     Unroll { id: ExprId, expr: Box<Expr> },
-    Perform { id: ExprId, cap: String },
-    Handle { id: ExprId, cap: String, handler: Box<Expr>, body: Box<Expr> },
+    Perform { id: ExprId, cap: String, type_args: Vec<String> },
+    Handle { id: ExprId, cap: String, type_args: Vec<String>, handler: Box<Expr>, body: Box<Expr> },
     Member { id: ExprId, object: Box<Expr>, field: String },
     Ann { id: ExprId, expr: Box<Expr>, ty: TypeExpr },
     Error { id: ExprId },
@@ -480,6 +480,7 @@ fn lower_expr(ctx: &mut LoweringCtx, expr: &hir::Expr) -> Expr {
                         object: Box::new(Expr::Perform {
                             id: ctx.alloc(span),
                             cap: owner.clone(),
+                            type_args: vec![],
                         }),
                         field: member.clone(),
                     };
@@ -521,15 +522,21 @@ fn lower_expr(ctx: &mut LoweringCtx, expr: &hir::Expr) -> Expr {
         hir::Expr::Perform { cap, .. } => Expr::Perform {
             id: ctx.alloc(span),
             cap: cap.clone(),
+            type_args: vec![],
         },
         hir::Expr::Handle {
-            cap, handler, body, ..
+            cap,
+            type_args,
+            handler,
+            body,
+            ..
         } => {
             let handler = Box::new(lower_expr(ctx, handler));
             let body = Box::new(lower_expr(ctx, body));
             Expr::Handle {
                 id: ctx.alloc(span),
                 cap: cap.clone(),
+                type_args: type_args.clone(),
                 handler,
                 body,
             }

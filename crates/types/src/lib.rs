@@ -40,8 +40,8 @@ pub enum TypeExpr {
     Produce(Box<TypeExpr>),
     /// Thunked computation: `thunk T`
     Thunk(Box<TypeExpr>),
-    /// Capability type: `Add for Number`, or bare `IO`
-    Cap { name: String, for_type: Option<Box<TypeExpr>> },
+    /// Capability type: `Add[Number]`, or bare `IO`
+    Cap { name: String, type_args: Vec<TypeExpr> },
 }
 
 impl TypeExpr {
@@ -68,8 +68,11 @@ impl TypeExpr {
             }
             TypeExpr::Produce(inner) => format!("produce {}", inner.display()),
             TypeExpr::Thunk(inner) => format!("thunk {}", inner.display()),
-            TypeExpr::Cap { name, for_type: Some(ty) } => format!("{name} for {}", ty.display()),
-            TypeExpr::Cap { name, for_type: None } => name.clone(),
+            TypeExpr::Cap { name, type_args } if !type_args.is_empty() => {
+                let args_str = type_args.iter().map(|a| a.display()).collect::<Vec<_>>().join(", ");
+                format!("{name}[{args_str}]")
+            }
+            TypeExpr::Cap { name, .. } => name.clone(),
         }
     }
 
@@ -91,8 +94,8 @@ impl TypeExpr {
                 head == target || args.iter().any(|a| a.references_name(target))
             }
             TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => inner.references_name(target),
-            TypeExpr::Cap { name, for_type } => {
-                name == target || for_type.as_ref().map_or(false, |t| t.references_name(target))
+            TypeExpr::Cap { name, type_args } => {
+                name == target || type_args.iter().any(|a| a.references_name(target))
             }
         }
     }
@@ -110,20 +113,31 @@ impl TypeExpr {
         }
     }
 
-    /// For Cap: returns the for_type if present.
+    /// For Cap: returns the first type arg (the for_type) if present.
     pub fn cap_for_type(&self) -> Option<&TypeExpr> {
         match self {
-            TypeExpr::Cap { for_type, .. } => for_type.as_deref(),
+            TypeExpr::Cap { type_args, .. } => type_args.first(),
             _ => None,
         }
     }
 
-    /// Mangled runtime parameter name: `__cap_Add_Number` or `__cap_IO`.
+    /// For Cap: returns all type args.
+    pub fn cap_type_args(&self) -> &[TypeExpr] {
+        match self {
+            TypeExpr::Cap { type_args, .. } => type_args,
+            _ => &[],
+        }
+    }
+
+    /// Runtime parameter name: `__cap_Add_Number` or `__cap_IO`.
     pub fn cap_mangled_param(&self) -> String {
         match self {
-            TypeExpr::Cap { name, for_type: Some(ty) } => format!("__cap_{}_{}", name, ty.display()),
-            TypeExpr::Cap { name, for_type: None } => format!("__cap_{}", name),
-            TypeExpr::Named(name) => format!("__cap_{}", name),
+            TypeExpr::Cap { name, type_args } if !type_args.is_empty() => {
+                let args = type_args.iter().map(|a| a.display()).collect::<Vec<_>>().join("_");
+                format!("__cap_{name}_{args}")
+            }
+            TypeExpr::Cap { name, .. } => format!("__cap_{name}"),
+            TypeExpr::Named(name) => format!("__cap_{name}"),
             _ => "__cap_unknown".to_string(),
         }
     }
@@ -192,7 +206,7 @@ fn split_type_args(text: &str) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 /// A structured capability annotation.
-/// Each entry is a `TypeExpr::Cap { name, for_type }`.
+/// Each entry is a `TypeExpr::Cap { name, type_args }`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CapRef {
     /// Pure function (no capability).
@@ -200,6 +214,10 @@ pub enum CapRef {
     /// Effectful function requiring one or more capabilities.
     /// Each element is a `TypeExpr::Cap`.
     Named(Vec<TypeExpr>),
+    /// Infer capabilities from function body (open cap set).
+    /// Optional minimum caps are included in the inferred set.
+    /// `/ { .. }` → `Infer(vec![])`, `/ { .., IO }` → `Infer(vec![IO])`.
+    Infer(Vec<TypeExpr>),
 }
 
 impl CapRef {
@@ -213,27 +231,39 @@ impl CapRef {
         if s.is_empty() {
             CapRef::Pure
         } else {
-            let entries: Vec<TypeExpr> = s
-                .split(',')
-                .filter_map(|c| {
-                    let c = c.trim();
-                    if c.is_empty() {
-                        return None;
-                    }
-                    if let Some((name, ty)) = c.split_once(" for ") {
-                        Some(TypeExpr::Cap {
-                            name: name.trim().to_owned(),
-                            for_type: Some(Box::new(TypeExpr::parse(ty.trim())?)),
-                        })
-                    } else {
-                        Some(TypeExpr::Cap {
-                            name: c.to_owned(),
-                            for_type: None,
-                        })
-                    }
-                })
-                .collect();
-            if entries.is_empty() {
+            // Check for `..` (infer marker)
+            let (is_infer, s) = if let Some(rest) = s.strip_prefix("..") {
+                let rest = rest.trim_start().strip_prefix(',').unwrap_or(rest);
+                (true, rest.trim())
+            } else {
+                (false, s)
+            };
+            let entries: Vec<TypeExpr> = if s.is_empty() {
+                vec![]
+            } else {
+                s.split(',')
+                    .filter_map(|c| {
+                        let c = c.trim();
+                        if c.is_empty() {
+                            return None;
+                        }
+                        if let Some((name, ty)) = c.split_once(" for ") {
+                            Some(TypeExpr::Cap {
+                                name: name.trim().to_owned(),
+                                type_args: vec![TypeExpr::parse(ty.trim())?],
+                            })
+                        } else {
+                            Some(TypeExpr::Cap {
+                                name: c.to_owned(),
+                                type_args: vec![],
+                            })
+                        }
+                    })
+                    .collect()
+            };
+            if is_infer {
+                CapRef::Infer(entries)
+            } else if entries.is_empty() {
                 CapRef::Pure
             } else {
                 CapRef::Named(entries)
@@ -245,7 +275,7 @@ impl CapRef {
     pub fn name(&self) -> Option<&str> {
         match self {
             CapRef::Pure => None,
-            CapRef::Named(entries) => entries.first().map(|e| e.cap_name()),
+            CapRef::Named(entries) | CapRef::Infer(entries) => entries.first().map(|e| e.cap_name()),
         }
     }
 
@@ -253,7 +283,7 @@ impl CapRef {
     pub fn cap_names(&self) -> Vec<&str> {
         match self {
             CapRef::Pure => vec![],
-            CapRef::Named(entries) => {
+            CapRef::Named(entries) | CapRef::Infer(entries) => {
                 let mut names = Vec::new();
                 for e in entries {
                     let name = e.cap_name();
@@ -266,16 +296,27 @@ impl CapRef {
         }
     }
 
-    /// Returns all cap type entries.
+    /// Returns all cap type entries (minimum caps for `Infer`).
     pub fn entries(&self) -> &[TypeExpr] {
         match self {
             CapRef::Pure => &[],
-            CapRef::Named(entries) => entries,
+            CapRef::Named(entries) | CapRef::Infer(entries) => entries,
         }
     }
 
+    /// Returns the mangled runtime parameter names for all cap entries.
+    /// e.g. `[Add[Number], IO]` → `["__cap_Add_Number", "__cap_IO"]`
+    pub fn cap_mangled_params(&self) -> Vec<String> {
+        self.entries().iter().map(|e| e.cap_mangled_param()).collect()
+    }
+
     pub fn is_effectful(&self) -> bool {
-        matches!(self, CapRef::Named(_))
+        matches!(self, CapRef::Named(_) | CapRef::Infer(_))
+    }
+
+    /// Whether this cap annotation is open (infer remaining caps from body).
+    pub fn is_open(&self) -> bool {
+        matches!(self, CapRef::Infer(_))
     }
 }
 
@@ -596,11 +637,11 @@ mod tests {
     }
 
     fn bare_cap(name: &str) -> TypeExpr {
-        TypeExpr::Cap { name: name.to_owned(), for_type: None }
+        TypeExpr::Cap { name: name.to_owned(), type_args: vec![] }
     }
 
     fn typed_cap(name: &str, ty: &str) -> TypeExpr {
-        TypeExpr::Cap { name: name.to_owned(), for_type: Some(Box::new(TypeExpr::Named(ty.to_owned()))) }
+        TypeExpr::Cap { name: name.to_owned(), type_args: vec![TypeExpr::Named(ty.to_owned())] }
     }
 
     #[test]
@@ -649,7 +690,7 @@ mod tests {
     #[test]
     fn cap_type_expr_display() {
         assert_eq!(bare_cap("IO").display(), "IO");
-        assert_eq!(typed_cap("Add", "Number").display(), "Add for Number");
+        assert_eq!(typed_cap("Add", "Number").display(), "Add[Number]");
     }
 
     #[test]

@@ -63,7 +63,7 @@ fn main() { IO.println("Hello, World!") }"#,
     let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
 
     assert!(
-        js.contains("function main()"),
+        js.contains("function main("),
         "JS should contain main function, got:\n{js}"
     );
     assert!(
@@ -132,7 +132,7 @@ fn main() {
     let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
 
     assert!(
-        js.contains("function main()"),
+        js.contains("function main("),
         "JS should contain main, got:\n{js}"
     );
     assert!(
@@ -167,8 +167,67 @@ fn main() {
     let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
 
     assert!(
-        js.contains("function main()"),
+        js.contains("function main("),
         "JS should contain main, got:\n{js}"
+    );
+}
+
+#[test]
+fn value_method_dispatch_inherent() {
+    // "hello".len() should dispatch to impl String { fn len(self) } from libcore/string.lumo
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"use libcore.prelude.{String, Number};
+
+fn greet_len(): Number = "Hello".len()
+"#,
+    );
+
+    let lir = q
+        .compile_with_deps(&["main.lumo"], stdlib_resolver)
+        .expect("compilation should succeed");
+    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+
+    // After rewrite, "Hello".len() → String.len("Hello") → StrOps.str_len("Hello")
+    assert!(
+        js.contains("function greet_len("),
+        "JS should contain greet_len function, got:\n{js}"
+    );
+    // The impl const "String" should exist with a len method
+    assert!(
+        js.contains("String") && js.contains("len"),
+        "JS should reference String.len, got:\n{js}"
+    );
+}
+
+#[test]
+fn value_method_dispatch_typeclass() {
+    // 1.add(2) should dispatch to impl Number: Add { fn add(self, other) }
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"use libcore.prelude.{Number};
+use libcore.number.{NumOps};
+use libcore.ops.{Add};
+
+fn sum(): Number = 1.add(2)
+"#,
+    );
+
+    let lir = q
+        .compile_with_deps(&["main.lumo"], stdlib_resolver)
+        .expect("compilation should succeed");
+    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+
+    assert!(
+        js.contains("function sum("),
+        "JS should contain sum function, got:\n{js}"
+    );
+    // Should dispatch to __impl_Number_Add.add(1, 2)
+    assert!(
+        js.contains("__impl_Number_Add"),
+        "JS should reference __impl_Number_Add, got:\n{js}"
     );
 }
 

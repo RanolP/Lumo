@@ -336,15 +336,25 @@ fn print_expr(p: &mut Printer, expr: &Expr) {
             p.push("unroll ");
             print_expr_atom(p, inner);
         }
-        Expr::Perform { cap, .. } => {
+        Expr::Perform { cap, type_args, .. } => {
             p.push("perform ");
             p.push(cap);
+            if !type_args.is_empty() {
+                p.push("[");
+                p.push(&type_args.join(", "));
+                p.push("]");
+            }
         }
         Expr::Handle {
-            cap, handler, body, ..
+            cap, type_args, handler, body, ..
         } => {
             p.push("handle ");
             p.push(cap);
+            if !type_args.is_empty() {
+                p.push("[");
+                p.push(&type_args.join(", "));
+                p.push("]");
+            }
             p.push(" with ");
             print_expr(p, handler);
             p.push(" in");
@@ -459,6 +469,14 @@ fn print_cap_annotation(p: &mut Printer, cap: &Option<CapRef>) {
                     p.push(&entry.display());
                 }
                 p.push("}");
+            }
+            CapRef::Infer(entries) => {
+                p.push(" / { ..");
+                for entry in entries {
+                    p.push(", ");
+                    p.push(&entry.display());
+                }
+                p.push(" }");
             }
         }
     }

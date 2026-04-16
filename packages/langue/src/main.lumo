@@ -1,62 +1,15 @@
 use libcore.prelude.{String, Number, Bool};
 use libcore.cmp.{Ordering, PartialEq, PartialOrd};
 use libcore.ops.{Add, Sub};
-use libcore.string.{StrOps};
 use libcore.number.{NumOps};
-use libstd.io.{IO, __println};
-use libstd.fs.{FS, __read_file, __write_file};
-use libstd.process.{Process, __arg_at, __args_count, __exit_process, __panic_with};
+use libstd.io.{IO};
+use libstd.fs.{FS};
+use libstd.process.{Process};
 use libstd.list.{List};
-use libcore.number.{__num_add, __num_sub, __num_mul, __num_div, __num_mod, __num_neg, __num_floor, __num_eq, __num_cmp};
-use libcore.string.{__str_len, __str_char_at, __str_slice, __str_concat, __str_eq, __str_starts_with, __str_contains, __str_index_of, __str_trim, __char_code_at, __string_from_char_code, __str_replace_all, __num_to_string};
 
-fn main() {
-  handle NumOps with bundle {
-    fn num_add(a, b) { __num_add(a, b) };
-    fn num_sub(a, b) { __num_sub(a, b) };
-    fn num_mul(a, b) { __num_mul(a, b) };
-    fn num_div(a, b) { __num_div(a, b) };
-    fn num_mod(a, b) { __num_mod(a, b) };
-    fn num_neg(a) { __num_neg(a) };
-    fn num_floor(a) { __num_floor(a) };
-    fn num_eq(a, b) { __num_eq(a, b) };
-    fn num_cmp(a, b) { __num_cmp(a, b) }
-  } in
-  handle StrOps with bundle {
-    fn str_len(s) { __str_len(s) };
-    fn str_char_at(s, idx) { __str_char_at(s, idx) };
-    fn str_slice(s, start, end) { __str_slice(s, start, end) };
-    fn str_concat(a, b) { __str_concat(a, b) };
-    fn str_eq(a, b) { __str_eq(a, b) };
-    fn str_starts_with(s, prefix) { __str_starts_with(s, prefix) };
-    fn str_contains(s, sub) { __str_contains(s, sub) };
-    fn str_index_of(s, sub) { __str_index_of(s, sub) };
-    fn str_trim(s) { __str_trim(s) };
-    fn char_code_at(s, idx) { __char_code_at(s, idx) };
-    fn string_from_char_code(code) { __string_from_char_code(code) };
-    fn str_replace_all(s, from, to) { __str_replace_all(s, from, to) };
-    fn num_to_string(n) { __num_to_string(n) }
-  } in
-  handle Add for Number with bundle { fn add(a, b) { __num_add(a, b) } } in
-  handle Add for String with bundle { fn add(a, b) { __str_concat(a, b) } } in
-  handle Sub for Number with bundle { fn sub(a, b) { __num_sub(a, b) } } in
-  handle PartialEq for String with bundle { fn eq(a, b) { __str_eq(a, b) } } in
-  handle PartialOrd for Number with bundle { fn cmp(a, b) { __num_cmp(a, b) } } in
-  handle IO with bundle { fn println(msg) { __println(msg) } } in
-  handle FS with bundle {
-    fn read_file(path) { __read_file(path) };
-    fn write_file(path, content) { __write_file(path, content) }
-  } in
-  handle Process with bundle {
-    fn arg_at(idx) { __arg_at(idx) };
-    fn args_count() { __args_count() };
-    fn exit_process(code) { __exit_process(code) };
-    fn panic_with(msg) { __panic_with(msg) }
-  } in
-  run()
-}
+fn main() = run()
 
-fn run() / { StrOps, Add for String, Add for Number, Sub for Number, PartialEq for String, PartialOrd for Number, IO, FS, Process } =
+fn run() =
   if Process.args_count() < 2 {
     Process.panic_with("Usage: langue <input.langue> [output_dir]")
   } else {
@@ -73,11 +26,11 @@ fn run() / { StrOps, Add for String, Add for Number, Sub for Number, PartialEq f
         }}
       },
       .err(msg, pos) =>
-        Process.panic_with("Parse error at position " + StrOps.num_to_string(pos) + ": " + msg)
+        Process.panic_with("Parse error at position " + pos.to_string() + ": " + msg)
     }
   }
 
-fn run_generate(file: String, count: Number, syntax_kind_code: String, ast_code: String) / { StrOps, Add for String, PartialOrd for Number, IO, FS, Process } =
+fn run_generate(file: String, count: Number, syntax_kind_code: String, ast_code: String) =
   if Process.args_count() < 3 {
     write_output(".", file, count, syntax_kind_code, ast_code)
   } else {
@@ -85,17 +38,17 @@ fn run_generate(file: String, count: Number, syntax_kind_code: String, ast_code:
     write_output(out_dir, file, count, syntax_kind_code, ast_code)
   }
 
-fn write_output(out_dir: String, file: String, count: Number, syntax_kind_code: String, ast_code: String) / { StrOps, Add for String, IO, FS } {
+fn write_output(out_dir: String, file: String, count: Number, syntax_kind_code: String, ast_code: String) {
   let sk_path = out_dir + "/syntax_kind.rs";
   let ast_path = out_dir + "/ast.rs";
   let w1 = FS.write_file(sk_path, syntax_kind_code);
   let w2 = FS.write_file(ast_path, ast_code);
-  let p1 = IO.println("Parsed " + StrOps.num_to_string(count) + " rules from " + file);
+  let p1 = IO.println("Parsed " + count.to_string() + " rules from " + file);
   let p2 = IO.println("Wrote " + sk_path);
   IO.println("Wrote " + ast_path)
 }
 
-fn list_length_rules(xs: List[Rule]): Number / { Add for Number } =
+fn list_length_rules(xs: List[Rule]): Number =
   match xs {
     .nil => 0,
     .cons(_, rest) => 1 + list_length_rules(rest)

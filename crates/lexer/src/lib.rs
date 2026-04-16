@@ -59,6 +59,7 @@ pub enum Symbol {
     Star,
     FatArrow,
     Dot,
+    DotDot,
     Plus,
     Minus,
     Percent,
@@ -384,6 +385,15 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
             index += 2;
             output.tokens.push(LosslessToken {
                 kind: LosslessTokenKind::Symbol(Symbol::PipePipe),
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+        if starts_with_at(input, index, "..") {
+            index += 2;
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Symbol(Symbol::DotDot),
                 span: Span::new(start, index),
                 text: input[start..index].to_owned(),
             });

@@ -275,6 +275,7 @@ fn render_token(token: &lumo_compiler::lexer::Token) -> String {
         TokenKind::Symbol(Symbol::Star) => "sym(*)".to_owned(),
         TokenKind::Symbol(Symbol::FatArrow) => "sym(=>)".to_owned(),
         TokenKind::Symbol(Symbol::Dot) => "sym(.)".to_owned(),
+        TokenKind::Symbol(Symbol::DotDot) => "sym(..)".to_owned(),
         TokenKind::Symbol(Symbol::Plus) => "sym(+)".to_owned(),
         TokenKind::Symbol(Symbol::Minus) => "sym(-)".to_owned(),
         TokenKind::Symbol(Symbol::Percent) => "sym(%)".to_owned(),

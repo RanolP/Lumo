@@ -12,7 +12,7 @@
 #[extern(name = "str.replace_all")] extern fn __str_replace_all(s: String, from: String, to: String): String;
 #[extern(name = "num.to_string")] extern fn __num_to_string(n: Number): String;
 
-impl String: StrOps {
+impl StrOps {
   fn str_len(s: String): Number = __str_len(s)
   fn str_char_at(s: String, idx: Number): String = __str_char_at(s, idx)
   fn str_slice(s: String, start: Number, end: Number): String = __str_slice(s, start, end)

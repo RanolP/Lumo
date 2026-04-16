@@ -39,6 +39,12 @@ fn lower_stmt_expr_bodies(stmt: &mut Stmt) {
                 lower_expr(expr);
             }
         }
+        Stmt::Let { init, .. } => {
+            if let Some(init) = init {
+                lower_expr(init);
+            }
+        }
+        Stmt::Assign { value, .. } => lower_expr(value),
         Stmt::TypeAlias(_) | Stmt::Interface(_) => {}
     }
 }
@@ -134,6 +140,12 @@ fn lift_stmt(stmt: &mut Stmt) {
                 lift_expr(expr);
             }
         }
+        Stmt::Let { init, .. } => {
+            if let Some(init) = init {
+                lift_expr(init);
+            }
+        }
+        Stmt::Assign { value, .. } => lift_expr(value),
         Stmt::TypeAlias(_) | Stmt::Interface(_) => {}
     }
 }
@@ -255,25 +267,59 @@ fn try_flatten(stmt: &mut Stmt) -> Option<Vec<Stmt>> {
         }
         Stmt::Const(decl) => {
             let (params, mut body_stmts, args) = take_iife(&mut decl.init)?;
-            // Rewrite final `return e` → `const <outer_name> = e`
             let outer_name = std::mem::take(&mut decl.name);
             let outer_export = decl.export;
             let outer_type_ann = decl.type_ann.take();
-            if let Some(last) = body_stmts.last_mut() {
-                if let Stmt::Return(ret_expr) = last {
-                    *last = Stmt::Const(ConstDecl {
-                        export: outer_export,
-                        name: outer_name,
-                        type_ann: outer_type_ann,
-                        init: ret_expr.take().unwrap_or(Expr::Undefined),
-                    });
-                }
+            // Rewrite ALL leaf `return e` → `<outer_name> = e` in the body.
+            // This handles both simple final returns and returns inside if/else branches.
+            if !rewrite_returns_to_assign(&mut body_stmts, &outer_name) {
+                return None; // bail if we can't safely rewrite
             }
-            let mut out = param_const_stmts(params, args);
+            // Insert `let outer_name;` at the top
+            let mut out = vec![Stmt::Let {
+                name: outer_name.clone(),
+                export: outer_export,
+                type_ann: outer_type_ann,
+                init: None,
+            }];
+            out.extend(param_const_stmts(params, args));
             out.extend(body_stmts);
             Some(out)
         }
         _ => None,
+    }
+}
+
+/// Rewrite all leaf `return expr` in a statement list to `name = expr`.
+/// Returns true if successful, false if there's a `return` that can't be safely rewritten.
+fn rewrite_returns_to_assign(stmts: &mut Vec<Stmt>, name: &str) -> bool {
+    if stmts.is_empty() {
+        return false;
+    }
+    let last_idx = stmts.len() - 1;
+    let last = &mut stmts[last_idx];
+    match last {
+        Stmt::Return(ret_expr) => {
+            *last = Stmt::Assign {
+                name: name.to_owned(),
+                value: ret_expr.take().unwrap_or(Expr::Undefined),
+            };
+            true
+        }
+        Stmt::If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            let ok_then = rewrite_returns_to_assign(&mut then_branch.stmts, name);
+            let ok_else = if let Some(eb) = else_branch {
+                rewrite_returns_to_assign(&mut eb.stmts, name)
+            } else {
+                true // no else branch is OK
+            };
+            ok_then && ok_else
+        }
+        _ => false, // last stmt is not a return or if/else — bail
     }
 }
 
@@ -360,6 +406,8 @@ fn rename_idents_in_stmt(stmt: &mut Stmt, map: &std::collections::HashMap<String
     match stmt {
         Stmt::Expr(expr) | Stmt::Return(Some(expr)) => rename_idents_in_expr(expr, map),
         Stmt::Const(decl) => rename_idents_in_expr(&mut decl.init, map),
+        Stmt::Let { init: Some(init), .. } => rename_idents_in_expr(init, map),
+        Stmt::Assign { value, .. } => rename_idents_in_expr(value, map),
         Stmt::If { cond, then_branch, else_branch } => {
             rename_idents_in_expr(cond, map);
             for s in &mut then_branch.stmts { rename_idents_in_stmt(s, map); }
@@ -445,8 +493,10 @@ fn flatten_stmt_with_enclosing(stmt: &mut Stmt, enclosing_names: &[String]) {
         }
         Stmt::Block(block) => flatten_block_with_params(block, enclosing_names),
         Stmt::Const(decl) => flatten_expr_arrows(&mut decl.init),
+        Stmt::Let { init: Some(init), .. } => flatten_expr_arrows(init),
+        Stmt::Assign { value, .. } => flatten_expr_arrows(value),
         Stmt::Expr(expr) | Stmt::Return(Some(expr)) => flatten_expr_arrows(expr),
-        Stmt::Return(None) | Stmt::TypeAlias(_) | Stmt::Interface(_) => {}
+        Stmt::Return(None) | Stmt::Let { .. } | Stmt::TypeAlias(_) | Stmt::Interface(_) => {}
     }
 }
 
