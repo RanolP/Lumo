@@ -89,6 +89,7 @@ pub struct OperationDecl {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnDecl {
+    pub attrs: Vec<Attribute>,
     pub name: String,
     pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
@@ -321,9 +322,7 @@ pub fn parse(tokens: &[Token], lex_errors: &[LexError]) -> ParseOutput {
         let attrs = p.parse_attributes();
 
         if p.at_keyword(Keyword::Extern) {
-            if let Some(item) = p.parse_extern_item(attrs) {
-                items.push(item);
-            }
+            items.extend(p.parse_extern_item(attrs));
             continue;
         }
         if p.at_keyword(Keyword::Cap) {
@@ -341,10 +340,7 @@ pub fn parse(tokens: &[Token], lex_errors: &[LexError]) -> ParseOutput {
             continue;
         }
         if p.at_keyword(Keyword::Fn) {
-            if !attrs.is_empty() {
-                p.error_here("attributes are only supported on `extern` items");
-            }
-            items.push(Item::Fn(p.parse_fn_decl()));
+            items.push(Item::Fn(p.parse_fn_decl(attrs)));
             continue;
         }
         if p.at_keyword(Keyword::Use) {
@@ -570,15 +566,18 @@ impl<'a> Parser<'a> {
         expr
     }
 
-    fn parse_extern_item(&mut self, attrs: Vec<Attribute>) -> Option<Item> {
+    fn parse_extern_item(&mut self, attrs: Vec<Attribute>) -> Vec<Item> {
         let start = self.expect_keyword(Keyword::Extern);
         if self.at_ident_text("type") {
-            return Some(Item::ExternType(self.parse_extern_type_decl(attrs, start)));
+            return vec![Item::ExternType(self.parse_extern_type_decl(attrs, start))];
         }
         if self.at_keyword(Keyword::Fn) {
-            return Some(Item::ExternFn(self.parse_extern_fn_decl(attrs, start)));
+            return vec![Item::ExternFn(self.parse_extern_fn_decl(attrs, start))];
         }
-        self.error_here("expected `type` or `fn` after `extern`");
+        if self.at_symbol(Symbol::LBrace) {
+            return self.parse_extern_block(attrs);
+        }
+        self.error_here("expected `type`, `fn`, or `{` after `extern`");
         while !self.eof() && !self.at_symbol(Symbol::Semi) {
             if self.at_keyword(Keyword::Data)
                 || self.at_keyword(Keyword::Cap)
@@ -593,7 +592,50 @@ impl<'a> Parser<'a> {
         if self.at_symbol(Symbol::Semi) {
             self.bump();
         }
-        None
+        Vec::new()
+    }
+
+    /// Parse an `extern { ... }` block. Returns a flattened list of items,
+    /// each inner extern declaration inheriting the block-level attrs.
+    fn parse_extern_block(&mut self, block_attrs: Vec<Attribute>) -> Vec<Item> {
+        self.expect_symbol(Symbol::LBrace);
+        let mut items = Vec::new();
+        while !self.eof() && !self.at_symbol(Symbol::RBrace) {
+            let inner_attrs = self.parse_attributes();
+            // Merge block attrs first so per-item attrs can override.
+            let mut merged = block_attrs.clone();
+            merged.extend(inner_attrs);
+
+            if !self.at_keyword(Keyword::Extern) {
+                // Allow bare `fn` and `type` inside block — implicit extern.
+                if self.at_keyword(Keyword::Fn) {
+                    let start = self.current_span();
+                    items.push(Item::ExternFn(self.parse_extern_fn_decl(merged, start)));
+                    continue;
+                }
+                if self.at_ident_text("type") {
+                    let start = self.current_span();
+                    items.push(Item::ExternType(self.parse_extern_type_decl(merged, start)));
+                    continue;
+                }
+                self.error_here("expected `fn` or `type` in extern block");
+                self.bump();
+                continue;
+            }
+            let start = self.expect_keyword(Keyword::Extern);
+            if self.at_ident_text("type") {
+                items.push(Item::ExternType(self.parse_extern_type_decl(merged, start)));
+            } else if self.at_keyword(Keyword::Fn) {
+                items.push(Item::ExternFn(self.parse_extern_fn_decl(merged, start)));
+            } else {
+                self.error_here("expected `fn` or `type` after `extern`");
+                self.bump();
+            }
+        }
+        if self.at_symbol(Symbol::RBrace) {
+            self.bump();
+        }
+        items
     }
 
     fn parse_extern_type_decl(&mut self, attrs: Vec<Attribute>, start: Span) -> ExternTypeDecl {
@@ -814,7 +856,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_fn_decl(&mut self) -> FnDecl {
+    fn parse_fn_decl(&mut self, attrs: Vec<Attribute>) -> FnDecl {
         let start = self.expect_keyword(Keyword::Fn);
         let name = self.expect_ident();
         let generics = if self.at_symbol(Symbol::LBracket) {
@@ -861,6 +903,7 @@ impl<'a> Parser<'a> {
         };
         let body_span = expr_span(&body);
         FnDecl {
+            attrs,
             name,
             generics,
             params,

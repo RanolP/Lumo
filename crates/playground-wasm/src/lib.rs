@@ -9,6 +9,63 @@ mod wasm {
     use serde_wasm_bindgen::to_value;
     use wasm_bindgen::prelude::*;
 
+    // -----------------------------------------------------------------------
+    // libcore sources (common + JS platform)
+    // -----------------------------------------------------------------------
+    const PRELUDE_SRC: &str = include_str!("../../../packages/libcore/src/prelude.lumo");
+    const PRELUDE_JS_SRC: &str = include_str!("../../../packages/libcore/src#js/prelude.lumo");
+    const CMP_SRC: &str = include_str!("../../../packages/libcore/src/cmp.lumo");
+    const OPS_SRC: &str = include_str!("../../../packages/libcore/src/ops.lumo");
+    const OPS_JS_SRC: &str = include_str!("../../../packages/libcore/src#js/ops.lumo");
+    const STRING_SRC: &str = include_str!("../../../packages/libcore/src/string.lumo");
+    const STRING_JS_SRC: &str = include_str!("../../../packages/libcore/src#js/string.lumo");
+    const NUMBER_SRC: &str = include_str!("../../../packages/libcore/src/number.lumo");
+    const NUMBER_JS_SRC: &str = include_str!("../../../packages/libcore/src#js/number.lumo");
+
+    // -----------------------------------------------------------------------
+    // libstd sources (common + JS platform)
+    // -----------------------------------------------------------------------
+    const IO_SRC: &str = include_str!("../../../packages/libstd/src/io.lumo");
+    const IO_JS_SRC: &str = include_str!("../../../packages/libstd/src#js/io.lumo");
+    const FS_SRC: &str = include_str!("../../../packages/libstd/src/fs.lumo");
+    const FS_JS_SRC: &str = include_str!("../../../packages/libstd/src#js.node/fs.lumo");
+    const PROCESS_SRC: &str = include_str!("../../../packages/libstd/src/process.lumo");
+    const PROCESS_JS_SRC: &str = include_str!("../../../packages/libstd/src#js.node/process.lumo");
+    const LIST_SRC: &str = include_str!("../../../packages/libstd/src/list.lumo");
+
+    fn stdlib_resolver(path: &[String]) -> Option<(String, String)> {
+        match path {
+            [pkg, module] if pkg == "libcore" => {
+                let (file, src) = match module.as_str() {
+                    "prelude" => (
+                        "prelude.lumo",
+                        format!("{PRELUDE_SRC}\n{PRELUDE_JS_SRC}"),
+                    ),
+                    "cmp" => ("cmp.lumo", CMP_SRC.to_owned()),
+                    "ops" => ("ops.lumo", format!("{OPS_SRC}\n{OPS_JS_SRC}")),
+                    "string" => ("string.lumo", format!("{STRING_SRC}\n{STRING_JS_SRC}")),
+                    "number" => ("number.lumo", format!("{NUMBER_SRC}\n{NUMBER_JS_SRC}")),
+                    _ => return None,
+                };
+                Some((format!("libcore/{file}"), src))
+            }
+            [pkg, module] if pkg == "libstd" => {
+                let (file, src) = match module.as_str() {
+                    "io" => ("io.lumo", format!("{IO_SRC}\n{IO_JS_SRC}")),
+                    "fs" => ("fs.lumo", format!("{FS_SRC}\n{FS_JS_SRC}")),
+                    "process" => (
+                        "process.lumo",
+                        format!("{PROCESS_SRC}\n{PROCESS_JS_SRC}"),
+                    ),
+                    "list" => ("list.lumo", LIST_SRC.to_owned()),
+                    _ => return None,
+                };
+                Some((format!("libstd/{file}"), src))
+            }
+            _ => None,
+        }
+    }
+
     #[derive(Debug, Serialize)]
     struct LspBridgeResult {
         response: Option<String>,
@@ -106,13 +163,13 @@ mod wasm {
                 .as_ref()
                 .map(|parsed| format!("{:#?}", parsed.file))
                 .unwrap_or_default();
-            let diagnostics_raw = self.query.diagnostics(uri).unwrap_or_default();
             let lowered_hir = self.query.lower_hir(uri);
             let lowered_typed_ast = lowered_hir
                 .as_ref()
                 .map(|hir| format!("{hir:#?}"))
                 .unwrap_or_default();
-            let lowered_lir = self.query.lower(uri);
+
+            let lowered_lir = self.query.compile_with_deps(&[uri], stdlib_resolver);
             let lowered = lowered_lir
                 .as_ref()
                 .map(|lir| format!("{lir:#?}"))
@@ -120,14 +177,18 @@ mod wasm {
             let stats = self.query.stats();
             let mut backend_errors = Vec::new();
             let mut backend_diagnostics = Vec::new();
-            let (emitted_ts, emitted_d_ts, emitted_js) = if !diagnostics_raw.is_empty() {
+            let parse_has_errors = parse_errors_raw
+                .as_ref()
+                .map(|e| !e.is_empty())
+                .unwrap_or(true);
+            let (emitted_ts, emitted_d_ts, emitted_js) = if parse_has_errors {
                 (
-                    emit_error_stub("typescript", "TypeScript emit skipped: diagnostics present"),
+                    emit_error_stub("typescript", "TypeScript emit skipped: parse errors present"),
                     emit_error_stub(
                         "typescript-definition",
-                        "TypeScriptDefinition emit skipped: diagnostics present",
+                        "TypeScriptDefinition emit skipped: parse errors present",
                     ),
-                    emit_error_stub("javascript", "JavaScript emit skipped: diagnostics present"),
+                    emit_error_stub("javascript", "JavaScript emit skipped: parse errors present"),
                 )
             } else if let Some(lir) = lowered_lir.as_ref() {
                 let ts = match backend::emit(lir, CodegenTarget::TypeScript) {
@@ -197,10 +258,7 @@ mod wasm {
                 })
                 .collect();
 
-            let mut diagnostics = diagnostics_raw
-                .into_iter()
-                .map(|diag| to_diagnostic_view(&source, diag.start, diag.end, diag.message))
-                .collect::<Vec<_>>();
+            let mut diagnostics: Vec<DiagnosticView> = Vec::new();
             diagnostics.extend(backend_diagnostics);
 
             to_value(&CompilerRunResult {

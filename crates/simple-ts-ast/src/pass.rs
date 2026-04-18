@@ -16,6 +16,343 @@ pub fn return_lifting(program: &mut Program) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Pass: inline_always_calls
+//
+// For every `function f(p1, p2) { body }` marked `inline_always`,
+// replace each `f(arg1, arg2)` call elsewhere with an IIFE-substituted body:
+//   `((p1, p2) => body)(arg1, arg2)`
+// Then drop the inline declarations themselves from the program.
+// The follow-up `flatten_iifes` pass collapses the IIFE into the surrounding
+// expression where possible.
+// ---------------------------------------------------------------------------
+
+pub fn inline_always_calls(program: &mut Program) {
+    let inline_table: std::collections::HashMap<String, FunctionDecl> = program
+        .body
+        .iter()
+        .filter_map(|stmt| {
+            if let Stmt::Function(decl) = stmt {
+                if decl.inline_always {
+                    return Some((decl.name.clone(), decl.clone()));
+                }
+            }
+            None
+        })
+        .collect();
+    if inline_table.is_empty() {
+        return;
+    }
+    for stmt in &mut program.body {
+        inline_calls_in_stmt(stmt, &inline_table);
+    }
+    program.body.retain(|stmt| match stmt {
+        Stmt::Function(decl) => !decl.inline_always,
+        _ => true,
+    });
+}
+
+fn inline_calls_in_stmt(
+    stmt: &mut Stmt,
+    table: &std::collections::HashMap<String, FunctionDecl>,
+) {
+    match stmt {
+        Stmt::Expr(expr) | Stmt::Return(Some(expr)) => inline_calls_in_expr(expr, table),
+        Stmt::Const(decl) => inline_calls_in_expr(&mut decl.init, table),
+        Stmt::Let { init: Some(init), .. } => inline_calls_in_expr(init, table),
+        Stmt::Assign { value, .. } => inline_calls_in_expr(value, table),
+        Stmt::If { cond, then_branch, else_branch } => {
+            inline_calls_in_expr(cond, table);
+            for s in &mut then_branch.stmts { inline_calls_in_stmt(s, table); }
+            if let Some(eb) = else_branch {
+                for s in &mut eb.stmts { inline_calls_in_stmt(s, table); }
+            }
+        }
+        Stmt::Block(b) => {
+            for s in &mut b.stmts { inline_calls_in_stmt(s, table); }
+        }
+        Stmt::Function(f) => inline_calls_in_function_body(&mut f.body, table),
+        _ => {}
+    }
+}
+
+fn inline_calls_in_function_body(
+    body: &mut FunctionBody,
+    table: &std::collections::HashMap<String, FunctionDecl>,
+) {
+    match body {
+        FunctionBody::Expr(e) => inline_calls_in_expr(e, table),
+        FunctionBody::Block(b) => {
+            for s in &mut b.stmts { inline_calls_in_stmt(s, table); }
+        }
+    }
+}
+
+fn inline_calls_in_expr(
+    expr: &mut Expr,
+    table: &std::collections::HashMap<String, FunctionDecl>,
+) {
+    // Recurse first so nested calls get inlined too.
+    match expr {
+        Expr::Call { callee, args } => {
+            inline_calls_in_expr(callee, table);
+            for a in args.iter_mut() { inline_calls_in_expr(a, table); }
+        }
+        Expr::Member { object, .. } => inline_calls_in_expr(object, table),
+        Expr::Index { object, index } => {
+            inline_calls_in_expr(object, table);
+            inline_calls_in_expr(index, table);
+        }
+        Expr::Unary { expr: e, .. } | Expr::Void(e) => inline_calls_in_expr(e, table),
+        Expr::Binary { left, right, .. } => {
+            inline_calls_in_expr(left, table);
+            inline_calls_in_expr(right, table);
+        }
+        Expr::Array(items) => {
+            for item in items { inline_calls_in_expr(item, table); }
+        }
+        Expr::Object(props) => {
+            for prop in props {
+                if let ObjectKey::Computed(e) = &mut prop.key {
+                    inline_calls_in_expr(e, table);
+                }
+                inline_calls_in_expr(&mut prop.value, table);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            inline_calls_in_expr(cond, table);
+            inline_calls_in_expr(then_expr, table);
+            inline_calls_in_expr(else_expr, table);
+        }
+        Expr::Arrow { body, .. } => inline_calls_in_function_body(body, table),
+        _ => {}
+    }
+    // Now check if this is a Call to an inline fn.
+    if let Expr::Call { callee, args } = expr {
+        if let Expr::Ident(name) = callee.as_ref() {
+            if let Some(decl) = table.get(name) {
+                if decl.params.len() == args.len() {
+                    let arrow = Expr::Arrow {
+                        params: decl.params.clone(),
+                        return_type: decl.return_type.clone(),
+                        body: Box::new(decl.body.clone()),
+                    };
+                    let new_call = Expr::Call {
+                        callee: Box::new(arrow),
+                        args: std::mem::take(args),
+                    };
+                    *expr = new_call;
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pass: inline_trivial_consts
+//
+// Eliminates `const x = y;` aliases by substituting `y` for every later
+// reference to `x` in the same scope, then dropping the declaration.
+// Only inlines when the RHS is a single identifier — function calls,
+// member accesses, and other expressions are left alone (they may have side
+// effects or perform work that shouldn't be duplicated).
+// ---------------------------------------------------------------------------
+
+pub fn inline_trivial_consts(program: &mut Program) {
+    for stmt in &mut program.body {
+        inline_in_stmt(stmt);
+    }
+}
+
+fn inline_in_stmt(stmt: &mut Stmt) {
+    match stmt {
+        Stmt::Function(func) => match &mut func.body {
+            FunctionBody::Expr(expr) => inline_in_expr(expr),
+            FunctionBody::Block(block) => inline_in_block(block),
+        },
+        Stmt::If { cond, then_branch, else_branch } => {
+            inline_in_expr(cond);
+            inline_in_block(then_branch);
+            if let Some(eb) = else_branch {
+                inline_in_block(eb);
+            }
+        }
+        Stmt::Block(block) => inline_in_block(block),
+        // Expression positions can carry arrow bodies whose blocks contain
+        // their own aliases — we must descend so those aliases get detected.
+        Stmt::Return(Some(expr)) | Stmt::Expr(expr) => inline_in_expr(expr),
+        Stmt::Const(decl) => inline_in_expr(&mut decl.init),
+        Stmt::Let { init: Some(init), .. } => inline_in_expr(init),
+        Stmt::Assign { value, .. } => inline_in_expr(value),
+        _ => {}
+    }
+}
+
+/// Walk an expression, descending into arrow bodies so that aliases declared
+/// inside them are detected by `inline_in_block`.
+fn inline_in_expr(expr: &mut Expr) {
+    match expr {
+        Expr::Arrow { body, .. } => match body.as_mut() {
+            FunctionBody::Expr(inner) => inline_in_expr(inner),
+            FunctionBody::Block(block) => inline_in_block(block),
+        },
+        Expr::Call { callee, args } => {
+            inline_in_expr(callee);
+            for a in args {
+                inline_in_expr(a);
+            }
+        }
+        Expr::Member { object, .. } => inline_in_expr(object),
+        Expr::Index { object, index } => {
+            inline_in_expr(object);
+            inline_in_expr(index);
+        }
+        Expr::Unary { expr: e, .. } | Expr::Void(e) => inline_in_expr(e),
+        Expr::Binary { left, right, .. } => {
+            inline_in_expr(left);
+            inline_in_expr(right);
+        }
+        Expr::Array(items) => {
+            for item in items {
+                inline_in_expr(item);
+            }
+        }
+        Expr::Object(props) => {
+            for prop in props {
+                if let ObjectKey::Computed(e) = &mut prop.key {
+                    inline_in_expr(e);
+                }
+                inline_in_expr(&mut prop.value);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            inline_in_expr(cond);
+            inline_in_expr(then_expr);
+            inline_in_expr(else_expr);
+        }
+        Expr::Ident(_)
+        | Expr::String(_)
+        | Expr::Number(_)
+        | Expr::Bool(_)
+        | Expr::Null
+        | Expr::Undefined => {}
+    }
+}
+
+fn inline_in_block(block: &mut Block) {
+    let mut subs: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut new_stmts: Vec<Stmt> = Vec::with_capacity(block.stmts.len());
+    for mut stmt in std::mem::take(&mut block.stmts) {
+        // Apply current substitutions before inspecting/recursing.
+        if !subs.is_empty() {
+            inline_subst_stmt(&mut stmt, &subs);
+        }
+        // After substitution, see if this is a trivial alias.
+        if let Stmt::Const(decl) = &stmt {
+            if let Expr::Ident(rhs) = &decl.init {
+                if !decl.export && decl.type_ann.is_none() {
+                    subs.insert(decl.name.clone(), rhs.clone());
+                    continue; // drop the alias
+                }
+            }
+        }
+        // Recurse into nested control flow / functions.
+        inline_in_stmt(&mut stmt);
+        new_stmts.push(stmt);
+    }
+    block.stmts = new_stmts;
+}
+
+/// Substitute identifiers throughout a statement, INCLUDING inside arrow
+/// bodies (they capture from outer scope). Stops at param shadows so we
+/// don't substitute params that happen to share a name with a substituted ident.
+fn inline_subst_stmt(stmt: &mut Stmt, subs: &std::collections::HashMap<String, String>) {
+    match stmt {
+        Stmt::Expr(expr) | Stmt::Return(Some(expr)) => inline_subst_expr(expr, subs),
+        Stmt::Const(decl) => inline_subst_expr(&mut decl.init, subs),
+        Stmt::Let { init: Some(init), .. } => inline_subst_expr(init, subs),
+        Stmt::Assign { value, .. } => inline_subst_expr(value, subs),
+        Stmt::If { cond, then_branch, else_branch } => {
+            inline_subst_expr(cond, subs);
+            for s in &mut then_branch.stmts { inline_subst_stmt(s, subs); }
+            if let Some(eb) = else_branch {
+                for s in &mut eb.stmts { inline_subst_stmt(s, subs); }
+            }
+        }
+        Stmt::Block(b) => {
+            for s in &mut b.stmts { inline_subst_stmt(s, subs); }
+        }
+        _ => {}
+    }
+}
+
+fn inline_subst_expr(expr: &mut Expr, subs: &std::collections::HashMap<String, String>) {
+    match expr {
+        Expr::Ident(name) => {
+            if let Some(new) = subs.get(name.as_str()) {
+                *name = new.clone();
+            }
+        }
+        Expr::Call { callee, args } => {
+            inline_subst_expr(callee, subs);
+            for a in args { inline_subst_expr(a, subs); }
+        }
+        Expr::Member { object, .. } => inline_subst_expr(object, subs),
+        Expr::Index { object, index } => {
+            inline_subst_expr(object, subs);
+            inline_subst_expr(index, subs);
+        }
+        Expr::Unary { expr: e, .. } | Expr::Void(e) => inline_subst_expr(e, subs),
+        Expr::Binary { left, right, .. } => {
+            inline_subst_expr(left, subs);
+            inline_subst_expr(right, subs);
+        }
+        Expr::Array(items) => {
+            for item in items { inline_subst_expr(item, subs); }
+        }
+        Expr::Object(props) => {
+            for prop in props {
+                if let ObjectKey::Computed(e) = &mut prop.key {
+                    inline_subst_expr(e, subs);
+                }
+                inline_subst_expr(&mut prop.value, subs);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            inline_subst_expr(cond, subs);
+            inline_subst_expr(then_expr, subs);
+            inline_subst_expr(else_expr, subs);
+        }
+        Expr::Arrow { params, body, .. } => {
+            // Arrow body captures from outer scope, but params shadow.
+            // Build a filtered sub map that excludes shadowed names.
+            let shadows: std::collections::HashSet<&str> =
+                params.iter().map(|p| p.name.as_str()).collect();
+            if shadows.is_empty() {
+                inline_subst_function_body(body, subs);
+            } else {
+                let filtered: std::collections::HashMap<String, String> = subs
+                    .iter()
+                    .filter(|(k, _)| !shadows.contains(k.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                inline_subst_function_body(body, &filtered);
+            }
+        }
+        Expr::String(_) | Expr::Number(_) | Expr::Bool(_)
+        | Expr::Null | Expr::Undefined => {}
+    }
+}
+
+fn inline_subst_function_body(body: &mut FunctionBody, subs: &std::collections::HashMap<String, String>) {
+    match body {
+        FunctionBody::Expr(expr) => inline_subst_expr(expr, subs),
+        FunctionBody::Block(block) => {
+            for s in &mut block.stmts { inline_subst_stmt(s, subs); }
+        }
+    }
+}
+
 fn lower_stmt_expr_bodies(stmt: &mut Stmt) {
     match stmt {
         Stmt::Function(func) => {
@@ -198,6 +535,11 @@ pub fn flatten_iifes(program: &mut Program) {
 
 /// Try to decompose `expr` as an IIFE: `Call { callee: Arrow { params, Block(stmts) }, args }`.
 /// Returns `(params, body_stmts, args)` on success, consuming the pieces out of `expr`.
+///
+/// Bails out when a param name appears free in any arg — flattening such an
+/// IIFE would lift `const x = <expr using x>` into the outer scope, which
+/// hits JS's TDZ. Example: `((__caps) => body)(Object.assign({}, __caps, ...))`
+/// — the inner `__caps` must refer to the outer binding.
 fn take_iife(expr: &mut Expr) -> Option<(Vec<Param>, Vec<Stmt>, Vec<Expr>)> {
     let Expr::Call { callee, args } = expr else {
         return None;
@@ -211,10 +553,76 @@ fn take_iife(expr: &mut Expr) -> Option<(Vec<Param>, Vec<Stmt>, Vec<Expr>)> {
     if params.len() != args.len() {
         return None;
     }
+    for param in params.iter() {
+        for arg in args.iter() {
+            if expr_references_name(arg, &param.name) {
+                return None;
+            }
+        }
+    }
     let params = std::mem::take(params);
     let body_stmts = std::mem::take(&mut block.stmts);
     let args = std::mem::take(args);
     Some((params, body_stmts, args))
+}
+
+/// Returns `true` if `expr` references the given identifier as a free name.
+fn expr_references_name(expr: &Expr, name: &str) -> bool {
+    match expr {
+        Expr::Ident(n) => n == name,
+        Expr::Call { callee, args } => {
+            expr_references_name(callee, name)
+                || args.iter().any(|a| expr_references_name(a, name))
+        }
+        Expr::Member { object, .. } => expr_references_name(object, name),
+        Expr::Index { object, index } => {
+            expr_references_name(object, name) || expr_references_name(index, name)
+        }
+        Expr::Unary { expr, .. } | Expr::Void(expr) => expr_references_name(expr, name),
+        Expr::Binary { left, right, .. } => {
+            expr_references_name(left, name) || expr_references_name(right, name)
+        }
+        Expr::Array(items) => items.iter().any(|i| expr_references_name(i, name)),
+        Expr::Object(props) => props.iter().any(|p| {
+            let key_refs = matches!(&p.key, ObjectKey::Computed(e) if expr_references_name(e, name));
+            key_refs || expr_references_name(&p.value, name)
+        }),
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            expr_references_name(cond, name)
+                || expr_references_name(then_expr, name)
+                || expr_references_name(else_expr, name)
+        }
+        Expr::Arrow { params, body, .. } => {
+            // Name is shadowed if bound by params
+            if params.iter().any(|p| p.name == name) {
+                return false;
+            }
+            match body.as_ref() {
+                FunctionBody::Expr(e) => expr_references_name(e, name),
+                FunctionBody::Block(b) => b.stmts.iter().any(|s| stmt_references_name(s, name)),
+            }
+        }
+        Expr::String(_) | Expr::Number(_) | Expr::Bool(_)
+        | Expr::Null | Expr::Undefined => false,
+    }
+}
+
+fn stmt_references_name(stmt: &Stmt, name: &str) -> bool {
+    match stmt {
+        Stmt::Expr(e) | Stmt::Return(Some(e)) => expr_references_name(e, name),
+        Stmt::Const(decl) => expr_references_name(&decl.init, name),
+        Stmt::Let { init: Some(init), .. } => expr_references_name(init, name),
+        Stmt::Assign { value, .. } => expr_references_name(value, name),
+        Stmt::If { cond, then_branch, else_branch } => {
+            expr_references_name(cond, name)
+                || then_branch.stmts.iter().any(|s| stmt_references_name(s, name))
+                || else_branch
+                    .as_ref()
+                    .map_or(false, |eb| eb.stmts.iter().any(|s| stmt_references_name(s, name)))
+        }
+        Stmt::Block(b) => b.stmts.iter().any(|s| stmt_references_name(s, name)),
+        _ => false,
+    }
 }
 
 /// Build `const` bindings from IIFE params + args.

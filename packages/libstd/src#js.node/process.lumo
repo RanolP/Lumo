@@ -1,0 +1,17 @@
+#[extern(name = "globalThis.process.argv.at()")] extern fn __argv_at_raw(idx: Number): String;
+#[extern(name = "globalThis.process.argv.length")] extern fn __argv_length_raw(): Number;
+#[extern(name = "globalThis.process.exit()")] extern fn __exit_process(code: Number);
+#[extern(name = "globalThis.console.error()")] extern fn __console_error(msg: String);
+
+fn __argv_at_offset(idx: Number): String = __argv_at_raw(idx + 1)
+fn __args_count_offset(): Number = __argv_length_raw() - 1
+
+impl Process {
+  fn arg_at(idx: Number): String = __argv_at_offset(idx)
+  fn args_count(): Number = __args_count_offset()
+  fn exit_process(code: Number) = __exit_process(code)
+  fn panic_with(msg: String) {
+    let _err = __console_error(msg);
+    __exit_process(1)
+  }
+}

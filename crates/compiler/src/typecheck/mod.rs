@@ -2472,11 +2472,18 @@ fn collect_caps_inner(
     out: &mut Vec<TypeExpr>,
 ) {
     // Decompose perform call: Apply*(Force(Member(Perform(cap), op)), args)
-    if let Some((cap, args)) = decompose_perform_call_for_inference(expr) {
+    if let Some((cap, type_args, args)) = decompose_perform_call_for_inference(expr) {
         if !handled.contains(cap) && cap_defs.contains(cap) {
+            // Use the Perform's type_args (set by `patch_perform_type_args`)
+            // so we distinguish e.g. `Add[Number]` from `Add[String]` when
+            // inferring a caller's cap set.
+            let type_args_expr: Vec<TypeExpr> = type_args
+                .iter()
+                .map(|t| TypeExpr::Named(t.clone()))
+                .collect();
             add_cap(out, TypeExpr::Cap {
                 name: cap.to_owned(),
-                type_args: vec![],
+                type_args: type_args_expr,
             });
         }
         for arg in args {
@@ -2584,7 +2591,7 @@ fn collect_caps_inner(
 }
 
 /// Decompose: Apply*(Force(Member(Perform(cap), op)), args) → Some((cap, args))
-fn decompose_perform_call_for_inference(expr: &Expr) -> Option<(&str, Vec<&Expr>)> {
+fn decompose_perform_call_for_inference(expr: &Expr) -> Option<(&str, &[String], Vec<&Expr>)> {
     let (root, args) = unwrap_apply_chain_ref(expr);
     let root = if let Expr::Force { expr, .. } = root {
         expr.as_ref()
@@ -2592,8 +2599,8 @@ fn decompose_perform_call_for_inference(expr: &Expr) -> Option<(&str, Vec<&Expr>
         root
     };
     if let Expr::Member { object, .. } = root {
-        if let Expr::Perform { cap, .. } = object.as_ref() {
-            return Some((cap.as_str(), args));
+        if let Expr::Perform { cap, type_args, .. } = object.as_ref() {
+            return Some((cap.as_str(), type_args.as_slice(), args));
         }
     }
     None

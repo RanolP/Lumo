@@ -83,10 +83,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "langue"
-version = "0.1.0"
-
-[[package]]
 name = "lbs"
 version = "0.1.0"
 dependencies = [

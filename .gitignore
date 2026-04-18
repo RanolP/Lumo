@@ -4,6 +4,7 @@ node_modules
 
 # Build outputs
 dist
+!packages/langue/dist/
 build
 .next
 out

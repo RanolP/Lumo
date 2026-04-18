@@ -1,6 +1,9 @@
 // LIR (Low-level IR) grammar specification
 // CBPV-normalized: single-param lambda, single-arg apply, explicit roll/unroll.
 // Functions are curried: `fn f(a, b) := body` becomes `thunk lambda a. lambda b. body`
+//
+// To update: edit this file, then run `scripts/gen_langue.sh lir`
+// Reference: crates/lir/src/lib.rs (Expr enum, Item enum)
 
 @token Ident StringLit NumberLit
 
@@ -104,8 +107,8 @@ LetExpr = 'let' name:Ident '=' value:Expr 'in' body:Expr
 MatchExpr = 'match' scrutinee:Expr '{' arms:MatchArm* '}'
 MatchArm = pattern:Pattern '=>' body:Expr
 UnrollExpr = 'unroll' expr:Expr
-PerformExpr = 'perform' cap:Ident
-HandleExpr = 'handle' cap:Ident 'with' handler:Expr 'in' body:Expr
+PerformExpr = 'perform' cap:Ident type_args:GenericArgs?
+HandleExpr = 'handle' cap:Ident type_args:GenericArgs? 'with' handler:Expr 'in' body:Expr
 BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
 BundleEntry = 'fn' name:Ident param_list:ParamList ':=' body:Expr
 MemberExpr = object:Expr '.' field:Ident

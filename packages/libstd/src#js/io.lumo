@@ -1,4 +1,4 @@
-#[extern(name = "console.log")] extern fn __println(msg: String);
+#[extern(name = "globalThis.console.log()")] extern fn __println(msg: String);
 
 impl IO {
   fn println(msg: String) = __println(msg)

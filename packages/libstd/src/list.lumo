@@ -12,4 +12,4 @@ fn list_reverse_acc[A](xs: List[A], acc: List[A]): List[A] =
 fn list_reverse[A](xs: List[A]): List[A] = list_reverse_acc(xs, List.nil)
 
 fn list_length[A](xs: List[A]): Number / { NumOps } =
-  match xs { .nil => 0, .cons(_, t) => NumOps.num_add(1, list_length(t)) }
+  match xs { .nil => 0, .cons(_, t) => NumOps.add(1, list_length(t)) }

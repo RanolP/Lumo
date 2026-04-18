@@ -590,6 +590,7 @@ mod tests {
                     }),
                     span: dummy_span(),
                 },
+                inline: false,
                 span: dummy_span(),
             })],
             content_hash: lumo_types::ContentHash(0),

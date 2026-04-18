@@ -311,99 +311,99 @@ fn emit_extern_fn(func: &lir::ExternFnDecl) -> String {
         .unwrap_or_else(|| "()".to_string());
 
     let p = |i: usize| -> &str { &func.params[i].name };
+    let first_param_is_string = matches!(
+        func.params.first().map(|p| &p.ty.value),
+        Some(crate::types::TypeExpr::Named(n)) if n == "String"
+    );
     let body = match extern_name {
+        // Operators — differentiate String concat from numeric add
+        "_+_" if first_param_is_string => format!("format!(\"{{}}{{}}\", {}, {})", p(0), p(1)),
+        "_+_" => format!("{} + {}", p(0), p(1)),
+        "_-_" => format!("{} - {}", p(0), p(1)),
+        "_*_" => format!("{} * {}", p(0), p(1)),
+        "_/_" => format!("{} / {}", p(0), p(1)),
+        "_%_" => format!("{} % {}", p(0), p(1)),
+        "-_" => format!("-{}", p(0)),
+        "_===_" => format!(
+            "if {} == {} {{ Bool::True }} else {{ Bool::False }}",
+            p(0), p(1)
+        ),
+        "_<_" => format!(
+            "if {} < {} {{ Bool::True }} else {{ Bool::False }}",
+            p(0), p(1)
+        ),
+
         // I/O
-        "console.log" => {
+        "globalThis.console.log()" | "console.log" => {
             if func.params.is_empty() {
                 "println!();".to_string()
             } else {
                 format!("println!(\"{{}}\", {});", p(0))
             }
         }
+        "globalThis.console.error()" => {
+            if func.params.is_empty() {
+                "eprintln!();".to_string()
+            } else {
+                format!("eprintln!(\"{{}}\", {});", p(0))
+            }
+        }
 
         // String operations
-        "str.len" => format!("({}.len() as f64)", p(0)),
-        "str.char_at" => format!(
+        "globalThis.String.prototype.length" => format!("({}.len() as f64)", p(0)),
+        "globalThis.String.prototype.charAt()" => format!(
             "{}.chars().nth({} as usize).map(|c| c.to_string()).unwrap_or_default()",
             p(0), p(1)
         ),
-        "str.slice" => format!(
+        "globalThis.String.prototype.slice()" => format!(
             "{}.chars().skip({} as usize).take(({} as usize) - ({} as usize)).collect::<String>()",
             p(0), p(1), p(2), p(1)
         ),
-        "str.concat" => format!("format!(\"{{}}{{}}\", {}, {})", p(0), p(1)),
-        "str.eq" => format!(
-            "if {} == {} {{ Bool::True }} else {{ Bool::False }}",
-            p(0), p(1)
-        ),
-        "str.starts_with" => format!(
+        "globalThis.String.prototype.startsWith()" => format!(
             "if {}.starts_with({}.as_str()) {{ Bool::True }} else {{ Bool::False }}",
             p(0), p(1)
         ),
-        "str.contains" => format!(
+        "globalThis.String.prototype.includes()" => format!(
             "if {}.contains({}.as_str()) {{ Bool::True }} else {{ Bool::False }}",
             p(0), p(1)
         ),
-        "str.index_of" => format!(
+        "globalThis.String.prototype.indexOf()" => format!(
             "{}.find({}.as_str()).map(|i| i as f64).unwrap_or(-1.0)",
             p(0), p(1)
         ),
-        "str.trim" => format!("{}.trim().to_string()", p(0)),
-        "str.char_code_at" => format!(
+        "globalThis.String.prototype.trim()" => format!("{}.trim().to_string()", p(0)),
+        "globalThis.String.prototype.charCodeAt()" => format!(
             "{}.chars().nth({} as usize).map(|c| c as u32 as f64).unwrap_or(-1.0)",
             p(0), p(1)
         ),
-        "str.from_char_code" => format!(
+        "globalThis.String.fromCharCode()" => format!(
             "char::from_u32({} as u32).map(|c| c.to_string()).unwrap_or_default()",
             p(0)
         ),
-        "str.replace_all" => format!(
+        "globalThis.String.prototype.replaceAll()" => format!(
             "{}.replace({}.as_str(), {}.as_str())",
             p(0), p(1), p(2)
         ),
-        "num.to_string" => format!("{}.to_string()", p(0)),
+        "globalThis.Number.prototype.toString()" => format!("{}.to_string()", p(0)),
+        "Math.floor()" => format!("{}.floor()", p(0)),
 
-        // Number operations
-        "num.eq" => format!(
-            "if {} == {} {{ Bool::True }} else {{ Bool::False }}",
-            p(0), p(1)
-        ),
-        "num.cmp" => format!(
-            "if {} < {} {{ Ordering::Less }} else if {} == {} {{ Ordering::Equal }} else {{ Ordering::Greater }}",
-            p(0), p(1), p(0), p(1)
-        ),
-        "num.add" => format!("{} + {}", p(0), p(1)),
-        "num.sub" => format!("{} - {}", p(0), p(1)),
-        "num.mul" => format!("{} * {}", p(0), p(1)),
-        "num.div" => format!("{} / {}", p(0), p(1)),
-        "num.mod" => format!("{} % {}", p(0), p(1)),
-        "num.neg" => format!("-{}", p(0)),
-        "num.floor" => format!("{}.floor()", p(0)),
-
-        // Bool operations
-        "bool.not" => format!(
-            "match {} {{ Bool::True => Bool::False, Bool::False => Bool::True }}",
-            p(0)
-        ),
-
-        // File I/O
-        "fs.read_file" => format!(
+        // File I/O (Node fs imports)
+        "__node_fs.readFileSync()" => format!(
             "std::fs::read_to_string(&{}).expect(\"failed to read file\")",
             p(0)
         ),
-        "fs.write_file" => format!(
+        "__node_fs.writeFileSync()" => format!(
             "std::fs::write(&{}, &{}).expect(\"failed to write file\")",
             p(0), p(1)
         ),
 
         // Process
-        "process.arg_at" => format!(
+        "globalThis.process.argv.at()" => format!(
             "std::env::args().nth({} as usize).unwrap_or_default()",
             p(0)
         ),
-        "process.args_count" => "std::env::args().count() as f64".to_string(),
-        "process.exit" => format!("std::process::exit({} as i32)", p(0)),
-        "process.panic" => format!("panic!(\"{{}}\", {})", p(0)),
+        "globalThis.process.argv.length" => "std::env::args().count() as f64".to_string(),
+        "globalThis.process.exit()" => format!("std::process::exit({} as i32)", p(0)),
 
         _ => format!("todo!(\"extern: {}\")", extern_name),
     };

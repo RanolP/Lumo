@@ -91,19 +91,7 @@ impl Emitter {
                 then_branch,
                 else_branch,
             } => {
-                self.line(&format!("if ({}) {{", self.emit_expr(cond, target)));
-                self.indent += 1;
-                self.emit_block_items(then_branch, target);
-                self.indent -= 1;
-                if let Some(else_branch) = else_branch {
-                    self.line("} else {");
-                    self.indent += 1;
-                    self.emit_block_items(else_branch, target);
-                    self.indent -= 1;
-                    self.line("}");
-                } else {
-                    self.line("}");
-                }
+                self.emit_if_chain(cond, then_branch, else_branch.as_ref(), target);
             }
             Stmt::Block(block) => {
                 self.line("{");
@@ -214,6 +202,49 @@ impl Emitter {
         for stmt in &block.stmts {
             self.emit_stmt(stmt, target);
         }
+    }
+
+    /// Emit an if/else chain, flattening `else { if ... }` into `else if`.
+    fn emit_if_chain(
+        &mut self,
+        cond: &Expr,
+        then_branch: &Block,
+        else_branch: Option<&Block>,
+        target: EmitTarget,
+    ) {
+        self.line(&format!("if ({}) {{", self.emit_expr(cond, target)));
+        self.indent += 1;
+        self.emit_block_items(then_branch, target);
+        self.indent -= 1;
+        let mut current = else_branch;
+        while let Some(branch) = current {
+            // Detect `else { if (...) ... }` and collapse to `else if`.
+            if branch.stmts.len() == 1 {
+                if let Stmt::If {
+                    cond: nested_cond,
+                    then_branch: nested_then,
+                    else_branch: nested_else,
+                } = &branch.stmts[0]
+                {
+                    self.line(&format!(
+                        "}} else if ({}) {{",
+                        self.emit_expr(nested_cond, target)
+                    ));
+                    self.indent += 1;
+                    self.emit_block_items(nested_then, target);
+                    self.indent -= 1;
+                    current = nested_else.as_ref();
+                    continue;
+                }
+            }
+            self.line("} else {");
+            self.indent += 1;
+            self.emit_block_items(branch, target);
+            self.indent -= 1;
+            self.line("}");
+            return;
+        }
+        self.line("}");
     }
 
     fn emit_params(&self, params: &[Param], target: EmitTarget) -> String {
@@ -393,10 +424,22 @@ impl Emitter {
     }
 
     fn line(&mut self, text: &str) {
-        for _ in 0..self.indent {
-            self.out.push_str("  ");
+        // Multi-line expressions (e.g. `emit_expr` returning a block-body arrow)
+        // arrive with their own internal indentation relative to column 0. To
+        // nest them into the current context, prefix every non-empty line —
+        // not just the first — with the current indent level.
+        let prefix = "  ".repeat(self.indent);
+        let mut first = true;
+        for segment in text.split('\n') {
+            if !first {
+                self.out.push('\n');
+            }
+            if !segment.is_empty() {
+                self.out.push_str(&prefix);
+                self.out.push_str(segment);
+            }
+            first = false;
         }
-        self.out.push_str(text);
         self.out.push('\n');
     }
 

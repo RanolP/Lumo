@@ -121,7 +121,7 @@ use libcore.string.{StrOps};
 
 fn main() {
   let greeting = "Hello" + " World";
-  let len = StrOps.str_len(greeting);
+  let len = StrOps.len(greeting);
   IO.println(greeting + " len=" + StrOps.num_to_string(len))
 }"#,
     );
@@ -179,6 +179,7 @@ fn value_method_dispatch_inherent() {
     q.set_file(
         "main.lumo",
         r#"use libcore.prelude.{String, Number};
+use libcore.string.{StrOps};
 
 fn greet_len(): Number = "Hello".len()
 "#,
@@ -232,9 +233,189 @@ fn sum(): Number = 1.add(2)
 }
 
 #[test]
+fn main_with_default_impl_caps_emits_cps_main_and_wrapper() {
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"use libcore.prelude.{Number};
+use libcore.ops.{Add};
+use libcore.number.{NumOps};
+
+fn main(): Number = 1 + 2
+"#,
+    );
+    let lir = q
+        .compile_with_deps(&["main.lumo"], stdlib_resolver)
+        .expect("compilation should succeed");
+    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    assert!(
+        js.contains("function __main_cps("),
+        "JS should rename effectful user main → __main_cps, got:\n{js}"
+    );
+    assert!(
+        js.contains("function main()"),
+        "JS should expose a no-arg main() entry wrapper, got:\n{js}"
+    );
+    assert!(
+        js.contains("__impl_Number_Add"),
+        "JS wrapper should pass __impl_Number_Add as the default for Add[Number], got:\n{js}"
+    );
+    // The bundled __caps object is built once and threaded through CPS calls.
+    assert!(
+        js.contains("__caps.Add_Number"),
+        "body should access caps via __caps bundle, got:\n{js}"
+    );
+    assert!(
+        js.contains("__main_cps({"),
+        "wrapper should call __main_cps with bundle literal, got:\n{js}"
+    );
+}
+
+#[test]
+fn main_with_default_impl_caps_compiles_and_wraps_entry() {
+    // `+` desugars to `Perform Add`. main is effectful with `Add[Number]`.
+    // Since `impl Number: Add` provides a default impl, the backend should
+    // emit __main_cps + a public main() wrapper that injects __impl_Number_Add.
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"use libcore.prelude.{Number};
+use libcore.ops.{Add};
+use libcore.number.{NumOps};
+use libstd.io.{IO};
+
+fn main() {
+  IO.println("ok")
+}
+"#,
+    );
+    let lir = q
+        .compile_with_deps(&["main.lumo"], stdlib_resolver)
+        .expect("compilation should succeed");
+    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    // Pure main (no caps) → no wrapper, just regular main()
+    assert!(
+        js.contains("function main()"),
+        "JS should contain a public main(), got:\n{js}"
+    );
+}
+
+#[test]
+fn main_requiring_undefaulted_cap_is_compile_error() {
+    // Cap `MyCap` has no default impl (no `impl MyCap { ... }`),
+    // so main() requiring it must fail to codegen.
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"cap MyCap { fn frobnicate() }
+
+fn main(): Unit / { MyCap } {
+  perform MyCap.frobnicate()
+}
+"#,
+    );
+    let lir = q
+        .lower_module(&["main.lumo"])
+        .expect("lower_module should succeed (validation happens at backend)");
+    let result = backend::emit(&lir, CodegenTarget::JavaScript);
+    assert!(
+        result.is_err(),
+        "codegen should fail for main requiring cap with no default impl"
+    );
+    let err = format!("{:?}", result.unwrap_err());
+    assert!(
+        err.contains("MyCap") && err.contains("default impl"),
+        "error should mention MyCap and default impl, got: {err}"
+    );
+}
+
+#[test]
+fn multi_shot_resume_compiles() {
+    // A handler that calls `resume` twice and combines the results with `+`.
+    // Under algebraic-effect semantics with split k_perform/k_handle, the
+    // handler body value flows to the outer continuation (abort); each
+    // explicit `resume(v)` drives the perform's continuation synchronously.
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"use libcore.prelude.{Number};
+use libcore.ops.{Add};
+use libcore.number.{NumOps};
+
+cap Choice { fn pick(): Number }
+
+fn main(): Number = handle Choice with bundle {
+  fn pick() { resume(1) + resume(2) }
+} in perform Choice.pick()
+"#,
+    );
+    let lir = q
+        .compile_with_deps(&["main.lumo"], stdlib_resolver)
+        .expect("compilation should succeed");
+    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    assert!(
+        js.contains("__trampoline(__k_perform("),
+        "resume should drive __k_perform via __trampoline: {js}"
+    );
+    assert!(
+        js.contains("(__k_handle) =>"),
+        "handler should be built by a factory closure over __k_handle: {js}"
+    );
+}
+
+#[test]
+#[ignore] // requires Node.js
+fn multi_shot_resume_on_node() {
+    // Handler resumes twice, each with a different string; the perform site
+    // prints whatever came back. Two println calls prove the continuation ran
+    // twice, confirming multi-shot semantics.
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"use libcore.prelude.{String, Number};
+use libstd.io.{IO};
+
+cap Choice { fn pick(n: Number): String }
+
+fn greet(): Unit / { Choice, IO } = IO.println(Choice.pick(0))
+
+fn main() = handle Choice with bundle {
+  fn pick(n) { let _ = resume("hello"); resume("world") }
+} in greet()
+"#,
+    );
+    let lir = q
+        .compile_with_deps(&["main.lumo"], stdlib_resolver)
+        .expect("compilation should succeed");
+    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js_with_entry = format!("{js}\nmain();\n");
+
+    let output = std::process::Command::new("node")
+        .arg("-e")
+        .arg(&js_with_entry)
+        .output()
+        .expect("failed to execute node");
+    assert!(
+        output.status.success(),
+        "node should exit successfully, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // Each resume call re-runs the perform's continuation with a fresh value.
+    // Expected stdout: "hello\nworld".
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert_eq!(
+        stdout, "hello\nworld",
+        "multi-shot handler should invoke the perform continuation twice; got:\n{stdout}"
+    );
+}
+
+#[test]
 fn arithmetic_operator_desugars_to_cap_call() {
-    // 1 + 2 should desugar to perform Add.add(1, 2)
-    // With a handler, it should compile to JS that invokes the handler's add method
+    // 1 + 2 should desugar to `perform Add.add(1, 2)`. With an explicit handler
+    // providing Add, the handle expression must evaluate the handler body with
+    // the perform's continuation. Under algebraic-effect semantics (abort by
+    // default), the handler must *explicitly* `resume(a)` to thread `a` back
+    // into the perform site — otherwise `sum()` never completes.
     let mut q = QueryEngine::new();
     q.set_file(
         "main.lumo",
@@ -244,7 +425,7 @@ cap Add { fn add(a, b) }
 fn sum() { 1 + 2 }
 
 fn main() {
-  handle Add with bundle { fn add(a, b) { a } } in
+  handle Add with bundle { fn add(a, b) { resume(a) } } in
     sum()
 }
 "#,
@@ -265,4 +446,10 @@ fn main() {
         js.contains("sum"),
         "JS should contain sum function, got:\n{js}"
     );
+    // The handler invokes `resume` to drive the perform's continuation.
+    assert!(
+        js.contains("__trampoline(__k_perform("),
+        "handler should invoke __k_perform via resume(a): {js}"
+    );
 }
+

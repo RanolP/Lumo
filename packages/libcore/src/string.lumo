@@ -3,42 +3,42 @@ use libcore.ops.{Add};
 use libcore.cmp.{PartialEq};
 
 cap StrOps {
-  fn str_len(s: String): Number;
-  fn str_char_at(s: String, idx: Number): String;
-  fn str_slice(s: String, start: Number, end: Number): String;
-  fn str_concat(a: String, b: String): String;
-  fn str_eq(a: String, b: String): Bool;
-  fn str_starts_with(s: String, prefix: String): Bool;
-  fn str_contains(s: String, sub: String): Bool;
-  fn str_index_of(s: String, sub: String): Number;
-  fn str_trim(s: String): String;
+  fn len(s: String): Number;
+  fn char_at(s: String, idx: Number): String;
+  fn slice(s: String, start: Number, end: Number): String;
+  fn concat(a: String, b: String): String;
+  fn eq(a: String, b: String): Bool;
+  fn starts_with(s: String, prefix: String): Bool;
+  fn contains(s: String, sub: String): Bool;
+  fn index_of(s: String, sub: String): Number;
+  fn trim(s: String): String;
   fn char_code_at(s: String, idx: Number): Number;
-  fn string_from_char_code(code: Number): String;
-  fn str_replace_all(s: String, from: String, to: String): String;
+  fn from_char_code(code: Number): String;
+  fn replace_all(s: String, from: String, to: String): String;
   fn num_to_string(n: Number): String
 }
 
 impl String: Add {
-  fn add(self, other: Self): Self = StrOps.str_concat(self, other)
+  fn add(self, other: Self): Self = StrOps.concat(self, other)
 }
 
 impl String: PartialEq {
-  fn eq(self, other: Self): Bool = StrOps.str_eq(self, other)
+  fn eq(self, other: Self): Bool = StrOps.eq(self, other)
 }
 
 impl String {
-  fn len(self): Number = StrOps.str_len(self)
-  fn char_at(self, idx: Number): String = StrOps.str_char_at(self, idx)
-  fn slice(self, start: Number, end: Number): String = StrOps.str_slice(self, start, end)
-  fn starts_with(self, prefix: String): Bool = StrOps.str_starts_with(self, prefix)
-  fn contains(self, sub: String): Bool = StrOps.str_contains(self, sub)
-  fn index_of(self, sub: String): Number = StrOps.str_index_of(self, sub)
-  fn trim(self): String = StrOps.str_trim(self)
+  fn len(self): Number = StrOps.len(self)
+  fn char_at(self, idx: Number): String = StrOps.char_at(self, idx)
+  fn slice(self, start: Number, end: Number): String = StrOps.slice(self, start, end)
+  fn starts_with(self, prefix: String): Bool = StrOps.starts_with(self, prefix)
+  fn contains(self, sub: String): Bool = StrOps.contains(self, sub)
+  fn index_of(self, sub: String): Number = StrOps.index_of(self, sub)
+  fn trim(self): String = StrOps.trim(self)
   fn char_code_at(self, idx: Number): Number = StrOps.char_code_at(self, idx)
-  fn replace_all(self, from: String, to: String): String = StrOps.str_replace_all(self, from, to)
+  fn replace_all(self, from: String, to: String): String = StrOps.replace_all(self, from, to)
 }
 
 impl Number {
   fn to_string(self): String = StrOps.num_to_string(self)
-  fn to_char(self): String = StrOps.string_from_char_code(self)
+  fn to_char(self): String = StrOps.from_char_code(self)
 }

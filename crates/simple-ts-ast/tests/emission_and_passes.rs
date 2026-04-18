@@ -55,6 +55,7 @@ fn lower_and_lift_for_readability() {
             then_expr: Box::new(Expr::Number(1.0)),
             else_expr: Box::new(Expr::Number(2.0)),
         })),
+        inline_always: false,
     })]);
 
     lower_expression_bodies(&mut program);

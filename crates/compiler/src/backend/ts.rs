@@ -16,6 +16,14 @@ struct LoweringContext {
     fn_caps: HashMap<String, Vec<String>>,
     /// Maps (impl_const_name, method_name) → arity for uncurrying member calls.
     impl_method_arities: HashMap<(String, String), usize>,
+    /// Impl method bodies that use effects (Perform or calls to effectful fns).
+    /// Entry present ⇒ method takes an extra `__caps` bundle + `__k` continuation
+    /// and its body is CPS-compiled. Value is the set of cap runtime names
+    /// treated as handled while CPS-lowering the body.
+    impl_method_caps: HashMap<(String, String), Vec<String>>,
+    /// Default impls available in the module: (cap_name, type_args) → impl const name.
+    /// Populated from `impl Cap { ... }` (platform default) and `impl Type: Cap { ... }` (typeclass default).
+    default_impls: HashMap<(String, Vec<String>), String>,
     match_counter: Cell<usize>,
     k_counter: Cell<usize>,
 }
@@ -42,10 +50,14 @@ impl TypeScriptBackend {
     fn lower_file(&self, file: &lir::File) -> Result<tsast::Program, BackendError> {
         let mut body = Vec::new();
         let mut extern_names = HashMap::new();
+        let fn_caps = collect_fn_caps(file);
+        let impl_method_caps = collect_impl_method_caps(file, &fn_caps);
         let ctx = LoweringContext {
             direct_callable_arities: collect_direct_callable_arities(file),
-            fn_caps: collect_fn_caps(file),
+            fn_caps,
             impl_method_arities: collect_impl_method_arities(file),
+            impl_method_caps,
+            default_impls: collect_default_impls(file),
             match_counter: Cell::new(0),
             k_counter: Cell::new(0),
         };
@@ -100,14 +112,7 @@ impl TypeScriptBackend {
                         .clone()
                         .unwrap_or_else(|| format!("globalThis.{}", func.name));
                     extern_names.insert(func.name.clone(), extern_path.clone());
-                    let body_expr = tsast::Expr::Call {
-                        callee: Box::new(expr_from_extern_path(&extern_path)),
-                        args: func
-                            .params
-                            .iter()
-                            .map(|p| tsast::Expr::Ident(p.name.clone()))
-                            .collect(),
-                    };
+                    let body_expr = extern_body_expr(&extern_path, &params, return_ty);
                     body.push(tsast::Stmt::Function(tsast::FunctionDecl {
                         export: true,
                         name: func.name.clone(),
@@ -115,6 +120,7 @@ impl TypeScriptBackend {
                         params,
                         return_type: Some(lower_type_expr_to_ts_type(return_ty)),
                         body: tsast::FunctionBody::Expr(Box::new(body_expr)),
+                        inline_always: func.inline,
                     }));
                 }
                 lir::Item::Data(data) => {
@@ -131,6 +137,11 @@ impl TypeScriptBackend {
                 }
                 lir::Item::Fn(func) => {
                     body.push(tsast::Stmt::Function(lower_fn_decl(func, &ctx)?));
+                    if func.name == "main" {
+                        if let Some(wrapper) = emit_main_entry_wrapper(func, &ctx)? {
+                            body.push(tsast::Stmt::Function(wrapper));
+                        }
+                    }
                 }
                 lir::Item::Impl(impl_decl) => {
                     body.push(tsast::Stmt::Const(lower_impl_const(impl_decl, &ctx)?));
@@ -138,13 +149,15 @@ impl TypeScriptBackend {
             }
         }
 
+        let _ = extern_names;
         let mut program = tsast::Program::new(body);
-        specialize_operator_extern_wrappers(&mut program, &extern_names);
         tsast::lower_expression_bodies(&mut program);
+        tsast::inline_always_calls(&mut program);
         tsast::flatten_iifes(&mut program);
         tsast::return_lifting(&mut program);
         tsast::return_lifting(&mut program);
         tsast::flatten_iifes(&mut program); // catch IIFEs exposed by return_lifting
+        tsast::inline_trivial_consts(&mut program);
         validate_program_has_no_any_or_unknown(&program)?;
         Ok(program)
     }
@@ -189,6 +202,165 @@ fn collect_impl_method_arities(file: &lir::File) -> HashMap<(String, String), us
     out
 }
 
+/// Build default impl map from all Impl items in the file.
+/// - Platform default: `impl StrOps { ... }` where target matches a cap name → (cap, [cap]) → "StrOps"
+/// - Typeclass default: `impl Number: Add { ... }` → (cap, [target]) → impl_const_name
+fn collect_default_impls(file: &lir::File) -> HashMap<(String, Vec<String>), String> {
+    let cap_names: std::collections::HashSet<String> = file
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            lir::Item::Cap(c) => Some(c.name.clone()),
+            _ => None,
+        })
+        .collect();
+
+    let mut out = HashMap::new();
+    for item in &file.items {
+        if let lir::Item::Impl(impl_decl) = item {
+            let target = impl_decl.target_type.value.display();
+            if impl_decl.capability.is_none() && cap_names.contains(&target) {
+                out.insert((target.clone(), vec![target.clone()]), target);
+            } else if let Some(cap_ty) = &impl_decl.capability {
+                let cap = cap_ty.value.display();
+                if cap_names.contains(&cap) {
+                    let const_name = impl_decl
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| format!("__impl_{target}_{cap}"));
+                    out.insert((cap, vec![target]), const_name);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Recursively collect cap runtime names required by an expression:
+/// - any `Perform { cap, type_args }` contributes `cap_runtime_name(cap, type_args)`
+/// - any call to a known effectful fn contributes that fn's caps
+/// Stops descending into `Handle` for the cap it handles (that cap is consumed locally).
+fn collect_expr_required_caps(
+    expr: &lir::Expr,
+    fn_caps: &HashMap<String, Vec<String>>,
+    out: &mut Vec<String>,
+) {
+    match expr {
+        lir::Expr::Perform { cap, type_args, .. } => {
+            let name = cap_runtime_name(cap, type_args);
+            if !out.contains(&name) {
+                out.push(name);
+            }
+        }
+        lir::Expr::Apply { callee, arg, .. } => {
+            collect_expr_required_caps(callee, fn_caps, out);
+            collect_expr_required_caps(arg, fn_caps, out);
+        }
+        lir::Expr::Force { expr, .. } => {
+            if let lir::Expr::Ident { name, .. } = expr.as_ref() {
+                if let Some(caps) = fn_caps.get(name) {
+                    for c in caps {
+                        if !out.contains(c) {
+                            out.push(c.clone());
+                        }
+                    }
+                }
+            }
+            collect_expr_required_caps(expr, fn_caps, out);
+        }
+        lir::Expr::Let { value, body, .. } => {
+            collect_expr_required_caps(value, fn_caps, out);
+            collect_expr_required_caps(body, fn_caps, out);
+        }
+        lir::Expr::Match { scrutinee, arms, .. } => {
+            collect_expr_required_caps(scrutinee, fn_caps, out);
+            for arm in arms {
+                collect_expr_required_caps(&arm.body, fn_caps, out);
+            }
+        }
+        lir::Expr::Lambda { body, .. } => collect_expr_required_caps(body, fn_caps, out),
+        lir::Expr::Handle {
+            cap, type_args, handler, body, ..
+        } => {
+            collect_expr_required_caps(handler, fn_caps, out);
+            let handled = cap_runtime_name(cap, type_args);
+            // Record body's caps but drop the one this Handle consumes locally.
+            let mut body_caps = Vec::new();
+            collect_expr_required_caps(body, fn_caps, &mut body_caps);
+            for c in body_caps {
+                if c != handled && !out.contains(&c) {
+                    out.push(c);
+                }
+            }
+        }
+        lir::Expr::Thunk { expr, .. }
+        | lir::Expr::Produce { expr, .. }
+        | lir::Expr::Unroll { expr, .. }
+        | lir::Expr::Roll { expr, .. }
+        | lir::Expr::Ann { expr, .. } => collect_expr_required_caps(expr, fn_caps, out),
+        lir::Expr::Bundle { entries, .. } => {
+            for e in entries {
+                collect_expr_required_caps(&e.body, fn_caps, out);
+            }
+        }
+        lir::Expr::Ctor { args, .. } => {
+            for a in args {
+                collect_expr_required_caps(a, fn_caps, out);
+            }
+        }
+        lir::Expr::Member { object, .. } => collect_expr_required_caps(object, fn_caps, out),
+        lir::Expr::Ident { .. }
+        | lir::Expr::String { .. }
+        | lir::Expr::Number { .. }
+        | lir::Expr::Error { .. } => {}
+    }
+}
+
+/// Compute which impl methods need CPS lowering.
+///
+/// A method needs CPS form if either:
+/// - The impl provides a capability (either `impl Cap { ... }` platform default
+///   where `target == cap_name`, or `impl T: Cap { ... }` typeclass default).
+///   Cap methods are invoked through the `__caps` bundle under a uniform
+///   calling convention `(args..., __caps, __k)`, so they must accept those
+///   parameters even when the body is pure.
+/// - The impl is inherent (`impl T { ... }` with no cap), but the body uses
+///   a Perform or calls an effectful fn.
+///
+/// The returned `Vec<String>` lists cap runtime names that should be treated
+/// as handled while CPS-lowering the body (empty for pure bodies).
+fn collect_impl_method_caps(
+    file: &lir::File,
+    fn_caps: &HashMap<String, Vec<String>>,
+) -> HashMap<(String, String), Vec<String>> {
+    let cap_names: std::collections::HashSet<String> = file
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            lir::Item::Cap(c) => Some(c.name.clone()),
+            _ => None,
+        })
+        .collect();
+
+    let mut out = HashMap::new();
+    for item in &file.items {
+        if let lir::Item::Impl(impl_decl) = item {
+            let const_name = impl_const_name(impl_decl);
+            let target = impl_decl.target_type.value.display();
+            let is_cap_impl = impl_decl.capability.is_some()
+                || (impl_decl.capability.is_none() && cap_names.contains(&target));
+            for method in &impl_decl.methods {
+                let mut caps = Vec::new();
+                collect_expr_required_caps(&method.value, fn_caps, &mut caps);
+                if is_cap_impl || !caps.is_empty() {
+                    out.insert((const_name.clone(), method.name.clone()), caps);
+                }
+            }
+        }
+    }
+    out
+}
+
 fn collect_fn_caps(file: &lir::File) -> HashMap<String, Vec<String>> {
     let mut out = HashMap::new();
     for item in &file.items {
@@ -217,12 +389,117 @@ fn collect_fn_caps(file: &lir::File) -> HashMap<String, Vec<String>> {
 
 /// Build the runtime JS variable name for a cap with optional type args.
 /// e.g. ("Add", ["Number"]) → "__cap_Add_Number", ("IO", []) → "__cap_IO"
+///
+/// Used as the key in `handled_caps` tracking. For code *emission*, use
+/// `cap_bundle_access_expr` — caps are accessed through the `__caps` bundle
+/// as `__caps.Add_Number`, not as bare `__cap_Add_Number` identifiers.
 fn cap_runtime_name(cap: &str, type_args: &[String]) -> String {
     if type_args.is_empty() {
         format!("__cap_{cap}")
     } else {
         format!("__cap_{}_{}", cap, type_args.join("_"))
     }
+}
+
+/// Bundle property key for a cap: e.g. ("Add", ["Number"]) → "Add_Number".
+/// Caps are grouped into a single `__caps` record per effectful function;
+/// this helper computes the property name within that record.
+fn cap_bundle_key(cap: &str, type_args: &[String]) -> String {
+    if type_args.is_empty() {
+        cap.to_owned()
+    } else {
+        format!("{}_{}", cap, type_args.join("_"))
+    }
+}
+
+/// Strip the `__cap_` prefix from a runtime cap name to recover its bundle key.
+fn cap_bundle_key_from_runtime(runtime_name: &str) -> &str {
+    runtime_name.strip_prefix("__cap_").unwrap_or(runtime_name)
+}
+
+/// Parse a mangled runtime cap name back into `(cap_name, type_args)`.
+/// Assumes cap/type names contain no underscores — all underscore-separated
+/// segments after `__cap_` are split with the first being the cap.
+fn cap_runtime_to_pair(runtime_name: &str) -> Option<(String, Vec<String>)> {
+    let rest = runtime_name.strip_prefix("__cap_")?;
+    let mut parts = rest.split('_');
+    let cap = parts.next()?.to_owned();
+    let type_args: Vec<String> = parts.map(|s| s.to_owned()).collect();
+    Some((cap, type_args))
+}
+
+/// Expression accessing a cap from the ambient `__caps` bundle: `__caps.Key`.
+fn cap_bundle_access_expr(cap: &str, type_args: &[String]) -> tsast::Expr {
+    tsast::Expr::Member {
+        object: Box::new(tsast::Expr::Ident("__caps".to_owned())),
+        property: cap_bundle_key(cap, type_args),
+    }
+}
+
+/// Same as `cap_bundle_access_expr`, but from a runtime mangled name.
+fn cap_bundle_access_from_runtime(runtime_name: &str) -> tsast::Expr {
+    tsast::Expr::Member {
+        object: Box::new(tsast::Expr::Ident("__caps".to_owned())),
+        property: cap_bundle_key_from_runtime(runtime_name).to_owned(),
+    }
+}
+
+const CAPS_PARAM: &str = "__caps";
+
+/// Wrap a CPS body in `__thunk(() => body)` so `__trampoline` can unwind
+/// arbitrarily deep CPS call chains iteratively instead of blowing the stack.
+fn thunk_wrap(body: tsast::Expr) -> tsast::Expr {
+    tsast::Expr::Call {
+        callee: Box::new(tsast::Expr::Ident("__thunk".to_owned())),
+        args: vec![tsast::Expr::Arrow {
+            params: Vec::new(),
+            return_type: None,
+            body: Box::new(tsast::FunctionBody::Expr(Box::new(body))),
+        }],
+    }
+}
+
+/// Whether `expr` is a call whose callee is already known to return a thunk,
+/// meaning an enclosing `thunk_wrap` would be redundant. Used by Pass 2
+/// (tail `__thunk` elision) to avoid double-bouncing the trampoline.
+///
+/// Returns true for:
+/// - User-level effectful fn calls: `Call { callee: Ident(name), .. }` where
+///   `fn_caps[name]` is non-empty (the callee's body is `__thunk`-wrapped).
+/// - Cap-method dispatch: `Call { callee: Member { object: Ident("__caps"), .. }, .. }` —
+///   cap-impl methods and handler bundle methods always CPS-wrap with `__thunk`.
+/// - Effectful impl method calls: `Call { callee: Member { object: Ident(obj), property: method }, .. }`
+///   where `(obj, method)` is registered in `impl_method_caps`.
+///
+/// Conservative by default: anything else (including `__k(...)` and pure
+/// extern calls) returns false, preserving the outer `__thunk` wrap.
+fn is_thunk_returning_call(expr: &tsast::Expr, ctx: &LoweringContext) -> bool {
+    let tsast::Expr::Call { callee, .. } = expr else {
+        return false;
+    };
+    match callee.as_ref() {
+        tsast::Expr::Ident(name) => ctx
+            .fn_caps
+            .get(name)
+            .map_or(false, |caps| !caps.is_empty()),
+        tsast::Expr::Member { object, property } => match object.as_ref() {
+            tsast::Expr::Ident(obj) if obj == CAPS_PARAM => true,
+            tsast::Expr::Ident(obj) => ctx
+                .impl_method_caps
+                .contains_key(&(obj.clone(), property.clone())),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// The shared identity continuation reference `__identity`. Runtime prelude
+/// emits `const __identity = (__v) => __v;` once, and every CPS entry point
+/// that would otherwise build a fresh `(__v) => __v` closure references this
+/// const instead. Saves one closure allocation per top-level handle / main
+/// invocation.
+fn identity_k_expr() -> tsast::Expr {
+    tsast::Expr::Ident("__identity".to_owned())
 }
 
 fn lower_fn_decl(
@@ -239,7 +516,7 @@ fn lower_fn_decl(
         )));
     }
 
-    let mut params: Vec<tsast::Param> = func
+    let user_params: Vec<tsast::Param> = func
         .params
         .iter()
         .zip(lowered_params.iter())
@@ -254,25 +531,47 @@ fn lower_fn_decl(
         .map(|c| c.cap_mangled_params())
         .unwrap_or_default();
 
+    let mut params: Vec<tsast::Param> = Vec::new();
     if !caps.is_empty() {
-        // Effectful function: add __cap_E params and __k, CPS-compile body
-        for cap in &caps {
-            params.push(tsast::Param::new(cap));
-        }
+        // Spec: capability bundle is the FIRST parameter of every effectful
+        // function. Signature: `fn(__caps, user_params..., __k)`.
+        params.push(tsast::Param::new(CAPS_PARAM));
+        params.extend(user_params);
         params.push(tsast::Param::new("__k"));
-        let cps_body = lower_cps_expr(
+        let raw_cps_body = lower_cps_expr(
             lowered_body,
             tsast::Expr::Ident("__k".to_owned()),
             &caps,
             ctx,
         );
+        // Wrap the body in `__thunk(() => body)` so recursive CPS calls bounce
+        // off `__trampoline` instead of growing the real call stack. Pass 2
+        // elides the wrap when the body is a tail call to a callee that
+        // already returns a thunk (passthrough functions).
+        let cps_body = if is_thunk_returning_call(&raw_cps_body, ctx) {
+            raw_cps_body
+        } else {
+            thunk_wrap(raw_cps_body)
+        };
+        // main() is the program entry point; callers invoke it as `main()` with
+        // no args. If main is effectful, emit under a private name. The public
+        // `main()` wrapper is emitted separately by `emit_main_entry_wrapper`.
+        let is_main_entry = func.name == "main";
+        let emitted_name = if is_main_entry {
+            "__main_cps".to_string()
+        } else {
+            func.name.clone()
+        };
         Ok(tsast::FunctionDecl {
-            export: true,
-            name: func.name.clone(),
+            export: !is_main_entry,
+            name: emitted_name,
             type_params: func.generics.clone(),
             params,
             return_type: Some(tsast::TsType::Void),
             body: tsast::FunctionBody::Expr(Box::new(cps_body)),
+            // Don't inline CPS-transformed functions — params and continuation
+            // injection make naive substitution unsafe.
+            inline_always: false,
         })
     } else {
         let unit_ty = TypeExpr::Named("Unit".to_owned());
@@ -285,11 +584,117 @@ fn lower_fn_decl(
             export: true,
             name: func.name.clone(),
             type_params: func.generics.clone(),
-            params,
+            params: user_params,
             return_type: Some(lower_type_expr_to_ts_type(return_ty)),
             body: tsast::FunctionBody::Expr(Box::new(lower_expr(lowered_body, ctx))),
+            inline_always: func.inline,
         })
     }
+}
+
+/// Emit the public `main()` wrapper when user's main is effectful.
+/// The wrapper provides default cap impls for each required cap and an identity
+/// continuation, then delegates to `__main_cps`. Returns `Ok(None)` if main is
+/// pure (no wrapper needed). Returns `Err` if any required cap has no default impl.
+fn emit_main_entry_wrapper(
+    func: &lir::FnDecl,
+    ctx: &LoweringContext,
+) -> Result<Option<tsast::FunctionDecl>, BackendError> {
+    let cap_ref = match &func.cap {
+        Some(c) if c.is_effectful() => c,
+        _ => return Ok(None),
+    };
+
+    // Collect main's directly required (cap, type_args) pairs, then expand
+    // transitively: every default impl we resolve may itself need caps (via
+    // `impl_method_caps`). Gather the closure so main's `__caps` bundle has
+    // everything any callee will look up.
+    let mut required: Vec<(String, Vec<String>)> = Vec::new();
+    let mut pending: Vec<(String, Vec<String>)> = Vec::new();
+    for entry in cap_ref.entries() {
+        let pair = match entry {
+            TypeExpr::Cap { name, type_args } => (
+                name.clone(),
+                type_args.iter().map(|t| t.display()).collect(),
+            ),
+            TypeExpr::Named(name) => (name.clone(), vec![name.clone()]),
+            _ => {
+                return Err(BackendError::EmitFailed(format!(
+                    "main() requires non-cap capability: {entry:?}"
+                )));
+            }
+        };
+        if !required.contains(&pair) {
+            required.push(pair.clone());
+            pending.push(pair);
+        }
+    }
+
+    let mut bundle_props: Vec<tsast::ObjectProp> = Vec::new();
+    while let Some((cap_name, type_args)) = pending.pop() {
+        // Platform default: `impl Cap { ... }` is keyed (cap, [cap]).
+        let platform_key = (cap_name.clone(), vec![cap_name.clone()]);
+        // Typeclass default: `impl T: Cap { ... }` is keyed (cap, [T]).
+        let typeclass_key = (cap_name.clone(), type_args.clone());
+
+        let impl_const = ctx
+            .default_impls
+            .get(&typeclass_key)
+            .or_else(|| ctx.default_impls.get(&platform_key))
+            .cloned()
+            .ok_or_else(|| {
+                let type_args_str = if type_args.is_empty() {
+                    String::new()
+                } else {
+                    format!("[{}]", type_args.join(", "))
+                };
+                BackendError::EmitFailed(format!(
+                    "main() requires capability `{cap_name}{type_args_str}` but no default impl is available — \
+                     provide `impl {cap_name} {{ ... }}` (platform default) or `impl <T>: {cap_name} {{ ... }}` \
+                     (typeclass default), or add an explicit `handle` block"
+                ))
+            })?;
+
+        // Pull in any cap this impl's methods need (transitive closure).
+        for ((const_name, _method), method_caps) in &ctx.impl_method_caps {
+            if const_name != &impl_const {
+                continue;
+            }
+            for runtime in method_caps {
+                if let Some((cap_n, cap_a)) = cap_runtime_to_pair(runtime) {
+                    if !required.iter().any(|p| p == &(cap_n.clone(), cap_a.clone())) {
+                        required.push((cap_n.clone(), cap_a.clone()));
+                        pending.push((cap_n, cap_a));
+                    }
+                }
+            }
+        }
+
+        bundle_props.push(tsast::ObjectProp {
+            key: tsast::ObjectKey::Ident(cap_bundle_key(&cap_name, &type_args)),
+            value: tsast::Expr::Ident(impl_const),
+        });
+    }
+
+    // Body: `return __trampoline(__main_cps({ <bundle> }, __identity));`
+    let call = tsast::Expr::Call {
+        callee: Box::new(tsast::Expr::Ident("__main_cps".to_owned())),
+        args: vec![tsast::Expr::Object(bundle_props), identity_k_expr()],
+    };
+    let wrapped = tsast::Expr::Call {
+        callee: Box::new(tsast::Expr::Ident("__trampoline".to_owned())),
+        args: vec![call],
+    };
+
+    Ok(Some(tsast::FunctionDecl {
+        export: true,
+        name: "main".to_owned(),
+        type_params: Vec::new(),
+        params: Vec::new(),
+        return_type: Some(tsast::TsType::Void),
+        body: tsast::FunctionBody::Expr(Box::new(wrapped)),
+        inline_always: false,
+    }))
 }
 
 fn lower_impl_const(
@@ -309,7 +714,7 @@ fn lower_impl_const(
                 method.params.len()
             )));
         }
-        let params: Vec<tsast::Param> = method
+        let user_params: Vec<tsast::Param> = method
             .params
             .iter()
             .zip(lowered_params.iter())
@@ -324,7 +729,32 @@ fn lower_impl_const(
             .as_ref()
             .map(|s| &s.value)
             .unwrap_or(&unit_ty);
-        let body_expr = lower_expr(lowered_body, ctx);
+
+        let method_key = (const_name.clone(), method.name.clone());
+        let (params, body_expr) = if let Some(caps) = ctx.impl_method_caps.get(&method_key) {
+            // Effectful impl method: `(__caps, user_params..., __k)`.
+            let mut params = vec![tsast::Param::new(CAPS_PARAM)];
+            params.extend(user_params);
+            params.push(tsast::Param::new("__k"));
+            let body = lower_cps_expr(
+                lowered_body,
+                tsast::Expr::Ident("__k".to_owned()),
+                caps,
+                ctx,
+            );
+            // Wrap in __thunk so trampoline unwinds the CPS chain iteratively.
+            // Pass 2: elide the wrap for tail calls to callees that already
+            // return a thunk.
+            let wrapped = if is_thunk_returning_call(&body, ctx) {
+                body
+            } else {
+                thunk_wrap(body)
+            };
+            (params, wrapped)
+        } else {
+            (user_params, lower_expr(lowered_body, ctx))
+        };
+
         properties.push(tsast::ObjectProp {
             key: tsast::ObjectKey::Ident(method.name.clone()),
             value: tsast::Expr::Arrow {
@@ -399,43 +829,106 @@ impl Backend for TypeScriptBackend {
         };
 
         let emitted = tsast::Emitter::default().emit_program(&program, target);
-        Ok(format!("{}{}", runtime_prelude(target), emitted))
+        let imports = format_imports(file, target);
+        let prelude = runtime_prelude(target, &emitted);
+        Ok(format!("{prelude}{imports}{emitted}"))
     }
 }
 
-fn runtime_prelude(target: tsast::EmitTarget) -> &'static str {
-    match target {
-        tsast::EmitTarget::TypeScript => {
-            "const LUMO_TAG = Symbol.for(\"Lumo/tag\");
-type __LumoRuntime = { [LUMO_TAG]: string; args?: __LumoRuntime[] } | string | number | boolean | null | undefined | (() => __LumoRuntime);
-const __lumo_is = (value: __LumoRuntime, pattern: string): boolean =>
-  !!value && typeof value === \"object\" && LUMO_TAG in value && (value as { [LUMO_TAG]: string })[LUMO_TAG] === pattern;
-const __lumo_match_error = (value: __LumoRuntime): never => { throw new Error(\"non-exhaustive match: \" + JSON.stringify(value)); };
-const __lumo_error = (): never => { throw new Error(\"lumo runtime error\"); };
-const __thunk = (fn: Function): any => { (fn as any).__t = 1; return fn; };
-const __trampoline = (v: any): any => { while (v && (v as any).__t) v = (v as () => any)(); return v; };
-
-"
-        }
-        tsast::EmitTarget::JavaScript => {
-            "import { readFileSync as __fs_readFileSync, writeFileSync as __fs_writeFileSync } from \"node:fs\";
-const LUMO_TAG = Symbol.for(\"Lumo/tag\");
-const __lumo_is = (value, pattern) =>
-  !!value && typeof value === \"object\" && LUMO_TAG in value && value[LUMO_TAG] === pattern;
-const __lumo_match_error = (value) => { throw new Error(\"non-exhaustive match: \" + JSON.stringify(value)); };
-const __lumo_error = () => { throw new Error(\"lumo runtime error\"); };
-const __thunk = (fn) => { fn.__t = 1; return fn; };
-const __trampoline = (v) => { while (v && v.__t) v = v(); return v; };
-const str = { len: (s) => s.length, char_at: (s, i) => s[i] ?? \"\", slice: (s, a, b) => s.slice(a, b), concat: (a, b) => a + b, eq: (a, b) => a === b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, starts_with: (s, p) => s.startsWith(p) ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, contains: (s, p) => s.includes(p) ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, index_of: (s, p) => s.indexOf(p), trim: (s) => s.trim(), char_code_at: (s, i) => s.charCodeAt(i), from_char_code: (c) => String.fromCharCode(c), replace_all: (s, f, t) => s.replaceAll(f, t) };
-const num = { eq: (a, b) => a === b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, lt: (a, b) => a < b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, gt: (a, b) => a > b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, lte: (a, b) => a <= b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, gte: (a, b) => a >= b ? { [LUMO_TAG]: \"true\" } : { [LUMO_TAG]: \"false\" }, add: (a, b) => a + b, sub: (a, b) => a - b, mul: (a, b) => a * b, floor: (a) => Math.floor(a), to_string: (n) => String(n) };
-const console = globalThis.console;
-const fs = { read_file: (p) => __fs_readFileSync(p, \"utf8\"), write_file: (p, c) => __fs_writeFileSync(p, c, \"utf8\") };
-const process = { ...globalThis.process, arg_at: (i) => globalThis.process.argv[i + 1] ?? \"\", args_count: () => globalThis.process.argv.length - 1, exit: (c) => globalThis.process.exit(c), panic: (m) => { console.error(m); globalThis.process.exit(1); } };
-
-"
-        }
-        tsast::EmitTarget::TypeScriptDefinition => "",
+/// Collect `#[link(module = ...)]` extern fns and emit `import { ... } from "..."` statements.
+fn format_imports(file: &lir::File, target: tsast::EmitTarget) -> String {
+    if matches!(target, tsast::EmitTarget::TypeScriptDefinition) {
+        return String::new();
     }
+    // Group by module, preserving insertion order.
+    let mut modules: Vec<(String, Vec<(String, String)>)> = Vec::new();
+    let mut seen_per_module: HashMap<String, std::collections::HashSet<(String, String)>> =
+        HashMap::new();
+    for item in &file.items {
+        if let lir::Item::ExternFn(func) = item {
+            if let Some((module, js_name)) = &func.link_module {
+                let alias = format!("__lumo_{}", func.name);
+                let entry = (js_name.clone(), alias);
+                let seen = seen_per_module.entry(module.clone()).or_default();
+                if seen.insert(entry.clone()) {
+                    if let Some((_, names)) = modules.iter_mut().find(|(m, _)| m == module) {
+                        names.push(entry);
+                    } else {
+                        modules.push((module.clone(), vec![entry]));
+                    }
+                }
+            }
+        }
+    }
+    if modules.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    for (module, names) in modules {
+        let specs = names
+            .iter()
+            .map(|(js, alias)| {
+                if js == alias {
+                    js.clone()
+                } else {
+                    format!("{js} as {alias}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("import {{ {specs} }} from \"{module}\";\n"));
+    }
+    out.push('\n');
+    out
+}
+
+fn runtime_prelude(target: tsast::EmitTarget, emitted: &str) -> String {
+    if matches!(target, tsast::EmitTarget::TypeScriptDefinition) {
+        return String::new();
+    }
+    let needs_trampoline = emitted.contains("__trampoline(") || emitted.contains("__thunk(");
+    let needs_match_error = emitted.contains("__lumo_match_error(");
+    let needs_error = emitted.contains("__lumo_error(");
+    let needs_identity = emitted.contains("__identity");
+    let ts = matches!(target, tsast::EmitTarget::TypeScript);
+
+    let mut out = String::new();
+    out.push_str("const LUMO_TAG = Symbol.for(\"Lumo/tag\");\n");
+    if ts {
+        out.push_str("type __LumoRuntime = { [LUMO_TAG]: string; args?: __LumoRuntime[] } | string | number | boolean | null | undefined | (() => __LumoRuntime);\n");
+    }
+    if needs_match_error {
+        if ts {
+            out.push_str("const __lumo_match_error = (value: __LumoRuntime): never => { throw new Error(\"non-exhaustive match: \" + JSON.stringify(value)); };\n");
+        } else {
+            out.push_str("const __lumo_match_error = (value) => { throw new Error(\"non-exhaustive match: \" + JSON.stringify(value)); };\n");
+        }
+    }
+    if needs_error {
+        if ts {
+            out.push_str("const __lumo_error = (): never => { throw new Error(\"lumo runtime error\"); };\n");
+        } else {
+            out.push_str("const __lumo_error = () => { throw new Error(\"lumo runtime error\"); };\n");
+        }
+    }
+    if needs_trampoline {
+        if ts {
+            out.push_str("const __thunk = (fn: Function): any => { (fn as any).__t = 1; return fn; };\n");
+            out.push_str("const __trampoline = (v: any): any => { while (v && (v as any).__t) v = (v as () => any)(); return v; };\n");
+        } else {
+            out.push_str("const __thunk = (fn) => { fn.__t = 1; return fn; };\n");
+            out.push_str("const __trampoline = (v) => { while (v && v.__t) v = v(); return v; };\n");
+        }
+    }
+    if needs_identity {
+        if ts {
+            out.push_str("const __identity = <T>(__v: T): T => __v;\n");
+        } else {
+            out.push_str("const __identity = (__v) => __v;\n");
+        }
+    }
+    out.push('\n');
+    out
 }
 
 fn lower_type_expr_to_ts_type(ty: &TypeExpr) -> tsast::TsType {
@@ -533,177 +1026,107 @@ fn is_js_ident(text: &str) -> bool {
         && chars.all(|ch| ch == '_' || ch == '$' || ch.is_ascii_alphanumeric())
 }
 
-fn specialize_operator_extern_wrappers(
-    program: &mut tsast::Program,
-    extern_names: &HashMap<String, String>,
-) {
-    for stmt in &mut program.body {
-        let tsast::Stmt::Function(func) = stmt else {
-            continue;
-        };
-        let Some(extern_name) = extern_names.get(&func.name) else {
-            continue;
-        };
-        if let Some(expr) = specialize_operator_wrapper_expr(extern_name, &func.params) {
-            func.body = tsast::FunctionBody::Expr(Box::new(expr));
-            continue;
+/// Build the body expression for an extern fn from its JS path.
+///
+/// Rules:
+/// - Operator externs (`_+_`, `_===_`, `-_`, etc.) use operator specialization.
+/// - If path ends with `()`, it's a function call; otherwise a value/property access.
+/// - If path contains `.prototype.`, the first param is the receiver (`this`) and
+///   the rest are passed as args. Otherwise the path is used directly.
+/// - If the return type is `Bool`, the call result is auto-wrapped in the Lumo Bool ADT.
+fn extern_body_expr(
+    extern_path: &str,
+    params: &[tsast::Param],
+    return_type: &TypeExpr,
+) -> tsast::Expr {
+    if let Some(expr) = specialize_operator_wrapper_expr(extern_path, params) {
+        return maybe_bool_wrap(expr, return_type);
+    }
+
+    let (base, is_call) = match extern_path.strip_suffix("()") {
+        Some(base) => (base, true),
+        None => (extern_path, false),
+    };
+
+    let expr = if let Some(idx) = base.find(".prototype.") {
+        let member_path = &base[idx + ".prototype.".len()..];
+        let receiver = tsast::Expr::Ident(params[0].name.clone());
+        let target = member_access_chain(receiver, member_path);
+        if is_call {
+            let rest_args = params[1..]
+                .iter()
+                .map(|p| tsast::Expr::Ident(p.name.clone()))
+                .collect();
+            tsast::Expr::Call {
+                callee: Box::new(target),
+                args: rest_args,
+            }
+        } else {
+            target
         }
-        if let Some(expr) = specialize_stdlib_extern_body(extern_name, &func.params) {
-            func.body = tsast::FunctionBody::Expr(Box::new(expr));
+    } else {
+        let path_expr = expr_from_extern_path(base);
+        if is_call {
+            let args = params
+                .iter()
+                .map(|p| tsast::Expr::Ident(p.name.clone()))
+                .collect();
+            tsast::Expr::Call {
+                callee: Box::new(path_expr),
+                args,
+            }
+        } else {
+            path_expr
         }
+    };
+
+    maybe_bool_wrap(expr, return_type)
+}
+
+fn member_access_chain(mut acc: tsast::Expr, path: &str) -> tsast::Expr {
+    for part in path.split('.').filter(|s| !s.is_empty()) {
+        acc = if is_js_ident(part) {
+            tsast::Expr::Member {
+                object: Box::new(acc),
+                property: part.to_owned(),
+            }
+        } else {
+            tsast::Expr::Index {
+                object: Box::new(acc),
+                index: Box::new(tsast::Expr::String(part.to_owned())),
+            }
+        };
+    }
+    acc
+}
+
+fn maybe_bool_wrap(expr: tsast::Expr, return_type: &TypeExpr) -> tsast::Expr {
+    if is_bool_return_type(return_type) {
+        bool_wrap_expr(expr)
+    } else {
+        expr
     }
 }
 
-/// Inline implementations for stdlib extern functions that don't have
-/// corresponding JS globals (e.g., `str.len` → `s.length`).
-fn specialize_stdlib_extern_body(
-    extern_name: &str,
-    params: &[tsast::Param],
-) -> Option<tsast::Expr> {
-    let p = |i: usize| -> tsast::Expr { tsast::Expr::Ident(params[i].name.clone()) };
+fn is_bool_return_type(ty: &TypeExpr) -> bool {
+    match ty {
+        TypeExpr::Named(n) => n == "Bool",
+        TypeExpr::Produce(inner) => is_bool_return_type(inner),
+        _ => false,
+    }
+}
 
-    let method_call = |obj: tsast::Expr, method: &str, args: Vec<tsast::Expr>| -> tsast::Expr {
-        tsast::Expr::Call {
-            callee: Box::new(tsast::Expr::Member {
-                object: Box::new(obj),
-                property: method.to_owned(),
-            }),
-            args,
-        }
-    };
-
-    // Wrap a JS boolean expression in a Lumo Bool ADT:
-    // `cond ? Bool["true"] : Bool["false"]`
-    let bool_wrap = |cond: tsast::Expr| -> tsast::Expr {
-        tsast::Expr::IfElse {
-            cond: Box::new(cond),
-            then_expr: Box::new(tsast::Expr::Index {
-                object: Box::new(tsast::Expr::Ident("Bool".to_owned())),
-                index: Box::new(tsast::Expr::String("true".to_owned())),
-            }),
-            else_expr: Box::new(tsast::Expr::Index {
-                object: Box::new(tsast::Expr::Ident("Bool".to_owned())),
-                index: Box::new(tsast::Expr::String("false".to_owned())),
-            }),
-        }
-    };
-
-    let cmp = |op: tsast::BinaryOp| -> tsast::Expr {
-        bool_wrap(tsast::Expr::Binary {
-            left: Box::new(p(0)),
-            op,
-            right: Box::new(p(1)),
-        })
-    };
-
-    match extern_name {
-        // String operations
-        "str.len" => Some(tsast::Expr::Member {
-            object: Box::new(p(0)),
-            property: "length".to_owned(),
+fn bool_wrap_expr(cond: tsast::Expr) -> tsast::Expr {
+    tsast::Expr::IfElse {
+        cond: Box::new(cond),
+        then_expr: Box::new(tsast::Expr::Index {
+            object: Box::new(tsast::Expr::Ident("Bool".to_owned())),
+            index: Box::new(tsast::Expr::String("true".to_owned())),
         }),
-        "str.char_at" => Some(method_call(p(0), "charAt", vec![p(1)])),
-        "str.slice" => Some(method_call(p(0), "slice", vec![p(1), p(2)])),
-        "str.concat" => Some(tsast::Expr::Binary {
-            left: Box::new(p(0)),
-            op: tsast::BinaryOp::Add,
-            right: Box::new(p(1)),
+        else_expr: Box::new(tsast::Expr::Index {
+            object: Box::new(tsast::Expr::Ident("Bool".to_owned())),
+            index: Box::new(tsast::Expr::String("false".to_owned())),
         }),
-        "str.eq" => Some(cmp(tsast::BinaryOp::EqEqEq)),
-        "str.starts_with" => Some(bool_wrap(method_call(p(0), "startsWith", vec![p(1)]))),
-        "str.contains" => Some(bool_wrap(method_call(p(0), "includes", vec![p(1)]))),
-        "str.index_of" => Some(method_call(p(0), "indexOf", vec![p(1)])),
-        "str.trim" => Some(method_call(p(0), "trim", vec![])),
-        "str.char_code_at" => Some(method_call(p(0), "charCodeAt", vec![p(1)])),
-        "str.from_char_code" => Some(tsast::Expr::Call {
-            callee: Box::new(tsast::Expr::Member {
-                object: Box::new(tsast::Expr::Ident("String".to_owned())),
-                property: "fromCharCode".to_owned(),
-            }),
-            args: vec![p(0)],
-        }),
-        "str.replace_all" => Some(method_call(p(0), "replaceAll", vec![p(1), p(2)])),
-        "num.to_string" => Some(method_call(p(0), "toString", vec![])),
-
-        // Number operations
-        "num.eq" => Some(cmp(tsast::BinaryOp::EqEqEq)),
-        "num.cmp" => {
-            // a < b ? Ordering.less : a === b ? Ordering.equal : Ordering.greater
-            let ordering_ctor = |variant: &str| -> tsast::Expr {
-                tsast::Expr::Index {
-                    object: Box::new(tsast::Expr::Ident("Ordering".to_owned())),
-                    index: Box::new(tsast::Expr::String(variant.to_owned())),
-                }
-            };
-            Some(tsast::Expr::IfElse {
-                cond: Box::new(tsast::Expr::Binary {
-                    left: Box::new(p(0)),
-                    op: tsast::BinaryOp::Lt,
-                    right: Box::new(p(1)),
-                }),
-                then_expr: Box::new(ordering_ctor("less")),
-                else_expr: Box::new(tsast::Expr::IfElse {
-                    cond: Box::new(tsast::Expr::Binary {
-                        left: Box::new(p(0)),
-                        op: tsast::BinaryOp::EqEqEq,
-                        right: Box::new(p(1)),
-                    }),
-                    then_expr: Box::new(ordering_ctor("equal")),
-                    else_expr: Box::new(ordering_ctor("greater")),
-                }),
-            })
-        }
-        "num.add" => Some(tsast::Expr::Binary {
-            left: Box::new(p(0)),
-            op: tsast::BinaryOp::Add,
-            right: Box::new(p(1)),
-        }),
-        "num.sub" => Some(tsast::Expr::Binary {
-            left: Box::new(p(0)),
-            op: tsast::BinaryOp::Sub,
-            right: Box::new(p(1)),
-        }),
-        "num.mul" => Some(tsast::Expr::Binary {
-            left: Box::new(p(0)),
-            op: tsast::BinaryOp::Mul,
-            right: Box::new(p(1)),
-        }),
-        "num.div" => Some(tsast::Expr::Binary {
-            left: Box::new(p(0)),
-            op: tsast::BinaryOp::Div,
-            right: Box::new(p(1)),
-        }),
-        "num.mod" => Some(tsast::Expr::Binary {
-            left: Box::new(p(0)),
-            op: tsast::BinaryOp::Mod,
-            right: Box::new(p(1)),
-        }),
-        "num.neg" => Some(tsast::Expr::Unary {
-            op: tsast::UnaryOp::Minus,
-            expr: Box::new(p(0)),
-        }),
-        "num.floor" => Some(tsast::Expr::Call {
-            callee: Box::new(tsast::Expr::Member {
-                object: Box::new(tsast::Expr::Ident("Math".to_owned())),
-                property: "floor".to_owned(),
-            }),
-            args: vec![p(0)],
-        }),
-
-        // Bool operations — Lumo Bool is an ADT: not(true) → false, not(false) → true
-        "bool.not" => {
-            // p(0)[LUMO_TAG] === "false" ? Bool["true"] : Bool["false"]
-            Some(bool_wrap(tsast::Expr::Binary {
-                left: Box::new(tsast::Expr::Index {
-                    object: Box::new(p(0)),
-                    index: Box::new(tsast::Expr::Ident("LUMO_TAG".to_owned())),
-                }),
-                op: tsast::BinaryOp::EqEqEq,
-                right: Box::new(tsast::Expr::String("false".to_owned())),
-            }))
-        }
-
-        _ => None,
     }
 }
 
@@ -1159,7 +1582,7 @@ fn lower_expr(expr: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
             }
         }
         lir::Expr::Perform { cap, type_args, .. } => {
-            tsast::Expr::Ident(cap_runtime_name(cap, type_args))
+            cap_bundle_access_expr(cap, type_args)
         }
         lir::Expr::Handle {
             cap, type_args, handler, body, ..
@@ -1170,8 +1593,10 @@ fn lower_expr(expr: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
         lir::Expr::Ann { expr, .. } => lower_expr(expr, ctx),
         lir::Expr::Error { .. } => runtime_call("__lumo_error", Vec::new()),
         lir::Expr::Bundle { .. } => {
-            // All bundles are cap handlers — use CPS entries (with __k)
-            lower_handler_with_resume(expr, ctx)
+            // All bundles are cap handlers — use CPS entries (with __k).
+            // A bare Bundle outside a `handle` has no specific handled cap; the
+            // inner-body CPS lowering treats handled_caps as empty.
+            lower_handler_with_resume(expr, &[], ctx)
         }
         lir::Expr::Member {
             object, field, ..
@@ -1548,10 +1973,16 @@ fn lower_match_decision(
         } => {
             let mut folded = lower_match_decision(error_value, *default, lower_body);
             for case in cases.into_iter().rev() {
-                let cond = runtime_call(
-                    "__lumo_is",
-                    vec![occurrence.clone(), tsast::Expr::String(case.ctor_name)],
-                );
+                // Inline `__lumo_is(occurrence, "ctor")` → `occurrence[LUMO_TAG] === "ctor"`.
+                // Match scrutinees are guaranteed ADT values by typecheck, so no null-guard needed.
+                let cond = tsast::Expr::Binary {
+                    left: Box::new(tsast::Expr::Index {
+                        object: Box::new(occurrence.clone()),
+                        index: Box::new(tsast::Expr::Ident("LUMO_TAG".to_owned())),
+                    }),
+                    op: tsast::BinaryOp::EqEqEq,
+                    right: Box::new(tsast::Expr::String(case.ctor_name)),
+                };
                 folded = tsast::Expr::IfElse {
                     cond: Box::new(cond),
                     then_expr: Box::new(lower_match_decision(
@@ -1602,6 +2033,26 @@ fn decompose_perform_call<'a>(
     None
 }
 
+/// Decompose an impl method call pattern: `Apply*(Member(Ident(obj), method), args)`
+/// or `Apply*(Force(Member(Ident(obj), method)), args)`.
+/// Returns `(obj_const_name, method_name, args)` when the shape matches.
+fn decompose_impl_method_call<'a>(
+    expr: &'a lir::Expr,
+) -> Option<(&'a str, &'a str, Vec<&'a lir::Expr>)> {
+    let (root, args) = unwrap_apply_chain(expr);
+    let root = if let lir::Expr::Force { expr, .. } = root {
+        expr.as_ref()
+    } else {
+        root
+    };
+    if let lir::Expr::Member { object, field, .. } = root {
+        if let lir::Expr::Ident { name, .. } = object.as_ref() {
+            return Some((name.as_str(), field.as_str(), args));
+        }
+    }
+    None
+}
+
 /// Decompose a function call pattern in LIR:
 /// Apply*(Force(Ident(name)), args) → Some((name, args))
 /// Force(Ident(name)) with no args → Some((name, []))
@@ -1615,7 +2066,9 @@ fn decompose_fn_call<'a>(expr: &'a lir::Expr) -> Option<(&'a str, Vec<&'a lir::E
     None
 }
 
-/// Compile handle expression with CPS for resume support
+/// Compile handle expression with CPS for resume support.
+/// Extends the ambient `__caps` bundle with the new handler under the cap's
+/// bundle key, and evaluates the body in that extended scope.
 fn lower_cps_handle(
     cap: &str,
     type_args: &[String],
@@ -1624,21 +2077,47 @@ fn lower_cps_handle(
     ctx: &LoweringContext,
 ) -> tsast::Expr {
     let runtime_name = cap_runtime_name(cap, type_args);
-    let param_name = runtime_name.clone();
-    let identity_k = tsast::Expr::Arrow {
-        params: vec![tsast::Param::new("__v")],
-        return_type: None,
-        body: Box::new(tsast::FunctionBody::Expr(Box::new(tsast::Expr::Ident(
-            "__v".to_owned(),
-        )))),
+    let bundle_key = cap_bundle_key(cap, type_args);
+    let handled = vec![runtime_name.clone()];
+    // At the top-level handle site, the outer continuation is the identity —
+    // the whole `handle` expression's value is returned directly. Both the
+    // body's CPS continuation and the factory's `__k_handle` are the shared
+    // `__identity` const (see runtime prelude).
+    let cps_body = lower_cps_expr(body, identity_k_expr(), &handled, ctx);
+    let handler_factory = lower_handler_with_resume(handler, &handled, ctx);
+    let handler_instance = tsast::Expr::Call {
+        callee: Box::new(handler_factory),
+        args: vec![identity_k_expr()],
     };
-    let cps_body = lower_cps_expr(body, identity_k, &[runtime_name], ctx);
-    let handler_lowered = lower_handler_with_resume(handler, ctx);
-    let bound = iife(&param_name, cps_body, handler_lowered);
+    let extended = extended_caps_object(&bundle_key, handler_instance);
+    let bound = iife(CAPS_PARAM, cps_body, extended);
     // Wrap in trampoline to evaluate CPS thunks iteratively
     tsast::Expr::Call {
         callee: Box::new(tsast::Expr::Ident("__trampoline".to_owned())),
         args: vec![bound],
+    }
+}
+
+/// Build `Object.assign({}, __caps, { <key>: <handler> })` — an extended caps
+/// bundle that layers a new handler on top of the outer scope's `__caps`.
+/// Evaluated in the outer scope (so `__caps` here refers to the enclosing
+/// bundle). Using `Object.assign` rather than spread syntax keeps the tsast
+/// AST minimal.
+fn extended_caps_object(bundle_key: &str, handler: tsast::Expr) -> tsast::Expr {
+    let new_entry = tsast::Expr::Object(vec![tsast::ObjectProp {
+        key: tsast::ObjectKey::Ident(bundle_key.to_owned()),
+        value: handler,
+    }]);
+    tsast::Expr::Call {
+        callee: Box::new(tsast::Expr::Member {
+            object: Box::new(tsast::Expr::Ident("Object".to_owned())),
+            property: "assign".to_owned(),
+        }),
+        args: vec![
+            tsast::Expr::Object(Vec::new()),
+            tsast::Expr::Ident(CAPS_PARAM.to_owned()),
+            new_entry,
+        ],
     }
 }
 
@@ -1673,6 +2152,18 @@ fn is_effectful_expr(
             .fn_caps
             .get(fn_name)
             .map_or(false, |c| !c.is_empty())
+        {
+            return true;
+        }
+        return args
+            .iter()
+            .any(|a| is_effectful_expr(a, handled_caps, ctx));
+    }
+    // Decompose as effectful impl method call: Apply*(Member(Ident(obj), method), args)
+    if let Some((obj, method, args)) = decompose_impl_method_call(expr) {
+        if ctx
+            .impl_method_caps
+            .contains_key(&(obj.to_owned(), method.to_owned()))
         {
             return true;
         }
@@ -1790,13 +2281,18 @@ fn lower_cps_expr_inner(
     if let Some((cap_runtime, op, args)) = decompose_perform_call(expr) {
         if handled_caps.iter().any(|c| c == &cap_runtime) {
             let op = op.to_owned();
-            // CPS-sequence all arguments, then emit the perform call
+            let cap_access = cap_bundle_access_from_runtime(&cap_runtime);
+            // CPS-sequence all arguments, then emit the perform call.
+            // Spec: `__caps` is the FIRST argument, user args follow, `__k` last.
+            // - handler bundle methods accept `(__caps, args..., __k)` and typically ignore __caps
+            // - CPS-form impl methods actually consume __caps to dispatch their own performs
             return lower_cps_values(&args, 0, Vec::new(), handled_caps, ctx, &|ts_args| {
                 let callee = tsast::Expr::Member {
-                    object: Box::new(tsast::Expr::Ident(cap_runtime.clone())),
+                    object: Box::new(cap_access.clone()),
                     property: op.clone(),
                 };
-                let mut final_args = ts_args;
+                let mut final_args = vec![tsast::Expr::Ident(CAPS_PARAM.to_owned())];
+                final_args.extend(ts_args);
                 final_args.push(k.clone());
                 tsast::Expr::Call {
                     callee: Box::new(callee),
@@ -1863,14 +2359,23 @@ fn lower_cps_expr_inner(
         lir::Expr::Handle {
             cap, type_args, handler, body, ..
         } => {
-            // handle Cap with handler in body → bind handler, CPS-lower body with cap added
+            // handle Cap with handler in body → extend the ambient __caps bundle
+            // with this cap's handler, then CPS-lower body in the extended scope.
+            // Factory receives `k` (the outer `handle` continuation) as
+            // __k_handle so the handler body's value aborts into `k`.
             let runtime_name = cap_runtime_name(cap, type_args);
-            let handler_lowered = lower_handler_with_resume(handler, ctx);
+            let bundle_key = cap_bundle_key(cap, type_args);
             let mut extended_caps: Vec<String> =
                 handled_caps.iter().cloned().collect();
             extended_caps.push(runtime_name.clone());
+            let handler_factory = lower_handler_with_resume(handler, &extended_caps, ctx);
+            let handler_instance = tsast::Expr::Call {
+                callee: Box::new(handler_factory),
+                args: vec![k.clone()],
+            };
             let cps_body = lower_cps_expr(body, k, &extended_caps, ctx);
-            iife(&runtime_name, cps_body, handler_lowered)
+            let extended = extended_caps_object(&bundle_key, handler_instance);
+            iife(CAPS_PARAM, cps_body, extended)
         }
         // Check for effectful function calls: Apply*(Force(Ident(f)), args)
         _ => {
@@ -1878,8 +2383,9 @@ fn lower_cps_expr_inner(
                 if let Some(caps) = ctx.fn_caps.get(fn_name) {
                     if !caps.is_empty() {
                         let fn_name = fn_name.to_owned();
-                        let caps = caps.clone();
-                        // CPS-sequence all arguments, then emit the effectful call
+                        // CPS-sequence all arguments, then emit the effectful call.
+                        // Spec: `__caps` is the FIRST argument, user args follow,
+                        // continuation `__k` is last.
                         return lower_cps_values(
                             &args,
                             0,
@@ -1887,11 +2393,9 @@ fn lower_cps_expr_inner(
                             handled_caps,
                             ctx,
                             &|ts_args| {
-                                let mut final_args = ts_args;
-                                for cap in &caps {
-                                    final_args
-                                        .push(tsast::Expr::Ident(cap.clone()));
-                                }
+                                let mut final_args =
+                                    vec![tsast::Expr::Ident(CAPS_PARAM.to_owned())];
+                                final_args.extend(ts_args);
                                 final_args.push(k.clone());
                                 tsast::Expr::Call {
                                     callee: Box::new(tsast::Expr::Ident(fn_name.clone())),
@@ -1900,6 +2404,62 @@ fn lower_cps_expr_inner(
                             },
                         );
                     }
+                }
+            }
+            // Effectful impl method call: Apply*(Member(Ident(obj), method), args)
+            if let Some((obj, method, args)) = decompose_impl_method_call(expr) {
+                if ctx
+                    .impl_method_caps
+                    .contains_key(&(obj.to_owned(), method.to_owned()))
+                {
+                    let obj = obj.to_owned();
+                    let method = method.to_owned();
+                    return lower_cps_values(
+                        &args,
+                        0,
+                        Vec::new(),
+                        handled_caps,
+                        ctx,
+                        &|ts_args| {
+                            let mut final_args =
+                                vec![tsast::Expr::Ident(CAPS_PARAM.to_owned())];
+                            final_args.extend(ts_args);
+                            final_args.push(k.clone());
+                            tsast::Expr::Call {
+                                callee: Box::new(tsast::Expr::Member {
+                                    object: Box::new(tsast::Expr::Ident(obj.clone())),
+                                    property: method.clone(),
+                                }),
+                                args: final_args,
+                            }
+                        },
+                    );
+                }
+            }
+            // Pure fn call with effectful args: Apply*(Force(Ident(f)), args).
+            // The fn itself is pure (no caps), but an argument contains a
+            // Perform or effectful call — we must CPS-sequence each arg before
+            // invoking the pure fn, then pass the result to `k`.
+            if let Some((fn_name, args)) = decompose_fn_call(expr) {
+                let args_effectful = args
+                    .iter()
+                    .any(|a| is_effectful_expr(a, handled_caps, ctx));
+                if args_effectful {
+                    let fn_name = fn_name.to_owned();
+                    return lower_cps_values(
+                        &args,
+                        0,
+                        Vec::new(),
+                        handled_caps,
+                        ctx,
+                        &|ts_args| tsast::Expr::Call {
+                            callee: Box::new(k.clone()),
+                            args: vec![tsast::Expr::Call {
+                                callee: Box::new(tsast::Expr::Ident(fn_name.clone())),
+                                args: ts_args,
+                            }],
+                        },
+                    );
                 }
             }
             // Opaque expression: lower directly and pass result to k.
@@ -1955,39 +2515,72 @@ fn lower_cps_match_expr(
 /// Each entry gets an extra `__k` parameter.
 /// - Entries using `resume`: `(params, __k) => ((resume) => body)(() => __k)`
 /// - Tail-resumptive entries: `(params, __k) => __k(body_result)`
-fn lower_handler_with_resume(handler: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
+/// Build a handler *factory*: `(__k_handle) => { <op>: (__caps, args..., __k_perform) => __thunk(() => body) }`.
+///
+/// Calling convention (algebraic-effects, abort-by-default):
+/// - `__k_perform` (passed by the perform site): what `resume` invokes.
+/// - `__k_handle` (closed over from the factory's arg): where the handler's
+///   body value flows — i.e. the continuation of the surrounding `handle`.
+/// - Handler body is CPS-lowered with continuation = `__k_handle`, so its
+///   tail value *aborts* to the outer context. Explicit `resume(v)` drives
+///   `__k_perform(v)` to a concrete value via a nested `__trampoline`.
+///
+/// Multi-shot works because `__k_perform` is a plain JS closure — each call
+/// re-executes the captured continuation with a fresh value.
+fn lower_handler_with_resume(
+    handler: &lir::Expr,
+    handled_caps: &[String],
+    ctx: &LoweringContext,
+) -> tsast::Expr {
     let lir::Expr::Bundle { entries, .. } = handler else {
         return lower_expr(handler, ctx);
     };
-    let props = entries
+    let props: Vec<tsast::ObjectProp> = entries
         .iter()
         .map(|entry| {
-            let body_lowered = lower_expr(&entry.body, ctx);
-            let mut params: Vec<tsast::Param> = entry
-                .params
-                .iter()
-                .map(|p| tsast::Param::new(&p.name))
-                .collect();
-            params.push(tsast::Param::new("__k"));
+            // CPS-lower the body with continuation = __k_handle. Handler's
+            // tail value flows out of the whole handle expression.
+            let k_handle = tsast::Expr::Ident("__k_handle".to_owned());
+            let body_lowered =
+                lower_cps_expr(&entry.body, k_handle, handled_caps, ctx);
+
+            // Handler method params: `(__caps, user_args..., __k_perform)`.
+            let mut params: Vec<tsast::Param> = vec![tsast::Param::new(CAPS_PARAM)];
+            params.extend(entry.params.iter().map(|p| tsast::Param::new(&p.name)));
+            params.push(tsast::Param::new("__k_perform"));
 
             let raw_body = if lir::expr_references_name(&entry.body, "resume") {
-                // ((resume) => body)(() => __k)
+                // In LIR, `resume(x)` lowers to `Apply(Force(Ident("resume")), x)`
+                // which emits as `resume()(x)` — a two-step force-then-apply.
+                // To match that shape, `resume` is a thunk that returns the
+                // actual resumer arrow; the resumer drives `__k_perform`
+                // through `__trampoline` for a concrete synchronous value.
+                // Each call to `resume()` returns a fresh inner arrow closing
+                // over the *same* `__k_perform` closure, so multi-shot
+                // resumption reinvokes the same continuation repeatedly.
+                let inner_resumer = tsast::Expr::Arrow {
+                    params: vec![tsast::Param::new("__v")],
+                    return_type: None,
+                    body: Box::new(tsast::FunctionBody::Expr(Box::new(tsast::Expr::Call {
+                        callee: Box::new(tsast::Expr::Ident("__trampoline".to_owned())),
+                        args: vec![tsast::Expr::Call {
+                            callee: Box::new(tsast::Expr::Ident("__k_perform".to_owned())),
+                            args: vec![tsast::Expr::Ident("__v".to_owned())],
+                        }],
+                    }))),
+                };
                 let resume_binding = tsast::Expr::Arrow {
                     params: Vec::new(),
                     return_type: None,
-                    body: Box::new(tsast::FunctionBody::Expr(Box::new(
-                        tsast::Expr::Ident("__k".to_owned()),
-                    ))),
+                    body: Box::new(tsast::FunctionBody::Expr(Box::new(inner_resumer))),
                 };
                 iife("resume", body_lowered, resume_binding)
             } else {
-                // __k(body_result)
-                tsast::Expr::Call {
-                    callee: Box::new(tsast::Expr::Ident("__k".to_owned())),
-                    args: vec![body_lowered],
-                }
+                // No resume: body's value goes straight to __k_handle via the
+                // CPS-lowered body — no extra wrapping required.
+                body_lowered
             };
-            // Wrap in __thunk for trampoline bounce
+            // __thunk wrapper for trampoline bouncing.
             let inner_body = tsast::Expr::Call {
                 callee: Box::new(tsast::Expr::Ident("__thunk".to_owned())),
                 args: vec![tsast::Expr::Arrow {
@@ -2007,7 +2600,15 @@ fn lower_handler_with_resume(handler: &lir::Expr, ctx: &LoweringContext) -> tsas
             }
         })
         .collect();
-    tsast::Expr::Object(props)
+
+    // Wrap the bundle in the factory that closes over __k_handle.
+    tsast::Expr::Arrow {
+        params: vec![tsast::Param::new("__k_handle")],
+        return_type: None,
+        body: Box::new(tsast::FunctionBody::Expr(Box::new(tsast::Expr::Object(
+            props,
+        )))),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

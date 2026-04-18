@@ -710,6 +710,7 @@ mod tests {
                         }),
                     }),
                 },
+                inline: false,
                 span: dummy_span(),
             })],
             content_hash: ContentHash(0),

@@ -46,6 +46,8 @@ pub struct ExternTypeDecl {
 pub struct ExternFnDecl {
     pub name: String,
     pub extern_name: Option<String>,
+    /// Module import via `#[link(module = "...")]` — (module, js_name).
+    pub link_module: Option<(String, String)>,
     pub inline: bool,
     pub params: Vec<Param>,
     pub return_type: Option<Spanned<TypeExpr>>,
@@ -91,6 +93,7 @@ pub struct FnDecl {
     pub return_type: Option<Spanned<TypeExpr>>,
     pub cap: Option<CapRef>,
     pub body: Expr,
+    pub inline: bool,
     pub span: Span,
 }
 
@@ -251,7 +254,7 @@ pub fn merge_files(files: &[File]) -> File {
 fn lower_extern_type(ext: &lst::ExternTypeDecl) -> ExternTypeDecl {
     ExternTypeDecl {
         name: ext.name.clone(),
-        extern_name: find_extern_name(&ext.attrs),
+        extern_name: find_extern_name(&ext.attrs, &ext.name),
         span: ext.span,
     }
 }
@@ -259,7 +262,8 @@ fn lower_extern_type(ext: &lst::ExternTypeDecl) -> ExternTypeDecl {
 fn lower_extern_fn(ext: &lst::ExternFnDecl) -> ExternFnDecl {
     ExternFnDecl {
         name: ext.name.clone(),
-        extern_name: find_extern_name(&ext.attrs),
+        extern_name: find_extern_name(&ext.attrs, &ext.name),
+        link_module: find_link_module(&ext.attrs, &ext.name),
         inline: find_inline_hint(&ext.attrs),
         params: ext.params.iter().map(lower_param).collect(),
         return_type: ext.return_type.as_ref().and_then(lower_type_sig),
@@ -314,6 +318,7 @@ fn lower_fn(func: &lst::FnDecl, ctx: &mut LowerCtx) -> FnDecl {
         return_type: func.return_type.as_ref().and_then(lower_type_sig),
         cap: func.cap.as_ref().map(lower_cap_sig),
         body: lower_expr(&func.body, ctx),
+        inline: find_inline_hint(&func.attrs),
         span: func.span,
     }
 }
@@ -775,24 +780,96 @@ fn find_inline_hint(attrs: &[lst::Attribute]) -> bool {
     })
 }
 
-fn find_extern_name(attrs: &[lst::Attribute]) -> Option<String> {
-    attrs
-        .iter()
-        .find(|attr| attr.name == "extern")
-        .and_then(|attr| {
-            if let Some(value) = &attr.value {
-                if let lst::Expr::String { value, .. } = value {
-                    return Some(value.clone());
+/// Read the effective extern JS path from attributes.
+///
+/// Resolution order:
+/// 1. `#[link(expr = "Obj")] + #[extern(property = "P")]`  → `"Obj.prototype.P"` (receiver property access)
+/// 2. `#[link(expr = "Obj")] + #[extern(name = "M")]`      → `"Obj.prototype.M()"` (receiver method call)
+/// 3. `#[link(module = "X")] + #[extern(name = "J")]`      → `"J()"` (import alias call)
+/// 4. `#[link(module = "X")]`                              → `"<fn_name>()"` (direct import call)
+/// 5. `#[extern(name = "...")]` or `#[extern = "..."]`     → verbatim path (current behavior)
+fn find_extern_name(attrs: &[lst::Attribute], fallback_fn_name: &str) -> Option<String> {
+    let link = attrs.iter().find(|a| a.name == "link");
+    let extern_attr = attrs.iter().find(|a| a.name == "extern");
+
+    let attr_arg_str = |attr: &lst::Attribute, key: &str| -> Option<String> {
+        attr.args.iter().find(|a| a.key == key).and_then(|a| match &a.value {
+            lst::Expr::String { value, .. } => Some(value.clone()),
+            _ => None,
+        })
+    };
+
+    if let Some(link) = link {
+        if let Some(expr_base) = attr_arg_str(link, "expr") {
+            if let Some(extern_attr) = extern_attr {
+                if let Some(prop) = attr_arg_str(extern_attr, "property") {
+                    return Some(format!("{expr_base}.prototype.{prop}"));
+                }
+                if let Some(method) = attr_arg_str(extern_attr, "name") {
+                    return Some(format!("{expr_base}.prototype.{method}()"));
+                }
+                if let Some(static_method) = attr_arg_str(extern_attr, "static") {
+                    return Some(format!("{expr_base}.{static_method}()"));
+                }
+                if let Some(static_prop) = attr_arg_str(extern_attr, "static_property") {
+                    return Some(format!("{expr_base}.{static_prop}"));
                 }
             }
-            attr.args
-                .iter()
-                .find(|arg| arg.key == "name")
-                .and_then(|arg| match &arg.value {
-                    lst::Expr::String { value, .. } => Some(value.clone()),
-                    _ => None,
-                })
+            // No property/name/static specified — fall back to static fn on the link expr.
+            return Some(format!("{expr_base}.{fallback_fn_name}()"));
+        }
+        if attr_arg_str(link, "module").is_some() {
+            // The JS import is aliased to `__lumo_<fn_name>` to avoid collision
+            // with the Lumo-side `export function <fn_name>`.
+            return Some(format!("__lumo_{fallback_fn_name}()"));
+        }
+    }
+
+    if let Some(attr) = extern_attr {
+        if let Some(value) = &attr.value {
+            if let lst::Expr::String { value, .. } = value {
+                return Some(value.clone());
+            }
+        }
+        if let Some(op) = attr_arg_str(attr, "operator") {
+            return Some(operator_attr_to_extern_name(&op));
+        }
+        if let Some(name) = attr_arg_str(attr, "name") {
+            return Some(name);
+        }
+    }
+    None
+}
+
+/// Translate `infix<op>` / `prefix<op>` into the internal `_X_` / `X_` extern
+/// name form that the backend specializes into operator expressions.
+fn operator_attr_to_extern_name(spec: &str) -> String {
+    if let Some(op) = spec.strip_prefix("infix") {
+        format!("_{op}_")
+    } else if let Some(op) = spec.strip_prefix("prefix") {
+        format!("{op}_")
+    } else {
+        spec.to_owned()
+    }
+}
+
+/// If `#[link(module = "X")]` is present, return (module, js_name) for import emission.
+fn find_link_module(attrs: &[lst::Attribute], fallback_fn_name: &str) -> Option<(String, String)> {
+    let link = attrs.iter().find(|a| a.name == "link")?;
+    let module = link.args.iter().find(|a| a.key == "module").and_then(|a| match &a.value {
+        lst::Expr::String { value, .. } => Some(value.clone()),
+        _ => None,
+    })?;
+    let js_name = attrs
+        .iter()
+        .find(|a| a.name == "extern")
+        .and_then(|a| a.args.iter().find(|kv| kv.key == "name"))
+        .and_then(|kv| match &kv.value {
+            lst::Expr::String { value, .. } => Some(value.clone()),
+            _ => None,
         })
+        .unwrap_or_else(|| fallback_fn_name.to_owned());
+    Some((module, js_name))
 }
 
 // ---------------------------------------------------------------------------

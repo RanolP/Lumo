@@ -1,6 +1,9 @@
-// Lumo syntax tree grammar
+// Lumo surface syntax grammar
 // Describes the shape of the lossless CST (concrete syntax tree).
 // Used by langue to generate SyntaxKind enum + typed AST accessors.
+//
+// To update: edit this file, then run `scripts/gen_langue.sh compiler`
+// Reference: crates/lst/src/parser.rs (Expr enum, Item enum)
 
 @token Ident StringLit NumberLit
 
@@ -51,14 +54,31 @@ Param = name:Ident ':' ty:TypeExpr
 
 // === Capabilities ===
 
-CapAnnotation = '/' '{' caps:TypeExpr* '}'
+CapAnnotation = '/' cap:CapSig
+CapSig = name:Ident generic_args:GenericArgs?
 CapDecl = 'cap' name:Ident '{' operations:OperationDecl* '}'
 OperationDecl = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)?
 
 // === Extern declarations ===
-
+//
+// Standalone:
+//   #[extern(name = "globalThis.console.log()")] extern fn println(msg: String);
+//
+// Grouped `extern { ... }` block — each inner decl inherits block attrs:
+//   #[link(expr = "globalThis.String")]
+//   extern {
+//     #[extern(property = "length")] fn __str_len(s: String): Number;
+//     #[extern(name = "charAt")] fn __str_char_at(s: String, i: Number): String;
+//   }
+//   #[link(module = "node:fs")]
+//   extern {
+//     fn readFileSync(path: String, encoding: String): String;
+//   }
+//
+// Parser flattens blocks into individual ExternFnDecl / ExternTypeDecl items
+// with the block's attrs merged into each. No distinct CST node.
 ExternTypeDecl = attrs:Attribute* 'extern' 'type' name:Ident
-ExternFnDecl = attrs:Attribute* 'extern' 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)?
+ExternFnDecl = attrs:Attribute* 'extern' 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation?
 
 // === Use declarations ===
 
@@ -91,6 +111,7 @@ Expr =
   | AnnotationExpr
   | BlockExpr
   | IfElseExpr
+  | AssignExpr
 
 IdentExpr = name:Ident
 StringExpr = value:StringLit
@@ -108,7 +129,8 @@ MemberExpr = object:Expr '.' member:Ident
 BinaryExpr = lhs:Expr op:BinaryOp rhs:Expr
 UnaryExpr = op:UnaryOp operand:Expr
 
-HandleExpr = 'handle' cap_expr:Expr 'with' handler:Expr 'in' body:Expr
+// Surface handle: cap is a raw signature string (e.g. "Add" or "Add for Number")
+HandleExpr = 'handle' cap:Ident 'with' handler:Expr 'in' body:Expr
 BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
 BundleEntry = 'fn' name:Ident param_list:ParamList body:FnBody
 
@@ -120,6 +142,9 @@ IfElseExpr = 'if' condition:Expr then_body:BlockExpr ('else' else_clause:ElseCla
 ElseClause =
   | IfElseExpr
   | BlockExpr
+
+AssignExpr = name:Ident '=' value:Expr ';' body:Expr
+
 BlockStmt =
   | LetStmt
   | ExprStmt

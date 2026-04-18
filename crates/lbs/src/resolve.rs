@@ -5,20 +5,20 @@ use std::path::PathBuf;
 ///
 /// Maps use-paths like `["libcore", "io"]` to `(filename, source)` pairs
 /// by looking up the package name in the deps table and reading the file.
-/// Platform-specific source sets (`src#{target}/`) are checked first,
-/// falling back to `src/`.
+/// For each target suffix (in order, e.g. `["js", "js.node"]`), platform
+/// sources in `src#{suffix}/` are appended after the common `src/` source.
 pub struct FsResolver {
     deps: HashMap<String, PathBuf>,
-    /// Target suffix for platform source sets (e.g. "js", "rs").
-    target: String,
+    /// Ordered list of directory suffixes to merge, e.g. `["js", "js.node"]`.
+    target_suffixes: Vec<String>,
     cache: HashMap<String, (String, String)>,
 }
 
 impl FsResolver {
-    pub fn new(deps: HashMap<String, PathBuf>, target: &str) -> Self {
+    pub fn new(deps: HashMap<String, PathBuf>, target_suffixes: Vec<String>) -> Self {
         Self {
             deps,
-            target: target.to_owned(),
+            target_suffixes,
             cache: HashMap::new(),
         }
     }
@@ -38,20 +38,24 @@ impl FsResolver {
 
         let dep_path = self.deps.get(pkg)?;
 
-        // Load common and platform sources, merge if both exist
         let common_path = dep_path.join("src").join(format!("{module}.lumo"));
-        let platform_path = dep_path
-            .join(format!("src#{}", self.target))
-            .join(format!("{module}.lumo"));
-
         let common_source = std::fs::read_to_string(&common_path).ok();
-        let platform_source = std::fs::read_to_string(&platform_path).ok();
 
-        let source = match (common_source, platform_source) {
-            (Some(common), Some(platform)) => format!("{common}\n{platform}"),
-            (Some(common), None) => common,
-            (None, Some(platform)) => platform,
-            (None, None) => return None,
+        let mut platform_sources: Vec<String> = Vec::new();
+        for suffix in &self.target_suffixes {
+            let platform_path = dep_path
+                .join(format!("src#{suffix}"))
+                .join(format!("{module}.lumo"));
+            if let Ok(src) = std::fs::read_to_string(&platform_path) {
+                platform_sources.push(src);
+            }
+        }
+
+        let source = match (common_source, platform_sources.is_empty()) {
+            (Some(common), true) => common,
+            (Some(common), false) => format!("{common}\n{}", platform_sources.join("\n")),
+            (None, false) => platform_sources.join("\n"),
+            (None, true) => return None,
         };
 
         let entry = (canonical_name.clone(), source);
@@ -63,9 +67,9 @@ impl FsResolver {
 /// Create a resolver closure suitable for `QueryEngine::compile_with_deps`.
 pub fn make_resolver(
     deps: HashMap<String, PathBuf>,
-    target: &str,
+    target_suffixes: Vec<String>,
 ) -> impl FnMut(&[String]) -> Option<(String, String)> {
-    let mut resolver = FsResolver::new(deps, target);
+    let mut resolver = FsResolver::new(deps, target_suffixes);
     move |path: &[String]| resolver.resolve(path)
 }
 
@@ -84,7 +88,7 @@ mod tests {
         let mut deps = HashMap::new();
         deps.insert("libstd".to_owned(), tmp.clone());
 
-        let mut resolver = FsResolver::new(deps, "js");
+        let mut resolver = FsResolver::new(deps, vec!["js".into()]);
         let result = resolver.resolve(&["libstd".into(), "io".into()]);
         assert!(result.is_some());
         let (name, source) = result.unwrap();
@@ -96,7 +100,7 @@ mod tests {
 
     #[test]
     fn returns_none_for_unknown_package() {
-        let mut resolver = FsResolver::new(HashMap::new(), "js");
+        let mut resolver = FsResolver::new(HashMap::new(), vec!["js".into()]);
         assert!(resolver
             .resolve(&["unknown".into(), "mod".into()])
             .is_none());

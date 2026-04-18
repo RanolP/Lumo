@@ -7,7 +7,6 @@ members = [
     "crates/hir",
     "crates/lir",
     "crates/compiler",
-    "crates/langue",
     "crates/lbs",
     "crates/lsp",
     "crates/playground-wasm",

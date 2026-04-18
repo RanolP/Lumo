@@ -21,8 +21,8 @@ fn ts_backend_emits_ts_js_and_dts() {
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     let dts = backend::emit(&file, CodegenTarget::TypeScriptDefinition).expect("d.ts emit");
 
-    assert!(ts.contains("const __lumo_is ="), "{ts}");
-    assert!(js.contains("const __lumo_is ="), "{js}");
+    assert!(ts.contains("const LUMO_TAG ="), "{ts}");
+    assert!(js.contains("const LUMO_TAG ="), "{js}");
     assert!(!ts.contains("__lumo_ctor"), "{ts}");
     assert!(!js.contains("__lumo_ctor"), "{js}");
     assert!(ts.contains("export function id(x: Bool): Bool"), "{ts}");
@@ -108,8 +108,8 @@ fn ts_backend_match_checks_variant_tag_without_dot() {
         "data Bool { .true, .false } fn not(x: Bool): Bool { match x { .true => Bool.false(), .false => Bool.true() } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    assert!(js.contains("__lumo_is(__match_0, \"true\")"), "{js}");
-    assert!(js.contains("__lumo_is(__match_0, \"false\")"), "{js}");
+    assert!(js.contains("x[LUMO_TAG] === \"true\""), "{js}");
+    assert!(js.contains("x[LUMO_TAG] === \"false\""), "{js}");
 }
 
 #[test]
@@ -118,11 +118,11 @@ fn ts_backend_lowers_nested_match_patterns_as_tree() {
         "data Nat { .zero, .succ(Nat) } fn down2(n: Nat): Nat { match n { .succ(.succ(let m)) => m, .succ(.zero) => Nat.zero(), .zero => Nat.zero() } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    assert!(js.contains("__lumo_is(__match_0, \"succ\")"), "{js}");
-    assert!(js.contains("__lumo_is(__match_0.args[0], \"succ\")"), "{js}");
+    assert!(js.contains("n[LUMO_TAG] === \"succ\""), "{js}");
+    assert!(js.contains("n.args[0][LUMO_TAG] === \"succ\""), "{js}");
     assert!(js.contains("return m;"), "{js}");
-    assert!(js.contains("const m = __match_0.args[0].args[0];"), "{js}");
-    assert!(js.contains("__lumo_is(__match_0.args[0], \"zero\")"), "{js}");
+    assert!(js.contains("const m = n.args[0].args[0];"), "{js}");
+    assert!(js.contains("n.args[0][LUMO_TAG] === \"zero\""), "{js}");
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn ts_backend_accepts_generic_none_branch_when_return_type_is_constrained() {
 #[test]
 fn ts_backend_emits_extern_type_and_extern_fn() {
     let file = lower_typed(
-        "#[extern = \"string\"] extern type String; #[extern = \"console.log\"] extern fn console_log(msg: String); fn main(msg: String): Unit { console_log(msg) }",
+        "#[extern = \"string\"] extern type String; #[extern = \"console.log()\"] extern fn console_log(msg: String); fn main(msg: String): Unit { console_log(msg) }",
     );
     let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
@@ -241,7 +241,8 @@ fn ts_backend_handle_always_uses_cps() {
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // Deep CPS: ALL handles use CPS, even without resume
     // Handler entries get __k parameter, body is CPS-transformed
-    assert!(js.contains("__cap_E"), "{js}");
+    // Cap is accessed through ambient __caps bundle: `__caps.E.op(...)`
+    assert!(js.contains("__caps.E"), "{js}");
     assert!(js.contains("__k"), "all handles should have CPS __k param: {js}");
     assert!(js.contains("__v"), "CPS identity continuation: {js}");
 }
@@ -267,8 +268,8 @@ fn ts_backend_cps_handle_with_let_perform() {
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     // CPS transforms: let x = E.op; x
-    // → __cap_E.op((x) => ((v) => v)(x))
-    assert!(js.contains("__cap_E.op"), "CPS perform call: {js}");
+    // → __caps.E.op((x) => ((v) => v)(x))
+    assert!(js.contains("__caps.E.op"), "CPS perform call: {js}");
     assert!(js.contains("__k"), "handler has __k: {js}");
 }
 
@@ -285,24 +286,187 @@ fn ts_backend_mixed_resume_entries() {
 }
 
 #[test]
+fn ts_backend_nested_perform_in_handler_body_cps_lowered() {
+    // Stage B: the handler body is CPS-lowered. A nested Perform on an
+    // outer-handled cap inside the handler body must be dispatched through
+    // the ambient `__caps` bundle (threaded CPS), not emitted as a raw call.
+    let file = lower_typed(
+        "cap E { fn op(): A } cap F { fn go(): A } \
+         fn f(a: A): A / { F } { handle E with bundle { fn op() { F.go } } in E.op }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    assert!(
+        js.contains("__caps.F"),
+        "nested F.go inside handler body should dispatch through __caps bundle: {js}"
+    );
+}
+
+#[test]
+fn ts_backend_handler_aborts_by_default() {
+    // Without `resume`, the handler body's value aborts — it flows through
+    // `__k_handle` (the `handle` expression's continuation) rather than
+    // implicitly resuming at the perform site.
+    let file = lower_typed(
+        "cap E { fn op(): A } fn f(a: A, b: A): A / {} { handle E with bundle { fn op() { b } } in E.op }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    assert!(
+        js.contains("__k_handle"),
+        "handler's abort path should reference __k_handle: {js}"
+    );
+    assert!(
+        !js.contains("resume"),
+        "abort-only handler shouldn't emit a resume binding: {js}"
+    );
+}
+
+#[test]
+fn ts_backend_handler_factory_closes_over_k_handle() {
+    // The handle site invokes a factory `(__k_handle) => { ... }` with the
+    // outer continuation. The resulting handler object is what's installed
+    // into the `__caps` bundle.
+    let file = lower_typed(
+        "cap E { fn op(): A } fn f(a: A): A / {} { handle E with bundle { fn op() { a } } in E.op }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    assert!(
+        js.contains("(__k_handle) =>"),
+        "handler should be produced by a factory arrow over __k_handle: {js}"
+    );
+}
+
+/// Extract the body region of a function declaration from emitted JS.
+/// Assumes the function is terminated by a line containing just `}`.
+fn extract_fn_body<'a>(js: &'a str, fn_signature_prefix: &str) -> Option<&'a str> {
+    let start = js.find(fn_signature_prefix)?;
+    let rest = &js[start..];
+    // Find the matching closing `}` at column 0 (i.e. function-level, not nested).
+    let close = rest.find("\n}")?;
+    Some(&rest[..close + 2])
+}
+
+#[test]
+fn ts_backend_identity_continuation_is_shared_const() {
+    // Pass 1: instead of allocating a fresh `(__v) => __v` closure at every
+    // CPS entry point, emit a shared runtime constant `__identity` and
+    // reference it. The main entry wrapper invokes `__main_cps({...}, __identity)`.
+    // Uses a cap with a default impl so main's wrapper compiles cleanly.
+    let file = lower_typed(
+        "cap E { fn op(a: A): A } \
+         impl E { fn op(a) { a } } \
+         fn main(): A / { E } { E.op(a) } \
+         extern fn a(): A",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    assert!(
+        js.contains("const __identity = (__v) => __v;"),
+        "runtime prelude should emit the shared __identity const: {js}"
+    );
+    assert!(
+        js.contains(", __identity)"),
+        "entry wrapper should reference the shared __identity const as continuation: {js}"
+    );
+    // No inline `(__v) => __v` arrow at the main-wrapper call site.
+    assert!(
+        !js.contains("(__v) => __v\n") && !js.contains("(__v) => __v)"),
+        "no inline identity arrow should remain — all sites use __identity: {js}"
+    );
+}
+
+#[test]
+fn ts_backend_tail_thunk_elided_for_fn_call() {
+    // Pass 2: a passthrough fn whose body is a tail call to another effectful
+    // fn should NOT wrap in `__thunk(() => ...)` — the callee already returns
+    // a thunk, so the outer wrap would double-bounce the trampoline.
+    let file = lower_typed(
+        "cap E { fn op(): A } fn inner(): A / { E } { E.op } fn outer(): A / { E } { inner() }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    let outer_body = extract_fn_body(&js, "export function outer(")
+        .expect("outer function should be in emitted JS");
+    assert!(
+        !outer_body.contains("__thunk("),
+        "outer's tail call to inner should skip the __thunk wrap; got:\n{outer_body}"
+    );
+    assert!(
+        outer_body.contains("inner(__caps, __k)"),
+        "outer should directly return inner(__caps, __k); got:\n{outer_body}"
+    );
+}
+
+#[test]
+fn ts_backend_tail_thunk_kept_for_k_call() {
+    // Pass 2's predicate is conservative: a fn whose body is `__k(x)` (tail
+    // resume, not a known-thunked call) must KEEP the outer __thunk so the
+    // trampoline can unwind deep chains safely.
+    let file = lower_typed(
+        "cap E { fn op(): A } \
+         fn f(a: A): A / { E } { handle E with bundle { fn op() { resume(a) } } in E.op }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    // Handler bundle methods still wrap in __thunk — check we haven't broken
+    // that uniformly. Body of handler `op` references `__k_perform` and
+    // wraps in __thunk.
+    assert!(
+        js.contains("__thunk("),
+        "handler method's __thunk wrap must survive Pass 2: {js}"
+    );
+}
+
+#[test]
+fn ts_backend_multi_shot_handler_compiles() {
+    // A handler that calls `resume` multiple times must compile; each call
+    // drives `__k_perform` through `__trampoline` independently.
+    let file = lower_typed(
+        "cap Choice { fn pick(): A } \
+         fn f(a: A, b: A): A / {} { \
+           handle Choice with bundle { fn pick() { let _ = resume(a); resume(b) } } in Choice.pick \
+         }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    // Both `resume(a)` and `resume(b)` sites emit the synchronous
+    // `__trampoline(__k_perform(...))` pattern.
+    let occurrences = js.matches("__trampoline(__k_perform(").count();
+    assert!(
+        occurrences >= 1,
+        "handler body should invoke __k_perform via __trampoline: {js}"
+    );
+}
+
+#[test]
+fn ts_backend_resume_binding_is_synchronous_arrow() {
+    // resume is bound as (v) => __trampoline(__k_perform(v)), NOT () => __k.
+    // This makes resume(x) return a concrete value rather than a thunk,
+    // enabling handler bodies to compose multiple resumes.
+    let file = lower_typed(
+        "cap E { fn op(): A } fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in E.op }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    assert!(
+        js.contains("__trampoline(__k_perform("),
+        "resume should drive __k_perform through __trampoline for synchronous return: {js}"
+    );
+}
+
+#[test]
 fn ts_backend_effectful_fn_decl_has_extra_params() {
     let file = lower_typed(
         "cap E { fn op(): A } fn inner(): A / { E } { E.op }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // Effectful function should have __cap_E and __k params
+    // Effectful function takes a single __caps bundle plus __k continuation.
     assert!(
-        js.contains("__cap_E"),
-        "effectful fn should have __cap_E param: {js}"
+        js.contains("__caps"),
+        "effectful fn should have __caps bundle param: {js}"
     );
     assert!(
         js.contains("__k"),
         "effectful fn should have __k param: {js}"
     );
-    // Body should be CPS-transformed: E.op → __cap_E.op(__k)
+    // Body should be CPS-transformed: E.op → __caps.E.op(__k)
     assert!(
-        js.contains("__cap_E.op"),
-        "body should call handler op: {js}"
+        js.contains("__caps.E.op"),
+        "body should call handler op via bundle: {js}"
     );
 }
 
@@ -312,15 +476,15 @@ fn ts_backend_deep_cps_effectful_fn_call() {
         "cap E { fn op(): A } fn inner(): A / { E } { E.op } fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in { let x = force (thunk inner); x } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // inner should be called with __cap_E and continuation
-    // inner(__cap_E, (x) => ...)
+    // inner should be called with the ambient __caps bundle and continuation:
+    // inner(__caps, (x) => ...)
     assert!(
         js.contains("inner("),
         "should call inner with args: {js}"
     );
     assert!(
-        js.contains("__cap_E"),
-        "should pass handler to inner: {js}"
+        js.contains("__caps"),
+        "should pass __caps bundle to inner: {js}"
     );
 }
 

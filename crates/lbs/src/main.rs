@@ -11,10 +11,28 @@ use lumo_compiler::typecheck;
 
 use manifest::EntryKind;
 
+/// A build target. The `spec` is a dotted path like `"js"`, `"js.node"`, or `"js.web"`.
+/// Directory resolution scans `src#{prefix}/` for each dotted prefix, so
+/// `js.node` enables `src#js/` + `src#js.node/`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Target {
+    backend: Backend,
+    spec: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Target {
+enum Backend {
     Js,
     Rust,
+}
+
+impl Target {
+    /// All directory suffixes to scan, in merge order (base first, variant last).
+    /// e.g. `"js.node"` → `["js", "js.node"]`, `"js"` → `["js"]`.
+    fn suffixes(&self) -> Vec<String> {
+        let parts: Vec<&str> = self.spec.split('.').collect();
+        (1..=parts.len()).map(|n| parts[..n].join(".")).collect()
+    }
 }
 
 fn main() {
@@ -36,25 +54,40 @@ fn main() {
     }
 }
 
-fn parse_target(args: &[String]) -> Target {
+/// Returns the user's explicit `--target` flag, or None if unspecified.
+fn parse_target_flag(args: &[String]) -> Option<String> {
     let mut i = 0;
     while i < args.len() {
         if args[i] == "--target" {
             if let Some(val) = args.get(i + 1) {
-                return match val.as_str() {
-                    "js" | "javascript" => Target::Js,
-                    "rust" | "rs" => Target::Rust,
-                    other => {
-                        eprintln!("unknown target: {other}");
-                        eprintln!("supported: js, rust");
-                        process::exit(1);
-                    }
-                };
+                return Some(val.clone());
             }
         }
         i += 1;
     }
-    Target::Js
+    None
+}
+
+fn target_from_spec(raw: &str) -> Target {
+    let normalized = match raw {
+        "javascript" => "js",
+        "rust" => "rs",
+        other => other,
+    };
+    let base = normalized.split('.').next().unwrap_or("");
+    let backend = match base {
+        "js" => Backend::Js,
+        "rs" => Backend::Rust,
+        _ => {
+            eprintln!("unknown target: {raw}");
+            eprintln!("supported bases: js (js.node, js.web, ...), rs");
+            process::exit(1);
+        }
+    };
+    Target {
+        backend,
+        spec: normalized.to_owned(),
+    }
 }
 
 fn find_manifest() -> Result<(PathBuf, manifest::Manifest), String> {
@@ -74,30 +107,26 @@ fn find_manifest() -> Result<(PathBuf, manifest::Manifest), String> {
     }
 }
 
-fn target_suffix(target: Target) -> &'static str {
-    match target {
-        Target::Js => "js",
-        Target::Rust => "rs",
-    }
-}
-
 fn compile(
     manifest: &manifest::Manifest,
     project_root: &std::path::Path,
-    target: Target,
+    target: &Target,
 ) -> lir::File {
     let mut engine = QueryEngine::new();
     let mut sources: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
-    let suffix = target_suffix(target);
+    let suffixes = target.suffixes();
 
     // Load common .lumo files from src/
     let src_dir = project_root.join("src");
     collect_lumo_files(&src_dir, &mut sources);
 
-    // Merge platform-specific .lumo files from src#{target}/ with common sources
-    let platform_dir = project_root.join(format!("src#{suffix}"));
-    merge_lumo_files(&platform_dir, &mut sources);
+    // Merge platform-specific .lumo files from src#{suffix}/ for each target prefix.
+    // Earlier suffixes are base (e.g. "js"), later are variants (e.g. "js.node").
+    for suffix in &suffixes {
+        let platform_dir = project_root.join(format!("src#{suffix}"));
+        merge_lumo_files(&platform_dir, &mut sources);
+    }
 
     if sources.is_empty() {
         eprintln!("error: no .lumo files found in {}", src_dir.display());
@@ -111,7 +140,7 @@ fn compile(
     }
 
     let file_refs: Vec<&str> = file_names.iter().map(|s| s.as_str()).collect();
-    let mut resolver = resolve::make_resolver(manifest.deps.clone(), suffix);
+    let mut resolver = resolve::make_resolver(manifest.deps.clone(), suffixes.clone());
     match engine.compile_with_deps(&file_refs, &mut resolver) {
         Some(lir) => lir,
         None => {
@@ -202,7 +231,7 @@ fn typecheck_or_exit(lir: &lir::File) {
 }
 
 fn cmd_build(args: &[String]) {
-    let target = parse_target(args);
+    let requested = parse_target_flag(args);
 
     let (project_root, manifest) = match find_manifest() {
         Ok(v) => v,
@@ -212,7 +241,45 @@ fn cmd_build(args: &[String]) {
         }
     };
 
-    let lir = compile(&manifest, &project_root, target);
+    let targets_to_build = resolve_build_targets(&manifest, requested.as_deref());
+    for target in &targets_to_build {
+        build_target(&project_root, &manifest, target);
+    }
+}
+
+/// Pick which targets to build based on manifest config and optional CLI flag.
+/// - `--target X` with a manifest `targets` list: X must be listed (error otherwise).
+/// - `--target X` with no manifest `targets`: build X (legacy).
+/// - No `--target`, manifest `targets = [...]`: build each listed target.
+/// - No `--target`, no `targets`: build default `js`.
+fn resolve_build_targets(manifest: &manifest::Manifest, requested: Option<&str>) -> Vec<Target> {
+    match (requested, manifest.targets.is_empty()) {
+        (Some(spec), true) => vec![target_from_spec(spec)],
+        (Some(spec), false) => {
+            if !manifest.targets.iter().any(|t| t == spec) {
+                eprintln!(
+                    "error: target `{spec}` is not in manifest `targets = {:?}`",
+                    manifest.targets
+                );
+                process::exit(1);
+            }
+            vec![target_from_spec(spec)]
+        }
+        (None, true) => vec![target_from_spec("js")],
+        (None, false) => manifest
+            .targets
+            .iter()
+            .map(|s| target_from_spec(s))
+            .collect(),
+    }
+}
+
+fn build_target(
+    project_root: &std::path::Path,
+    manifest: &manifest::Manifest,
+    target: &Target,
+) {
+    let lir = compile(manifest, project_root, target);
     // Debug: print LIR items with their span info
     if std::env::var("LBS_DEBUG_SPANS").is_ok() {
         for item in &lir.items {
@@ -226,9 +293,9 @@ fn cmd_build(args: &[String]) {
     }
     typecheck_or_exit(&lir);
 
-    match target {
-        Target::Js => build_js(&manifest, &lir),
-        Target::Rust => build_rust(&manifest, &lir),
+    match target.backend {
+        Backend::Js => build_js(&manifest, &lir),
+        Backend::Rust => build_rust(&manifest, &lir),
     }
 }
 
@@ -308,7 +375,7 @@ fn build_rust(manifest: &manifest::Manifest, lir: &lir::File) {
 }
 
 fn cmd_check(args: &[String]) {
-    let target = parse_target(args);
+    let requested = parse_target_flag(args);
     let (project_root, manifest) = match find_manifest() {
         Ok(v) => v,
         Err(e) => {
@@ -317,7 +384,13 @@ fn cmd_check(args: &[String]) {
         }
     };
 
-    let lir = compile(&manifest, &project_root, target);
+    // For check, just use the first resolved target.
+    let target = resolve_build_targets(&manifest, requested.as_deref())
+        .into_iter()
+        .next()
+        .expect("at least one target");
+
+    let lir = compile(&manifest, &project_root, &target);
 
     let type_errors = typecheck::typecheck_file(&lir);
     if type_errors.is_empty() {

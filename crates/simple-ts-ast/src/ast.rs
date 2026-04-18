@@ -48,6 +48,9 @@ pub struct FunctionDecl {
     pub params: Vec<Param>,
     pub return_type: Option<TsType>,
     pub body: FunctionBody,
+    /// `#[inline(always)]` — definition will be substituted at call sites and
+    /// the declaration removed from the final output.
+    pub inline_always: bool,
 }
 
 impl FunctionDecl {
@@ -59,6 +62,7 @@ impl FunctionDecl {
             params: Vec::new(),
             return_type: None,
             body,
+            inline_always: false,
         }
     }
 }

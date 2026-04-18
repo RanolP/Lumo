@@ -25,32 +25,11 @@ window.MonacoEnvironment = {
 const LANGUAGE_ID = "lumo";
 const URI = "file:///main.lumo";
 const OUT_TS_URI = "file:///out.ts";
-const INITIAL_SOURCE = `#[extern(name = "string")]
-extern type String;
+const INITIAL_SOURCE = `use libstd.io.{IO};
 
-#[extern(name = "console.log")]
-extern fn console_log(s: String);
-
-data Bool {
-    .true,
-    .false,
+fn main() {
+  IO.println("Hello, World!")
 }
-
-fn Bool_to_string(b: Bool): produce String := match b {
-    .true => "true",
-    .false => "false"
-}
-
-fn not(b: Bool): produce Bool := match b {
-    .true => Bool.false,
-    .false => Bool.true,
-}
-
-fn main() :=
-    let t0 = Bool.true in
-    let t1 = not(t0) in
-    let t2 = Bool_to_string(t1) in
-    console_log(t2)
 `;
 
 type WasmModule = typeof import("./wasm/lumo_playground_wasm.js");
@@ -251,8 +230,8 @@ export default function App() {
       monaco.languages.register({ id: LANGUAGE_ID });
 
       monaco.languages.setMonarchTokensProvider(LANGUAGE_ID, {
-        keywords: ["data", "fn", "extern", "type", "let", "in", "produce", "thunk", "force", "match"],
-        operators: ["#", "[", "]", "{", "}", "(", ")", ";", ":=", "=>", "=", ":", ",", ".", "*", "/"],
+        keywords: ["data", "fn", "extern", "type", "let", "in", "produce", "thunk", "force", "match", "use", "cap", "handle", "impl", "if", "else"],
+        operators: ["#", "[", "]", "{", "}", "(", ")", ";", ":=", "=>", "=", ":", ",", ".", "*", "/", "+", "-", "<", ">"],
         tokenizer: {
           root: [
             [/#\s*\[/, { token: "operator", next: "@attribute" }],

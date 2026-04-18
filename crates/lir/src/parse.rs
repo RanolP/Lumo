@@ -228,6 +228,7 @@ impl Parser {
             Some(Item::ExternFn(ExternFnDecl {
                 name,
                 extern_name,
+                link_module: None,
                 inline,
                 params,
                 return_type,
@@ -347,6 +348,7 @@ impl Parser {
             return_type,
             cap,
             value,
+            inline: false,
             span: Span::new(start.start, end_span.start),
         })
     }

@@ -15,11 +15,15 @@ pub struct Manifest {
     pub entry: EntryKind,
     pub out_dir: PathBuf,
     pub deps: HashMap<String, PathBuf>,
+    /// Target specs this package supports, e.g. `["js.node", "rs"]`.
+    /// Empty means legacy default (single `js` target).
+    pub targets: Vec<String>,
 }
 
 pub fn parse(content: &str, project_root: &Path) -> Result<Manifest, String> {
     let mut name = None;
     let mut out_dir = None;
+    let mut targets: Vec<String> = Vec::new();
     let mut deps = HashMap::new();
     let mut current_section = "";
 
@@ -40,12 +44,17 @@ pub fn parse(content: &str, project_root: &Path) -> Result<Manifest, String> {
 
         match current_section {
             "[package]" => match key {
-                "name" => name = Some(value.to_owned()),
-                "out-dir" => out_dir = Some(value.to_owned()),
+                "name" => name = Some(unquote(value).to_owned()),
+                "out-dir" => out_dir = Some(unquote(value).to_owned()),
+                "targets" => {
+                    targets = parse_string_array(value).ok_or_else(|| {
+                        format!("line {}: targets must be a string array", line_no + 1)
+                    })?;
+                }
                 _ => return Err(format!("line {}: unknown package key: {key}", line_no + 1)),
             },
             "[deps]" => {
-                deps.insert(key.to_owned(), project_root.join(value));
+                deps.insert(key.to_owned(), project_root.join(unquote(value)));
             }
             "" => return Err(format!("line {}: key outside of section: {key}", line_no + 1)),
             _ => return Err(format!("line {}: unknown section: {current_section}", line_no + 1)),
@@ -61,7 +70,31 @@ pub fn parse(content: &str, project_root: &Path) -> Result<Manifest, String> {
         entry,
         out_dir: project_root.join(out_dir),
         deps,
+        targets,
     })
+}
+
+fn unquote(v: &str) -> &str {
+    v.strip_prefix('"')
+        .and_then(|v| v.strip_suffix('"'))
+        .unwrap_or(v)
+}
+
+fn parse_string_array(value: &str) -> Option<Vec<String>> {
+    let inner = value.strip_prefix('[')?.strip_suffix(']')?;
+    let inner = inner.trim();
+    if inner.is_empty() {
+        return Some(Vec::new());
+    }
+    let mut out = Vec::new();
+    for part in inner.split(',') {
+        let part = part.trim();
+        let Some(s) = part.strip_prefix('"').and_then(|s| s.strip_suffix('"')) else {
+            return None;
+        };
+        out.push(s.to_owned());
+    }
+    Some(out)
 }
 
 fn detect_entry(project_root: &Path) -> Result<EntryKind, String> {

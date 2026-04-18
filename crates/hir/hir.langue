@@ -1,6 +1,10 @@
 // HIR (High-level IR) grammar specification
 // Desugared from Lumo surface: no binary/unary operators, no assignment sugar, no attributes.
 // Operators are desugared to capability calls: `a + b` → `perform Add.add(a, b)`
+// If/else is desugared to match. Produce/perform are explicit.
+//
+// To update: edit this file, then run `scripts/gen_langue.sh hir`
+// Reference: crates/hir/src/lib.rs (Expr enum, Item enum)
 
 @token Ident StringLit NumberLit
 
@@ -66,6 +70,8 @@ GenericArgs = '[' args:TypeExpr* ']'
 
 // === Expressions ===
 // No BinaryExpr/UnaryExpr — those are desugared to capability calls at this level.
+// No IfElse — desugared to match.
+// Produce is explicit (implicit in surface syntax).
 
 Expr =
   | IdentExpr
@@ -96,7 +102,7 @@ MatchArm = pattern:Pattern '=>' body:Expr
 CallExpr = callee:Expr '(' args:Expr* ')'
 MemberExpr = object:Expr '.' member:Ident
 PerformExpr = 'perform' cap:Ident
-HandleExpr = 'handle' cap:Ident 'with' handler:Expr 'in' body:Expr
+HandleExpr = 'handle' cap:Ident type_args:GenericArgs? 'with' handler:Expr 'in' body:Expr
 BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
 BundleEntry = 'fn' name:Ident param_list:ParamList ':=' body:Expr
 AnnExpr = '(' expr:Expr ':' ty:TypeExpr ')'

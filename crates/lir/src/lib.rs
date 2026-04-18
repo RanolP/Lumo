@@ -48,6 +48,7 @@ pub struct ExternTypeDecl {
 pub struct ExternFnDecl {
     pub name: String,
     pub extern_name: Option<String>,
+    pub link_module: Option<(String, String)>,
     pub inline: bool,
     pub params: Vec<Param>,
     pub return_type: Option<Spanned<TypeExpr>>,
@@ -93,6 +94,7 @@ pub struct FnDecl {
     pub return_type: Option<Spanned<TypeExpr>>,
     pub cap: Option<CapRef>,
     pub value: Expr,
+    pub inline: bool,
     pub span: Span,
 }
 
@@ -296,6 +298,7 @@ fn lower_item(ctx: &mut LoweringCtx, item: &hir::Item) -> Item {
         hir::Item::ExternFn(ext) => Item::ExternFn(ExternFnDecl {
             name: ext.name.clone(),
             extern_name: ext.extern_name.clone(),
+            link_module: ext.link_module.clone(),
             inline: ext.inline,
             params: ext.params.iter().map(lower_param).collect(),
             return_type: ext.return_type.clone(),
@@ -359,6 +362,7 @@ fn lower_fn(ctx: &mut LoweringCtx, func: &hir::FnDecl) -> FnDecl {
         return_type: func.return_type.clone(),
         cap: func.cap.clone(),
         value,
+        inline: func.inline,
         span: func.span,
     }
 }

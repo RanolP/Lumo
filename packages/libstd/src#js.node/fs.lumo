@@ -1,0 +1,10 @@
+#[link(module = "node:fs")]
+extern {
+  fn readFileSync(path: String, encoding: String): String;
+  fn writeFileSync(path: String, content: String, encoding: String);
+}
+
+impl FS {
+  fn read_file(path: String): String = readFileSync(path, "utf8")
+  fn write_file(path: String, content: String) = writeFileSync(path, content, "utf8")
+}
