@@ -1,6 +1,8 @@
 pub mod ast;
 pub mod emit;
 pub mod pass;
+#[cfg(test)]
+mod tests;
 
 pub use ast::*;
 pub use emit::{EmitTarget, Emitter};

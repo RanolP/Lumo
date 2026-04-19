@@ -786,10 +786,14 @@ fn dedup_const_names_with_params(block: &mut Block, param_names: &[String]) {
             rename_idents_in_stmt(&mut block.stmts[i], &rename_map);
         }
 
-        // If this is a const, check for duplicate name
-        if let Stmt::Const(decl) = &mut block.stmts[i] {
-            if declared.contains(&decl.name) {
-                let orig = decl.name.clone();
+        // If this is a const or let, check for duplicate name
+        let decl_name: Option<String> = match &block.stmts[i] {
+            Stmt::Const(decl) => Some(decl.name.clone()),
+            Stmt::Let { name, .. } => Some(name.clone()),
+            _ => None,
+        };
+        if let Some(orig) = decl_name {
+            if declared.contains(&orig) {
                 let fresh = loop {
                     let candidate = format!("{}_{}", orig, counter);
                     counter += 1;
@@ -797,14 +801,19 @@ fn dedup_const_names_with_params(block: &mut Block, param_names: &[String]) {
                         break candidate;
                     }
                 };
-                decl.name = fresh.clone();
+                // Rename the declaration itself
+                match &mut block.stmts[i] {
+                    Stmt::Const(decl) => decl.name = fresh.clone(),
+                    Stmt::Let { name, .. } => *name = fresh.clone(),
+                    _ => {}
+                }
                 declared.insert(fresh.clone());
                 rename_map.insert(orig, fresh);
             } else {
-                declared.insert(decl.name.clone());
+                declared.insert(orig.clone());
                 // This declaration introduces a fresh binding that overrides any
                 // prior rename for this name.
-                rename_map.remove(&decl.name);
+                rename_map.remove(&orig);
             }
         }
     }
@@ -815,7 +824,14 @@ fn rename_idents_in_stmt(stmt: &mut Stmt, map: &std::collections::HashMap<String
         Stmt::Expr(expr) | Stmt::Return(Some(expr)) => rename_idents_in_expr(expr, map),
         Stmt::Const(decl) => rename_idents_in_expr(&mut decl.init, map),
         Stmt::Let { init: Some(init), .. } => rename_idents_in_expr(init, map),
-        Stmt::Assign { value, .. } => rename_idents_in_expr(value, map),
+        Stmt::Assign { name, value } => {
+            // Rename the LHS target if it has been remapped (e.g. `let s` → `let s_0`
+            // means subsequent `s = ...` must become `s_0 = ...`).
+            if let Some(new_name) = map.get(name.as_str()) {
+                *name = new_name.clone();
+            }
+            rename_idents_in_expr(value, map);
+        }
         Stmt::If { cond, then_branch, else_branch } => {
             rename_idents_in_expr(cond, map);
             for s in &mut then_branch.stmts { rename_idents_in_stmt(s, map); }
