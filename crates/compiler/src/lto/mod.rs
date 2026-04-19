@@ -4,17 +4,18 @@
 
 use lumo_lir as lir;
 
-mod call_graph;
+pub mod call_graph;
 pub use call_graph::*;
 
-mod resolution;
+pub mod resolution;
 pub use resolution::*;
 
-pub fn optimize(_file: &mut lir::File) {
-    // Phases will be added in subsequent tasks:
-    // 1. resolution::build
-    // 2. call_graph::build
-    // 3. dep_free::run
-    // 4. emit::transform
-    // 5. dce::sweep
+pub mod dep_free;
+pub use dep_free::*;
+
+pub fn optimize(file: &mut lir::File) {
+    let resolution = resolution::build_resolution_map(file);
+    let cg = call_graph::build_call_graph(file);
+    let _analysis = dep_free::run(file, &resolution, &cg);
+    // Emission and DCE come in later tasks.
 }
