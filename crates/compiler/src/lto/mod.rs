@@ -4,6 +4,9 @@
 
 use lumo_lir as lir;
 
+mod call_graph;
+pub use call_graph::*;
+
 mod resolution;
 pub use resolution::*;
 
