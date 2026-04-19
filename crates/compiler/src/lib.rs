@@ -9,6 +9,7 @@ pub use lumo_lir as lir;
 // Modules that remain in the compiler crate
 pub mod backend;
 pub mod diagnostics;
+pub mod lto;
 pub mod query;
 pub mod typecheck;
 

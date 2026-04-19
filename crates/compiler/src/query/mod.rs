@@ -208,6 +208,12 @@ impl QueryEngine {
         let (inferred, _) = typecheck::infer_caps_for_file(&lowered);
         typecheck::apply_inferred_caps(&mut lowered, &inferred);
 
+        // Phase 4: LTO — monomorphize cap-resolved fns
+        crate::lto::optimize(&mut lowered);
+        // Phase 4': Re-typecheck (clones changed cap requirements)
+        let (inferred, _) = typecheck::infer_caps_for_file(&lowered);
+        typecheck::apply_inferred_caps(&mut lowered, &inferred);
+
         Some(lowered)
     }
 
