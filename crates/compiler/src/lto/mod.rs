@@ -4,6 +4,9 @@
 
 use lumo_lir as lir;
 
+mod resolution;
+pub use resolution::*;
+
 pub fn optimize(_file: &mut lir::File) {
     // Phases will be added in subsequent tasks:
     // 1. resolution::build
