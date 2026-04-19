@@ -5,6 +5,8 @@ use lumo_types::ExprId;
 
 use super::dep_free::{DepFreeAnalysis, DepFreeStatus, ResolvedRef};
 
+const INLINE_SIZE_THRESHOLD: usize = 16;
+
 pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis) {
     // Step 1: identify dep-free fns under empty binding (v1).
     let dep_free_fns: Vec<String> = analysis
@@ -25,20 +27,55 @@ pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis) {
         return;
     }
 
-    // Step 2: build clones with rewritten Performs.
+    // Heuristic D inputs: inline flag, body size, caller count.
+    let caller_counts = count_callers(file);
+
+    let mut to_inline: Vec<String> = Vec::new(); // C form
+    let mut to_clone: Vec<String> = Vec::new(); // B form
+
+    for fn_name in &dep_free_fns {
+        let Some(decl) = file.items.iter().find_map(|i| match i {
+            lir::Item::Fn(f) if &f.name == fn_name => Some(f),
+            _ => None,
+        }) else {
+            continue;
+        };
+
+        let force_inline = decl.inline;
+        let small = body_size(&decl.value) <= INLINE_SIZE_THRESHOLD;
+        let single_caller = caller_counts.get(fn_name).copied().unwrap_or(0) == 1;
+        let has_rewrite = body_has_resolution(&decl.value, &analysis.perform_resolution);
+
+        if force_inline {
+            // Always inline at call sites, even if the body has no rewrites.
+            // Consistent with #[inline(always)] semantics.
+            to_inline.push(fn_name.clone());
+        } else if has_rewrite && small && single_caller {
+            to_inline.push(fn_name.clone());
+        } else if has_rewrite {
+            to_clone.push(fn_name.clone());
+        }
+        // Otherwise: skip (no rewrite to apply, no inline-always hint).
+    }
+
+    // Apply clones first — clones rename callees in-place. Inlines replace
+    // calls outright and drop the original fn from `file.items`.
+    apply_clones(file, &to_clone, analysis);
+    apply_inlines(file, &to_inline, analysis);
+}
+
+fn apply_clones(file: &mut lir::File, fns: &[String], analysis: &DepFreeAnalysis) {
+    if fns.is_empty() {
+        return;
+    }
+
     let mut new_items: Vec<lir::Item> = Vec::new();
     let mut clone_names: HashMap<String, String> = HashMap::new();
 
     let items_snapshot: Vec<lir::Item> = file.items.clone();
     for item in &items_snapshot {
         let lir::Item::Fn(f) = item else { continue };
-        if !dep_free_fns.contains(&f.name) {
-            continue;
-        }
-        // Skip fns whose body has no resolvable Perform — cloning them would
-        // produce a bit-identical duplicate. The dep-free analysis marks
-        // even pure fns as DepFree, but there's nothing to monomorphize.
-        if !body_has_resolution(&f.value, &analysis.perform_resolution) {
+        if !fns.contains(&f.name) {
             continue;
         }
 
@@ -53,18 +90,206 @@ pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis) {
 
     file.items.extend(new_items);
 
-    // Step 3: redirect call sites in non-cloned fn bodies.
+    // Redirect call sites in non-cloned fn bodies to point at the clones.
     for item in file.items.iter_mut() {
         if let lir::Item::Fn(f) = item {
-            // Don't rewrite inside the clone itself (its calls were already
-            // covered by rewrite_performs; ident-renaming would only matter for
-            // mutual-recursion cases, deferred to follow-up).
             if clone_names.values().any(|cn| cn == &f.name) {
                 continue;
             }
             redirect_calls(&mut f.value, &clone_names);
         }
     }
+}
+
+fn apply_inlines(file: &mut lir::File, fns: &[String], analysis: &DepFreeAnalysis) {
+    if fns.is_empty() {
+        return;
+    }
+
+    // Snapshot fn bodies (post-perform-rewrite) we'll inline.
+    let mut bodies: HashMap<String, (Vec<lir::Param>, lir::Expr)> = HashMap::new();
+    let items_snapshot = file.items.clone();
+    for item in &items_snapshot {
+        if let lir::Item::Fn(f) = item {
+            if fns.contains(&f.name) {
+                let mut body = f.value.clone();
+                rewrite_performs(&mut body, &analysis.perform_resolution, &mut file.spans);
+                bodies.insert(
+                    f.name.clone(),
+                    (f.params.clone(), strip_thunk_lambdas(body, f.params.len())),
+                );
+            }
+        }
+    }
+
+    let inline_set: std::collections::HashSet<String> = fns.iter().cloned().collect();
+    for item in file.items.iter_mut() {
+        let lir::Item::Fn(f) = item else { continue };
+        if inline_set.contains(&f.name) {
+            continue;
+        }
+        inline_calls(&mut f.value, &bodies, &mut file.spans);
+    }
+
+    // Drop inlined fns themselves.
+    file.items.retain(|item| match item {
+        lir::Item::Fn(f) => !inline_set.contains(&f.name),
+        _ => true,
+    });
+}
+
+fn strip_thunk_lambdas(mut expr: lir::Expr, n_params: usize) -> lir::Expr {
+    if let lir::Expr::Thunk { expr: inner, .. } = expr {
+        expr = *inner;
+    }
+    for _ in 0..n_params {
+        if let lir::Expr::Lambda { body, .. } = expr {
+            expr = *body;
+        } else {
+            break;
+        }
+    }
+    expr
+}
+
+fn inline_calls(
+    expr: &mut lir::Expr,
+    bodies: &HashMap<String, (Vec<lir::Param>, lir::Expr)>,
+    spans: &mut Vec<lumo_span::Span>,
+) {
+    if let Some((head_name, args)) = match_call_chain(expr) {
+        if let Some((params, body)) = bodies.get(&head_name) {
+            assert_eq!(
+                params.len(),
+                args.len(),
+                "inline param/arg count mismatch for `{head_name}`: {} params vs {} args",
+                params.len(),
+                args.len()
+            );
+            let mut new_expr = body.clone();
+            for (p, a) in params.iter().zip(args.iter()).rev() {
+                let span = spans[expr.id().0 as usize];
+                let id = alloc_id(spans, span);
+                new_expr = lir::Expr::Let {
+                    id,
+                    name: p.name.clone(),
+                    value: Box::new(a.clone()),
+                    body: Box::new(new_expr),
+                };
+            }
+            *expr = new_expr;
+            // Recurse on the substituted result — args themselves may be
+            // calls to inline.
+            inline_calls(expr, bodies, spans);
+            return;
+        }
+    }
+    match expr {
+        lir::Expr::Apply { callee, arg, .. } => {
+            inline_calls(callee, bodies, spans);
+            inline_calls(arg, bodies, spans);
+        }
+        lir::Expr::Force { expr, .. }
+        | lir::Expr::Thunk { expr, .. }
+        | lir::Expr::Produce { expr, .. }
+        | lir::Expr::Roll { expr, .. }
+        | lir::Expr::Unroll { expr, .. }
+        | lir::Expr::Ann { expr, .. } => inline_calls(expr, bodies, spans),
+        lir::Expr::Lambda { body, .. } => inline_calls(body, bodies, spans),
+        lir::Expr::Let { value, body, .. } => {
+            inline_calls(value, bodies, spans);
+            inline_calls(body, bodies, spans);
+        }
+        lir::Expr::Match { scrutinee, arms, .. } => {
+            inline_calls(scrutinee, bodies, spans);
+            for arm in arms {
+                inline_calls(&mut arm.body, bodies, spans);
+            }
+        }
+        lir::Expr::Handle { handler, body, .. } => {
+            inline_calls(handler, bodies, spans);
+            inline_calls(body, bodies, spans);
+        }
+        lir::Expr::Bundle { entries, .. } => {
+            for e in entries {
+                inline_calls(&mut e.body, bodies, spans);
+            }
+        }
+        lir::Expr::Ctor { args, .. } => {
+            for a in args {
+                inline_calls(a, bodies, spans);
+            }
+        }
+        lir::Expr::Member { object, .. } => inline_calls(object, bodies, spans),
+        _ => {}
+    }
+}
+
+fn match_call_chain(expr: &lir::Expr) -> Option<(String, Vec<lir::Expr>)> {
+    let mut args = Vec::new();
+    let mut cur = expr;
+    while let lir::Expr::Apply { callee, arg, .. } = cur {
+        args.push((**arg).clone());
+        cur = callee;
+    }
+    if args.is_empty() {
+        return None;
+    }
+    args.reverse();
+    if let lir::Expr::Force { expr: inner, .. } = cur {
+        if let lir::Expr::Ident { name, .. } = inner.as_ref() {
+            return Some((name.clone(), args));
+        }
+    }
+    None
+}
+
+fn body_size(expr: &lir::Expr) -> usize {
+    let mut count = 1;
+    match expr {
+        lir::Expr::Apply { callee, arg, .. } => count += body_size(callee) + body_size(arg),
+        lir::Expr::Force { expr, .. }
+        | lir::Expr::Thunk { expr, .. }
+        | lir::Expr::Produce { expr, .. }
+        | lir::Expr::Roll { expr, .. }
+        | lir::Expr::Unroll { expr, .. }
+        | lir::Expr::Ann { expr, .. } => count += body_size(expr),
+        lir::Expr::Lambda { body, .. } => count += body_size(body),
+        lir::Expr::Let { value, body, .. } => count += body_size(value) + body_size(body),
+        lir::Expr::Match { scrutinee, arms, .. } => {
+            count += body_size(scrutinee);
+            for a in arms {
+                count += body_size(&a.body);
+            }
+        }
+        lir::Expr::Handle { handler, body, .. } => count += body_size(handler) + body_size(body),
+        lir::Expr::Bundle { entries, .. } => {
+            for e in entries {
+                count += body_size(&e.body);
+            }
+        }
+        lir::Expr::Ctor { args, .. } => {
+            for a in args {
+                count += body_size(a);
+            }
+        }
+        lir::Expr::Member { object, .. } => count += body_size(object),
+        _ => {}
+    }
+    count
+}
+
+fn count_callers(file: &lir::File) -> HashMap<String, usize> {
+    let cg = super::call_graph::build_call_graph(file);
+    let mut out: HashMap<String, usize> = HashMap::new();
+    for sites in cg.edges.values() {
+        for site in sites {
+            if let super::call_graph::CallTarget::Fn(name) = &site.callee {
+                *out.entry(name.clone()).or_default() += 1;
+            }
+        }
+    }
+    out
 }
 
 fn rewrite_performs(
@@ -260,5 +485,37 @@ mod tests {
         let before = file.clone();
         transform(&mut file, &an);
         assert_eq!(file, before);
+    }
+
+    #[test]
+    fn inline_always_attribute_forces_callsite_inline() {
+        let src = r#"
+            cap Add { fn add(a: Number, b: Number): Number }
+            impl Number: Add { fn add(a: Number, b: Number): Number { a } }
+            #[inline(always)]
+            fn double(x: Number): Number { Add.add(x, x) }
+            fn main(): Number { double(2) }
+        "#;
+        let mut file = lower(src);
+        // Run real analysis pipeline (resolution → call graph → dep_free) so
+        // that perform_resolution + DepFree status are correctly populated for
+        // the #[inline(always)] candidate.
+        let resolution = crate::lto::resolution::build_resolution_map(&file);
+        let cg = crate::lto::call_graph::build_call_graph(&file);
+        let mut an = crate::lto::dep_free::run(&file, &resolution, &cg);
+        // The dep-free analysis depends on Perform.type_args being patched,
+        // which only happens in the full lower_module pipeline. In this raw
+        // test path type_args stay empty so `double`'s Perform of `Add`
+        // doesn't resolve. Inject the DepFree status manually so the inline
+        // path under #[inline(always)] is exercised here.
+        an.status.insert(
+            ("double".to_owned(), Vec::<String>::new()),
+            DepFreeStatus::DepFree,
+        );
+        transform(&mut file, &an);
+        let has_double = file.items.iter().any(|i| matches!(i, lir::Item::Fn(f) if f.name == "double"));
+        assert!(!has_double, "inline(always) fn should be removed after inlining");
+        let has_double_clone = file.items.iter().any(|i| matches!(i, lir::Item::Fn(f) if f.name.starts_with("double__")));
+        assert!(!has_double_clone, "inline(always) fn should not produce a clone");
     }
 }
