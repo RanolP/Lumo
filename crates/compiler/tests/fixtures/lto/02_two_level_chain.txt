@@ -1,0 +1,31 @@
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn js_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(a: Self, b: Self): Self = resume(js_add(a, b)) }
+
+fn quadruple(x: Number): Number = Add.add(Add.add(x, x), Add.add(x, x))
+fn main(): Number = quadruple(5)
+
+===EXPECT===
+# Two-level (nested) Perform chain: each `Add.add` gets its impl body inlined
+# recursively. Three Performs of `Add.add` should each resolve to a direct
+# `js_add(...)` call. With two call-sites inside `quadruple` plus the outer
+# call from `main`, heuristic D (single non-trivial caller + multi-use body)
+# clones the fn as `quadruple__lto` rather than inlining it at each call site.
+# Key invariants:
+#   - `quadruple__lto` exists (clone produced by LTO).
+#   - Every `Add.add` Perform is inlined — `js_add(` appears at least 3 times
+#     in the cloned body, and no `__caps.Add_Number` / `__impl_Number_Add.add`
+#     property access leaks into it.
+#   - `__main_cps` calls `quadruple__lto(...)` directly rather than threading
+#     the cap bundle through `quadruple`.
+# Known v1 follow-up (non-blocking): the outer `main()` wrapper still
+# constructs `{ Add_Number: __impl_Number_Add(__identity) }` because main's
+# `cap: Infer(...)` floor is preserved across the post-LTO re-typecheck.
+# Assertions target `__main_cps` and `quadruple__lto`, not the outer wrapper.
+quadruple__lto
+js_add(x, b)
+__main_cps
+quadruple__lto(5)
+!__caps.Add_Number.add
+!__impl_Number_Add.add(

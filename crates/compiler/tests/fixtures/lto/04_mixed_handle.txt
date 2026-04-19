@@ -1,0 +1,42 @@
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn js_add(a: Number, b: Number): Number;
+extern fn js_sub(a: Number, b: Number): Number;
+impl Number: Add { fn add(a: Self, b: Self): Self = resume(js_add(a, b)) }
+
+fn double(x: Number): Number = Add.add(x, x)
+fn default_caller(): Number = double(10)
+fn custom_caller(): Number = handle Add with bundle { fn add(a, b) { resume(js_sub(a, b)) } } in double(20)
+fn main(): Number = Add.add(default_caller(), custom_caller())
+
+===EXPECT===
+# Mixed eligibility: `double` is called from two sites — one with only the
+# default `Add` impl in scope (`default_caller`), and one inside a `handle Add
+# with bundle { ... }` block that provides a custom impl (`custom_caller`).
+#
+# v1 behavior (documented, non-blocking limitation):
+#   LTO analysis is per-fn, not per-call-site. Because `double`'s Perform site
+#   has a default-resolvable cap (`Add` has `impl Number: Add`), dep_free
+#   classifies it as leaf-eligible and clones it as `double__lto` with the
+#   default impl body inlined directly (`js_add(x, x)`). Both callers end up
+#   calling the SAME `double__lto`.
+#
+#   Correctness concern: inside `custom_caller`, the `handle Add with bundle`
+#   block wraps `double__lto(20)` but `double__lto` doesn't thread `__caps` at
+#   all, so the user-provided bundle is silently ignored and the default
+#   `js_add` runs instead of the bundle's `js_sub`. This is a known v1
+#   limitation — handle blocks shadow default impls at runtime but aren't
+#   treated as specializations by dep_free. To fix properly, LTO would need
+#   either call-site awareness or a "handle-containing region" analysis that
+#   keeps such call sites CPS.
+#
+#   Fixture asserts the CURRENT v1 behavior so the follow-up work (making LTO
+#   handle-aware) will flip these assertions and flag the change intentionally.
+double__lto
+js_add(x, x)
+default_caller(__caps, __k)
+double__lto(10)
+double__lto(20)
+Add_Add:
+js_sub(a, b)
+!function double(__caps

@@ -1,0 +1,31 @@
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn js_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(a: Self, b: Self): Self = resume(js_add(a, b)) }
+
+fn dead(): Number = Add.add(1, 2)
+fn used(): Number = Add.add(3, 4)
+fn main(): Number = used()
+
+===EXPECT===
+# DCE happy path: `dead` is never called transitively from `main`. The
+# reachability pass (driven by `main` as the only entry point by default)
+# drops it from LIR before emit. `used` is also absorbed — heuristic C
+# inlines its small body into `__main_cps` at its single call site.
+#
+# Invariants:
+#   - `dead` fn definition is absent from the JS.
+#   - `used` fn definition is absent (inlined into main, no clone kept).
+#   - `main`'s body contains `js_add(a, b)` from the inlined `used` body,
+#     with `a = 3, b = 4` folded in.
+#   - No `js_add(1, 2)` anywhere — `dead`'s body never made it into the
+#     emitted JS, so the `1, 2` constants don't appear as an add arg pair.
+__main_cps
+js_add(a, b)
+const a = 3;
+const b = 4;
+!function dead(
+!function used(
+!dead__lto
+!used__lto
+!js_add(1, 2)

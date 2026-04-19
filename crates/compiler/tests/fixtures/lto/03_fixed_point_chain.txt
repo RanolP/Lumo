@@ -1,0 +1,33 @@
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+cap Mul { fn mul(a: Self, b: Self): Self }
+extern fn js_add(a: Number, b: Number): Number;
+extern fn js_mul(a: Number, b: Number): Number;
+impl Number: Add { fn add(a: Self, b: Self): Self = resume(js_add(a, b)) }
+impl Number: Mul { fn mul(a: Self, b: Self): Self = resume(js_mul(a, b)) }
+
+fn inner(x: Number): Number = Add.add(x, x)
+fn outer(x: Number): Number = Mul.mul(inner(x), inner(x))
+fn main(): Number = outer(3)
+
+===EXPECT===
+# Multi-cap chain: resolving `outer` requires `Mul` + two nested calls to
+# `inner`, which itself requires `Add`. Both caps have default impls, so
+# dep_free's fixed-point iteration marks `inner` (leaf) first, then `outer`
+# once `inner` is known dep-free. Both get optimized:
+#   - `inner` is cloned as `inner__lto` (two call-sites from `outer`).
+#   - `outer` is absorbed into `__main_cps` (single caller, body small).
+# Key invariants in `__main_cps`'s body:
+#   - direct `js_mul(a, b)` from `Mul.mul` inlining.
+#   - `inner__lto(x)` called twice (the clone is used, not the original).
+#   - no `__caps.Mul_Number` / `__caps.Add_Number` accesses in the body.
+# The outer `main()` wrapper still constructs the cap bundle (same v1 floor
+# issue as fixture 01/02) — assertions target `__main_cps` and `inner__lto`.
+inner__lto
+js_add(x, x)
+__main_cps
+js_mul(a, b)
+inner__lto(x)
+!__caps.Add_Number.add
+!__caps.Mul_Number.mul
+!outer__lto

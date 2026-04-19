@@ -1,0 +1,40 @@
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn js_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(a: Self, b: Self): Self = resume(js_add(a, b)) }
+
+fn apply_thunk(job: thunk Number): Number = Add.add(force job, 1)
+fn use_thunk(): Number = apply_thunk(thunk 10)
+fn main(): Number = Add.add(use_thunk(), use_thunk())
+
+===EXPECT===
+# Indirect-call-adjacent fn: `apply_thunk` takes a `thunk Number` parameter
+# and does `force job` inside. The dep_free analyzer's call-graph classifier
+# records only the OUTER Apply's head; `force job` alone (used as an argument)
+# never becomes a recorded `CallTarget::Indirect` because it isn't the head
+# of an Apply. So `apply_thunk` is classified dep-free and gets inlined at
+# its single call site in `use_thunk`.
+#
+# v1 limitation (documented): the cloning heuristic operates on LIR structure
+# but doesn't update upstream fn signatures. `use_thunk`'s cap signature was
+# already committed during typecheck (`/ { Add }`) before LTO. Post-LTO, its
+# body no longer performs Add, yet it's still emitted in CPS form with unused
+# `__caps`/`__k` plumbing — a visible perf leak.
+#
+# The "strong" indirect-call block (from dep_free's unit test `fn apply(f:
+# thunk Number, x: Number): Number { f(x) }`) requires calling `f(x)`, which
+# the typechecker rejects because `thunk Number` isn't function-typed. So the
+# `CallTarget::Indirect → Blocked` path isn't reachable from surface syntax
+# today; the unit test exercises it via direct LIR construction.
+#
+# What this fixture pins down:
+#   - `apply_thunk` IS inlined (body has `const a = job(); ...; js_add(a,b)`).
+#   - `use_thunk` is NOT cloned as `use_thunk__lto` — no clone emitted.
+#   - `use_thunk` retains unused `__caps` plumbing (v1 leak).
+function use_thunk(__caps, __k)
+const job = () => {
+js_add(a, b)
+return use_thunk(__caps,
+!use_thunk__lto
+!apply_thunk__lto
+!function apply_thunk(__caps

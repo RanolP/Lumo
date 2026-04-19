@@ -1,0 +1,30 @@
+extern type Number;
+extern type Bool;
+cap Sub { fn sub(a: Self, b: Self): Self }
+extern fn js_sub(a: Number, b: Number): Number;
+extern fn js_is_zero(n: Number): Bool;
+impl Number: Sub { fn sub(a: Self, b: Self): Self = resume(js_sub(a, b)) }
+
+fn is_even(n: Number): Number = if js_is_zero(n) { 1 } else { is_odd(Sub.sub(n, 1)) }
+fn is_odd(n: Number): Number = if js_is_zero(n) { 0 } else { is_even(Sub.sub(n, 1)) }
+fn main(): Number = is_even(4)
+
+===EXPECT===
+# Mutual recursion: `is_even` calls `is_odd` and vice versa. v1 limitation:
+# dep_free's fixed-point iteration can't break this cycle because neither fn
+# is ever "known dep-free" — each requires the other to be classified first.
+# After fixed-point stabilizes, both remain `Unknown` and are NOT optimized.
+#
+# Fixture asserts the negative: no clone for either fn, and both keep their
+# CPS form with `__caps.Sub_Number.sub(...)`. `__main_cps` calls the CPS
+# `is_even` directly.
+#
+# Fixing mutual recursion would require SCC-level analysis (classify a whole
+# cycle dep-free if all its external dependencies are). Out of scope for v1.
+function is_even(__caps, n, __k)
+function is_odd(__caps, n, __k)
+__caps.Sub_Number.sub
+is_even(__caps, __cps_v_1, __k)
+is_odd(__caps, __cps_v_0, __k)
+!is_even__lto
+!is_odd__lto

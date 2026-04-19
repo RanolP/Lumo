@@ -1,0 +1,27 @@
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn js_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(a: Self, b: Self): Self = resume(js_add(a, b)) }
+
+#[inline(always)]
+fn double(x: Number): Number = Add.add(x, x)
+fn main(): Number = double(10)
+
+===EXPECT===
+# `#[inline(always)]` happy path: `double` is a small fn with a resolvable
+# Perform (default `impl Number: Add`). The attribute forces inline-at-
+# call-site regardless of caller count / body size heuristics.
+#
+# Invariants:
+#   - `double` fn definition is absent from the JS (no `function double(`).
+#   - `double__lto` clone is absent (inline only, no clone).
+#   - `double`'s body is inlined into `__main_cps`: `const x = 10;` plus
+#     `js_add(x, x)` expression.
+#   - LTO validation would have errored if `double` had an unresolvable cap;
+#     here it resolves via the typeclass default, so compile succeeds.
+__main_cps
+js_add(x, x)
+const x = 10;
+!function double(
+!double__lto
+!__caps.Add_Number.add(__caps, 10
