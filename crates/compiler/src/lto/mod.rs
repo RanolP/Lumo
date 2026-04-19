@@ -18,6 +18,8 @@ pub use dep_free::*;
 pub mod emit;
 pub use emit::*;
 
+pub mod dce;
+
 /// Run LTO optimizations and return any validation diagnostics.
 ///
 /// An empty `Vec` means success. A non-empty `Vec` means at least one
@@ -51,6 +53,7 @@ pub fn optimize(file: &mut lir::File) -> Vec<Diagnostic> {
 
     if errors.is_empty() {
         emit::transform(file, &analysis);
+        dce::sweep(file);
     }
 
     errors

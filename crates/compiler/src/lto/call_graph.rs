@@ -76,6 +76,18 @@ fn walk_expr(
             span: file.span_of(expr.id()),
         });
     }
+    // Record zero-arg calls: `Force(Ident(name))` with no surrounding Apply.
+    // These are top-level calls to zero-parameter functions (e.g. `sum()`).
+    if let lir::Expr::Force { id, expr: inner } = expr {
+        if let lir::Expr::Ident { name, .. } = inner.as_ref() {
+            if fn_names.contains(name) {
+                out.push(CallSite {
+                    callee: CallTarget::Fn(name.clone()),
+                    span: file.span_of(*id),
+                });
+            }
+        }
+    }
     // Recurse into all subexpressions. Even if `expr` is itself an Apply chain,
     // we descend so nested calls (in args) are also captured.
     match expr {
