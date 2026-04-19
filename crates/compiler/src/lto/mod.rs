@@ -13,9 +13,12 @@ pub use resolution::*;
 pub mod dep_free;
 pub use dep_free::*;
 
+pub mod emit;
+pub use emit::*;
+
 pub fn optimize(file: &mut lir::File) {
     let resolution = resolution::build_resolution_map(file);
     let cg = call_graph::build_call_graph(file);
-    let _analysis = dep_free::run(file, &resolution, &cg);
-    // Emission and DCE come in later tasks.
+    let analysis = dep_free::run(file, &resolution, &cg);
+    emit::transform(file, &analysis);
 }
