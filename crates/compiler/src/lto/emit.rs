@@ -10,7 +10,7 @@ const INLINE_SIZE_THRESHOLD: usize = 16;
 
 pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis, resolution: &ResolutionMap) {
     // Step 1: identify dep-free fns under empty binding (v1).
-    let dep_free_fns: Vec<String> = analysis
+    let mut dep_free_fns: Vec<String> = analysis
         .status
         .iter()
         .filter(|(_, s)| matches!(**s, DepFreeStatus::DepFree))
@@ -23,6 +23,9 @@ pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis, resolution: &
             }
         })
         .collect();
+    // Sort to guarantee deterministic processing order regardless of HashMap
+    // iteration order (which is randomized per process by Rust's default hasher).
+    dep_free_fns.sort();
 
     if dep_free_fns.is_empty() {
         return;
