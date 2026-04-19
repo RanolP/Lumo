@@ -10,21 +10,26 @@ fn is_odd(n: Number): Number = if js_is_zero(n) { 0 } else { is_even(Sub.sub(n, 
 fn main(): Number = is_even(4)
 
 ===EXPECT===
-# Mutual recursion: `is_even` calls `is_odd` and vice versa. v1 limitation:
-# dep_free's fixed-point iteration can't break this cycle because neither fn
-# is ever "known dep-free" — each requires the other to be classified first.
-# After fixed-point stabilizes, both remain `Unknown` and are NOT optimized.
+# Mutual recursion: `is_even` calls `is_odd` and vice versa. v2 lifts the v1
+# limitation via SCC-level dep-free analysis: Tarjan groups {is_even, is_odd}
+# into a single SCC, classifies the whole SCC DepFree, and commits
+# perform_resolution for both bodies atomically.
 #
-# Fixture asserts the negative: no clone for either fn, and both keep their
-# CPS form with `__caps.Sub_Number.sub(...)`. `__main_cps` calls the CPS
-# `is_even` directly.
+# Both fns are DepFree and are cloned (to `is_even__lto` / `is_odd__lto`).
+# `main` calls `is_even__lto` directly. `is_even__lto` has `Sub.sub` inlined
+# to a direct `js_sub(a, b)` call.
 #
-# Fixing mutual recursion would require SCC-level analysis (classify a whole
-# cycle dep-free if all its external dependencies are). Out of scope for v1.
-function is_even(__caps, n, __k)
+# v2 still inherits the v1 "clone doesn't self-redirect" subtlety: the
+# recursive call inside `is_even__lto` still targets the CPS `is_odd` rather
+# than `is_odd__lto`. The CPS `is_odd` is kept alive for that reason; because
+# no call ever reaches `is_odd__lto` (it's only callable from a rewritten
+# `is_even__lto` that v1 doesn't rewrite), `is_odd__lto` itself is DCE'd.
+# Functionally correct; the cloned `is_odd__lto` body has its `Sub.sub`
+# inlined to `js_sub` — we'd just need a "clone→clone" redirect pass to
+# preserve it. Tracked as follow-up.
+is_even__lto
+js_sub(a, b)
+__main_cps
+is_even__lto(__caps, 4, __k)
 function is_odd(__caps, n, __k)
-__caps.Sub_Number.sub
-is_even(__caps, __cps_v_1, __k)
-is_odd(__caps, __cps_v_0, __k)
-!is_even__lto
-!is_odd__lto
+!function is_even(__caps
