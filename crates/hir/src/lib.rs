@@ -776,6 +776,7 @@ fn find_inline_hint(attrs: &[lst::Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.name == "inline"
             && (attr.flags.iter().any(|f| f == "always")
+                // legacy: accepts #[inline(always = <expr>)] form
                 || attr.args.iter().any(|arg| arg.key == "always")
                 || matches!(&attr.value, Some(lst::Expr::String { value, .. }) if value == "always"))
     })

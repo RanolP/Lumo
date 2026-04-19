@@ -577,3 +577,40 @@ fn attribute_accepts_positional_flag() {
     assert_eq!(ext.attrs[0].name, "inline");
     assert_eq!(ext.attrs[0].flags, vec!["always".to_owned()]);
 }
+
+#[test]
+fn attribute_accepts_multiple_positional_flags() {
+    let src = "#[cfg(a, b)] extern fn foo(): Number";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "parse errors: {:?}", parsed.errors);
+    let item = &parsed.file.items[0];
+    let Item::ExternFn(ext) = item else { panic!("expected extern fn") };
+    assert_eq!(ext.attrs[0].flags, vec!["a".to_owned(), "b".to_owned()]);
+    assert!(ext.attrs[0].args.is_empty());
+}
+
+#[test]
+fn attribute_accepts_mixed_flag_and_kv() {
+    let src = "#[cfg(flag, key = 1)] extern fn foo(): Number";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "parse errors: {:?}", parsed.errors);
+    let item = &parsed.file.items[0];
+    let Item::ExternFn(ext) = item else { panic!("expected extern fn") };
+    assert_eq!(ext.attrs[0].flags, vec!["flag".to_owned()]);
+    assert_eq!(ext.attrs[0].args.len(), 1);
+    assert_eq!(ext.attrs[0].args[0].key, "key");
+}
+
+#[test]
+fn attribute_accepts_empty_parens() {
+    let src = "#[attr()] extern fn foo(): Number";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "parse errors: {:?}", parsed.errors);
+    let item = &parsed.file.items[0];
+    let Item::ExternFn(ext) = item else { panic!("expected extern fn") };
+    assert!(ext.attrs[0].flags.is_empty());
+    assert!(ext.attrs[0].args.is_empty());
+}

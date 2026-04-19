@@ -470,29 +470,16 @@ impl<'a> Parser<'a> {
             self.bump();
             while !self.eof() && !self.at_symbol(Symbol::RParen) {
                 // Positional flag: an Ident NOT followed by `=` or `(`.
-                let is_positional = if let Some(TokenKind::Ident(_)) =
-                    self.tokens.get(self.index).map(|t| &t.kind)
-                {
-                    let next = self.tokens.get(self.index + 1).map(|t| &t.kind);
-                    !matches!(
-                        next,
-                        Some(TokenKind::Symbol(Symbol::Equals))
-                            | Some(TokenKind::Symbol(Symbol::LParen))
-                    )
-                } else {
-                    false
-                };
+                let is_positional = self.at_ident()
+                    && !self.peek_is_symbol(Symbol::Equals)
+                    && !self.peek_is_symbol(Symbol::LParen);
                 if is_positional {
-                    if let TokenKind::Ident(flag_name) =
-                        self.tokens[self.index].kind.clone()
-                    {
-                        flags.push(flag_name);
+                    let flag_name = self.expect_ident();
+                    flags.push(flag_name);
+                    if self.at_symbol(Symbol::Comma) {
                         self.bump();
-                        if self.at_symbol(Symbol::Comma) {
-                            self.bump();
-                        }
-                        continue;
                     }
+                    continue;
                 }
                 // Key=value argument
                 let key_start = self.current_span();
