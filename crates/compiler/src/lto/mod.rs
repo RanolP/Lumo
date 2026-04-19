@@ -27,7 +27,10 @@ pub mod dce;
 /// and the caller should abort compilation.
 pub fn optimize(file: &mut lir::File) -> Vec<Diagnostic> {
     let resolution = resolution::build_resolution_map(file);
-    let cg = call_graph::build_call_graph(file);
+    // Pass the resolution map so that Member(Perform(cap, type_args), method)
+    // chains with a matching default impl resolve to `ImplMethod` edges
+    // instead of being opaquely classified as Indirect.
+    let cg = call_graph::build_call_graph_with_resolution(file, Some(&resolution));
     let analysis = dep_free::run(file, &resolution, &cg);
 
     // Validate: every fn marked #[inline(always)] must be proven dep-free.

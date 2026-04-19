@@ -82,6 +82,15 @@ pub fn run(file: &lir::File, resolution: &ResolutionMap, cg: &CallGraph) -> DepF
         status.insert(k.clone(), DepFreeStatus::Pending);
     }
 
+    // Extern fns are leaves with no caps — seed them as DepFree so direct
+    // calls to them (e.g. `js_add` from a default impl body) don't force the
+    // caller to Blocked on the `None` branch below.
+    for item in &file.items {
+        if let lir::Item::ExternFn(e) = item {
+            status.insert((e.name.clone(), Vec::new()), DepFreeStatus::DepFree);
+        }
+    }
+
     // Iterate to fixed point. Each pass: for each Pending key, optimistically
     // pre-mark DepFree (so self-recursive references see DepFree), then walk
     // the body. If body says Blocked → mark Blocked + drop tentative

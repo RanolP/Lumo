@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use lumo_lir as lir;
 use lumo_span::Span;
 
+use super::resolution::ResolutionMap;
+
 #[derive(Debug, Clone)]
 pub struct CallGraph {
     /// caller fn name (or "<impl_const>.<method>") → call sites in its body
@@ -38,27 +40,50 @@ fn collect_apply_chain<'a>(expr: &'a lir::Expr) -> Option<(&'a lir::Expr, Vec<&'
     Some((cur, args))
 }
 
-fn classify_callee(head: &lir::Expr, fn_names: &std::collections::HashSet<String>) -> CallTarget {
+/// Classifies whether `head` is a known fn / impl-method call or an
+/// indirect/opaque callee. `Force(Ident("resume"))` returns `None` —
+/// `resume` is a CPS plumbing construct (identity in the dep-free path)
+/// and should not generate a call-graph edge that blocks dep-free analysis.
+fn classify_callee(
+    head: &lir::Expr,
+    fn_names: &std::collections::HashSet<String>,
+    resolution: Option<&ResolutionMap>,
+) -> Option<CallTarget> {
     match head {
-        lir::Expr::Force { expr, .. } => classify_callee(expr, fn_names),
+        lir::Expr::Force { expr, .. } => classify_callee(expr, fn_names, resolution),
         lir::Expr::Ident { name, .. } => {
-            if fn_names.contains(name) {
-                CallTarget::Fn(name.clone())
+            if name == "resume" {
+                None
+            } else if fn_names.contains(name) {
+                Some(CallTarget::Fn(name.clone()))
             } else {
-                CallTarget::Indirect
+                Some(CallTarget::Indirect)
             }
         }
         lir::Expr::Member { object, field, .. } => {
             if let lir::Expr::Ident { name, .. } = object.as_ref() {
-                CallTarget::ImplMethod {
+                Some(CallTarget::ImplMethod {
                     impl_const: name.clone(),
                     method: field.clone(),
+                })
+            } else if let lir::Expr::Perform { cap, type_args, .. } = object.as_ref() {
+                // `Member(Perform(cap), method)` is a typeclass dispatch.
+                // If the resolution map has a default impl for (cap, type_args),
+                // classify as a direct ImplMethod call.
+                if let Some(map) = resolution {
+                    if let Some(res) = map.get(&(cap.clone(), type_args.clone())) {
+                        return Some(CallTarget::ImplMethod {
+                            impl_const: res.impl_const.clone(),
+                            method: field.clone(),
+                        });
+                    }
                 }
+                Some(CallTarget::Indirect)
             } else {
-                CallTarget::Indirect
+                Some(CallTarget::Indirect)
             }
         }
-        _ => CallTarget::Indirect,
+        _ => Some(CallTarget::Indirect),
     }
 }
 
@@ -66,15 +91,17 @@ fn walk_expr(
     expr: &lir::Expr,
     file: &lir::File,
     fn_names: &std::collections::HashSet<String>,
+    resolution: Option<&ResolutionMap>,
     out: &mut Vec<CallSite>,
 ) {
     // Record this Apply chain (if it's the head of one).
     if let Some((head, _args)) = collect_apply_chain(expr) {
-        let callee = classify_callee(head, fn_names);
-        out.push(CallSite {
-            callee,
-            span: file.span_of(expr.id()),
-        });
+        if let Some(callee) = classify_callee(head, fn_names, resolution) {
+            out.push(CallSite {
+                callee,
+                span: file.span_of(expr.id()),
+            });
+        }
     }
     // Record zero-arg calls: `Force(Ident(name))` with no surrounding Apply.
     // These are top-level calls to zero-parameter functions (e.g. `sum()`).
@@ -92,41 +119,41 @@ fn walk_expr(
     // we descend so nested calls (in args) are also captured.
     match expr {
         lir::Expr::Apply { callee, arg, .. } => {
-            walk_expr(callee, file, fn_names, out);
-            walk_expr(arg, file, fn_names, out);
+            walk_expr(callee, file, fn_names, resolution, out);
+            walk_expr(arg, file, fn_names, resolution, out);
         }
         lir::Expr::Force { expr, .. }
         | lir::Expr::Thunk { expr, .. }
         | lir::Expr::Produce { expr, .. }
         | lir::Expr::Roll { expr, .. }
         | lir::Expr::Unroll { expr, .. }
-        | lir::Expr::Ann { expr, .. } => walk_expr(expr, file, fn_names, out),
-        lir::Expr::Lambda { body, .. } => walk_expr(body, file, fn_names, out),
+        | lir::Expr::Ann { expr, .. } => walk_expr(expr, file, fn_names, resolution, out),
+        lir::Expr::Lambda { body, .. } => walk_expr(body, file, fn_names, resolution, out),
         lir::Expr::Let { value, body, .. } => {
-            walk_expr(value, file, fn_names, out);
-            walk_expr(body, file, fn_names, out);
+            walk_expr(value, file, fn_names, resolution, out);
+            walk_expr(body, file, fn_names, resolution, out);
         }
         lir::Expr::Match { scrutinee, arms, .. } => {
-            walk_expr(scrutinee, file, fn_names, out);
+            walk_expr(scrutinee, file, fn_names, resolution, out);
             for arm in arms {
-                walk_expr(&arm.body, file, fn_names, out);
+                walk_expr(&arm.body, file, fn_names, resolution, out);
             }
         }
         lir::Expr::Handle { handler, body, .. } => {
-            walk_expr(handler, file, fn_names, out);
-            walk_expr(body, file, fn_names, out);
+            walk_expr(handler, file, fn_names, resolution, out);
+            walk_expr(body, file, fn_names, resolution, out);
         }
         lir::Expr::Bundle { entries, .. } => {
             for e in entries {
-                walk_expr(&e.body, file, fn_names, out);
+                walk_expr(&e.body, file, fn_names, resolution, out);
             }
         }
         lir::Expr::Ctor { args, .. } => {
             for a in args {
-                walk_expr(a, file, fn_names, out);
+                walk_expr(a, file, fn_names, resolution, out);
             }
         }
-        lir::Expr::Member { object, .. } => walk_expr(object, file, fn_names, out),
+        lir::Expr::Member { object, .. } => walk_expr(object, file, fn_names, resolution, out),
         lir::Expr::Perform { .. }
         | lir::Expr::Ident { .. }
         | lir::Expr::String { .. }
@@ -136,6 +163,16 @@ fn walk_expr(
 }
 
 pub fn build_call_graph(file: &lir::File) -> CallGraph {
+    build_call_graph_with_resolution(file, None)
+}
+
+/// Build the call graph with an optional resolution map. When provided,
+/// `Member(Perform(cap), method)` chains whose `(cap, type_args)` resolves
+/// in the map are classified as `ImplMethod` instead of `Indirect`.
+pub fn build_call_graph_with_resolution(
+    file: &lir::File,
+    resolution: Option<&ResolutionMap>,
+) -> CallGraph {
     let fn_names: std::collections::HashSet<String> = file
         .items
         .iter()
@@ -152,7 +189,7 @@ pub fn build_call_graph(file: &lir::File) -> CallGraph {
     for item in &file.items {
         let lir::Item::Fn(f) = item else { continue };
         let mut sites = Vec::new();
-        walk_expr(&f.value, file, &fn_names, &mut sites);
+        walk_expr(&f.value, file, &fn_names, resolution, &mut sites);
         // Dedupe consecutive identical sites (the walker may visit Apply sub-chains).
         sites.dedup();
         for cs in &sites {
@@ -181,7 +218,7 @@ pub fn build_call_graph(file: &lir::File) -> CallGraph {
         for method in &impl_decl.methods {
             let key = format!("{const_name}.{}", method.name);
             let mut sites = Vec::new();
-            walk_expr(&method.value, file, &fn_names, &mut sites);
+            walk_expr(&method.value, file, &fn_names, resolution, &mut sites);
             sites.dedup();
             for cs in &sites {
                 if let CallTarget::Fn(callee) = &cs.callee {

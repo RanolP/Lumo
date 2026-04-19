@@ -232,10 +232,9 @@ fn match_call_chain(expr: &lir::Expr) -> Option<(String, Vec<lir::Expr>)> {
         args.push((**arg).clone());
         cur = callee;
     }
-    if args.is_empty() {
-        return None;
-    }
     args.reverse();
+    // Accept both n-ary calls (`Apply…Force(Ident)`) and zero-arg calls
+    // (`Force(Ident)` directly) so zero-param fns can be inlined too.
     if let lir::Expr::Force { expr: inner, .. } = cur {
         if let lir::Expr::Ident { name, .. } = inner.as_ref() {
             return Some((name.clone(), args));
