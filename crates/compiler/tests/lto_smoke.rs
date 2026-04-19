@@ -17,7 +17,8 @@ fn lower(src: &str) -> lir::File {
 fn lto_optimize_is_callable_and_idempotent_on_no_op_input() {
     let mut file = lower("fn id(x: Number): Number { x }");
     let before = file.clone();
-    lto::optimize(&mut file);
+    let errors = lto::optimize(&mut file);
+    assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
     // No caps, no Performs — nothing to do; file stays bit-equal.
     assert_eq!(file, before);
 }
