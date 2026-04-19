@@ -564,3 +564,16 @@ fn parses_impl_method_eq_body() {
     assert_eq!(i.methods.len(), 1);
     assert!(matches!(&i.methods[0].body, Expr::Ident { name, .. } if name == "x"));
 }
+
+#[test]
+fn attribute_accepts_positional_flag() {
+    let src = "#[inline(always)] extern fn foo(): Number";
+    let lexed = lex(src);
+    let parsed = parse(&lexed.tokens, &lexed.errors);
+    assert!(parsed.errors.is_empty(), "parse errors: {:?}", parsed.errors);
+    let item = &parsed.file.items[0];
+    let Item::ExternFn(ext) = item else { panic!("expected extern fn") };
+    assert_eq!(ext.attrs.len(), 1);
+    assert_eq!(ext.attrs[0].name, "inline");
+    assert_eq!(ext.attrs[0].flags, vec!["always".to_owned()]);
+}
