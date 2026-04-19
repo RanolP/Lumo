@@ -234,22 +234,27 @@ impl QueryEngine {
     where
         F: FnMut(&[String]) -> Option<(String, String)>,
     {
-        let mut all_files: HashSet<String> = entry_files.iter().map(|f| f.to_string()).collect();
-        let mut pending: VecDeque<String> = all_files.iter().cloned().collect();
+        // Preserve deterministic insertion order: the Vec records the order
+        // files were discovered (entry files first, then deps in BFS order),
+        // the HashSet is used only for O(1) duplicate-check.
+        let mut ordered_files: Vec<String> = entry_files.iter().map(|f| f.to_string()).collect();
+        let mut seen: HashSet<String> = ordered_files.iter().cloned().collect();
+        let mut pending: VecDeque<String> = ordered_files.iter().cloned().collect();
 
         while let Some(file) = pending.pop_front() {
             let parsed = self.parse(&file)?;
             for use_path in collect_use_paths(&parsed.file) {
                 if let Some((filename, source)) = resolve(&use_path) {
-                    if all_files.insert(filename.clone()) {
-                        self.set_file(&filename, source);
+                    if seen.insert(filename.clone()) {
+                        self.set_file(&filename, source.clone());
+                        ordered_files.push(filename.clone());
                         pending.push_back(filename);
                     }
                 }
             }
         }
 
-        let file_refs: Vec<&str> = all_files.iter().map(|s| s.as_str()).collect();
+        let file_refs: Vec<&str> = ordered_files.iter().map(|s| s.as_str()).collect();
         self.lower_module(&file_refs)
     }
 

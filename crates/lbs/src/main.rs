@@ -133,10 +133,11 @@ fn compile(
         process::exit(1);
     }
 
-    let mut file_names = Vec::new();
-    for (name, source) in &sources {
+    let mut file_names: Vec<String> = sources.keys().cloned().collect();
+    file_names.sort();
+    for name in &file_names {
+        let source = sources.get(name).expect("present by construction");
         engine.set_file(name, source);
-        file_names.push(name.clone());
     }
 
     let file_refs: Vec<&str> = file_names.iter().map(|s| s.as_str()).collect();
