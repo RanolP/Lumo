@@ -1,0 +1,33 @@
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn js_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(a: Self, b: Self): Self = resume(js_add(a, b)) }
+
+fn one_plus_two(): Number = Add.add(1, 2)
+fn main(): Number = one_plus_two()
+
+===EXPECT===
+# BUG (v1): LTO does not activate for this trivial leaf case.
+#   Spec says: `one_plus_two` should be cloned (or inlined) with the Perform
+#   site rewritten to a direct dispatch through `__impl_Number_Add.add(...)`,
+#   so the runtime `__caps.Add_Number` bundle entry is no longer needed at
+#   that call site.
+#   Actual: `one_plus_two` remains CPS-form (`__caps.Add_Number.add(...)`),
+#   no `one_plus_two__lto` clone is emitted. `__main_cps` still threads the
+#   bundle to `one_plus_two`. See lto/emit.rs::transform — only top-level
+#   non-main fns are rewritten, AND the dep-free analysis must classify them
+#   as DepFree under empty binding. Diagnose:
+#     - `lto::optimize` runs (no panics)
+#     - emit::transform sees `dep_free_fns = []`  →  no clone/inline produced
+#     - root-cause: dep_free analysis or perform_resolution map is empty for
+#       this case despite `impl Number: Add` providing a concrete default.
+#   Follow-up task: investigate why `dep_free` doesn't classify
+#   `one_plus_two` as DepFree given the impl is statically resolvable.
+#
+# These assertions capture the *current* v1 output as a regression baseline.
+# When the bug above is fixed, swap them: drop `__caps.Add_Number` from
+# expected, add `!__caps.Add_Number` and `__impl_Number_Add.add` positives.
+function one_plus_two
+__impl_Number_Add
+__caps.Add_Number
+!one_plus_two__lto
