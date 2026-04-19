@@ -49,13 +49,12 @@ fn stdlib_resolver(path: &[String]) -> Option<(String, String)> {
 
 /// Smoke test: `1 + 2 + 3` directly in main compiles through real stdlib.
 ///
-/// LTO gap — direct arithmetic in main's own body (tracked in plans/unify-impl-and-handler.md):
-/// When main itself contains the cap calls (no helper fn), LTO v1 creates a `main__lto`
-/// clone but DCE immediately removes it — nothing calls `main__lto`. The original `main`
-/// keeps its Perform(Add) nodes, so the backend emits `__main_cps` with `__caps.Add_Number`.
-/// This test documents the current (pre-fix) behavior: `__caps.Add_Number` IS present in
-/// `__main_cps`. When the LTO entry-point rewrite is implemented, this test should be
-/// updated to assert the opposite.
+/// After the LTO entry-point in-place rewrite fix: when `main` itself (no helper fn)
+/// contains the cap calls, LTO detects that `main` has zero callers and rewrites it in
+/// place instead of creating a `main__lto` clone that DCE would discard. The body's
+/// Perform(Add) nodes are eliminated, `cap` is cleared to `None`, and the backend emits
+/// `main` as a plain `export function main()` with direct `__num_add` calls — no CPS
+/// wrapper, no `__caps` bundle.
 #[test]
 fn arithmetic_direct_in_main_compiles_with_stdlib() {
     let mut q = QueryEngine::new();
@@ -74,10 +73,10 @@ fn main(): Number = 1 + 2 + 3
         .expect("compile_with_deps failed");
     let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("js emit");
 
-    // Compilation must succeed and produce a `__main_cps` wrapper.
+    // After in-place rewrite: cap=None means no CPS wrapper — backend emits a direct fn.
     assert!(
-        js.contains("function __main_cps("),
-        "JS should contain __main_cps, got:\n{js}"
+        !js.contains("function __main_cps("),
+        "JS should NOT contain __main_cps after LTO in-place rewrite (cap cleared), got:\n{js}"
     );
 
     // The impl const `__impl_Number_Add` must be present — LTO built the chain.
@@ -92,13 +91,34 @@ fn main(): Number = 1 + 2 + 3
         "JS should reference __num_add (the JS extern for Number addition), got:\n{js}"
     );
 
-    // LTO v1 gap: `__caps.Add_Number` is still present in `__main_cps` when main
-    // itself (not a helper) is the dep-free function. The entry-point shape blocks
-    // the in-place rewrite. When this gap is fixed, flip the assertion.
+    // Extract `main`'s body (now a plain fn, not CPS) to check for cap elimination.
+    let main_fn_start = js
+        .find("export function main()")
+        .expect("export function main() not found in JS");
+    let main_fn_end = js[main_fn_start..]
+        .find("}\n\n")
+        .map(|i| main_fn_start + i)
+        .unwrap_or(js.len());
+    let main_body = &js[main_fn_start..main_fn_end];
+
+    // After the in-place rewrite: `main` body must NOT access `__caps.Add_Number`.
+    // main has zero callers, so LTO rewrites it in place rather than cloning (which
+    // DCE would drop). The Perform(Add) nodes in main's own body are now eliminated.
     assert!(
-        js.contains("__caps.Add_Number"),
-        "LTO gap: expected __caps.Add_Number to still be present in __main_cps body \
-         (direct-main-arithmetic is not yet rewritten in-place by LTO v1), got:\n{js}"
+        !main_body.contains("__caps.Add_Number"),
+        "expected main body to NOT dispatch through __caps.Add_Number after LTO \
+         in-place rewrite (main is a zero-caller entry point), got:\n{}\n\n(full js)\n{}",
+        main_body,
+        js
+    );
+
+    // The resolved arithmetic must appear directly in main body.
+    assert!(
+        main_body.contains("__num_add"),
+        "expected main body to call __num_add directly after LTO in-place rewrite, \
+         got:\n{}\n\n(full js)\n{}",
+        main_body,
+        js
     );
 }
 

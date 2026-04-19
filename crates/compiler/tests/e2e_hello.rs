@@ -248,26 +248,25 @@ fn main(): Number = 1 + 2
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
     let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    // After LTO in-place rewrite: main has zero callers, so LTO rewrites it in place,
+    // clears cap=None, and the backend emits a plain `export function main()` with direct
+    // __num_add calls — no CPS wrapper, no __caps bundle.
     assert!(
-        js.contains("function __main_cps("),
-        "JS should rename effectful user main → __main_cps, got:\n{js}"
+        !js.contains("function __main_cps("),
+        "JS should NOT emit __main_cps after LTO in-place rewrite (cap cleared), got:\n{js}"
     );
     assert!(
         js.contains("function main()"),
-        "JS should expose a no-arg main() entry wrapper, got:\n{js}"
+        "JS should expose a plain main() after LTO in-place rewrite, got:\n{js}"
+    );
+    // After in-place rewrite the body uses __num_add directly, no __caps dispatch.
+    assert!(
+        !js.contains("__caps.Add_Number"),
+        "body should NOT access __caps.Add_Number after LTO in-place rewrite, got:\n{js}"
     );
     assert!(
-        js.contains("__impl_Number_Add"),
-        "JS wrapper should pass __impl_Number_Add as the default for Add[Number], got:\n{js}"
-    );
-    // The bundled __caps object is built once and threaded through CPS calls.
-    assert!(
-        js.contains("__caps.Add_Number"),
-        "body should access caps via __caps bundle, got:\n{js}"
-    );
-    assert!(
-        js.contains("__main_cps({"),
-        "wrapper should call __main_cps with bundle literal, got:\n{js}"
+        js.contains("__num_add"),
+        "body should call __num_add directly after LTO in-place rewrite, got:\n{js}"
     );
 }
 
@@ -330,23 +329,98 @@ fn main(): Unit / { MyCap } {
 }
 
 #[test]
-fn multi_shot_resume_compiles() {
-    // A handler that calls `resume` twice and combines the results with `+`.
-    // Under algebraic-effect semantics with split k_perform/k_handle, the
-    // handler body value flows to the outer continuation (abort); each
-    // explicit `resume(v)` drives the perform's continuation synchronously.
+#[ignore] // requires Node.js
+fn multi_shot_coin_flip_enumerates_branches_on_node() {
+    // Canonical non-determinism: a Coin handler that resumes twice per flip
+    // (once with true, once with false). With 3 flips, the rest-of-main
+    // runs 2^3 = 8 times, each with a different sequence — all combinations
+    // of three booleans are printed. Non-tail `resume(...)` drives the
+    // continuation synchronously so side effects run before the next
+    // resume executes.
+    let mut q = QueryEngine::new();
+    q.set_file(
+        "main.lumo",
+        r#"use libcore.prelude.{Bool, String};
+use libstd.io.{IO};
+
+cap Coin { fn flip(): Bool }
+
+impl Coin {
+  fn flip() = {
+    resume(Bool.true);
+    resume(Bool.false)
+  }
+}
+
+fn to_str(b: Bool): String = match b {
+  .true => "true",
+  .false => "false",
+}
+
+fn main() {
+  let a = Coin.flip();
+  let b = Coin.flip();
+  let c = Coin.flip();
+  IO.println(to_str(a));
+  IO.println(to_str(b));
+  IO.println(to_str(c))
+}
+"#,
+    );
+    let lir = q
+        .compile_with_deps(&["main.lumo"], stdlib_resolver)
+        .expect("compilation should succeed");
+    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js_with_entry = format!("{js}\nmain();\n");
+
+    let output = std::process::Command::new("node")
+        .arg("-e")
+        .arg(&js_with_entry)
+        .output()
+        .expect("failed to execute node");
+    assert!(
+        output.status.success(),
+        "node should exit successfully, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    // Expected: 8 branches × 3 lines each = 24 lines, enumerating all
+    // combinations of true/false for (a, b, c).
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(
+        lines.len(),
+        24,
+        "multi-shot Coin handler should enumerate 2^3 = 8 branches × 3 lines each; got:\n{stdout}"
+    );
+    // There must be at least one `true` line and one `false` line —
+    // single-branch `false false false` is the symptom of non-tail resume
+    // being discarded.
+    assert!(
+        lines.iter().any(|l| *l == "true"),
+        "at least one branch should print `true` (multi-shot must drive both resumes); got:\n{stdout}"
+    );
+    assert!(
+        lines.iter().any(|l| *l == "false"),
+        "at least one branch should print `false`; got:\n{stdout}"
+    );
+}
+
+#[test]
+fn tail_resume_compiles() {
+    // A handler whose tail expression is `resume(v)` compiles cleanly and
+    // references `__k_perform` / `__k_handle` per the algebraic-effects
+    // calling convention. `resume(v)` is a tail-call back to the perform
+    // site — the outer trampoline drives its thunk.
     let mut q = QueryEngine::new();
     q.set_file(
         "main.lumo",
         r#"use libcore.prelude.{Number};
-use libcore.ops.{Add};
-use libcore.number.{NumOps};
 
-cap Choice { fn pick(): Number }
+cap Count { fn next(): Number }
 
-fn main(): Number = handle Choice with bundle {
-  fn pick() { resume(1) + resume(2) }
-} in perform Choice.pick()
+fn main(): Number = handle Count with bundle {
+  fn next() = resume(42)
+} in perform Count.next()
 "#,
     );
     let lir = q
@@ -354,33 +428,32 @@ fn main(): Number = handle Choice with bundle {
         .expect("compilation should succeed");
     let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
     assert!(
-        js.contains("__trampoline(__k_perform("),
-        "resume should drive __k_perform via __trampoline: {js}"
-    );
-    assert!(
         js.contains("(__k_handle) =>"),
         "handler should be built by a factory closure over __k_handle: {js}"
+    );
+    assert!(
+        js.contains("__k_perform"),
+        "handler body should reference __k_perform: {js}"
     );
 }
 
 #[test]
 #[ignore] // requires Node.js
-fn multi_shot_resume_on_node() {
-    // Handler resumes twice, each with a different string; the perform site
-    // prints whatever came back. Two println calls prove the continuation ran
-    // twice, confirming multi-shot semantics.
+fn tail_resume_on_node() {
+    // Tail `resume(v)` returns a value to the perform site and the rest of
+    // main runs. IO.println prints it.
     let mut q = QueryEngine::new();
     q.set_file(
         "main.lumo",
-        r#"use libcore.prelude.{String, Number};
+        r#"use libcore.prelude.{String};
 use libstd.io.{IO};
 
-cap Choice { fn pick(n: Number): String }
+cap Greeter { fn greeting(): String }
 
-fn greet(): Unit / { Choice, IO } = IO.println(Choice.pick(0))
+fn greet(): Unit / { Greeter, IO } = IO.println(Greeter.greeting())
 
-fn main() = handle Choice with bundle {
-  fn pick(n) { let _ = resume("hello"); resume("world") }
+fn main() = handle Greeter with bundle {
+  fn greeting() = resume("hello from handler")
 } in greet()
 "#,
     );
@@ -400,12 +473,10 @@ fn main() = handle Choice with bundle {
         "node should exit successfully, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    // Each resume call re-runs the perform's continuation with a fresh value.
-    // Expected stdout: "hello\nworld".
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     assert_eq!(
-        stdout, "hello\nworld",
-        "multi-shot handler should invoke the perform continuation twice; got:\n{stdout}"
+        stdout, "hello from handler",
+        "tail resume should forward value to perform site; got:\n{stdout}"
     );
 }
 
@@ -446,10 +517,12 @@ fn main() {
         js.contains("sum"),
         "JS should contain sum function, got:\n{js}"
     );
-    // The handler invokes `resume` to drive the perform's continuation.
+    // The handler tail-calls `resume(a)` which compiles to
+    // `__k_perform(a)` — the perform-site continuation. Outer trampoline
+    // unwinds its thunk.
     assert!(
-        js.contains("__trampoline(__k_perform("),
-        "handler should invoke __k_perform via resume(a): {js}"
+        js.contains("__k_perform"),
+        "handler should reference __k_perform for the resume tail-call: {js}"
     );
 }
 

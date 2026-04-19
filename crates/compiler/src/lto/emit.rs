@@ -75,13 +75,42 @@ fn apply_clones(
         return;
     }
 
+    // For zero-caller fns (entry points, exported fns), rewrite in place
+    // instead of cloning. A clone would be immediately dropped by DCE since
+    // no caller references it.
+    let caller_counts = count_callers(file);
+
     let mut new_items: Vec<lir::Item> = Vec::new();
     let mut clone_names: HashMap<String, String> = HashMap::new();
 
+    // First pass: rewrite zero-caller fns in place.
+    for item in file.items.iter_mut() {
+        let lir::Item::Fn(f) = item else { continue };
+        if !fns.contains(&f.name) {
+            continue;
+        }
+        if caller_counts.get(&f.name).copied().unwrap_or(0) == 0 {
+            // Zero callers: rewrite body in place and clear the cap annotation.
+            rewrite_performs(
+                &mut f.value,
+                &analysis.perform_resolution,
+                resolution,
+                &mut file.spans,
+            );
+            f.cap = None;
+            // No clone needed — nothing to redirect.
+        }
+    }
+
+    // Second pass (snapshot): create clones for fns that DO have callers.
     let items_snapshot: Vec<lir::Item> = file.items.clone();
     for item in &items_snapshot {
         let lir::Item::Fn(f) = item else { continue };
         if !fns.contains(&f.name) {
+            continue;
+        }
+        if caller_counts.get(&f.name).copied().unwrap_or(0) == 0 {
+            // Already handled in place above.
             continue;
         }
 
