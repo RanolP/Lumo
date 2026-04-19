@@ -1,10 +1,218 @@
 use std::collections::HashMap;
 
 use lumo_lir as lir;
-use lumo_types::ExprId;
+use lumo_types::{ExprId, Pattern};
 
 use super::dep_free::{DepFreeAnalysis, DepFreeStatus, ResolvedRef};
 use super::resolution::ResolutionMap;
+
+// ---------------------------------------------------------------------------
+// Alpha-renaming for inlined bodies
+// ---------------------------------------------------------------------------
+//
+// Multiple inlinings of the same impl method (or fn) in the same caller scope
+// produce duplicate param names (e.g. `self`, `other`) which collide once the
+// TS backend flattens IIFEs into the enclosing function body. The fix is to
+// mint fresh `__lto_<name>_<N>` names at each inline site for both params and
+// the body's internal Let/Lambda bindings.
+//
+// The counter is per `transform` invocation (not a process-global AtomicU64)
+// so output is deterministic across repeated compilations.
+
+#[derive(Default)]
+struct AlphaCtx {
+    counter: u64,
+}
+
+impl AlphaCtx {
+    fn fresh(&mut self, base: &str) -> String {
+        let n = self.counter;
+        self.counter += 1;
+        format!("__lto_{base}_{n}")
+    }
+}
+
+/// Rename every binding (`Let.name`, `Lambda.param`, pattern bindings) inside
+/// `expr` to a fresh unique name, and rewire in-scope references accordingly.
+/// References to names introduced OUTSIDE `expr` (free vars) are untouched.
+fn alpha_rename_bindings(expr: &mut lir::Expr, ctx: &mut AlphaCtx) {
+    fn walk_pattern(
+        pattern: &mut Pattern,
+        map: &mut Vec<(String, String)>,
+        ctx: &mut AlphaCtx,
+    ) -> usize {
+        match pattern {
+            Pattern::Wildcard => 0,
+            Pattern::Bind(name) => {
+                let fresh = ctx.fresh(name);
+                let old = std::mem::replace(name, fresh.clone());
+                map.push((old, fresh));
+                1
+            }
+            Pattern::Ctor { args, .. } => {
+                let mut pushed = 0;
+                for a in args {
+                    pushed += walk_pattern(a, map, ctx);
+                }
+                pushed
+            }
+        }
+    }
+
+    fn walk(expr: &mut lir::Expr, map: &mut Vec<(String, String)>, ctx: &mut AlphaCtx) {
+        match expr {
+            lir::Expr::Ident { name, .. } => {
+                if let Some((_, new)) = map.iter().rev().find(|(old, _)| old == name) {
+                    *name = new.clone();
+                }
+            }
+            lir::Expr::Let { name, value, body, .. } => {
+                walk(value, map, ctx);
+                let fresh = ctx.fresh(name);
+                let old = std::mem::replace(name, fresh.clone());
+                map.push((old, fresh));
+                walk(body, map, ctx);
+                map.pop();
+            }
+            lir::Expr::Lambda { param, body, .. } => {
+                let fresh = ctx.fresh(param);
+                let old = std::mem::replace(param, fresh.clone());
+                map.push((old, fresh));
+                walk(body, map, ctx);
+                map.pop();
+            }
+            lir::Expr::Apply { callee, arg, .. } => {
+                walk(callee, map, ctx);
+                walk(arg, map, ctx);
+            }
+            lir::Expr::Force { expr, .. }
+            | lir::Expr::Thunk { expr, .. }
+            | lir::Expr::Produce { expr, .. }
+            | lir::Expr::Roll { expr, .. }
+            | lir::Expr::Unroll { expr, .. }
+            | lir::Expr::Ann { expr, .. } => walk(expr, map, ctx),
+            lir::Expr::Match { scrutinee, arms, .. } => {
+                walk(scrutinee, map, ctx);
+                for arm in arms {
+                    let pushed = walk_pattern(&mut arm.pattern, map, ctx);
+                    walk(&mut arm.body, map, ctx);
+                    for _ in 0..pushed {
+                        map.pop();
+                    }
+                }
+            }
+            lir::Expr::Handle { handler, body, .. } => {
+                walk(handler, map, ctx);
+                walk(body, map, ctx);
+            }
+            lir::Expr::Bundle { entries, .. } => {
+                for e in entries {
+                    walk(&mut e.body, map, ctx);
+                }
+            }
+            lir::Expr::Ctor { args, .. } => {
+                for a in args {
+                    walk(a, map, ctx);
+                }
+            }
+            lir::Expr::Member { object, .. } => walk(object, map, ctx),
+            lir::Expr::Perform { .. }
+            | lir::Expr::String { .. }
+            | lir::Expr::Number { .. }
+            | lir::Expr::Error { .. } => {}
+        }
+    }
+    let mut map: Vec<(String, String)> = Vec::new();
+    walk(expr, &mut map, ctx);
+}
+
+/// Rename free occurrences of the names in `map` inside `expr`. An occurrence
+/// is "free" if it is NOT shadowed by a Let/Lambda/pattern binding above it
+/// within `expr`. Used to rename param references in a method body AFTER the
+/// outer `Lambda(p, ...)` wrappers have been stripped.
+fn rename_free_idents(expr: &mut lir::Expr, map: &[(String, String)]) {
+    fn walk_pattern(pattern: &Pattern, shadowed: &mut Vec<String>) -> usize {
+        match pattern {
+            Pattern::Wildcard => 0,
+            Pattern::Bind(name) => {
+                shadowed.push(name.clone());
+                1
+            }
+            Pattern::Ctor { args, .. } => {
+                let mut pushed = 0;
+                for a in args {
+                    pushed += walk_pattern(a, shadowed);
+                }
+                pushed
+            }
+        }
+    }
+
+    fn walk(expr: &mut lir::Expr, map: &[(String, String)], shadowed: &mut Vec<String>) {
+        match expr {
+            lir::Expr::Ident { name, .. } => {
+                if shadowed.iter().rev().any(|s| s == name) {
+                    return;
+                }
+                if let Some((_, new)) = map.iter().find(|(old, _)| old == name) {
+                    *name = new.clone();
+                }
+            }
+            lir::Expr::Let { name, value, body, .. } => {
+                walk(value, map, shadowed);
+                shadowed.push(name.clone());
+                walk(body, map, shadowed);
+                shadowed.pop();
+            }
+            lir::Expr::Lambda { param, body, .. } => {
+                shadowed.push(param.clone());
+                walk(body, map, shadowed);
+                shadowed.pop();
+            }
+            lir::Expr::Apply { callee, arg, .. } => {
+                walk(callee, map, shadowed);
+                walk(arg, map, shadowed);
+            }
+            lir::Expr::Force { expr, .. }
+            | lir::Expr::Thunk { expr, .. }
+            | lir::Expr::Produce { expr, .. }
+            | lir::Expr::Roll { expr, .. }
+            | lir::Expr::Unroll { expr, .. }
+            | lir::Expr::Ann { expr, .. } => walk(expr, map, shadowed),
+            lir::Expr::Match { scrutinee, arms, .. } => {
+                walk(scrutinee, map, shadowed);
+                for arm in arms {
+                    let pushed = walk_pattern(&arm.pattern, shadowed);
+                    walk(&mut arm.body, map, shadowed);
+                    for _ in 0..pushed {
+                        shadowed.pop();
+                    }
+                }
+            }
+            lir::Expr::Handle { handler, body, .. } => {
+                walk(handler, map, shadowed);
+                walk(body, map, shadowed);
+            }
+            lir::Expr::Bundle { entries, .. } => {
+                for e in entries {
+                    walk(&mut e.body, map, shadowed);
+                }
+            }
+            lir::Expr::Ctor { args, .. } => {
+                for a in args {
+                    walk(a, map, shadowed);
+                }
+            }
+            lir::Expr::Member { object, .. } => walk(object, map, shadowed),
+            lir::Expr::Perform { .. }
+            | lir::Expr::String { .. }
+            | lir::Expr::Number { .. }
+            | lir::Expr::Error { .. } => {}
+        }
+    }
+    let mut shadowed = Vec::new();
+    walk(expr, map, &mut shadowed);
+}
 
 const INLINE_SIZE_THRESHOLD: usize = 16;
 
@@ -64,8 +272,9 @@ pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis, resolution: &
 
     // Apply clones first — clones rename callees in-place. Inlines replace
     // calls outright and drop the original fn from `file.items`.
-    apply_clones(file, &to_clone, analysis, resolution);
-    apply_inlines(file, &to_inline, analysis, resolution);
+    let mut ctx = AlphaCtx::default();
+    apply_clones(file, &to_clone, analysis, resolution, &mut ctx);
+    apply_inlines(file, &to_inline, analysis, resolution, &mut ctx);
 }
 
 fn apply_clones(
@@ -73,6 +282,7 @@ fn apply_clones(
     fns: &[String],
     analysis: &DepFreeAnalysis,
     resolution: &ResolutionMap,
+    ctx: &mut AlphaCtx,
 ) {
     if fns.is_empty() {
         return;
@@ -99,6 +309,7 @@ fn apply_clones(
                 &analysis.perform_resolution,
                 resolution,
                 &mut file.spans,
+                ctx,
             );
             f.cap = None;
             // No clone needed — nothing to redirect.
@@ -126,6 +337,7 @@ fn apply_clones(
             &analysis.perform_resolution,
             resolution,
             &mut file.spans,
+            ctx,
         );
         new_items.push(lir::Item::Fn(cloned));
         clone_names.insert(f.name.clone(), clone_name);
@@ -149,6 +361,7 @@ fn apply_inlines(
     fns: &[String],
     analysis: &DepFreeAnalysis,
     resolution: &ResolutionMap,
+    ctx: &mut AlphaCtx,
 ) {
     if fns.is_empty() {
         return;
@@ -166,6 +379,7 @@ fn apply_inlines(
                     &analysis.perform_resolution,
                     resolution,
                     &mut file.spans,
+                    ctx,
                 );
                 bodies.insert(
                     f.name.clone(),
@@ -181,7 +395,7 @@ fn apply_inlines(
         if inline_set.contains(&f.name) {
             continue;
         }
-        inline_calls(&mut f.value, &bodies, &mut file.spans);
+        inline_calls(&mut f.value, &bodies, &mut file.spans, ctx);
     }
 
     // Drop inlined fns themselves.
@@ -209,6 +423,7 @@ fn inline_calls(
     expr: &mut lir::Expr,
     bodies: &HashMap<String, (Vec<lir::Param>, lir::Expr)>,
     spans: &mut Vec<lumo_span::Span>,
+    ctx: &mut AlphaCtx,
 ) {
     if let Some((head_name, args)) = match_call_chain(expr) {
         if let Some((params, body)) = bodies.get(&head_name) {
@@ -220,12 +435,26 @@ fn inline_calls(
                 args.len()
             );
             let mut new_expr = body.clone();
-            for (p, a) in params.iter().zip(args.iter()).rev() {
+
+            // Alpha-rename params (free after Lambda stripping) and internal
+            // bindings so multiple inline sites don't collide in the caller's
+            // flattened scope.
+            let fresh_params: Vec<String> =
+                params.iter().map(|p| ctx.fresh(&p.name)).collect();
+            let param_renames: Vec<(String, String)> = params
+                .iter()
+                .zip(&fresh_params)
+                .map(|(p, fresh)| (p.name.clone(), fresh.clone()))
+                .collect();
+            rename_free_idents(&mut new_expr, &param_renames);
+            alpha_rename_bindings(&mut new_expr, ctx);
+
+            for (fresh, a) in fresh_params.iter().zip(args.iter()).rev() {
                 let span = spans[expr.id().0 as usize];
                 let id = alloc_id(spans, span);
                 new_expr = lir::Expr::Let {
                     id,
-                    name: p.name.clone(),
+                    name: fresh.clone(),
                     value: Box::new(a.clone()),
                     body: Box::new(new_expr),
                 };
@@ -233,47 +462,47 @@ fn inline_calls(
             *expr = new_expr;
             // Recurse on the substituted result — args themselves may be
             // calls to inline.
-            inline_calls(expr, bodies, spans);
+            inline_calls(expr, bodies, spans, ctx);
             return;
         }
     }
     match expr {
         lir::Expr::Apply { callee, arg, .. } => {
-            inline_calls(callee, bodies, spans);
-            inline_calls(arg, bodies, spans);
+            inline_calls(callee, bodies, spans, ctx);
+            inline_calls(arg, bodies, spans, ctx);
         }
         lir::Expr::Force { expr, .. }
         | lir::Expr::Thunk { expr, .. }
         | lir::Expr::Produce { expr, .. }
         | lir::Expr::Roll { expr, .. }
         | lir::Expr::Unroll { expr, .. }
-        | lir::Expr::Ann { expr, .. } => inline_calls(expr, bodies, spans),
-        lir::Expr::Lambda { body, .. } => inline_calls(body, bodies, spans),
+        | lir::Expr::Ann { expr, .. } => inline_calls(expr, bodies, spans, ctx),
+        lir::Expr::Lambda { body, .. } => inline_calls(body, bodies, spans, ctx),
         lir::Expr::Let { value, body, .. } => {
-            inline_calls(value, bodies, spans);
-            inline_calls(body, bodies, spans);
+            inline_calls(value, bodies, spans, ctx);
+            inline_calls(body, bodies, spans, ctx);
         }
         lir::Expr::Match { scrutinee, arms, .. } => {
-            inline_calls(scrutinee, bodies, spans);
+            inline_calls(scrutinee, bodies, spans, ctx);
             for arm in arms {
-                inline_calls(&mut arm.body, bodies, spans);
+                inline_calls(&mut arm.body, bodies, spans, ctx);
             }
         }
         lir::Expr::Handle { handler, body, .. } => {
-            inline_calls(handler, bodies, spans);
-            inline_calls(body, bodies, spans);
+            inline_calls(handler, bodies, spans, ctx);
+            inline_calls(body, bodies, spans, ctx);
         }
         lir::Expr::Bundle { entries, .. } => {
             for e in entries {
-                inline_calls(&mut e.body, bodies, spans);
+                inline_calls(&mut e.body, bodies, spans, ctx);
             }
         }
         lir::Expr::Ctor { args, .. } => {
             for a in args {
-                inline_calls(a, bodies, spans);
+                inline_calls(a, bodies, spans, ctx);
             }
         }
-        lir::Expr::Member { object, .. } => inline_calls(object, bodies, spans),
+        lir::Expr::Member { object, .. } => inline_calls(object, bodies, spans, ctx),
         _ => {}
     }
 }
@@ -349,8 +578,9 @@ fn rewrite_performs(
     resolutions: &HashMap<ExprId, ResolvedRef>,
     resolution: &ResolutionMap,
     spans: &mut Vec<lumo_span::Span>,
+    ctx: &mut AlphaCtx,
 ) {
-    rewrite_walk(expr, resolutions, resolution, spans);
+    rewrite_walk(expr, resolutions, resolution, spans, ctx);
 }
 
 fn rewrite_walk(
@@ -358,6 +588,7 @@ fn rewrite_walk(
     resolutions: &HashMap<ExprId, ResolvedRef>,
     resolution: &ResolutionMap,
     spans: &mut Vec<lumo_span::Span>,
+    ctx: &mut AlphaCtx,
 ) {
     // Recursive monomorphization: match the Apply chain rooted at `expr`
     // whose callee chain terminates in `Member(Perform(cap, type_args),
@@ -365,47 +596,47 @@ fn rewrite_walk(
     // binding each formal param to the corresponding apply-chain arg via a
     // Let-chain, and rewrite `resume(v)` → `v` since there is no handler
     // context in statically-dispatched LTO code.
-    if try_inline_perform_call(expr, resolutions, resolution, spans) {
+    if try_inline_perform_call(expr, resolutions, resolution, spans, ctx) {
         // The inlined body may itself contain further Perform calls that
         // should be monomorphized — recurse on the replacement.
-        rewrite_walk(expr, resolutions, resolution, spans);
+        rewrite_walk(expr, resolutions, resolution, spans, ctx);
         return;
     }
     match expr {
-        lir::Expr::Member { object, .. } => rewrite_walk(object, resolutions, resolution, spans),
+        lir::Expr::Member { object, .. } => rewrite_walk(object, resolutions, resolution, spans, ctx),
         lir::Expr::Apply { callee, arg, .. } => {
-            rewrite_walk(callee, resolutions, resolution, spans);
-            rewrite_walk(arg, resolutions, resolution, spans);
+            rewrite_walk(callee, resolutions, resolution, spans, ctx);
+            rewrite_walk(arg, resolutions, resolution, spans, ctx);
         }
         lir::Expr::Force { expr, .. }
         | lir::Expr::Thunk { expr, .. }
         | lir::Expr::Produce { expr, .. }
         | lir::Expr::Roll { expr, .. }
         | lir::Expr::Unroll { expr, .. }
-        | lir::Expr::Ann { expr, .. } => rewrite_walk(expr, resolutions, resolution, spans),
-        lir::Expr::Lambda { body, .. } => rewrite_walk(body, resolutions, resolution, spans),
+        | lir::Expr::Ann { expr, .. } => rewrite_walk(expr, resolutions, resolution, spans, ctx),
+        lir::Expr::Lambda { body, .. } => rewrite_walk(body, resolutions, resolution, spans, ctx),
         lir::Expr::Let { value, body, .. } => {
-            rewrite_walk(value, resolutions, resolution, spans);
-            rewrite_walk(body, resolutions, resolution, spans);
+            rewrite_walk(value, resolutions, resolution, spans, ctx);
+            rewrite_walk(body, resolutions, resolution, spans, ctx);
         }
         lir::Expr::Match { scrutinee, arms, .. } => {
-            rewrite_walk(scrutinee, resolutions, resolution, spans);
+            rewrite_walk(scrutinee, resolutions, resolution, spans, ctx);
             for arm in arms {
-                rewrite_walk(&mut arm.body, resolutions, resolution, spans);
+                rewrite_walk(&mut arm.body, resolutions, resolution, spans, ctx);
             }
         }
         lir::Expr::Handle { handler, body, .. } => {
-            rewrite_walk(handler, resolutions, resolution, spans);
-            rewrite_walk(body, resolutions, resolution, spans);
+            rewrite_walk(handler, resolutions, resolution, spans, ctx);
+            rewrite_walk(body, resolutions, resolution, spans, ctx);
         }
         lir::Expr::Bundle { entries, .. } => {
             for e in entries {
-                rewrite_walk(&mut e.body, resolutions, resolution, spans);
+                rewrite_walk(&mut e.body, resolutions, resolution, spans, ctx);
             }
         }
         lir::Expr::Ctor { args, .. } => {
             for a in args {
-                rewrite_walk(a, resolutions, resolution, spans);
+                rewrite_walk(a, resolutions, resolution, spans, ctx);
             }
         }
         lir::Expr::Perform { .. }
@@ -425,6 +656,7 @@ fn try_inline_perform_call(
     resolutions: &HashMap<ExprId, ResolvedRef>,
     resolution: &ResolutionMap,
     spans: &mut Vec<lumo_span::Span>,
+    ctx: &mut AlphaCtx,
 ) -> bool {
     // Walk down the apply chain to collect args and find the terminal Member.
     let mut args: Vec<lir::Expr> = Vec::new();
@@ -473,13 +705,31 @@ fn try_inline_perform_call(
     let mut inlined = stripped;
     strip_resume(&mut inlined);
 
-    // Wrap in Let-chain binding params to args in order (left-to-right).
+    // Alpha-rename everything so multiple inline sites don't collide. Param
+    // references in `inlined` are FREE (the Lambda wrappers that bound them
+    // were stripped above), so we rename them explicitly via a shadow-aware
+    // pass. Internal bindings are renamed via the general alpha walk.
+    let fresh_params: Vec<String> = method_info
+        .params
+        .iter()
+        .map(|p| ctx.fresh(&p.name))
+        .collect();
+    let param_renames: Vec<(String, String)> = method_info
+        .params
+        .iter()
+        .zip(&fresh_params)
+        .map(|(p, fresh)| (p.name.clone(), fresh.clone()))
+        .collect();
+    rename_free_idents(&mut inlined, &param_renames);
+    alpha_rename_bindings(&mut inlined, ctx);
+
+    // Wrap in Let-chain binding fresh params to args in order (left-to-right).
     let span = spans[member_id.0 as usize];
-    for (p, a) in method_info.params.iter().zip(args.into_iter()).rev() {
+    for (fresh, a) in fresh_params.iter().zip(args.into_iter()).rev() {
         let let_id = alloc_id(spans, span);
         inlined = lir::Expr::Let {
             id: let_id,
-            name: p.name.clone(),
+            name: fresh.clone(),
             value: Box::new(a),
             body: Box::new(inlined),
         };

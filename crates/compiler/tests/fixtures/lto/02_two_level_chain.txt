@@ -24,7 +24,7 @@ fn main(): Number = quadruple(5)
 # `cap: Infer(...)` floor is preserved across the post-LTO re-typecheck.
 # Assertions target `__main_cps` and `quadruple__lto`, not the outer wrapper.
 quadruple__lto
-js_add(x, b)
+js_add(x, __lto_b
 __main_cps
 quadruple__lto(5)
 !__caps.Add_Number.add

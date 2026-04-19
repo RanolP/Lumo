@@ -21,9 +21,9 @@ fn main(): Number = used()
 #   - No `js_add(1, 2)` anywhere — `dead`'s body never made it into the
 #     emitted JS, so the `1, 2` constants don't appear as an add arg pair.
 __main_cps
-js_add(a, b)
-const a = 3;
-const b = 4;
+js_add(__lto_
+= 3;
+= 4;
 !function dead(
 !function used(
 !dead__lto

@@ -32,8 +32,8 @@ fn main(): Number = Add.add(use_thunk(), use_thunk())
 #   - `use_thunk` is NOT cloned as `use_thunk__lto` — no clone emitted.
 #   - `use_thunk` retains unused `__caps` plumbing (v1 leak).
 function use_thunk(__caps, __k)
-const job = () => {
-js_add(a, b)
+__lto_job
+js_add(__lto_
 return use_thunk(__caps,
 !use_thunk__lto
 !apply_thunk__lto
