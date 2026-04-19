@@ -4,10 +4,11 @@ use lumo_lir as lir;
 use lumo_types::ExprId;
 
 use super::dep_free::{DepFreeAnalysis, DepFreeStatus, ResolvedRef};
+use super::resolution::ResolutionMap;
 
 const INLINE_SIZE_THRESHOLD: usize = 16;
 
-pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis) {
+pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis, resolution: &ResolutionMap) {
     // Step 1: identify dep-free fns under empty binding (v1).
     let dep_free_fns: Vec<String> = analysis
         .status
@@ -60,11 +61,16 @@ pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis) {
 
     // Apply clones first — clones rename callees in-place. Inlines replace
     // calls outright and drop the original fn from `file.items`.
-    apply_clones(file, &to_clone, analysis);
-    apply_inlines(file, &to_inline, analysis);
+    apply_clones(file, &to_clone, analysis, resolution);
+    apply_inlines(file, &to_inline, analysis, resolution);
 }
 
-fn apply_clones(file: &mut lir::File, fns: &[String], analysis: &DepFreeAnalysis) {
+fn apply_clones(
+    file: &mut lir::File,
+    fns: &[String],
+    analysis: &DepFreeAnalysis,
+    resolution: &ResolutionMap,
+) {
     if fns.is_empty() {
         return;
     }
@@ -83,7 +89,12 @@ fn apply_clones(file: &mut lir::File, fns: &[String], analysis: &DepFreeAnalysis
         let mut cloned = f.clone();
         cloned.name = clone_name.clone();
         cloned.cap = None;
-        rewrite_performs(&mut cloned.value, &analysis.perform_resolution, &mut file.spans);
+        rewrite_performs(
+            &mut cloned.value,
+            &analysis.perform_resolution,
+            resolution,
+            &mut file.spans,
+        );
         new_items.push(lir::Item::Fn(cloned));
         clone_names.insert(f.name.clone(), clone_name);
     }
@@ -101,7 +112,12 @@ fn apply_clones(file: &mut lir::File, fns: &[String], analysis: &DepFreeAnalysis
     }
 }
 
-fn apply_inlines(file: &mut lir::File, fns: &[String], analysis: &DepFreeAnalysis) {
+fn apply_inlines(
+    file: &mut lir::File,
+    fns: &[String],
+    analysis: &DepFreeAnalysis,
+    resolution: &ResolutionMap,
+) {
     if fns.is_empty() {
         return;
     }
@@ -113,7 +129,12 @@ fn apply_inlines(file: &mut lir::File, fns: &[String], analysis: &DepFreeAnalysi
         if let lir::Item::Fn(f) = item {
             if fns.contains(&f.name) {
                 let mut body = f.value.clone();
-                rewrite_performs(&mut body, &analysis.perform_resolution, &mut file.spans);
+                rewrite_performs(
+                    &mut body,
+                    &analysis.perform_resolution,
+                    resolution,
+                    &mut file.spans,
+                );
                 bodies.insert(
                     f.name.clone(),
                     (f.params.clone(), strip_thunk_lambdas(body, f.params.len())),
@@ -294,73 +315,206 @@ fn count_callers(file: &lir::File) -> HashMap<String, usize> {
 fn rewrite_performs(
     expr: &mut lir::Expr,
     resolutions: &HashMap<ExprId, ResolvedRef>,
+    resolution: &ResolutionMap,
     spans: &mut Vec<lumo_span::Span>,
 ) {
-    rewrite_walk(expr, resolutions, spans);
+    rewrite_walk(expr, resolutions, resolution, spans);
 }
 
 fn rewrite_walk(
     expr: &mut lir::Expr,
     resolutions: &HashMap<ExprId, ResolvedRef>,
+    resolution: &ResolutionMap,
     spans: &mut Vec<lumo_span::Span>,
 ) {
-    // For `Member { id, object: Perform(cap), field: method }` whose id has a
-    // resolution: replace with `Member { id, object: Ident(impl_const), field: method }`.
-    if let lir::Expr::Member { id, object, field: _ } = expr {
-        if let lir::Expr::Perform { .. } = object.as_ref() {
-            if let Some(res) = resolutions.get(id) {
-                let span = spans[id.0 as usize];
-                let new_id_ident = alloc_id(spans, span);
-                let new_id_member = alloc_id(spans, span);
-                *expr = lir::Expr::Member {
-                    id: new_id_member,
-                    object: Box::new(lir::Expr::Ident {
-                        id: new_id_ident,
-                        name: res.impl_const.clone(),
-                    }),
-                    field: res.method.clone(),
-                };
-                return;
-            }
-        }
+    // Recursive monomorphization: match the Apply chain rooted at `expr`
+    // whose callee chain terminates in `Member(Perform(cap, type_args),
+    // method)` with a resolution. Inline the impl method body at that site,
+    // binding each formal param to the corresponding apply-chain arg via a
+    // Let-chain, and rewrite `resume(v)` → `v` since there is no handler
+    // context in statically-dispatched LTO code.
+    if try_inline_perform_call(expr, resolutions, resolution, spans) {
+        // The inlined body may itself contain further Perform calls that
+        // should be monomorphized — recurse on the replacement.
+        rewrite_walk(expr, resolutions, resolution, spans);
+        return;
     }
     match expr {
-        lir::Expr::Member { object, .. } => rewrite_walk(object, resolutions, spans),
+        lir::Expr::Member { object, .. } => rewrite_walk(object, resolutions, resolution, spans),
         lir::Expr::Apply { callee, arg, .. } => {
-            rewrite_walk(callee, resolutions, spans);
-            rewrite_walk(arg, resolutions, spans);
+            rewrite_walk(callee, resolutions, resolution, spans);
+            rewrite_walk(arg, resolutions, resolution, spans);
         }
         lir::Expr::Force { expr, .. }
         | lir::Expr::Thunk { expr, .. }
         | lir::Expr::Produce { expr, .. }
         | lir::Expr::Roll { expr, .. }
         | lir::Expr::Unroll { expr, .. }
-        | lir::Expr::Ann { expr, .. } => rewrite_walk(expr, resolutions, spans),
-        lir::Expr::Lambda { body, .. } => rewrite_walk(body, resolutions, spans),
+        | lir::Expr::Ann { expr, .. } => rewrite_walk(expr, resolutions, resolution, spans),
+        lir::Expr::Lambda { body, .. } => rewrite_walk(body, resolutions, resolution, spans),
         lir::Expr::Let { value, body, .. } => {
-            rewrite_walk(value, resolutions, spans);
-            rewrite_walk(body, resolutions, spans);
+            rewrite_walk(value, resolutions, resolution, spans);
+            rewrite_walk(body, resolutions, resolution, spans);
         }
         lir::Expr::Match { scrutinee, arms, .. } => {
-            rewrite_walk(scrutinee, resolutions, spans);
+            rewrite_walk(scrutinee, resolutions, resolution, spans);
             for arm in arms {
-                rewrite_walk(&mut arm.body, resolutions, spans);
+                rewrite_walk(&mut arm.body, resolutions, resolution, spans);
             }
         }
         lir::Expr::Handle { handler, body, .. } => {
-            rewrite_walk(handler, resolutions, spans);
-            rewrite_walk(body, resolutions, spans);
+            rewrite_walk(handler, resolutions, resolution, spans);
+            rewrite_walk(body, resolutions, resolution, spans);
         }
         lir::Expr::Bundle { entries, .. } => {
             for e in entries {
-                rewrite_walk(&mut e.body, resolutions, spans);
+                rewrite_walk(&mut e.body, resolutions, resolution, spans);
             }
         }
         lir::Expr::Ctor { args, .. } => {
             for a in args {
-                rewrite_walk(a, resolutions, spans);
+                rewrite_walk(a, resolutions, resolution, spans);
             }
         }
+        lir::Expr::Perform { .. }
+        | lir::Expr::Ident { .. }
+        | lir::Expr::String { .. }
+        | lir::Expr::Number { .. }
+        | lir::Expr::Error { .. } => {}
+    }
+}
+
+/// If `expr` is an Apply chain terminating in `Member(Perform(cap, type_args),
+/// method)` with a resolution, replace it with the impl method's inlined body
+/// and return true. The body is cloned, `resume(v)` is stripped to `v`, and
+/// each formal param is bound to the corresponding arg via a Let wrapper.
+fn try_inline_perform_call(
+    expr: &mut lir::Expr,
+    resolutions: &HashMap<ExprId, ResolvedRef>,
+    resolution: &ResolutionMap,
+    spans: &mut Vec<lumo_span::Span>,
+) -> bool {
+    // Walk down the apply chain to collect args and find the terminal Member.
+    let mut args: Vec<lir::Expr> = Vec::new();
+    let mut cur: &lir::Expr = expr;
+    while let lir::Expr::Apply { callee, arg, .. } = cur {
+        args.push((**arg).clone());
+        cur = callee;
+    }
+    args.reverse();
+
+    let (member_id, perform_cap, perform_type_args, field) = match cur {
+        lir::Expr::Member { id, object, field } => match object.as_ref() {
+            lir::Expr::Perform { cap, type_args, .. } => {
+                (*id, cap.clone(), type_args.clone(), field.clone())
+            }
+            _ => return false,
+        },
+        _ => return false,
+    };
+
+    // Must have a resolution recorded at the Member's id and a body in the
+    // resolution map. (dep_free only records resolutions when the impl method
+    // is itself dep-free, so this is a safe statically-dispatched target.)
+    let resolved_ref = match resolutions.get(&member_id) {
+        Some(r) => r.clone(),
+        None => return false,
+    };
+    let impl_res = match resolution.get(&(perform_cap, perform_type_args)) {
+        Some(r) => r,
+        None => return false,
+    };
+    debug_assert_eq!(impl_res.impl_const, resolved_ref.impl_const);
+    let method_info = match impl_res.methods.get(&field) {
+        Some(m) => m,
+        None => return false,
+    };
+
+    // Param count must match arg count; otherwise we'd emit ill-formed code.
+    if method_info.params.len() != args.len() {
+        return false;
+    }
+
+    // Clone the method body, strip outer `Thunk(Lambda(p1, Lambda(p2, ...)))`
+    // to reach the raw body, then rewrite `resume(v) → v`.
+    let stripped = strip_thunk_lambdas(method_info.body.clone(), method_info.params.len());
+    let mut inlined = stripped;
+    strip_resume(&mut inlined);
+
+    // Wrap in Let-chain binding params to args in order (left-to-right).
+    let span = spans[member_id.0 as usize];
+    for (p, a) in method_info.params.iter().zip(args.into_iter()).rev() {
+        let let_id = alloc_id(spans, span);
+        inlined = lir::Expr::Let {
+            id: let_id,
+            name: p.name.clone(),
+            value: Box::new(a),
+            body: Box::new(inlined),
+        };
+    }
+
+    *expr = inlined;
+    true
+}
+
+/// Replace `Apply(Force(Ident("resume")), x)` with `x` throughout `expr`.
+///
+/// In inlined impl bodies under LTO's statically-dispatched path, there is
+/// no surrounding handler: the method body runs directly, so `resume(v)`
+/// reduces to `v` (the direct return of the method's result to its caller).
+fn strip_resume(expr: &mut lir::Expr) {
+    if let lir::Expr::Apply { callee, arg, .. } = expr {
+        if let lir::Expr::Force { expr: inner, .. } = callee.as_ref() {
+            if let lir::Expr::Ident { name, .. } = inner.as_ref() {
+                if name == "resume" {
+                    let arg_inner = std::mem::replace(
+                        arg.as_mut(),
+                        lir::Expr::Error { id: ExprId(0) },
+                    );
+                    *expr = arg_inner;
+                    strip_resume(expr);
+                    return;
+                }
+            }
+        }
+    }
+    match expr {
+        lir::Expr::Apply { callee, arg, .. } => {
+            strip_resume(callee);
+            strip_resume(arg);
+        }
+        lir::Expr::Force { expr, .. }
+        | lir::Expr::Thunk { expr, .. }
+        | lir::Expr::Produce { expr, .. }
+        | lir::Expr::Roll { expr, .. }
+        | lir::Expr::Unroll { expr, .. }
+        | lir::Expr::Ann { expr, .. } => strip_resume(expr),
+        lir::Expr::Lambda { body, .. } => strip_resume(body),
+        lir::Expr::Let { value, body, .. } => {
+            strip_resume(value);
+            strip_resume(body);
+        }
+        lir::Expr::Match { scrutinee, arms, .. } => {
+            strip_resume(scrutinee);
+            for arm in arms {
+                strip_resume(&mut arm.body);
+            }
+        }
+        lir::Expr::Handle { handler, body, .. } => {
+            strip_resume(handler);
+            strip_resume(body);
+        }
+        lir::Expr::Bundle { entries, .. } => {
+            for e in entries {
+                strip_resume(&mut e.body);
+            }
+        }
+        lir::Expr::Ctor { args, .. } => {
+            for a in args {
+                strip_resume(a);
+            }
+        }
+        lir::Expr::Member { object, .. } => strip_resume(object),
         lir::Expr::Perform { .. }
         | lir::Expr::Ident { .. }
         | lir::Expr::String { .. }
@@ -481,8 +635,9 @@ mod tests {
         let src = "fn id(x: Number): Number { x }";
         let mut file = lower(src);
         let an = DepFreeAnalysis::default();
+        let res = crate::lto::resolution::build_resolution_map(&file);
         let before = file.clone();
-        transform(&mut file, &an);
+        transform(&mut file, &an, &res);
         assert_eq!(file, before);
     }
 
@@ -511,7 +666,7 @@ mod tests {
             ("double".to_owned(), Vec::<String>::new()),
             DepFreeStatus::DepFree,
         );
-        transform(&mut file, &an);
+        transform(&mut file, &an, &resolution);
         let has_double = file.items.iter().any(|i| matches!(i, lir::Item::Fn(f) if f.name == "double"));
         assert!(!has_double, "inline(always) fn should be removed after inlining");
         let has_double_clone = file.items.iter().any(|i| matches!(i, lir::Item::Fn(f) if f.name.starts_with("double__")));

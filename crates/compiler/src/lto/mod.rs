@@ -55,7 +55,7 @@ pub fn optimize(file: &mut lir::File) -> Vec<Diagnostic> {
     }
 
     if errors.is_empty() {
-        emit::transform(file, &analysis);
+        emit::transform(file, &analysis, &resolution);
         dce::sweep(file);
     }
 

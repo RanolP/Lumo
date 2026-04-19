@@ -7,16 +7,21 @@ fn one_plus_two(): Number = Add.add(1, 2)
 fn main(): Number = one_plus_two()
 
 ===EXPECT===
-# After LTO: `one_plus_two`'s Perform is resolved to a direct dispatch
-# through the default impl const `__impl_Number_Add.add`. With a small body
-# and a single caller, heuristic D picks C (call-site inline), so
-# `one_plus_two` itself is absorbed into `main`. Key invariants:
-#   - the dispatch reads `__impl_Number_Add.add(...)` not `__caps.Add_Number.add(...)`
+# After LTO: `one_plus_two`'s Perform is resolved via recursive
+# monomorphization — the impl method body is inlined directly at the call
+# site with params substituted and `resume(v) → v`. With a small body and a
+# single caller, heuristic D picks C (call-site inline), so `one_plus_two`
+# itself is absorbed into `main`. Key invariants:
+#   - the inlined body calls `js_add` directly (no cap bundle threading).
+#   - neither `__impl_Number_Add.add` nor `__caps.Add_Number.add` appears in
+#     `__main_cps` (the handler-factory wrapper would emit an undefined
+#     `.add` property; inlining sidesteps the wrapper entirely).
 #   - no `one_plus_two__lto` clone is emitted (inlined, not cloned).
 # Follow-up (separate bug): the outer `main()` wrapper still constructs
 # `{ Add_Number: __impl_Number_Add(__identity) }` because the post-LTO
 # re-typecheck preserves `Infer` caps as a floor. Tracked in
 # plans/unify-impl-and-handler.md / lto follow-ups.
-__impl_Number_Add.add
+js_add(
 !__caps.Add_Number.add
+!__impl_Number_Add.add
 !one_plus_two__lto
