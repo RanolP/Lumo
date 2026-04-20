@@ -121,7 +121,12 @@ impl TypeScriptBackend {
                         .clone()
                         .unwrap_or_else(|| format!("globalThis.{}", func.name));
                     extern_names.insert(func.name.clone(), extern_path.clone());
-                    let body_expr = extern_body_expr(&extern_path, &params, return_ty);
+                    let body_expr = extern_body_expr(
+                        &extern_path,
+                        &params,
+                        return_ty,
+                        bool_is_native_via_as_raw(&ctx.ctor_as_raw),
+                    );
                     body.push(tsast::Stmt::Function(tsast::FunctionDecl {
                         export: true,
                         name: func.name.clone(),
@@ -1087,9 +1092,10 @@ fn extern_body_expr(
     extern_path: &str,
     params: &[tsast::Param],
     return_type: &TypeExpr,
+    bool_is_native: bool,
 ) -> tsast::Expr {
     if let Some(expr) = specialize_operator_wrapper_expr(extern_path, params) {
-        return maybe_bool_wrap(expr, return_type);
+        return maybe_bool_wrap(expr, return_type, bool_is_native);
     }
 
     let (base, is_call) = match extern_path.strip_suffix("()") {
@@ -1129,7 +1135,7 @@ fn extern_body_expr(
         }
     };
 
-    maybe_bool_wrap(expr, return_type)
+    maybe_bool_wrap(expr, return_type, bool_is_native)
 }
 
 fn member_access_chain(mut acc: tsast::Expr, path: &str) -> tsast::Expr {
@@ -1149,12 +1155,32 @@ fn member_access_chain(mut acc: tsast::Expr, path: &str) -> tsast::Expr {
     acc
 }
 
-fn maybe_bool_wrap(expr: tsast::Expr, return_type: &TypeExpr) -> tsast::Expr {
+fn maybe_bool_wrap(expr: tsast::Expr, return_type: &TypeExpr, bool_is_native: bool) -> tsast::Expr {
     if is_bool_return_type(return_type) {
-        bool_wrap_expr(expr)
+        // When Bool is `#[as__raw(true)]`/`#[as__raw(false)]`-mapped, the
+        // Lumo-level ctor values ARE the raw JS booleans — so the
+        // `if cond then Bool.true else Bool.false` wrap is identity.
+        if bool_is_native {
+            expr
+        } else {
+            bool_wrap_expr(expr)
+        }
     } else {
         expr
     }
+}
+
+/// True when `Bool.true` has `#[as__raw(true)]` and `Bool.false` has
+/// `#[as__raw(false)]` — the shape that lets raw JS booleans from extern
+/// calls flow through without a Bool-wrap.
+fn bool_is_native_via_as_raw(ctor_as_raw: &HashMap<(String, String), AsRawValue>) -> bool {
+    matches!(
+        ctor_as_raw.get(&("Bool".to_owned(), "true".to_owned())),
+        Some(AsRawValue::True)
+    ) && matches!(
+        ctor_as_raw.get(&("Bool".to_owned(), "false".to_owned())),
+        Some(AsRawValue::False)
+    )
 }
 
 fn is_bool_return_type(ty: &TypeExpr) -> bool {
