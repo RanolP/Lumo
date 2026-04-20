@@ -248,9 +248,11 @@ fn inline_in_block(block: &mut Block) {
             inline_subst_stmt(&mut stmt, &subs);
         }
         // After substitution, see if this is a trivial alias.
+        // A type annotation on the alias is redundant — the target ident
+        // already carries its own type — so we drop the alias regardless.
         if let Stmt::Const(decl) = &stmt {
             if let Expr::Ident(rhs) = &decl.init {
-                if !decl.export && decl.type_ann.is_none() {
+                if !decl.export {
                     subs.insert(decl.name.clone(), rhs.clone());
                     continue; // drop the alias
                 }

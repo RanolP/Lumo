@@ -114,9 +114,11 @@ fn main(): Number = 1 + 2 + 3
         js
     );
 
-    // The resolved arithmetic must appear directly in main body.
+    // The resolved arithmetic must appear directly in main body. After the
+    // let-dedup + alias-inline wave, variable names change but the `+` operator
+    // always survives — match on it directly.
     assert!(
-        main_body.contains("__num_add") || main_body.contains("(a + b)") || main_body.contains("+ b"),
+        main_body.contains("__num_add") || main_body.contains(" + "),
         "expected main body to use direct arithmetic after LTO in-place rewrite, \
          got:\n{}\n\n(full js)\n{}",
         main_body,
