@@ -694,6 +694,19 @@ fn try_flatten(stmt: &mut Stmt) -> Option<Vec<Stmt>> {
             out.extend(body_stmts);
             Some(out)
         }
+        Stmt::Assign { name, value } => {
+            // `outer = ((x) => { ...; return e; })(v)` → `const x = v; ...; outer = e`
+            // `outer` is already declared elsewhere (caller's `let outer;`), so no
+            // declaration is inserted — just rewrite leaf returns to assignments.
+            let (params, mut body_stmts, args) = take_iife(value)?;
+            let outer_name = std::mem::take(name);
+            if !rewrite_returns_to_assign(&mut body_stmts, &outer_name) {
+                return None;
+            }
+            let mut out = param_const_stmts(params, args);
+            out.extend(body_stmts);
+            Some(out)
+        }
         _ => None,
     }
 }
