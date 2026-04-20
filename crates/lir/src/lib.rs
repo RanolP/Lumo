@@ -65,9 +65,16 @@ pub struct DataDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AsRawValue {
+    True,
+    False,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariantDecl {
     pub name: String,
     pub payload: Vec<Spanned<TypeExpr>>,
+    pub as_raw: Option<AsRawValue>,
     pub span: Span,
 }
 
@@ -314,6 +321,10 @@ fn lower_item(ctx: &mut LoweringCtx, item: &hir::Item) -> Item {
                 .map(|v| VariantDecl {
                     name: v.name.clone(),
                     payload: v.payload.clone(),
+                    as_raw: v.as_raw.as_ref().map(|r| match r {
+                        hir::AsRawValue::True => AsRawValue::True,
+                        hir::AsRawValue::False => AsRawValue::False,
+                    }),
                     span: v.span,
                 })
                 .collect(),

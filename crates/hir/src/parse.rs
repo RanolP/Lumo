@@ -323,6 +323,7 @@ impl Parser {
         Some(VariantDecl {
             name,
             payload,
+            as_raw: None,
             span: Span::new(start.start, end_span.end),
         })
     }

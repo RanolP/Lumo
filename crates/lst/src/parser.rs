@@ -68,6 +68,7 @@ pub struct DataDecl {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariantDecl {
+    pub attrs: Vec<Attribute>,
     pub name: String,
     pub payload: Vec<TypeSig>,
     pub span: Span,
@@ -805,12 +806,13 @@ impl<'a> Parser<'a> {
 
         let mut variants = Vec::new();
         while !self.eof() && !self.at_symbol(Symbol::RBrace) {
+            let attrs = self.parse_attributes();
             if !self.at_symbol(Symbol::Dot) {
                 self.error_here("expected variant name prefixed with `.`");
                 self.bump();
                 continue;
             }
-            variants.push(self.parse_variant_decl());
+            variants.push(self.parse_variant_decl(attrs));
             if self.at_symbol(Symbol::Comma) {
                 self.bump();
             }
@@ -825,7 +827,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_variant_decl(&mut self) -> VariantDecl {
+    fn parse_variant_decl(&mut self, attrs: Vec<Attribute>) -> VariantDecl {
         let dot = self.expect_symbol(Symbol::Dot);
         let name_token = if self.at_ident() {
             self.bump().cloned()
@@ -835,6 +837,7 @@ impl<'a> Parser<'a> {
         let Some(name_token) = name_token else {
             self.error_here("expected variant name after `.`");
             return VariantDecl {
+                attrs,
                 name: "<missing>".to_owned(),
                 payload: Vec::new(),
                 span: dot,
@@ -866,6 +869,7 @@ impl<'a> Parser<'a> {
         }
 
         VariantDecl {
+            attrs,
             name,
             payload,
             span: Span::new(dot.start, end),

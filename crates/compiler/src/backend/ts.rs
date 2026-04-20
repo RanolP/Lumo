@@ -1,6 +1,6 @@
 use crate::{
     backend::{Backend, BackendError, BackendKind, CodegenTarget},
-    lir,
+    lir::{self, AsRawValue},
     types::{Pattern, TypeExpr},
 };
 use simple_ts_ast as tsast;
@@ -24,6 +24,12 @@ struct LoweringContext {
     /// Default impls available in the module: (cap_name, type_args) → impl const name.
     /// Populated from `impl Cap { ... }` (platform default) and `impl Type: Cap { ... }` (typeclass default).
     default_impls: HashMap<(String, Vec<String>), String>,
+    /// Variants annotated with `#[as__raw(true|false)]`.
+    /// Keyed by `(owner_type, variant_name)` for qualified Ctor references,
+    /// and also by just `variant_name` for match patterns (which don't
+    /// carry the owner type).
+    ctor_as_raw: HashMap<(String, String), AsRawValue>,
+    variant_as_raw: HashMap<String, AsRawValue>,
     match_counter: Cell<usize>,
     k_counter: Cell<usize>,
 }
@@ -52,12 +58,15 @@ impl TypeScriptBackend {
         let mut extern_names = HashMap::new();
         let fn_caps = collect_fn_caps(file);
         let impl_method_caps = collect_impl_method_caps(file, &fn_caps);
+        let (ctor_as_raw, variant_as_raw) = collect_as_raw_variants(file);
         let ctx = LoweringContext {
             direct_callable_arities: collect_direct_callable_arities(file),
             fn_caps,
             impl_method_arities: collect_impl_method_arities(file),
             impl_method_caps,
             default_impls: collect_default_impls(file),
+            ctor_as_raw,
+            variant_as_raw,
             match_counter: Cell::new(0),
             k_counter: Cell::new(0),
         };
@@ -200,6 +209,40 @@ fn collect_impl_method_arities(file: &lir::File) -> HashMap<(String, String), us
         }
     }
     out
+}
+
+/// Collect data variants annotated with `#[as__raw(true|false)]`.
+/// Returns two maps for convenience:
+/// - `ctor_as_raw` keyed by `(owner_type, variant_name)` — used at Ctor
+///   construction sites where we know the owning type.
+/// - `variant_as_raw` keyed by the bare `variant_name` — used at match
+///   arms whose `Pattern::Ctor` carries only the short variant name.
+fn collect_as_raw_variants(
+    file: &lir::File,
+) -> (
+    HashMap<(String, String), AsRawValue>,
+    HashMap<String, AsRawValue>,
+) {
+    let mut by_owner = HashMap::new();
+    let mut by_variant = HashMap::new();
+    for item in &file.items {
+        if let lir::Item::Data(data) = item {
+            for v in &data.variants {
+                if let Some(raw) = v.as_raw.clone() {
+                    by_owner.insert((data.name.clone(), v.name.clone()), raw.clone());
+                    by_variant.insert(v.name.clone(), raw);
+                }
+            }
+        }
+    }
+    (by_owner, by_variant)
+}
+
+fn raw_value_to_ts_expr(raw: &AsRawValue) -> tsast::Expr {
+    match raw {
+        AsRawValue::True => tsast::Expr::Bool(true),
+        AsRawValue::False => tsast::Expr::Bool(false),
+    }
 }
 
 /// Build default impl map from all Impl items in the file.
@@ -958,6 +1001,12 @@ fn lower_data_type(data: &lir::DataDecl) -> tsast::TsType {
         .variants
         .iter()
         .map(|variant| {
+            if let Some(raw) = &variant.as_raw {
+                return match raw {
+                    AsRawValue::True => "true".to_owned(),
+                    AsRawValue::False => "false".to_owned(),
+                };
+            }
             if variant.payload.is_empty() {
                 format!("{{ [LUMO_TAG]: '{}' }}", variant.name)
             } else {
@@ -1214,6 +1263,12 @@ fn lower_data_bundle_const(data: &lir::DataDecl) -> tsast::ConstDecl {
 }
 
 fn lower_variant_ctor_expr(_data: &lir::DataDecl, variant: &lir::VariantDecl) -> tsast::Expr {
+    // `#[as__raw(true|false)]` variants emit the raw JS literal directly.
+    // v1 scope is nullary-only (raw variants have no payload).
+    if let Some(raw) = &variant.as_raw {
+        return raw_value_to_ts_expr(raw);
+    }
+
     if variant.payload.is_empty() {
         let fields = vec![tsast::ObjectProp {
             key: tsast::ObjectKey::Computed(Box::new(tsast::Expr::Ident("LUMO_TAG".to_owned()))),
@@ -1271,6 +1326,13 @@ fn render_data_bundle_type(data: &lir::DataDecl) -> String {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
+            if let Some(raw) = &variant.as_raw {
+                let lit = match raw {
+                    AsRawValue::True => "true",
+                    AsRawValue::False => "false",
+                };
+                return format!("\"{}\": {lit}", variant.name);
+            }
             if variant.payload.is_empty() {
                 if data.generics.is_empty() {
                     format!("\"{}\": {result_type}", variant.name)
@@ -1557,6 +1619,14 @@ fn lower_expr(expr: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
         } => lower_match_expr(scrutinee, arms, ctx),
         lir::Expr::Ctor { name, args, .. } => {
             if let Some((owner, variant)) = name.split_once('.') {
+                // `#[as__raw]` variants: skip the bundle access and emit the
+                // raw JS literal directly. v1 scope is nullary-only.
+                if let Some(raw) = ctx
+                    .ctor_as_raw
+                    .get(&(owner.to_owned(), variant.to_owned()))
+                {
+                    return raw_value_to_ts_expr(raw);
+                }
                 let ctor = tsast::Expr::Index {
                     object: Box::new(tsast::Expr::Ident(owner.to_owned())),
                     index: Box::new(tsast::Expr::String(variant.to_owned())),
@@ -1736,9 +1806,10 @@ fn lower_match_expr(
         })
         .collect::<Vec<_>>();
     let decision = build_match_decision(vec![scrutinee_expr.clone()], rows);
-    let lowered = lower_match_decision(&scrutinee_expr, decision, &|body, bindings| {
-        wrap_bindings(lower_expr(body, ctx), bindings)
-    });
+    let lowered =
+        lower_match_decision(&scrutinee_expr, decision, &ctx.variant_as_raw, &|body, bindings| {
+            wrap_bindings(lower_expr(body, ctx), bindings)
+        });
 
     iife(&scrutinee_name, lowered, lowered_scrutinee)
 }
@@ -1961,6 +2032,7 @@ fn default_specialize_occurrences(occurrences: &[tsast::Expr], column: usize) ->
 fn lower_match_decision(
     error_value: &tsast::Expr,
     decision: MatchDecision,
+    variant_as_raw: &HashMap<String, AsRawValue>,
     lower_body: &dyn Fn(&lir::Expr, Vec<(String, tsast::Expr)>) -> tsast::Expr,
 ) -> tsast::Expr {
     match decision {
@@ -1971,23 +2043,35 @@ fn lower_match_decision(
             cases,
             default,
         } => {
-            let mut folded = lower_match_decision(error_value, *default, lower_body);
+            let mut folded =
+                lower_match_decision(error_value, *default, variant_as_raw, lower_body);
             for case in cases.into_iter().rev() {
-                // Inline `__lumo_is(occurrence, "ctor")` → `occurrence[LUMO_TAG] === "ctor"`.
-                // Match scrutinees are guaranteed ADT values by typecheck, so no null-guard needed.
-                let cond = tsast::Expr::Binary {
-                    left: Box::new(tsast::Expr::Index {
-                        object: Box::new(occurrence.clone()),
-                        index: Box::new(tsast::Expr::Ident("LUMO_TAG".to_owned())),
-                    }),
-                    op: tsast::BinaryOp::EqEqEq,
-                    right: Box::new(tsast::Expr::String(case.ctor_name)),
+                // `#[as__raw]` variant: compare with the raw JS literal
+                // (`=== true` / `=== false`) instead of the tagged form.
+                let cond = if let Some(raw) = variant_as_raw.get(&case.ctor_name) {
+                    tsast::Expr::Binary {
+                        left: Box::new(occurrence.clone()),
+                        op: tsast::BinaryOp::EqEqEq,
+                        right: Box::new(raw_value_to_ts_expr(raw)),
+                    }
+                } else {
+                    // Inline `__lumo_is(occurrence, "ctor")` → `occurrence[LUMO_TAG] === "ctor"`.
+                    // Match scrutinees are guaranteed ADT values by typecheck, so no null-guard needed.
+                    tsast::Expr::Binary {
+                        left: Box::new(tsast::Expr::Index {
+                            object: Box::new(occurrence.clone()),
+                            index: Box::new(tsast::Expr::Ident("LUMO_TAG".to_owned())),
+                        }),
+                        op: tsast::BinaryOp::EqEqEq,
+                        right: Box::new(tsast::Expr::String(case.ctor_name)),
+                    }
                 };
                 folded = tsast::Expr::IfElse {
                     cond: Box::new(cond),
                     then_expr: Box::new(lower_match_decision(
                         error_value,
                         case.subtree,
+                        variant_as_raw,
                         lower_body,
                     )),
                     else_expr: Box::new(folded),
@@ -2330,20 +2414,36 @@ fn lower_cps_expr_inner(
             let arg_refs: Vec<&lir::Expr> = args.iter().collect();
             let name = name.clone();
             lower_cps_values(&arg_refs, 0, Vec::new(), handled_caps, ctx, &|ts_args| {
-                let callee = if let Some((owner, variant)) = name.split_once('.') {
-                    tsast::Expr::Index {
-                        object: Box::new(tsast::Expr::Ident(owner.to_owned())),
-                        index: Box::new(tsast::Expr::String(variant.to_owned())),
+                let ctor_expr = if let Some((owner, variant)) = name.split_once('.') {
+                    // `#[as__raw]` variants: emit raw literal (no bundle access).
+                    if let Some(raw) = ctx
+                        .ctor_as_raw
+                        .get(&(owner.to_owned(), variant.to_owned()))
+                    {
+                        raw_value_to_ts_expr(raw)
+                    } else {
+                        let callee = tsast::Expr::Index {
+                            object: Box::new(tsast::Expr::Ident(owner.to_owned())),
+                            index: Box::new(tsast::Expr::String(variant.to_owned())),
+                        };
+                        if ts_args.is_empty() {
+                            callee
+                        } else {
+                            tsast::Expr::Call {
+                                callee: Box::new(callee),
+                                args: ts_args,
+                            }
+                        }
                     }
                 } else {
-                    tsast::Expr::Ident(name.clone())
-                };
-                let ctor_expr = if ts_args.is_empty() {
-                    callee
-                } else {
-                    tsast::Expr::Call {
-                        callee: Box::new(callee),
-                        args: ts_args,
+                    let callee = tsast::Expr::Ident(name.clone());
+                    if ts_args.is_empty() {
+                        callee
+                    } else {
+                        tsast::Expr::Call {
+                            callee: Box::new(callee),
+                            args: ts_args,
+                        }
                     }
                 };
                 tsast::Expr::Call {
@@ -2498,12 +2598,13 @@ fn lower_cps_match_expr(
         })
         .collect::<Vec<_>>();
     let decision = build_match_decision(vec![scrutinee_expr.clone()], rows);
-    let lowered = lower_match_decision(&scrutinee_expr, decision, &|body, bindings| {
-        wrap_bindings(
-            lower_cps_expr(body, k_ident.clone(), handled_caps, ctx),
-            bindings,
-        )
-    });
+    let lowered =
+        lower_match_decision(&scrutinee_expr, decision, &ctx.variant_as_raw, &|body, bindings| {
+            wrap_bindings(
+                lower_cps_expr(body, k_ident.clone(), handled_caps, ctx),
+                bindings,
+            )
+        });
 
     lower_cps_value(scrutinee, handled_caps, ctx, |lowered_scrutinee| {
         let inner = iife(&scrutinee_name, lowered, lowered_scrutinee);

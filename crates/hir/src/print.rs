@@ -517,11 +517,13 @@ mod tests {
                     VariantDecl {
                         name: "true".into(),
                         payload: vec![],
+                        as_raw: None,
                         span: dummy_span(),
                     },
                     VariantDecl {
                         name: "false".into(),
                         payload: vec![],
+                        as_raw: None,
                         span: dummy_span(),
                     },
                 ],
@@ -543,6 +545,7 @@ mod tests {
                     VariantDecl {
                         name: "nil".into(),
                         payload: vec![],
+                        as_raw: None,
                         span: dummy_span(),
                     },
                     VariantDecl {
@@ -554,6 +557,7 @@ mod tests {
                                 args: vec![TypeExpr::Named("A".into())],
                             }),
                         ],
+                        as_raw: None,
                         span: dummy_span(),
                     },
                 ],

@@ -27,9 +27,11 @@ pub fn check_file(file: &File) -> Vec<CheckError> {
 // Context
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct DataInfo {
     generics: usize,
     variants: HashMap<String, usize>, // variant name → payload arity
+    has_as_raw: bool,                 // at least one variant carries `#[as__raw]`
 }
 
 struct FnInfo {
@@ -107,8 +109,32 @@ impl CheckCtx {
 
     fn collect_data(&mut self, data: &DataDecl) {
         if !self.types.insert(data.name.clone()) {
-            self.error(data.span, format!("duplicate type `{}`", data.name));
-            return;
+            // Allow a duplicate `data X` decl when the new one (or the
+            // previously seen one) carries `#[as__raw]` on any variant.
+            // This supports platform-specific overrides where `src#js/`
+            // redefines a common `data X` with raw-literal variants.
+            let new_has_as_raw = data.variants.iter().any(|v| v.as_raw.is_some());
+            let prev_has_as_raw = self
+                .data
+                .get(&data.name)
+                .map_or(false, |info| info.has_as_raw);
+            if !new_has_as_raw && !prev_has_as_raw {
+                self.error(data.span, format!("duplicate type `{}`", data.name));
+                return;
+            }
+            // If the new decl has `as_raw`, it replaces the previous one in
+            // the analysis tables (the HIR merge pass also prefers it).
+            if new_has_as_raw {
+                if let Some(prev) = self.data.get(&data.name).cloned() {
+                    for vname in prev.variants.keys() {
+                        self.variant_owner.remove(vname);
+                    }
+                }
+                self.data.remove(&data.name);
+            } else {
+                // Previous decl has as_raw, keep it; skip the new one.
+                return;
+            }
         }
         let mut variants = HashMap::new();
         for v in &data.variants {
@@ -120,11 +146,13 @@ impl CheckCtx {
                     .insert(v.name.clone(), data.name.clone());
             }
         }
+        let has_as_raw = data.variants.iter().any(|v| v.as_raw.is_some());
         self.data.insert(
             data.name.clone(),
             DataInfo {
                 generics: data.generics.len(),
                 variants,
+                has_as_raw,
             },
         );
     }

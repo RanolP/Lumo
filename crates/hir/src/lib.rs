@@ -64,9 +64,16 @@ pub struct DataDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AsRawValue {
+    True,
+    False,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariantDecl {
     pub name: String,
     pub payload: Vec<Spanned<TypeExpr>>,
+    pub as_raw: Option<AsRawValue>,
     pub span: Span,
 }
 
@@ -219,6 +226,11 @@ pub fn lower(file: &lst::File) -> File {
         })
         .collect();
 
+    // When a `data X` decl appears in both `src/` and `src#{platform}/`, the
+    // merged source (concatenated by lbs) contains two copies. Prefer the
+    // copy that carries `#[as__raw]` on any variant — that's the platform
+    // override. See `dedupe_data_with_as_raw`.
+    let items = dedupe_data_with_as_raw(items);
     let content_hash = hash_file(&items);
     File {
         items,
@@ -232,6 +244,13 @@ struct LowerCtx {
 }
 
 /// Merge multiple HIR files into a single combined File.
+///
+/// If the same `data X` decl appears more than once (e.g. a common
+/// `src/prelude.lumo` definition followed by a platform-specific
+/// `src#js/prelude.lumo` override), the variant that carries `#[as__raw]`
+/// on any variant is preferred. If neither has `as_raw`, we preserve
+/// the original behavior and emit both (the HIR check pass will then
+/// report the usual `duplicate type` error).
 pub fn merge_files(files: &[File]) -> File {
     let mut items = Vec::new();
     let mut errors = Vec::new();
@@ -239,12 +258,48 @@ pub fn merge_files(files: &[File]) -> File {
         items.extend(file.items.iter().cloned());
         errors.extend(file.errors.iter().cloned());
     }
+    items = dedupe_data_with_as_raw(items);
     let content_hash = hash_file(&items);
     File {
         items,
         content_hash,
         errors,
     }
+}
+
+fn dedupe_data_with_as_raw(items: Vec<Item>) -> Vec<Item> {
+    // For each data name, decide whether any of its decls carries `as_raw`.
+    use std::collections::HashMap;
+    let mut any_as_raw: HashMap<String, bool> = HashMap::new();
+    for item in &items {
+        if let Item::Data(d) = item {
+            let has = d.variants.iter().any(|v| v.as_raw.is_some());
+            let entry = any_as_raw.entry(d.name.clone()).or_insert(false);
+            if has {
+                *entry = true;
+            }
+        }
+    }
+
+    // Walk items in order. For data decls whose name has an as_raw variant
+    // somewhere, keep only the decl that carries as_raw (drop the others).
+    let mut seen_kept: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        if let Item::Data(ref d) = item {
+            if let Some(true) = any_as_raw.get(&d.name).copied() {
+                let this_has = d.variants.iter().any(|v| v.as_raw.is_some());
+                if !this_has {
+                    continue;
+                }
+                if !seen_kept.insert(d.name.clone()) {
+                    continue;
+                }
+            }
+        }
+        out.push(item);
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -289,8 +344,24 @@ fn lower_variant(variant: &lst::VariantDecl) -> VariantDecl {
             .iter()
             .filter_map(|ty| lower_type_sig(ty))
             .collect(),
+        as_raw: find_as_raw(&variant.attrs),
         span: variant.span,
     }
+}
+
+fn find_as_raw(attrs: &[lst::Attribute]) -> Option<AsRawValue> {
+    attrs.iter().find_map(|a| {
+        if a.name != "as__raw" {
+            return None;
+        }
+        if a.flags.iter().any(|f| f == "true") {
+            Some(AsRawValue::True)
+        } else if a.flags.iter().any(|f| f == "false") {
+            Some(AsRawValue::False)
+        } else {
+            None
+        }
+    })
 }
 
 fn lower_cap(cap: &lst::CapDecl) -> CapDecl {

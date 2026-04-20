@@ -29,7 +29,7 @@ AttributeArg = key:Ident '=' value:Expr
 // === Data types ===
 
 DataDecl = attrs:Attribute* 'data' name:Ident generic_params:GenericParams? '{' variants:Variant* '}'
-Variant = '.' name:Ident variant_fields:VariantFields?
+Variant = attrs:Attribute* '.' name:Ident variant_fields:VariantFields?
 VariantFields = '(' fields:TypeExpr* ')'
 
 // === Functions ===
