@@ -26,6 +26,6 @@ fn main(): Number = quadruple(5)
 quadruple__lto
 js_add(x, x)
 __main_cps
-quadruple__lto(5)
+quadruple__lto_
 !__caps.Add_Number.add
 !__impl_Number_Add.add(

@@ -328,7 +328,8 @@ fn apply_clones(
             continue;
         }
 
-        let clone_name = format!("{}__lto", f.name);
+        let applied_hash = hash_applied_effects(&f.value, &analysis.perform_resolution);
+        let clone_name = format!("{}__lto_{:08x}", f.name, applied_hash);
         let mut cloned = f.clone();
         cloned.name = clone_name.clone();
         cloned.cap = None;
@@ -861,6 +862,99 @@ fn alloc_id(spans: &mut Vec<lumo_span::Span>, span: lumo_span::Span) -> ExprId {
     let id = ExprId(spans.len() as u32);
     spans.push(span);
     id
+}
+
+/// Compute a deterministic hash of the (impl_const, method) pairs reached by
+/// `perform_resolution` within `body`. Collisions across specializations are
+/// avoided because different cap bindings resolve to different impl_const
+/// names (e.g. `__impl_String_ToString` vs `__impl_Number_ToString`).
+///
+/// Order-independent: pairs are sorted before hashing so the hash is stable
+/// regardless of walk order.
+fn hash_applied_effects(
+    body: &lir::Expr,
+    resolutions: &HashMap<ExprId, ResolvedRef>,
+) -> u32 {
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    collect_applied_effects(body, resolutions, &mut pairs);
+    pairs.sort();
+    pairs.dedup();
+
+    // FNV-1a 32-bit — small, deterministic, stable across compiler builds.
+    // (Do NOT use std::collections::hash_map::DefaultHasher — it's
+    // RandomState-seeded and varies per process.)
+    let mut hash: u32 = 0x811c_9dc5;
+    for (impl_const, method) in &pairs {
+        for byte in impl_const.as_bytes() {
+            hash ^= *byte as u32;
+            hash = hash.wrapping_mul(0x0100_0193);
+        }
+        hash ^= b'.' as u32;
+        hash = hash.wrapping_mul(0x0100_0193);
+        for byte in method.as_bytes() {
+            hash ^= *byte as u32;
+            hash = hash.wrapping_mul(0x0100_0193);
+        }
+        hash ^= b'|' as u32;
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    hash
+}
+
+fn collect_applied_effects(
+    expr: &lir::Expr,
+    resolutions: &HashMap<ExprId, ResolvedRef>,
+    out: &mut Vec<(String, String)>,
+) {
+    // Member(Perform(...), method) carries the ExprId that keys perform_resolution.
+    if let lir::Expr::Member { id, .. } = expr {
+        if let Some(r) = resolutions.get(id) {
+            out.push((r.impl_const.clone(), r.method.clone()));
+        }
+    }
+    match expr {
+        lir::Expr::Apply { callee, arg, .. } => {
+            collect_applied_effects(callee, resolutions, out);
+            collect_applied_effects(arg, resolutions, out);
+        }
+        lir::Expr::Force { expr, .. }
+        | lir::Expr::Thunk { expr, .. }
+        | lir::Expr::Produce { expr, .. }
+        | lir::Expr::Roll { expr, .. }
+        | lir::Expr::Unroll { expr, .. }
+        | lir::Expr::Ann { expr, .. } => collect_applied_effects(expr, resolutions, out),
+        lir::Expr::Lambda { body, .. } => collect_applied_effects(body, resolutions, out),
+        lir::Expr::Let { value, body, .. } => {
+            collect_applied_effects(value, resolutions, out);
+            collect_applied_effects(body, resolutions, out);
+        }
+        lir::Expr::Match { scrutinee, arms, .. } => {
+            collect_applied_effects(scrutinee, resolutions, out);
+            for arm in arms {
+                collect_applied_effects(&arm.body, resolutions, out);
+            }
+        }
+        lir::Expr::Handle { handler, body, .. } => {
+            collect_applied_effects(handler, resolutions, out);
+            collect_applied_effects(body, resolutions, out);
+        }
+        lir::Expr::Bundle { entries, .. } => {
+            for e in entries {
+                collect_applied_effects(&e.body, resolutions, out);
+            }
+        }
+        lir::Expr::Ctor { args, .. } => {
+            for a in args {
+                collect_applied_effects(a, resolutions, out);
+            }
+        }
+        lir::Expr::Member { object, .. } => collect_applied_effects(object, resolutions, out),
+        lir::Expr::Perform { .. }
+        | lir::Expr::Ident { .. }
+        | lir::Expr::String { .. }
+        | lir::Expr::Number { .. }
+        | lir::Expr::Error { .. } => {}
+    }
 }
 
 fn body_has_resolution(expr: &lir::Expr, resolutions: &HashMap<ExprId, ResolvedRef>) -> bool {

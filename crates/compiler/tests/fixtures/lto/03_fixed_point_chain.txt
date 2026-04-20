@@ -27,7 +27,7 @@ inner__lto
 js_add(x, x)
 __main_cps
 js_mul(a, b)
-inner__lto(x)
+inner__lto_
 !__caps.Add_Number.add
 !__caps.Mul_Number.mul
 !outer__lto

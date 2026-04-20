@@ -30,6 +30,6 @@ count_down__lto
 js_sub(a, b)
 function count_down(__caps, n, __k)
 __main_cps
-count_down__lto(__caps, 5, __k)
+(__caps, 5, __k)
 return count_down(__caps,
 !count_down__lto(__caps, ((a) =>

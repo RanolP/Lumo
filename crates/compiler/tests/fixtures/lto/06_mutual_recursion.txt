@@ -30,6 +30,6 @@ fn main(): Number = is_even(4)
 is_even__lto
 js_sub(a, b)
 __main_cps
-is_even__lto(__caps, 4, __k)
+(__caps, 4, __k)
 function is_odd(__caps, n, __k)
 !function is_even(__caps

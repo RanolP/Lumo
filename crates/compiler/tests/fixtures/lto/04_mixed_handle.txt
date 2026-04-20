@@ -35,8 +35,7 @@ fn main(): Number = Add.add(default_caller(), custom_caller())
 double__lto
 js_add(x, x)
 default_caller(__caps, __k)
-double__lto(10)
-double__lto(20)
+double__lto_
 Add_Add:
 js_sub(a, b)
 !function double(__caps
