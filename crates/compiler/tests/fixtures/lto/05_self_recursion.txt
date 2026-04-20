@@ -9,27 +9,23 @@ fn count_down(n: Number): Number = if js_is_zero(n) { 0 } else { count_down(Sub.
 fn main(): Number = count_down(5)
 
 ===EXPECT===
-# Self-recursion: `count_down` references itself inside its body. v1 handles
-# this optimistically — the fn is classified dep-free (its only cap Perform
-# has a default impl), cloned as `count_down__lto`, and the `Sub.sub` call is
-# inlined to a direct `js_sub(a, b)` call.
+# Self-recursion: `count_down` references itself inside its body. It is
+# classified dep-free (its only cap Perform has a default impl), cloned as
+# `count_down__lto`, and the `Sub.sub` call is inlined to a direct
+# `js_sub(a, b)` call.
 #
-# v1 subtlety (noted, not a bug): the recursive call in the cloned body is
-# rewritten to call the ORIGINAL `count_down` (CPS form) rather than
-# `count_down__lto`. The plan anticipates "self-recursion replaces recursive
-# calls with the clone"; v1 doesn't do that rewrite yet, so the tail recursion
-# passes through the cap-bundle-threading CPS form. Functionally correct;
-# perf-leaky. Assertions pin down what v1 emits today.
+# The clone also redirects self-recursive calls to itself, so the loop stays
+# in the non-CPS clone and the original CPS `count_down` becomes unreachable
+# (DCE'd).
 #
 # Key invariants:
 #   - `count_down__lto` exists with `js_sub(a, b)` directly.
-#   - `__main_cps` calls `count_down__lto(...)` (not the CPS `count_down`).
-#   - original CPS `count_down` also exists (needed for the recursive call
-#     from inside the clone, per v1 limitation above).
+#   - self-recursion inside the clone calls the clone (not the CPS original).
+#   - `__main_cps` calls `count_down__lto(...)` directly (no CPS threading).
+#   - original CPS `count_down` is DCE'd.
 count_down__lto
 js_sub(a, b)
-function count_down(__caps, n, __k)
-__main_cps
-(__caps, 5, __k)
-return count_down(__caps,
+return count_down__lto
+!function count_down(__caps, n, __k)
+!return count_down(__caps,
 !count_down__lto(__caps, ((a) =>

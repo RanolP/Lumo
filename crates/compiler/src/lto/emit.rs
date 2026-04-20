@@ -346,12 +346,12 @@ fn apply_clones(
 
     file.items.extend(new_items);
 
-    // Redirect call sites in non-cloned fn bodies to point at the clones.
+    // Redirect call sites in every fn body — including clones — so that a
+    // clone of `foo` that internally calls `bar` is linked to `bar`'s clone
+    // when `bar` was also cloned. Self-refs inside a clone rewire to the
+    // clone itself (foo → foo__lto_HASH), which is the intended recursion.
     for item in file.items.iter_mut() {
         if let lir::Item::Fn(f) = item {
-            if clone_names.values().any(|cn| cn == &f.name) {
-                continue;
-            }
             redirect_calls(&mut f.value, &clone_names);
         }
     }

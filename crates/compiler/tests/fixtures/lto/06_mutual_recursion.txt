@@ -10,26 +10,21 @@ fn is_odd(n: Number): Number = if js_is_zero(n) { 0 } else { is_even(Sub.sub(n, 
 fn main(): Number = is_even(4)
 
 ===EXPECT===
-# Mutual recursion: `is_even` calls `is_odd` and vice versa. v2 lifts the v1
-# limitation via SCC-level dep-free analysis: Tarjan groups {is_even, is_odd}
-# into a single SCC, classifies the whole SCC DepFree, and commits
-# perform_resolution for both bodies atomically.
+# Mutual recursion: `is_even` calls `is_odd` and vice versa. SCC-level
+# dep-free analysis groups {is_even, is_odd} into a single SCC, classifies
+# the whole SCC DepFree, and commits perform_resolution for both bodies
+# atomically.
 #
-# Both fns are DepFree and are cloned (to `is_even__lto` / `is_odd__lto`).
-# `main` calls `is_even__lto` directly. `is_even__lto` has `Sub.sub` inlined
-# to a direct `js_sub(a, b)` call.
-#
-# v2 still inherits the v1 "clone doesn't self-redirect" subtlety: the
-# recursive call inside `is_even__lto` still targets the CPS `is_odd` rather
-# than `is_odd__lto`. The CPS `is_odd` is kept alive for that reason; because
-# no call ever reaches `is_odd__lto` (it's only callable from a rewritten
-# `is_even__lto` that v1 doesn't rewrite), `is_odd__lto` itself is DCE'd.
-# Functionally correct; the cloned `is_odd__lto` body has its `Sub.sub`
-# inlined to `js_sub` — we'd just need a "clone→clone" redirect pass to
-# preserve it. Tracked as follow-up.
+# Both fns are cloned (`is_even__lto` / `is_odd__lto`). `main` calls
+# `is_even__lto` directly. Inside each clone, calls to the other fn are
+# redirected to the other clone, so the mutual recursion stays inside the
+# non-CPS clone pair. The original CPS `is_even` / `is_odd` become
+# unreachable and are DCE'd.
 is_even__lto
+is_odd__lto
 js_sub(a, b)
-__main_cps
-(__caps, 4, __k)
-function is_odd(__caps, n, __k)
+return is_odd__lto
+return is_even__lto
 !function is_even(__caps
+!function is_odd(__caps
+!(__caps, 4, __k)
