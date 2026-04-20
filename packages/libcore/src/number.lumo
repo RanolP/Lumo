@@ -14,34 +14,37 @@ cap NumOps {
   fn cmp(a: Number, b: Number): Ordering
 }
 
+// Each typeclass `impl Number: Cap { ... }` is a bundle installed at main
+// entry via an implicit `handle Cap with <bundle> in ...`. Every method
+// must explicitly `resume(v)` — see docs/capability-system.md.
 impl Number: PartialEq {
-  fn eq(self, other: Self): Bool = NumOps.eq(self, other)
+  fn eq(self, other: Self): Bool = resume(NumOps.eq(self, other))
 }
 
 impl Number: PartialOrd {
-  fn cmp(self, other: Self): Ordering = NumOps.cmp(self, other)
+  fn cmp(self, other: Self): Ordering = resume(NumOps.cmp(self, other))
 }
 
 impl Number: Add {
-  fn add(self, other: Self): Self = NumOps.add(self, other)
+  fn add(self, other: Self): Self = resume(NumOps.add(self, other))
 }
 
 impl Number: Sub {
-  fn sub(self, other: Self): Self = NumOps.sub(self, other)
+  fn sub(self, other: Self): Self = resume(NumOps.sub(self, other))
 }
 
 impl Number: Mul {
-  fn mul(self, other: Self): Self = NumOps.mul(self, other)
+  fn mul(self, other: Self): Self = resume(NumOps.mul(self, other))
 }
 
 impl Number: Div {
-  fn div(self, other: Self): Self = NumOps.div(self, other)
+  fn div(self, other: Self): Self = resume(NumOps.div(self, other))
 }
 
 impl Number: Mod {
-  fn mod_(self, other: Self): Self = NumOps.mod_(self, other)
+  fn mod_(self, other: Self): Self = resume(NumOps.mod_(self, other))
 }
 
 impl Number: Neg {
-  fn neg(self): Self = NumOps.neg(self)
+  fn neg(self): Self = resume(NumOps.neg(self))
 }

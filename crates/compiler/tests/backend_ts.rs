@@ -253,11 +253,17 @@ fn ts_backend_handle_with_resume_uses_cps() {
         "cap E { fn op(): A } fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in E.op }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // CPS: handler entries get __k param, body is CPS-transformed
-    assert!(js.contains("__k"), "handler should have CPS __k param: {js}");
+    // CPS: handler entries get a __k_perform param; body is CPS-transformed.
+    // `resume(a)` in tail position emits inline as `__k_handle(__k_perform(...))`
+    // — there is no local `resume` binding any more, just direct
+    // continuation invocation.
     assert!(
-        js.contains("resume"),
-        "handler should bind resume: {js}"
+        js.contains("__k_perform"),
+        "handler should reference __k_perform: {js}"
+    );
+    assert!(
+        js.contains("__k_handle"),
+        "handler should reference __k_handle: {js}"
     );
 }
 
@@ -279,10 +285,10 @@ fn ts_backend_mixed_resume_entries() {
         "cap E { fn op1(): A; fn op2(x: A): B } fn f(a: A, b: B): A / {} { handle E with bundle { fn op1() { resume(a) }; fn op2(x) { b } } in E.op1 }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // op1 uses resume → gets ((resume) => ...) wrapper
-    // op2 doesn't use resume → gets __k(body) wrapper
-    assert!(js.contains("__k"), "CPS mode active: {js}");
-    assert!(js.contains("resume"), "op1 binds resume: {js}");
+    // op1 has tail `resume(a)` → emits `__k_handle(__k_perform(a))`.
+    // op2 aborts (no resume) → its body value flows directly to __k_handle.
+    assert!(js.contains("__k_perform"), "tail resume should reach __k_perform: {js}");
+    assert!(js.contains("__k_handle"), "abort path should reach __k_handle: {js}");
 }
 
 #[test]
@@ -374,6 +380,65 @@ fn ts_backend_identity_continuation_is_shared_const() {
 }
 
 #[test]
+fn ts_backend_cps_runtime_params_are_typed() {
+    // TS strict-mode rejects implicit-any. The CPS plumbing is typed via
+    // the generic union types (`__CpsValue` / `__Ret` / `__Kont<T>`) plus
+    // a per-cap bundle alias (`__Bundle_<Cap>`) and an inline precise
+    // `__caps` shape per effectful function.
+    let file = lower_typed(
+        "cap E { fn op(): A } \
+         fn inner(): A / { E } { E.op } \
+         fn outer(): A / { E } { handle E with bundle { fn op() { resume(a) } } in E.op } \
+         extern fn a(): A",
+    );
+    let ts = backend::emit(&file, CodegenTarget::TypeScript).expect("ts emit");
+
+    // Runtime prelude must define the CPS type plumbing.
+    assert!(
+        ts.contains("type __Ret = "),
+        "TS prelude should declare __Ret alias: {ts}"
+    );
+    assert!(
+        ts.contains("type __Kont<"),
+        "TS prelude should declare generic __Kont<T>: {ts}"
+    );
+    assert!(
+        ts.contains("type __CpsValue = "),
+        "TS prelude should declare __CpsValue union: {ts}"
+    );
+    // Per-cap bundle alias is emitted.
+    assert!(
+        ts.contains("type __Bundle_E = "),
+        "TS output should emit __Bundle_E per-cap alias: {ts}"
+    );
+
+    // Effectful user fn signatures use the precise inline `__caps` bundle
+    // type and the continuation type-parametrized on return.
+    assert!(
+        ts.contains("__caps: { readonly E: __Bundle_E }"),
+        "__caps should be typed with inline per-cap bundle: {ts}"
+    );
+    assert!(
+        ts.contains("__k: __Kont<A>"),
+        "__k should be typed __Kont<A> (the fn's return type): {ts}"
+    );
+    // Handler plumbing inside the bundle factory falls back to generic shapes.
+    assert!(
+        ts.contains("__k_perform: __Kont<"),
+        "__k_perform should be typed as a __Kont: {ts}"
+    );
+    assert!(
+        ts.contains("__k_handle: __Kont<"),
+        "__k_handle should be typed as a __Kont: {ts}"
+    );
+    // And absolutely no `any` anywhere in the emitted output.
+    assert!(
+        !ts.contains(": any") && !ts.contains("as any"),
+        "TS output must not contain `any`: {ts}"
+    );
+}
+
+#[test]
 fn ts_backend_tail_thunk_elided_for_fn_call() {
     // Pass 2: a passthrough fn whose body is a tail call to another effectful
     // fn should NOT wrap in `__thunk(() => ...)` — the callee already returns
@@ -414,37 +479,47 @@ fn ts_backend_tail_thunk_kept_for_k_call() {
 }
 
 #[test]
-fn ts_backend_multi_shot_handler_compiles() {
-    // A handler that calls `resume` multiple times must compile; each call
-    // drives `__k_perform` through `__trampoline` independently.
-    let file = lower_typed(
-        "cap Choice { fn pick(): A } \
-         fn f(a: A, b: A): A / {} { \
-           handle Choice with bundle { fn pick() { let _ = resume(a); resume(b) } } in Choice.pick \
-         }",
-    );
-    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // Both `resume(a)` and `resume(b)` sites emit the synchronous
-    // `__trampoline(__k_perform(...))` pattern.
-    let occurrences = js.matches("__trampoline(__k_perform(").count();
-    assert!(
-        occurrences >= 1,
-        "handler body should invoke __k_perform via __trampoline: {js}"
-    );
-}
-
-#[test]
-fn ts_backend_resume_binding_is_synchronous_arrow() {
-    // resume is bound as (v) => __trampoline(__k_perform(v)), NOT () => __k.
-    // This makes resume(x) return a concrete value rather than a thunk,
-    // enabling handler bodies to compose multiple resumes.
+fn ts_backend_tail_resume_emits_inline_kperform() {
+    // Tail `resume(v)` emits inline as `__k_handle(__k_perform(v))` —
+    // no local `resume` binding, no nested `__trampoline`. The outer
+    // trampoline unwinds the returned thunk iteratively, so nested
+    // handler chains stay stack-safe.
     let file = lower_typed(
         "cap E { fn op(): A } fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in E.op }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(
+        js.contains("__k_handle(__k_perform("),
+        "tail resume should emit `__k_handle(__k_perform(...))`: {js}"
+    );
+    assert!(
+        !js.contains("const resume ="),
+        "no local `resume` binding should be emitted: {js}"
+    );
+    // Tail position never wraps __k_perform in a synchronous trampoline.
+    assert!(
+        !js.contains("__trampoline(__k_perform("),
+        "tail resume must not invoke a nested __trampoline: {js}"
+    );
+}
+
+#[test]
+fn ts_backend_non_tail_resume_drives_synchronously() {
+    // Non-tail `resume(v)` (used in let-value or compound expression
+    // position) must drive `__k_perform(v)` through `__trampoline` at the
+    // call site so the resumed continuation's side effects actually run.
+    // This is what makes multi-shot non-determinism (Coin/Choice) work.
+    let file = lower_typed(
+        "cap Coin { fn flip(): A } \
+         fn f(a: A): A / {} { \
+           handle Coin with bundle { fn flip() { let _ = resume(a); resume(a) } } in Coin.flip \
+         }",
+    );
+    let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    // First resume (let-value, non-tail) → synchronous __trampoline.
+    assert!(
         js.contains("__trampoline(__k_perform("),
-        "resume should drive __k_perform through __trampoline for synchronous return: {js}"
+        "non-tail resume should synchronously drive __k_perform: {js}"
     );
 }
 

@@ -4,7 +4,9 @@ extern {
   fn writeFileSync(path: String, content: String, encoding: String);
 }
 
+// Default bundle installed at main entry for the FS capability. Every op
+// must explicitly `resume(...)` — see docs/capability-system.md.
 impl FS {
-  fn read_file(path: String): String = readFileSync(path, "utf8")
-  fn write_file(path: String, content: String) = writeFileSync(path, content, "utf8")
+  fn read_file(path: String): String = resume(readFileSync(path, "utf8"))
+  fn write_file(path: String, content: String) = resume(writeFileSync(path, content, "utf8"))
 }

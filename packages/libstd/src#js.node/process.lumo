@@ -6,12 +6,18 @@
 fn __argv_at_offset(idx: Number): String = __argv_at_raw(idx + 1)
 fn __args_count_offset(): Number = __argv_length_raw() - 1
 
+// Default bundle installed at main entry for the Process capability. Every
+// op must explicitly `resume(...)` — see docs/capability-system.md. Note
+// that `exit_process` / `panic_with` terminate the process via the extern,
+// so their `resume` calls never actually reach the perform site at
+// runtime — the `resume(...)` wrapper is just a type-level placeholder so
+// the compile-time semantics stay consistent.
 impl Process {
-  fn arg_at(idx: Number): String = __argv_at_offset(idx)
-  fn args_count(): Number = __args_count_offset()
-  fn exit_process(code: Number) = __exit_process(code)
+  fn arg_at(idx: Number): String = resume(__argv_at_offset(idx))
+  fn args_count(): Number = resume(__args_count_offset())
+  fn exit_process(code: Number) = resume(__exit_process(code))
   fn panic_with(msg: String) {
     let _err = __console_error(msg);
-    __exit_process(1)
+    resume(__exit_process(1))
   }
 }

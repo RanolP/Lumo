@@ -1,7 +1,13 @@
 #[link(expr = "globalThis.String")]
 extern {
-  #[extern(property = "length")]  fn __str_len(s: String): Number;
-  #[extern(name = "charAt")]       fn __str_char_at(s: String, idx: Number): String;
+  #[inline(always)]
+  #[extern(property = "length")]
+  fn __str_len(s: String): Number;
+
+  #[inline(always)]
+  #[extern(name = "charAt")]
+  fn __str_char_at(s: String, idx: Number): String;
+
   #[extern(name = "slice")]        fn __str_slice(s: String, start: Number, end: Number): String;
   #[extern(name = "startsWith")]   fn __str_starts_with(s: String, prefix: String): Bool;
   #[extern(name = "includes")]     fn __str_contains(s: String, sub: String): Bool;
@@ -17,21 +23,28 @@ extern {
   #[extern(name = "toString")]     fn __num_to_string(n: Number): String;
 }
 
-#[extern(operator = "infix+")] extern fn __str_concat(a: String, b: String): String;
-#[extern(operator = "infix===")] extern fn __str_eq(a: String, b: String): Bool;
+#[inline(always)]
+#[extern(operator = "infix+")]
+extern fn __str_concat(a: String, b: String): String;
 
+#[inline(always)]
+#[extern(operator = "infix===")]
+extern fn __str_eq(a: String, b: String): Bool;
+
+// Default bundle installed at main entry for the StrOps capability.
+// Every op must `resume(v)` explicitly — see docs/capability-system.md.
 impl StrOps {
-  fn len(s: String): Number = __str_len(s)
-  fn char_at(s: String, idx: Number): String = __str_char_at(s, idx)
-  fn slice(s: String, start: Number, end: Number): String = __str_slice(s, start, end)
-  fn concat(a: String, b: String): String = __str_concat(a, b)
-  fn eq(a: String, b: String): Bool = __str_eq(a, b)
-  fn starts_with(s: String, prefix: String): Bool = __str_starts_with(s, prefix)
-  fn contains(s: String, sub: String): Bool = __str_contains(s, sub)
-  fn index_of(s: String, sub: String): Number = __str_index_of(s, sub)
-  fn trim(s: String): String = __str_trim(s)
-  fn char_code_at(s: String, idx: Number): Number = __char_code_at(s, idx)
-  fn from_char_code(code: Number): String = fromCharCode(code)
-  fn replace_all(s: String, from: String, to: String): String = __str_replace_all(s, from, to)
-  fn num_to_string(n: Number): String = __num_to_string(n)
+  fn len(s: String): Number = resume(__str_len(s))
+  fn char_at(s: String, idx: Number): String = resume(__str_char_at(s, idx))
+  fn slice(s: String, start: Number, end: Number): String = resume(__str_slice(s, start, end))
+  fn concat(a: String, b: String): String = resume(__str_concat(a, b))
+  fn eq(a: String, b: String): Bool = resume(__str_eq(a, b))
+  fn starts_with(s: String, prefix: String): Bool = resume(__str_starts_with(s, prefix))
+  fn contains(s: String, sub: String): Bool = resume(__str_contains(s, sub))
+  fn index_of(s: String, sub: String): Number = resume(__str_index_of(s, sub))
+  fn trim(s: String): String = resume(__str_trim(s))
+  fn char_code_at(s: String, idx: Number): Number = resume(__char_code_at(s, idx))
+  fn from_char_code(code: Number): String = resume(fromCharCode(code))
+  fn replace_all(s: String, from: String, to: String): String = resume(__str_replace_all(s, from, to))
+  fn num_to_string(n: Number): String = resume(__num_to_string(n))
 }

@@ -1,5 +1,10 @@
-#[extern(name = "globalThis.console.log()")] extern fn __println(msg: String);
+#[inline(always)]
+#[extern(name = "globalThis.console.log()")]
+extern fn __println(msg: String);
 
+// Default bundle installed at main entry for the IO capability. `println`
+// must explicitly `resume(...)` so main's body continues after the call —
+// see docs/capability-system.md.
 impl IO {
-  fn println(msg: String) = __println(msg)
+  fn println(msg: String) = resume(__println(msg))
 }

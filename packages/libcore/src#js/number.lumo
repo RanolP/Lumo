@@ -1,23 +1,53 @@
-#[extern(operator = "infix+")] extern fn __num_add(a: Number, b: Number): Number;
-#[extern(operator = "infix-")] extern fn __num_sub(a: Number, b: Number): Number;
-#[extern(operator = "infix*")] extern fn __num_mul(a: Number, b: Number): Number;
-#[extern(operator = "infix/")] extern fn __num_div(a: Number, b: Number): Number;
-#[extern(operator = "infix%")] extern fn __num_mod(a: Number, b: Number): Number;
-#[extern(operator = "prefix-")] extern fn __num_neg(a: Number): Number;
-#[extern(name = "Math.floor()")] extern fn __num_floor(a: Number): Number;
-#[extern(operator = "infix===")] extern fn __num_eq(a: Number, b: Number): Bool;
-#[extern(operator = "infix<")] extern fn __num_lt(a: Number, b: Number): Bool;
+#[inline(always)]
+#[extern(operator = "infix+")]
+extern fn __num_add(a: Number, b: Number): Number;
 
+#[inline(always)]
+#[extern(operator = "infix-")]
+extern fn __num_sub(a: Number, b: Number): Number;
+
+#[inline(always)]
+#[extern(operator = "infix*")]
+extern fn __num_mul(a: Number, b: Number): Number;
+
+#[inline(always)]
+#[extern(operator = "infix/")]
+extern fn __num_div(a: Number, b: Number): Number;
+
+#[inline(always)]
+#[extern(operator = "infix%")]
+extern fn __num_mod(a: Number, b: Number): Number;
+
+#[inline(always)]
+#[extern(operator = "prefix-")]
+extern fn __num_neg(a: Number): Number;
+
+#[inline(always)]
+#[extern(name = "Math.floor()")]
+extern fn __num_floor(a: Number): Number;
+
+#[inline(always)]
+#[extern(operator = "infix===")]
+extern fn __num_eq(a: Number, b: Number): Bool;
+
+#[inline(always)]
+#[extern(operator = "infix<")]
+extern fn __num_lt(a: Number, b: Number): Bool;
+
+// `impl NumOps { ... }` is sugar for a module-level bundle handed to an
+// implicit `handle NumOps with <bundle> in main`. Every method must
+// `resume(v)` to feed the computed value back to the perform site —
+// otherwise the handle expression aborts after the first op.
 impl NumOps {
-  fn add(a: Number, b: Number): Number = __num_add(a, b)
-  fn sub(a: Number, b: Number): Number = __num_sub(a, b)
-  fn mul(a: Number, b: Number): Number = __num_mul(a, b)
-  fn div(a: Number, b: Number): Number = __num_div(a, b)
-  fn mod_(a: Number, b: Number): Number = __num_mod(a, b)
-  fn neg(a: Number): Number = __num_neg(a)
-  fn floor(a: Number): Number = __num_floor(a)
-  fn eq(a: Number, b: Number): Bool = __num_eq(a, b)
-  fn cmp(a: Number, b: Number): Ordering =
+  fn add(a: Number, b: Number): Number = resume(__num_add(a, b))
+  fn sub(a: Number, b: Number): Number = resume(__num_sub(a, b))
+  fn mul(a: Number, b: Number): Number = resume(__num_mul(a, b))
+  fn div(a: Number, b: Number): Number = resume(__num_div(a, b))
+  fn mod_(a: Number, b: Number): Number = resume(__num_mod(a, b))
+  fn neg(a: Number): Number = resume(__num_neg(a))
+  fn floor(a: Number): Number = resume(__num_floor(a))
+  fn eq(a: Number, b: Number): Bool = resume(__num_eq(a, b))
+  fn cmp(a: Number, b: Number): Ordering = resume(
     match __num_lt(a, b) {
       .true => Ordering.less,
       .false => match __num_eq(a, b) {
@@ -25,4 +55,5 @@ impl NumOps {
         .false => Ordering.greater,
       },
     }
+  )
 }

@@ -2,8 +2,8 @@ use libcore.prelude.{Bool};
 use libcore.ops.{Not};
 
 impl Bool: Not {
-  fn not(self): Self = match self {
+  fn not(self): Self = resume(match self {
     .true => Bool.false,
     .false => Bool.true,
-  }
+  })
 }

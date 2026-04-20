@@ -18,14 +18,21 @@ cap StrOps {
   fn num_to_string(n: Number): String
 }
 
+// Typeclass `impl T: Cap` blocks are bundles installed via implicit
+// `handle Cap with <bundle> in main` — every method must `resume(v)`.
+// See docs/capability-system.md.
 impl String: Add {
-  fn add(self, other: Self): Self = StrOps.concat(self, other)
+  fn add(self, other: Self): Self = resume(StrOps.concat(self, other))
 }
 
 impl String: PartialEq {
-  fn eq(self, other: Self): Bool = StrOps.eq(self, other)
+  fn eq(self, other: Self): Bool = resume(StrOps.eq(self, other))
 }
 
+// Inherent `impl Type { ... }` blocks are NOT handlers — they provide UFCS
+// method dispatch (`"hi".len()` → `String.len("hi")`). The compiler emits
+// them as regular effectful functions; their tail expressions flow through
+// the usual CPS continuation, no explicit `resume` needed.
 impl String {
   fn len(self): Number = StrOps.len(self)
   fn char_at(self, idx: Number): String = StrOps.char_at(self, idx)

@@ -1,7 +1,7 @@
 use crate::{
     backend::{Backend, BackendError, BackendKind, CodegenTarget},
     lir::{self, AsRawValue},
-    types::{Pattern, TypeExpr},
+    types::{CapRef, Pattern, TypeExpr},
 };
 use simple_ts_ast as tsast;
 use std::cell::Cell;
@@ -24,6 +24,11 @@ struct LoweringContext {
     /// Default impls available in the module: (cap_name, type_args) → impl const name.
     /// Populated from `impl Cap { ... }` (platform default) and `impl Type: Cap { ... }` (typeclass default).
     default_impls: HashMap<(String, Vec<String>), String>,
+    /// All cap-decl names in the module. Used to classify impl blocks:
+    /// `impl Cap { ... }` with target in this set is a platform default
+    /// handler; `impl T: Cap { ... }` is a typeclass handler; everything
+    /// else is an inherent impl for UFCS dispatch.
+    cap_names: std::collections::HashSet<String>,
     /// Variants annotated with `#[as__raw(true|false)]`.
     /// Keyed by `(owner_type, variant_name)` for qualified Ctor references,
     /// and also by just `variant_name` for match patterns (which don't
@@ -58,6 +63,14 @@ impl TypeScriptBackend {
         let mut extern_names = HashMap::new();
         let fn_caps = collect_fn_caps(file);
         let impl_method_caps = collect_impl_method_caps(file, &fn_caps);
+        let cap_names: std::collections::HashSet<String> = file
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                lir::Item::Cap(c) => Some(c.name.clone()),
+                _ => None,
+            })
+            .collect();
         let (ctor_as_raw, variant_as_raw) = collect_as_raw_variants(file);
         let ctx = LoweringContext {
             direct_callable_arities: collect_direct_callable_arities(file),
@@ -65,6 +78,7 @@ impl TypeScriptBackend {
             impl_method_arities: collect_impl_method_arities(file),
             impl_method_caps,
             default_impls: collect_default_impls(file),
+            cap_names,
             ctor_as_raw,
             variant_as_raw,
             match_counter: Cell::new(0),
@@ -146,8 +160,14 @@ impl TypeScriptBackend {
                     }));
                     body.push(tsast::Stmt::Const(lower_data_bundle_const(data)));
                 }
-                lir::Item::Cap(_) | lir::Item::Use(_) => {
-                    // Cap declarations and use items produce no TS output
+                lir::Item::Cap(cap) => {
+                    // Emit a per-cap bundle type alias so effectful fn
+                    // signatures can reference `__Bundle_<CapName>` with
+                    // precise op signatures (no `any` / `unknown`).
+                    body.push(tsast::Stmt::TypeAlias(emit_cap_bundle_alias(cap)));
+                }
+                lir::Item::Use(_) => {
+                    // Use items produce no TS output
                 }
                 lir::Item::Fn(func) => {
                     body.push(tsast::Stmt::Function(lower_fn_decl(func, &ctx)?));
@@ -216,6 +236,7 @@ fn collect_impl_method_arities(file: &lir::File) -> HashMap<(String, String), us
     out
 }
 
+/// Build default impl map from all Impl items in the file.
 /// Collect data variants annotated with `#[as__raw(true|false)]`.
 /// Returns two maps for convenience:
 /// - `ctor_as_raw` keyed by `(owner_type, variant_name)` — used at Ctor
@@ -250,7 +271,6 @@ fn raw_value_to_ts_expr(raw: &AsRawValue) -> tsast::Expr {
     }
 }
 
-/// Build default impl map from all Impl items in the file.
 /// - Platform default: `impl StrOps { ... }` where target matches a cap name → (cap, [cap]) → "StrOps"
 /// - Typeclass default: `impl Number: Add { ... }` → (cap, [target]) → impl_const_name
 fn collect_default_impls(file: &lir::File) -> HashMap<(String, Vec<String>), String> {
@@ -550,6 +570,143 @@ fn identity_k_expr() -> tsast::Expr {
     tsast::Expr::Ident("__identity".to_owned())
 }
 
+/// Fallback TS type for the ambient capabilities bundle when a precise
+/// inline bundle shape isn't known. Emitted as the structural
+/// `{ [key: string]: { [op: string]: __CpsFn } }` alias in the runtime
+/// prelude. Prefer `caps_bundle_type(&CapRef)` at every call site that has
+/// the function's cap annotation available.
+fn caps_type() -> tsast::TsType {
+    tsast::TsType::TypeRef("__Caps".to_owned())
+}
+
+/// Precise `__caps` bundle type built from a function's cap annotation.
+/// Emits an inline structural type `{ readonly Key1: __Bundle_Cap1<T1>; ... }`
+/// so each key is individually typed against its specific bundle interface.
+fn caps_bundle_type(cap_ref: &CapRef) -> tsast::TsType {
+    let entries = cap_ref.entries();
+    if entries.is_empty() {
+        return caps_type();
+    }
+    let mut parts: Vec<String> = Vec::new();
+    for entry in entries {
+        match entry {
+            TypeExpr::Cap { name, type_args } => {
+                let type_arg_names: Vec<String> =
+                    type_args.iter().map(|t| t.display()).collect();
+                let key = cap_bundle_key(name, &type_arg_names);
+                let type_arg_str = if type_args.is_empty() {
+                    String::new()
+                } else {
+                    let rendered: Vec<String> =
+                        type_args.iter().map(type_expr_to_ts_text).collect();
+                    format!("<{}>", rendered.join(", "))
+                };
+                parts.push(format!(
+                    "readonly {}: __Bundle_{}{}",
+                    key, name, type_arg_str
+                ));
+            }
+            TypeExpr::Named(name) => {
+                // Platform default keyed as (cap, [cap]) — e.g. NumOps → `NumOps_NumOps`.
+                let key = cap_bundle_key(name, &[name.clone()]);
+                parts.push(format!("readonly {}: __Bundle_{}", key, name));
+            }
+            _ => return caps_type(),
+        }
+    }
+    tsast::TsType::Raw(format!("{{ {} }}", parts.join("; ")))
+}
+
+/// Precise continuation type: `__Kont<ReturnType>` using the fn's declared
+/// return. Unit maps to `void` (TS allows `__Kont<void>`).
+fn kont_type(return_type: Option<&TypeExpr>) -> tsast::TsType {
+    let ret_text = return_type.map_or_else(|| "void".to_owned(), type_expr_to_ts_text);
+    tsast::TsType::Raw(format!("__Kont<{}>", ret_text))
+}
+
+/// Continuation type when the value's concrete type isn't statically known
+/// at this site. Uses `__Kont<__CpsValue>`.
+fn kont_type_any() -> tsast::TsType {
+    tsast::TsType::Raw("__Kont<__CpsValue>".to_owned())
+}
+
+/// TS type for every effectful function's return: `__Ret`, a union of
+/// `__Thunk` (for trampoline bouncing) and concrete runtime values.
+fn ret_type() -> tsast::TsType {
+    tsast::TsType::TypeRef("__Ret".to_owned())
+}
+
+/// Whether any of this cap's operation signatures refer to the `Self`
+/// placeholder — if so, the emitted bundle alias takes a `Self` type param.
+fn cap_uses_self(cap: &lir::CapDecl) -> bool {
+    cap.operations.iter().any(|op| {
+        op.params.iter().any(|p| type_refs_self(&p.ty.value))
+            || op.return_type
+                .as_ref()
+                .map_or(false, |r| type_refs_self(&r.value))
+    })
+}
+
+fn type_refs_self(ty: &TypeExpr) -> bool {
+    match ty {
+        TypeExpr::Named(n) => n == "Self",
+        TypeExpr::App { head, args } => head == "Self" || args.iter().any(type_refs_self),
+        TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => type_refs_self(inner),
+        TypeExpr::Cap { type_args, .. } => type_args.iter().any(type_refs_self),
+    }
+}
+
+/// Emit a per-cap bundle alias:
+/// `type __Bundle_Add<Self> = { readonly add: (__caps: __Caps, a: Self, b: Self, __k: __Kont<Self>) => __Ret; ... };`
+/// Op signatures mirror the cap's operations exactly, with `__caps` and `__k`
+/// added to match the runtime calling convention.
+fn emit_cap_bundle_alias(cap: &lir::CapDecl) -> tsast::TypeAlias {
+    let uses_self = cap_uses_self(cap);
+    let type_params = if uses_self {
+        vec!["Self".to_owned()]
+    } else {
+        Vec::new()
+    };
+
+    let op_entries: Vec<String> = cap
+        .operations
+        .iter()
+        .map(|op| {
+            let mut method_params: Vec<String> = vec!["__caps: __Caps".to_owned()];
+            for p in &op.params {
+                method_params.push(format!(
+                    "{}: {}",
+                    p.name,
+                    type_expr_to_ts_text(&p.ty.value)
+                ));
+            }
+            let ret_text = op
+                .return_type
+                .as_ref()
+                .map_or_else(|| "void".to_owned(), |r| type_expr_to_ts_text(&r.value));
+            method_params.push(format!("__k: __Kont<{}>", ret_text));
+            format!(
+                "readonly {}: ({}) => __Ret",
+                op.name,
+                method_params.join(", ")
+            )
+        })
+        .collect();
+
+    let body = if op_entries.is_empty() {
+        "{}".to_owned()
+    } else {
+        format!("{{ {} }}", op_entries.join("; "))
+    };
+
+    tsast::TypeAlias {
+        export: false,
+        name: format!("__Bundle_{}", cap.name),
+        type_params,
+        ty: tsast::TsType::Raw(body),
+    }
+}
+
 fn lower_fn_decl(
     func: &lir::FnDecl,
     ctx: &LoweringContext,
@@ -582,10 +739,17 @@ fn lower_fn_decl(
     let mut params: Vec<tsast::Param> = Vec::new();
     if !caps.is_empty() {
         // Spec: capability bundle is the FIRST parameter of every effectful
-        // function. Signature: `fn(__caps, user_params..., __k)`.
-        params.push(tsast::Param::new(CAPS_PARAM));
+        // function. Signature: `fn(__caps, user_params..., __k)`. Types are
+        // as precise as possible — `__caps` is an inline bundle with the
+        // exact keys the function needs, `__k` is `__Kont<ReturnType>`.
+        let caps_ty = func
+            .cap
+            .as_ref()
+            .map_or_else(caps_type, caps_bundle_type);
+        let return_ty_expr = func.return_type.as_ref().map(|s| &s.value);
+        params.push(tsast::Param::new(CAPS_PARAM).with_type(caps_ty));
         params.extend(user_params);
-        params.push(tsast::Param::new("__k"));
+        params.push(tsast::Param::new("__k").with_type(kont_type(return_ty_expr)));
         let raw_cps_body = lower_cps_expr(
             lowered_body,
             tsast::Expr::Ident("__k".to_owned()),
@@ -615,7 +779,7 @@ fn lower_fn_decl(
             name: emitted_name,
             type_params: func.generics.clone(),
             params,
-            return_type: Some(tsast::TsType::Void),
+            return_type: Some(ret_type()),
             body: tsast::FunctionBody::Expr(Box::new(cps_body)),
             // Don't inline CPS-transformed functions — params and continuation
             // injection make naive substitution unsafe.
@@ -718,9 +882,17 @@ fn emit_main_entry_wrapper(
             }
         }
 
+        // Each default impl is now emitted as a handler factory
+        // `(__k_handle) => { ops }`. Install it by invoking the factory with
+        // `__identity` — at the outermost handle in main, a matching
+        // perform's "rest of computation" trivially returns its own value.
+        let installed = tsast::Expr::Call {
+            callee: Box::new(tsast::Expr::Ident(impl_const)),
+            args: vec![identity_k_expr()],
+        };
         bundle_props.push(tsast::ObjectProp {
             key: tsast::ObjectKey::Ident(cap_bundle_key(&cap_name, &type_args)),
-            value: tsast::Expr::Ident(impl_const),
+            value: installed,
         });
     }
 
@@ -750,7 +922,71 @@ fn lower_impl_const(
     ctx: &LoweringContext,
 ) -> Result<tsast::ConstDecl, BackendError> {
     let const_name = impl_const_name(impl_decl);
+    // Classify: is this impl a handler bundle (cap impl) that gets installed
+    // via an implicit/explicit `handle`, or an inherent impl providing UFCS
+    // dispatch on a value type?
+    //
+    // - `impl T: Cap { ... }` (typeclass default)      → cap impl
+    // - `impl Cap { ... }` where target matches a cap   → platform default
+    // - `impl T { ... }` where T is a non-cap type      → inherent (UFCS)
+    //
+    // Cap impls go through the handler-factory path (abort-by-default,
+    // explicit `resume`); inherent impls keep the tail-CPS resume-via-__k
+    // shape for regular effectful method calls.
+    let target = impl_decl.target_type.value.display();
+    let is_cap_impl = impl_decl.capability.is_some()
+        || (impl_decl.capability.is_none() && ctx.cap_names.contains(&target));
 
+    if is_cap_impl {
+        return lower_cap_impl_const(impl_decl, &const_name, ctx);
+    }
+
+    lower_inherent_impl_const(impl_decl, &const_name, ctx)
+}
+
+/// Lower a `impl Cap { ... }` / `impl T: Cap { ... }` block as a handler
+/// factory: `(__k_handle) => { op: (__caps, args..., __k_perform) => ... }`.
+/// Semantics match user `handle Cap with <bundle> in body` — abort-by-default.
+fn lower_cap_impl_const(
+    impl_decl: &lir::ImplDecl,
+    const_name: &str,
+    ctx: &LoweringContext,
+) -> Result<tsast::ConstDecl, BackendError> {
+    let mut props: Vec<tsast::ObjectProp> = Vec::new();
+    for method in &impl_decl.methods {
+        let (_, lowered_body) = unwrap_fn_value(&method.value)?;
+        let method_key = (const_name.to_owned(), method.name.clone());
+        let empty: Vec<String> = Vec::new();
+        let handled_caps = ctx
+            .impl_method_caps
+            .get(&method_key)
+            .unwrap_or(&empty)
+            .as_slice();
+        props.push(emit_handler_method_prop(
+            &method.name,
+            &method.params,
+            lowered_body,
+            handled_caps,
+            ctx,
+        ));
+    }
+    Ok(tsast::ConstDecl {
+        export: true,
+        name: const_name.to_owned(),
+        type_ann: None,
+        init: emit_handler_factory(props),
+    })
+}
+
+/// Lower a `impl T { ... }` inherent block as a plain method record.
+/// Used for UFCS dispatch (`"hi".len()` → `String.len("hi")`); NOT a
+/// handler. Effectful methods CPS-thread the tail value through `__k`
+/// (implicit resume, i.e. normal effectful-function return semantics).
+fn lower_inherent_impl_const(
+    impl_decl: &lir::ImplDecl,
+    const_name: &str,
+    ctx: &LoweringContext,
+) -> Result<tsast::ConstDecl, BackendError> {
     let mut properties = Vec::new();
     for method in &impl_decl.methods {
         let (lowered_params, lowered_body) = unwrap_fn_value(&method.value)?;
@@ -778,21 +1014,21 @@ fn lower_impl_const(
             .map(|s| &s.value)
             .unwrap_or(&unit_ty);
 
-        let method_key = (const_name.clone(), method.name.clone());
+        let method_key = (const_name.to_owned(), method.name.clone());
+        let is_effectful_method = ctx.impl_method_caps.contains_key(&method_key);
         let (params, body_expr) = if let Some(caps) = ctx.impl_method_caps.get(&method_key) {
-            // Effectful impl method: `(__caps, user_params..., __k)`.
-            let mut params = vec![tsast::Param::new(CAPS_PARAM)];
+            // Effectful inherent method: regular CPS-form fn — tail value
+            // flows through `__k`, acting as an implicit resume.
+            let mut params = vec![tsast::Param::new(CAPS_PARAM).with_type(caps_type())];
             params.extend(user_params);
-            params.push(tsast::Param::new("__k"));
+            let method_ret = method.return_type.as_ref().map(|s| &s.value);
+            params.push(tsast::Param::new("__k").with_type(kont_type(method_ret)));
             let body = lower_cps_expr(
                 lowered_body,
                 tsast::Expr::Ident("__k".to_owned()),
                 caps,
                 ctx,
             );
-            // Wrap in __thunk so trampoline unwinds the CPS chain iteratively.
-            // Pass 2: elide the wrap for tail calls to callees that already
-            // return a thunk.
             let wrapped = if is_thunk_returning_call(&body, ctx) {
                 body
             } else {
@@ -803,11 +1039,16 @@ fn lower_impl_const(
             (user_params, lower_expr(lowered_body, ctx))
         };
 
+        let method_return_type = if is_effectful_method {
+            ret_type()
+        } else {
+            lower_type_expr_to_ts_type(return_ty)
+        };
         properties.push(tsast::ObjectProp {
             key: tsast::ObjectKey::Ident(method.name.clone()),
             value: tsast::Expr::Arrow {
                 params,
-                return_type: Some(lower_type_expr_to_ts_type(return_ty)),
+                return_type: Some(method_return_type),
                 body: Box::new(tsast::FunctionBody::Expr(Box::new(body_expr))),
             },
         });
@@ -815,7 +1056,7 @@ fn lower_impl_const(
 
     Ok(tsast::ConstDecl {
         export: true,
-        name: const_name,
+        name: const_name.to_owned(),
         type_ann: None,
         init: tsast::Expr::Object(properties),
     })
@@ -961,12 +1202,49 @@ fn runtime_prelude(target: tsast::EmitTarget, emitted: &str) -> String {
     }
     if needs_trampoline {
         if ts {
-            out.push_str("const __thunk = (fn: Function): any => { (fn as any).__t = 1; return fn; };\n");
-            out.push_str("const __trampoline = (v: any): any => { while (v && (v as any).__t) v = (v as () => any)(); return v; };\n");
+            // Note: __thunk and __trampoline are declared *after* the CPS
+            // types (__Thunk / __Ret / __CpsValue) since they reference them.
         } else {
             out.push_str("const __thunk = (fn) => { fn.__t = 1; return fn; };\n");
             out.push_str("const __trampoline = (v) => { while (v && v.__t) v = v(); return v; };\n");
         }
+    }
+    // CPS-plumbing type aliases. No `any` / `unknown`. `__CpsValue` is a
+    // recursive union covering every runtime value (primitives, data variants,
+    // bundles, functions). `__Thunk` is a trampoline-flagged thunk; `__Ret`
+    // is what an effectful function returns (either a thunk to bounce, or a
+    // concrete value). `__Kont<T>` is a continuation taking a T and
+    // returning any `__Ret`. `__Caps` is the structural shape used as a
+    // fallback when a specific bundle type isn't known at a call site.
+    let needs_cps_types = emitted.contains("__Ret")
+        || emitted.contains("__Kont")
+        || emitted.contains("__Caps")
+        || emitted.contains("__CpsValue")
+        || emitted.contains("__Thunk")
+        || emitted.contains("__thunk(")
+        || emitted.contains("__trampoline(");
+    if ts && needs_cps_types {
+        out.push_str(
+            "type __CpsFn = (...args: readonly __CpsValue[]) => __Ret;\n",
+        );
+        out.push_str(
+            "type __CpsValue = __LumoRuntime | __CpsFn | { readonly [key: string]: __CpsValue };\n",
+        );
+        out.push_str("type __Thunk = { (): __Ret; __t: 1 };\n");
+        out.push_str("type __Ret = __Thunk | __CpsValue;\n");
+        out.push_str("type __Kont<T = __CpsValue> = (__v: T) => __Ret;\n");
+        out.push_str(
+            "type __Caps = { readonly [key: string]: { readonly [op: string]: __CpsFn } };\n",
+        );
+    }
+    if ts && needs_trampoline {
+        out.push_str("const __thunk = (fn: () => __Ret): __Thunk => { (fn as __Thunk).__t = 1; return fn as __Thunk; };\n");
+        out.push_str(
+            "const __trampoline = (v: __Ret): __CpsValue => { \
+             let cur: __Ret = v; \
+             while (typeof cur === \"function\" && (cur as __Thunk).__t === 1) { cur = (cur as __Thunk)(); } \
+             return cur as __CpsValue; };\n",
+        );
     }
     if needs_identity {
         if ts {
@@ -982,6 +1260,12 @@ fn runtime_prelude(target: tsast::EmitTarget, emitted: &str) -> String {
 fn lower_type_expr_to_ts_type(ty: &TypeExpr) -> tsast::TsType {
     match ty {
         TypeExpr::Named(name) if name == "Unit" => tsast::TsType::Void,
+        // Parser fills missing annotations with the `<missing>` sentinel;
+        // that's not a valid TS identifier. Fall back to the CPS-plumbing
+        // union `__CpsValue` so the emitted signature still type-checks.
+        TypeExpr::Named(name) if name == "<missing>" => {
+            tsast::TsType::TypeRef("__CpsValue".to_owned())
+        }
         TypeExpr::Named(name) => tsast::TsType::TypeRef(name.clone()),
         TypeExpr::App { head, args } => tsast::TsType::TypeRef(format!(
             "{head}<{}>",
@@ -1383,6 +1667,7 @@ fn render_data_bundle_type(data: &lir::DataDecl) -> String {
 fn type_expr_to_ts_text(ty: &TypeExpr) -> String {
     match ty {
         TypeExpr::Named(name) if name == "Unit" => "void".to_owned(),
+        TypeExpr::Named(name) if name == "<missing>" => "__CpsValue".to_owned(),
         TypeExpr::Named(name) => name.clone(),
         TypeExpr::App { head, args } => format!(
             "{head}<{}>",
@@ -2506,6 +2791,49 @@ fn lower_cps_expr_inner(
         // Check for effectful function calls: Apply*(Force(Ident(f)), args)
         _ => {
             if let Some((fn_name, args)) = decompose_fn_call(expr) {
+                // Resume handling: `resume(v)` inside a handler body calls
+                // the perform-site continuation. Two emission modes:
+                //
+                // - Tail (`k` is `__k_handle`, i.e. resume is the body's
+                //   final expression): emit as `__k_handle(__k_perform(v))`.
+                //   `__k_perform(v)` returns a thunk; the outer trampoline
+                //   unwinds it. Stack-safe through any perform depth.
+                //
+                // - Non-tail (e.g. `let _ = resume(a); rest`): drive
+                //   `__k_perform(v)` through a synchronous `__trampoline`
+                //   at the call site so the continuation's side effects run
+                //   before control returns here and `k` is applied. Enables
+                //   multi-shot composition at the cost of O(depth) stack.
+                if fn_name == "resume" {
+                    let is_tail = matches!(&k, tsast::Expr::Ident(n) if n == "__k_handle");
+                    return lower_cps_values(
+                        &args,
+                        0,
+                        Vec::new(),
+                        handled_caps,
+                        ctx,
+                        &|ts_args| {
+                            let kperform_call = tsast::Expr::Call {
+                                callee: Box::new(tsast::Expr::Ident("__k_perform".to_owned())),
+                                args: ts_args,
+                            };
+                            let resume_value = if is_tail {
+                                kperform_call
+                            } else {
+                                tsast::Expr::Call {
+                                    callee: Box::new(tsast::Expr::Ident(
+                                        "__trampoline".to_owned(),
+                                    )),
+                                    args: vec![kperform_call],
+                                }
+                            };
+                            tsast::Expr::Call {
+                                callee: Box::new(k.clone()),
+                                args: vec![resume_value],
+                            }
+                        },
+                    );
+                }
                 if let Some(caps) = ctx.fn_caps.get(fn_name) {
                     if !caps.is_empty() {
                         let fn_name = fn_name.to_owned();
@@ -2638,22 +2966,77 @@ fn lower_cps_match_expr(
     })
 }
 
-/// Compile handler entries with resume support.
-/// Each entry gets an extra `__k` parameter.
-/// - Entries using `resume`: `(params, __k) => ((resume) => body)(() => __k)`
-/// - Tail-resumptive entries: `(params, __k) => __k(body_result)`
-/// Build a handler *factory*: `(__k_handle) => { <op>: (__caps, args..., __k_perform) => __thunk(() => body) }`.
+/// Emit a single handler method property:
+/// `op: (__caps, user_args..., __k_perform) => __thunk(() => body)` where
+/// `body` is CPS-lowered with `__k_handle` as the continuation and, if the
+/// source references `resume`, wrapped in `((resume) => body)(() => (v) =>
+/// __trampoline(__k_perform(v)))`.
 ///
-/// Calling convention (algebraic-effects, abort-by-default):
-/// - `__k_perform` (passed by the perform site): what `resume` invokes.
-/// - `__k_handle` (closed over from the factory's arg): where the handler's
-///   body value flows — i.e. the continuation of the surrounding `handle`.
-/// - Handler body is CPS-lowered with continuation = `__k_handle`, so its
-///   tail value *aborts* to the outer context. Explicit `resume(v)` drives
-///   `__k_perform(v)` to a concrete value via a nested `__trampoline`.
-///
-/// Multi-shot works because `__k_perform` is a plain JS closure — each call
-/// re-executes the captured continuation with a fresh value.
+/// Shared between `lower_handler_with_resume` (for user `handle` blocks)
+/// and `lower_impl_const` (for `impl Cap` / `impl T: Cap` default bundles
+/// that get installed at main entry as implicit handles).
+fn emit_handler_method_prop(
+    name: &str,
+    user_params: &[lir::Param],
+    body: &lir::Expr,
+    handled_caps: &[String],
+    ctx: &LoweringContext,
+) -> tsast::ObjectProp {
+    let k_handle = tsast::Expr::Ident("__k_handle".to_owned());
+    let body_lowered = lower_cps_expr(body, k_handle, handled_caps, ctx);
+
+    let mut params: Vec<tsast::Param> =
+        vec![tsast::Param::new(CAPS_PARAM).with_type(caps_type())];
+    params.extend(user_params.iter().map(|p| {
+        tsast::Param::new(&p.name).with_type(lower_type_expr_to_ts_type(&p.ty.value))
+    }));
+    params.push(tsast::Param::new("__k_perform").with_type(kont_type_any()));
+
+    // `resume(v)` is emitted directly by the CPS lowering — it doesn't use
+    // an IIFE-bound local `resume`. Each call site is classified by its
+    // continuation:
+    //
+    // - Tail (`resume(v)` is the body's last expression, CPS k = __k_handle):
+    //   emit as `__k_handle(__k_perform(v))`. The thunk returned by
+    //   `__k_perform(v)` bubbles up to the outer `__trampoline` for
+    //   iterative unwinding — stack-safe through any perform depth.
+    //
+    // - Non-tail (`let _ = resume(a); rest` or any composition): emit as
+    //   `__trampoline(__k_perform(v))` at the call site, driving the
+    //   continuation to a concrete value synchronously so side effects run.
+    //   Multi-shot works at the cost of O(call-depth) stack frames, which
+    //   is acceptable because non-tail resume is rare outside user-written
+    //   non-deterministic handlers.
+    //
+    // See `lower_cps_expr_inner` for the detection + emission logic.
+    let raw_body = body_lowered;
+
+    let inner_body = thunk_wrap(raw_body);
+    tsast::ObjectProp {
+        key: tsast::ObjectKey::Ident(name.to_owned()),
+        value: tsast::Expr::Arrow {
+            params,
+            return_type: Some(ret_type()),
+            body: Box::new(tsast::FunctionBody::Expr(Box::new(inner_body))),
+        },
+    }
+}
+
+/// Wrap a list of handler method properties in the `(__k_handle) => { ... }`
+/// factory. Calling `factory(__k_handle)` installs the bundle into a
+/// specific handle-expression's context.
+fn emit_handler_factory(methods: Vec<tsast::ObjectProp>) -> tsast::Expr {
+    tsast::Expr::Arrow {
+        params: vec![tsast::Param::new("__k_handle").with_type(kont_type_any())],
+        return_type: None,
+        body: Box::new(tsast::FunctionBody::Expr(Box::new(tsast::Expr::Object(
+            methods,
+        )))),
+    }
+}
+
+/// Build a handler factory for `handle Cap with bundle { ... } in body`.
+/// Delegates per-method emission to `emit_handler_method_prop`.
 fn lower_handler_with_resume(
     handler: &lir::Expr,
     handled_caps: &[String],
@@ -2665,77 +3048,16 @@ fn lower_handler_with_resume(
     let props: Vec<tsast::ObjectProp> = entries
         .iter()
         .map(|entry| {
-            // CPS-lower the body with continuation = __k_handle. Handler's
-            // tail value flows out of the whole handle expression.
-            let k_handle = tsast::Expr::Ident("__k_handle".to_owned());
-            let body_lowered =
-                lower_cps_expr(&entry.body, k_handle, handled_caps, ctx);
-
-            // Handler method params: `(__caps, user_args..., __k_perform)`.
-            let mut params: Vec<tsast::Param> = vec![tsast::Param::new(CAPS_PARAM)];
-            params.extend(entry.params.iter().map(|p| tsast::Param::new(&p.name)));
-            params.push(tsast::Param::new("__k_perform"));
-
-            let raw_body = if lir::expr_references_name(&entry.body, "resume") {
-                // In LIR, `resume(x)` lowers to `Apply(Force(Ident("resume")), x)`
-                // which emits as `resume()(x)` — a two-step force-then-apply.
-                // To match that shape, `resume` is a thunk that returns the
-                // actual resumer arrow; the resumer drives `__k_perform`
-                // through `__trampoline` for a concrete synchronous value.
-                // Each call to `resume()` returns a fresh inner arrow closing
-                // over the *same* `__k_perform` closure, so multi-shot
-                // resumption reinvokes the same continuation repeatedly.
-                let inner_resumer = tsast::Expr::Arrow {
-                    params: vec![tsast::Param::new("__v")],
-                    return_type: None,
-                    body: Box::new(tsast::FunctionBody::Expr(Box::new(tsast::Expr::Call {
-                        callee: Box::new(tsast::Expr::Ident("__trampoline".to_owned())),
-                        args: vec![tsast::Expr::Call {
-                            callee: Box::new(tsast::Expr::Ident("__k_perform".to_owned())),
-                            args: vec![tsast::Expr::Ident("__v".to_owned())],
-                        }],
-                    }))),
-                };
-                let resume_binding = tsast::Expr::Arrow {
-                    params: Vec::new(),
-                    return_type: None,
-                    body: Box::new(tsast::FunctionBody::Expr(Box::new(inner_resumer))),
-                };
-                iife("resume", body_lowered, resume_binding)
-            } else {
-                // No resume: body's value goes straight to __k_handle via the
-                // CPS-lowered body — no extra wrapping required.
-                body_lowered
-            };
-            // __thunk wrapper for trampoline bouncing.
-            let inner_body = tsast::Expr::Call {
-                callee: Box::new(tsast::Expr::Ident("__thunk".to_owned())),
-                args: vec![tsast::Expr::Arrow {
-                    params: vec![],
-                    return_type: None,
-                    body: Box::new(tsast::FunctionBody::Expr(Box::new(raw_body))),
-                }],
-            };
-
-            tsast::ObjectProp {
-                key: tsast::ObjectKey::Ident(entry.name.clone()),
-                value: tsast::Expr::Arrow {
-                    params,
-                    return_type: None,
-                    body: Box::new(tsast::FunctionBody::Expr(Box::new(inner_body))),
-                },
-            }
+            emit_handler_method_prop(
+                &entry.name,
+                &entry.params,
+                &entry.body,
+                handled_caps,
+                ctx,
+            )
         })
         .collect();
-
-    // Wrap the bundle in the factory that closes over __k_handle.
-    tsast::Expr::Arrow {
-        params: vec![tsast::Param::new("__k_handle")],
-        return_type: None,
-        body: Box::new(tsast::FunctionBody::Expr(Box::new(tsast::Expr::Object(
-            props,
-        )))),
-    }
+    emit_handler_factory(props)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

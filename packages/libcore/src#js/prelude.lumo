@@ -1,2 +1,9 @@
 #[extern = "string"] extern type String;
 #[extern = "number"] extern type Number;
+
+data Bool {
+  #[as__raw(true)]
+  .true,
+  #[as__raw(false)]
+  .false,
+}
