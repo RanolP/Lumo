@@ -25,10 +25,35 @@ window.MonacoEnvironment = {
 const LANGUAGE_ID = "lumo";
 const URI = "file:///main.lumo";
 const OUT_TS_URI = "file:///out.ts";
-const INITIAL_SOURCE = `use libstd.io.{IO};
+const INITIAL_SOURCE = `use libcore.prelude.{Bool, String};
+use libstd.io.{IO};
+
+// Multi-shot effect handler: \`Coin.flip()\` resumes once with true and
+// once with false. Three flips ⇒ 2³ = 8 enumerated branches, printed
+// in sequence.
+cap Coin {
+  fn flip(): Bool
+}
+
+impl Coin {
+  fn flip() = {
+    resume(Bool.true);
+    resume(Bool.false)
+  }
+}
+
+fn to_str(b: Bool): String = match b {
+  .true => "true",
+  .false => "false",
+}
 
 fn main() {
-  IO.println("Hello, World!")
+  let a = Coin.flip();
+  let b = Coin.flip();
+  let c = Coin.flip();
+  IO.println(to_str(a));
+  IO.println(to_str(b));
+  IO.println(to_str(c))
 }
 `;
 
