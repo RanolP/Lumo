@@ -538,10 +538,12 @@ pub fn flatten_iifes(program: &mut Program) {
 /// Try to decompose `expr` as an IIFE: `Call { callee: Arrow { params, Block(stmts) }, args }`.
 /// Returns `(params, body_stmts, args)` on success, consuming the pieces out of `expr`.
 ///
-/// Bails out when a param name appears free in any arg — flattening such an
-/// IIFE would lift `const x = <expr using x>` into the outer scope, which
-/// hits JS's TDZ. Example: `((__caps) => body)(Object.assign({}, __caps, ...))`
-/// — the inner `__caps` must refer to the outer binding.
+/// If a param name appears free in any arg, the param is alpha-renamed to a
+/// fresh name (and its references in the body are updated) before extraction.
+/// Without this, flattening would lift `const x = <expr using x>` into the
+/// outer scope and hit JS's TDZ. Example:
+/// `((__caps) => body)(Object.assign({}, __caps, ...))` — naively flattened
+/// would shadow the outer `__caps` with an uninitialized `const __caps`.
 fn take_iife(expr: &mut Expr) -> Option<(Vec<Param>, Vec<Stmt>, Vec<Expr>)> {
     let Expr::Call { callee, args } = expr else {
         return None;
@@ -555,17 +557,133 @@ fn take_iife(expr: &mut Expr) -> Option<(Vec<Param>, Vec<Stmt>, Vec<Expr>)> {
     if params.len() != args.len() {
         return None;
     }
-    for param in params.iter() {
-        for arg in args.iter() {
-            if expr_references_name(arg, &param.name) {
-                return None;
-            }
+    for param in params.iter_mut() {
+        let conflicts = args.iter().any(|a| expr_references_name(a, &param.name));
+        if !conflicts {
+            continue;
+        }
+        let fresh = fresh_iife_param(&param.name);
+        let old = std::mem::replace(&mut param.name, fresh.clone());
+        for stmt in block.stmts.iter_mut() {
+            rename_free_in_stmt(stmt, &old, &fresh);
         }
     }
     let params = std::mem::take(params);
     let body_stmts = std::mem::take(&mut block.stmts);
     let args = std::mem::take(args);
     Some((params, body_stmts, args))
+}
+
+fn fresh_iife_param(base: &str) -> String {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{base}__iife_{n}")
+}
+
+/// Rename every free reference to `old` in `stmt` to `new`. A reference is
+/// "free" if it is not shadowed by a nested binding (Arrow param, Function
+/// param, or same-block `let`/`const` with the same name).
+fn rename_free_in_stmt(stmt: &mut Stmt, old: &str, new: &str) {
+    match stmt {
+        Stmt::Expr(e) | Stmt::Return(Some(e)) => rename_free_in_expr(e, old, new),
+        Stmt::Const(decl) => rename_free_in_expr(&mut decl.init, old, new),
+        Stmt::Let { init: Some(init), .. } => rename_free_in_expr(init, old, new),
+        Stmt::Assign { name, value } => {
+            if name == old {
+                *name = new.to_owned();
+            }
+            rename_free_in_expr(value, old, new);
+        }
+        Stmt::If { cond, then_branch, else_branch } => {
+            rename_free_in_expr(cond, old, new);
+            rename_free_in_block(then_branch, old, new);
+            if let Some(eb) = else_branch {
+                rename_free_in_block(eb, old, new);
+            }
+        }
+        Stmt::Block(b) => rename_free_in_block(b, old, new),
+        Stmt::Function(f) => {
+            if f.params.iter().any(|p| p.name == old) {
+                return;
+            }
+            match &mut f.body {
+                FunctionBody::Expr(e) => rename_free_in_expr(e, old, new),
+                FunctionBody::Block(b) => rename_free_in_block(b, old, new),
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Walk `block`'s statements in order; stop renaming once a same-block
+/// `let`/`const` binds `old` (it shadows from declaration onward).
+fn rename_free_in_block(block: &mut Block, old: &str, new: &str) {
+    for stmt in block.stmts.iter_mut() {
+        rename_free_in_stmt(stmt, old, new);
+        let shadowed = match stmt {
+            Stmt::Const(decl) => decl.name == old,
+            Stmt::Let { name, .. } => name == old,
+            _ => false,
+        };
+        if shadowed {
+            return;
+        }
+    }
+}
+
+fn rename_free_in_expr(expr: &mut Expr, old: &str, new: &str) {
+    match expr {
+        Expr::Ident(name) => {
+            if name == old {
+                *name = new.to_owned();
+            }
+        }
+        Expr::Call { callee, args } => {
+            rename_free_in_expr(callee, old, new);
+            for a in args {
+                rename_free_in_expr(a, old, new);
+            }
+        }
+        Expr::Member { object, .. } => rename_free_in_expr(object, old, new),
+        Expr::Index { object, index } => {
+            rename_free_in_expr(object, old, new);
+            rename_free_in_expr(index, old, new);
+        }
+        Expr::Unary { expr: e, .. } | Expr::Void(e) => rename_free_in_expr(e, old, new),
+        Expr::Binary { left, right, .. } => {
+            rename_free_in_expr(left, old, new);
+            rename_free_in_expr(right, old, new);
+        }
+        Expr::Array(items) => {
+            for item in items {
+                rename_free_in_expr(item, old, new);
+            }
+        }
+        Expr::Object(props) => {
+            for prop in props {
+                if let ObjectKey::Computed(e) = &mut prop.key {
+                    rename_free_in_expr(e, old, new);
+                }
+                rename_free_in_expr(&mut prop.value, old, new);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            rename_free_in_expr(cond, old, new);
+            rename_free_in_expr(then_expr, old, new);
+            rename_free_in_expr(else_expr, old, new);
+        }
+        Expr::Arrow { params, body, .. } => {
+            if params.iter().any(|p| p.name == old) {
+                return;
+            }
+            match body.as_mut() {
+                FunctionBody::Expr(e) => rename_free_in_expr(e, old, new),
+                FunctionBody::Block(b) => rename_free_in_block(b, old, new),
+            }
+        }
+        Expr::String(_) | Expr::Number(_) | Expr::Bool(_) | Expr::Null | Expr::Undefined => {}
+    }
 }
 
 /// Returns `true` if `expr` references the given identifier as a free name.
