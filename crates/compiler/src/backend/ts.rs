@@ -2352,11 +2352,17 @@ fn lower_match_decision(
         MatchDecision::Leaf { bindings, body } => lower_body(&body, bindings),
         MatchDecision::Switch {
             occurrence,
-            cases,
+            mut cases,
             default,
         } => {
-            let mut folded =
-                lower_match_decision(error_value, *default, variant_as_raw, lower_body);
+            // When default is Fail (exhaustive match), use the last case as the unconditional
+            // else branch — TypeScript's type system guarantees no other value is possible.
+            let mut folded = if matches!(*default, MatchDecision::Fail) && !cases.is_empty() {
+                let last = cases.pop().unwrap();
+                lower_match_decision(error_value, last.subtree, variant_as_raw, lower_body)
+            } else {
+                lower_match_decision(error_value, *default, variant_as_raw, lower_body)
+            };
             for case in cases.into_iter().rev() {
                 // `#[as__raw]` variant: compare with the raw JS literal
                 // (`=== true` / `=== false`) instead of the tagged form.

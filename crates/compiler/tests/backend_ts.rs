@@ -108,8 +108,9 @@ fn ts_backend_match_checks_variant_tag_without_dot() {
         "data Bool { .true, .false } fn not(x: Bool): Bool { match x { .true => Bool.false(), .false => Bool.true() } }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
+    // exhaustive match: last variant emitted as unconditional else, no condition check for "false"
     assert!(js.contains("x[LUMO_TAG] === \"true\""), "{js}");
-    assert!(js.contains("x[LUMO_TAG] === \"false\""), "{js}");
+    assert!(!js.contains("x[LUMO_TAG] === \"false\""), "{js}");
 }
 
 #[test]
@@ -122,7 +123,8 @@ fn ts_backend_lowers_nested_match_patterns_as_tree() {
     assert!(js.contains("n.args[0][LUMO_TAG] === \"succ\""), "{js}");
     assert!(js.contains("return m;"), "{js}");
     assert!(js.contains("const m = n.args[0].args[0];"), "{js}");
-    assert!(js.contains("n.args[0][LUMO_TAG] === \"zero\""), "{js}");
+    // exhaustive match: .zero is the last case, emitted as unconditional else
+    assert!(!js.contains("n.args[0][LUMO_TAG] === \"zero\""), "{js}");
 }
 
 #[test]
