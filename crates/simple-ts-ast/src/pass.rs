@@ -365,13 +365,28 @@ fn count_refs_expr(expr: &Expr, name: &str) -> usize {
             }
             match body.as_ref() {
                 FunctionBody::Expr(e) => count_refs_expr(e, name),
-                FunctionBody::Block(b) => {
-                    b.stmts.iter().map(|s| count_refs_stmt(s, name)).sum()
-                }
+                FunctionBody::Block(b) => count_refs_stmts(&b.stmts, name),
             }
         }
         _ => 0,
     }
+}
+
+fn shadows_name(stmt: &Stmt, name: &str) -> bool {
+    match stmt {
+        Stmt::Const(d) => d.name == name,
+        Stmt::Let { name: n, .. } => n == name,
+        _ => false,
+    }
+}
+
+fn count_refs_stmts(stmts: &[Stmt], name: &str) -> usize {
+    let mut total = 0;
+    for s in stmts {
+        if shadows_name(s, name) { break; }
+        total += count_refs_stmt(s, name);
+    }
+    total
 }
 
 fn count_refs_stmt(stmt: &Stmt, name: &str) -> usize {
@@ -388,12 +403,10 @@ fn count_refs_stmt(stmt: &Stmt, name: &str) -> usize {
         Stmt::Assign { value, .. } => count_refs_expr(value, name),
         Stmt::If { cond, then_branch, else_branch } => {
             count_refs_expr(cond, name)
-                + then_branch.stmts.iter().map(|s| count_refs_stmt(s, name)).sum::<usize>()
-                + else_branch.as_ref().map_or(0, |eb| {
-                    eb.stmts.iter().map(|s| count_refs_stmt(s, name)).sum::<usize>()
-                })
+                + count_refs_stmts(&then_branch.stmts, name)
+                + else_branch.as_ref().map_or(0, |eb| count_refs_stmts(&eb.stmts, name))
         }
-        Stmt::Block(b) => b.stmts.iter().map(|s| count_refs_stmt(s, name)).sum(),
+        Stmt::Block(b) => count_refs_stmts(&b.stmts, name),
         _ => 0,
     }
 }
@@ -432,6 +445,15 @@ fn count_top_refs_expr(expr: &Expr, name: &str) -> usize {
     }
 }
 
+fn count_top_refs_stmts(stmts: &[Stmt], name: &str) -> usize {
+    let mut total = 0;
+    for s in stmts {
+        if shadows_name(s, name) { break; }
+        total += count_top_refs_stmt(s, name);
+    }
+    total
+}
+
 fn count_top_refs_stmt(stmt: &Stmt, name: &str) -> usize {
     match stmt {
         Stmt::Expr(e) | Stmt::Return(Some(e)) => count_top_refs_expr(e, name),
@@ -446,12 +468,10 @@ fn count_top_refs_stmt(stmt: &Stmt, name: &str) -> usize {
         Stmt::Assign { value, .. } => count_top_refs_expr(value, name),
         Stmt::If { cond, then_branch, else_branch } => {
             count_top_refs_expr(cond, name)
-                + then_branch.stmts.iter().map(|s| count_top_refs_stmt(s, name)).sum::<usize>()
-                + else_branch.as_ref().map_or(0, |eb| {
-                    eb.stmts.iter().map(|s| count_top_refs_stmt(s, name)).sum::<usize>()
-                })
+                + count_top_refs_stmts(&then_branch.stmts, name)
+                + else_branch.as_ref().map_or(0, |eb| count_top_refs_stmts(&eb.stmts, name))
         }
-        Stmt::Block(b) => b.stmts.iter().map(|s| count_top_refs_stmt(s, name)).sum(),
+        Stmt::Block(b) => count_top_refs_stmts(&b.stmts, name),
         _ => 0,
     }
 }
@@ -517,18 +537,19 @@ fn subst_first_expr(expr: &mut Expr, name: &str, replacement: &Expr) -> bool {
             }
             match body.as_mut() {
                 FunctionBody::Expr(e) => subst_first_expr(e, name, replacement),
-                FunctionBody::Block(b) => {
-                    for s in &mut b.stmts {
-                        if subst_first_stmt(s, name, replacement) {
-                            return true;
-                        }
-                    }
-                    false
-                }
+                FunctionBody::Block(b) => subst_first_stmts(&mut b.stmts, name, replacement),
             }
         }
         _ => false,
     }
+}
+
+fn subst_first_stmts(stmts: &mut [Stmt], name: &str, replacement: &Expr) -> bool {
+    for s in stmts.iter_mut() {
+        if shadows_name(s, name) { break; }
+        if subst_first_stmt(s, name, replacement) { return true; }
+    }
+    false
 }
 
 fn subst_first_stmt(stmt: &mut Stmt, name: &str, replacement: &Expr) -> bool {
@@ -551,28 +572,17 @@ fn subst_first_stmt(stmt: &mut Stmt, name: &str, replacement: &Expr) -> bool {
             if subst_first_expr(cond, name, replacement) {
                 return true;
             }
-            for s in &mut then_branch.stmts {
-                if subst_first_stmt(s, name, replacement) {
-                    return true;
-                }
+            if subst_first_stmts(&mut then_branch.stmts, name, replacement) {
+                return true;
             }
             if let Some(eb) = else_branch {
-                for s in &mut eb.stmts {
-                    if subst_first_stmt(s, name, replacement) {
-                        return true;
-                    }
-                }
-            }
-            false
-        }
-        Stmt::Block(b) => {
-            for s in &mut b.stmts {
-                if subst_first_stmt(s, name, replacement) {
+                if subst_first_stmts(&mut eb.stmts, name, replacement) {
                     return true;
                 }
             }
             false
         }
+        Stmt::Block(b) => subst_first_stmts(&mut b.stmts, name, replacement),
         _ => false,
     }
 }
