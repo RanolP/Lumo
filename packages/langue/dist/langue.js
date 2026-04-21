@@ -72,7 +72,7 @@ export function collect_tokens_from_body(__caps, body, kws, syms, __k) {
 
 export function collect_alt_token(__caps, name, rest, kws, syms, __k) {
   return __thunk(() => {
-    if ((has_alpha__lto_090deca7(name, 0) === true)) {
+    if (has_alpha__lto_090deca7(name, 0)) {
       return collect_tokens_from_alts__lto_9309ae26(__caps, rest, List["cons"](name, kws), syms, __k);
     } else {
       return collect_tokens_from_alts__lto_9309ae26(__caps, rest, kws, List["cons"](name, syms), __k);
@@ -127,7 +127,7 @@ export function dedupe_strings_acc(__caps, xs, acc, __k) {
     } else {
       const x = xs.args[0];
       const rest = xs.args[1];
-      if ((list_contains_string__lto_3890158f(acc, x) === true)) {
+      if (list_contains_string__lto_3890158f(acc, x)) {
         return dedupe_strings_acc(__caps, rest, acc, __k);
       } else {
         return dedupe_strings_acc(__caps, rest, List["cons"](x, acc), __k);
@@ -159,7 +159,7 @@ export function insert_sorted(__caps, s, xs, __k) {
     } else {
       const x = xs.args[0];
       return string_lt(__caps, s, x, (__cps_v_6) => {
-        if ((__cps_v_6 === true)) {
+        if (__cps_v_6) {
           return __k(List["cons"](s, xs));
         } else {
           return insert_sorted(__caps, s, xs.args[1], (__cps_v_5) => {
@@ -192,7 +192,7 @@ export function emit_ast_rules(__caps, s, token_defs, rules, __k) {
         return emit_struct_node__lto_1ba4622a(__caps, s, name, __match_18.args[0], token_defs, __k_14);
       } else {
         const alts = __match_18.args[0];
-        if ((is_token_only_alternatives__lto_9309ae26(alts) === true)) {
+        if (is_token_only_alternatives__lto_9309ae26(alts)) {
           return emit_token_wrapper_node__lto_1ba4622a(__caps, s, name, __k_14);
         } else {
           return __k_14(emit_enum_node__lto_1ba4622a(s, name, alts));
@@ -236,7 +236,7 @@ export function emit_single_accessor(__caps, s, label, elem, token_defs, __k) {
       return emit_token_accessor__lto_1ba4622a(__caps, s, label, elem.args[0], false, __k);
     } else if ((elem[LUMO_TAG] === "node")) {
       const name = elem.args[0].args[0];
-      if ((list_contains_string__lto_3890158f(token_defs, name) === true)) {
+      if (list_contains_string__lto_3890158f(token_defs, name)) {
         return emit_token_accessor__lto_1ba4622a(__caps, s, label, TokenRef["named"](name), false, __k);
       } else {
         return __k(emit_node_accessor__lto_1ba4622a(s, label, name, false));
@@ -261,7 +261,7 @@ export function emit_single_accessor_repeated(__caps, s, label, elem, token_defs
       return emit_token_accessor__lto_1ba4622a(__caps, s, label, elem.args[0], true, __k);
     } else if ((elem[LUMO_TAG] === "node")) {
       const name = elem.args[0].args[0];
-      if ((list_contains_string__lto_3890158f(token_defs, name) === true)) {
+      if (list_contains_string__lto_3890158f(token_defs, name)) {
         return emit_token_accessor__lto_1ba4622a(__caps, s, label, TokenRef["named"](name), true, __k);
       } else {
         return __k(emit_node_accessor__lto_1ba4622a(s, label, name, true));
@@ -381,9 +381,9 @@ export function state_pos(st) {
 
 export function scan_ident_rest(__caps, st, __k) {
   return __thunk(() => {
-    if ((state_eof__lto_9309ae26(st) === true)) {
+    if (state_eof__lto_9309ae26(st)) {
       return __k(st);
-    } else if ((is_ident_continue__lto_3890158f(state_peek__lto_9309ae26(st)) === true)) {
+    } else if (is_ident_continue__lto_3890158f(state_peek__lto_9309ae26(st))) {
       return scan_ident_rest(__caps, state_advance__lto_92991de6(st, 1), __k);
     } else {
       return __k(st);
@@ -399,7 +399,7 @@ export function peek_char(__caps, st, __k) {
 
 export function classify_literal(__caps, text, __k) {
   return __thunk(() => {
-    if ((has_alpha__lto_090deca7(text, 0) === true)) {
+    if (has_alpha__lto_090deca7(text, 0)) {
       return __k(TokenRef["keyword"](text));
     } else {
       return __k(TokenRef["symbol"](text));
@@ -457,11 +457,11 @@ export function parse_sequence(__caps, st, __k) {
 export function parse_seq_elements(__caps, st, acc, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
-    if ((state_eof__lto_9309ae26(st2) === true)) {
+    if (state_eof__lto_9309ae26(st2)) {
       return __k(ParseResult["ok"](RuleBody["sequence"](list_reverse_elem(acc)), st2));
     } else {
       return is_seq_terminator__lto_3890158f(__caps, st2, (__cps_v_10) => {
-        if ((__cps_v_10 === true)) {
+        if (__cps_v_10) {
           return __k(ParseResult["ok"](RuleBody["sequence"](list_reverse_elem(acc)), st2));
         } else {
           return parse_element(__caps, st2, (__cps_v_9) => {
@@ -545,7 +545,7 @@ export function resolve_element(__caps, token_defs, elem, __k) {
       return __k(elem);
     } else if ((elem[LUMO_TAG] === "node")) {
       const name = elem.args[0].args[0];
-      if ((list_contains_string__lto_3890158f(token_defs, name) === true)) {
+      if (list_contains_string__lto_3890158f(token_defs, name)) {
         return __k(Element["token"](TokenRef["named"](name)));
       } else {
         return __k(elem);
@@ -816,7 +816,7 @@ export const __impl_Bool_Not = (__k_handle) => {
   return { not: (__caps, self, __k_perform) => {
     return __thunk(() => {
       return __k_handle(__k_perform(((__match_57) => {
-        if ((__match_57 === true)) {
+        if (__match_57) {
           return false;
         } else {
           return true;
@@ -964,9 +964,9 @@ export const NumOps = (__k_handle) => {
   }, cmp: (__caps, a, b, __k_perform) => {
     return __thunk(() => {
       return __k_handle(__k_perform(((__match_58) => {
-        if ((__match_58 === true)) {
+        if (__match_58) {
           return Ordering["less"];
-        } else if (((a === b) === true)) {
+        } else if ((a === b)) {
           return Ordering["equal"];
         } else {
           return Ordering["greater"];
@@ -1050,8 +1050,8 @@ export const Process = (__k_handle) => {
 
 export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
   const __lto_b_3 = String.len(name);
-  const __match_62 = (((i < __lto_b_3) === true) ? Ordering["less"] : ((__match_61) => {
-    if ((__match_61 === true)) {
+  const __match_62 = ((i < __lto_b_3) ? Ordering["less"] : ((__match_61) => {
+    if (__match_61) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -1059,14 +1059,14 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
   })(((a, b) => {
     return (a === b);
   })(i, __lto_b_3)));
-  if ((((__match_62[LUMO_TAG] === "less") ? false : ((__match_62[LUMO_TAG] === "equal") ? true : true)) === true)) {
+  if (((__match_62[LUMO_TAG] === "less") ? false : ((__match_62[LUMO_TAG] === "equal") ? true : true))) {
     return acc;
   } else {
     const c = String.char_at(name, i);
     const code = String.char_code_at(c, 0);
     const __lto_b_7 = 65;
-    const __match_87 = (((code < __lto_b_7) === true) ? Ordering["less"] : ((__match_86) => {
-      if ((__match_86 === true)) {
+    const __match_87 = ((code < __lto_b_7) ? Ordering["less"] : ((__match_86) => {
+      if (__match_86) {
         return Ordering["equal"];
       } else {
         return Ordering["greater"];
@@ -1074,7 +1074,7 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
     })(((a, b) => {
       return (a === b);
     })(code, __lto_b_7)));
-    if ((((((__match_87[LUMO_TAG] === "less") ? false : ((__match_87[LUMO_TAG] === "equal") ? true : true)) === true) ? ((__match_91) => {
+    if ((((__match_87[LUMO_TAG] === "less") ? false : ((__match_87[LUMO_TAG] === "equal") ? true : true)) ? ((__match_91) => {
       if ((__match_91[LUMO_TAG] === "less")) {
         return true;
       } else if ((__match_91[LUMO_TAG] === "equal")) {
@@ -1085,23 +1085,23 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
     })(((__lto_self_8) => {
       const __lto_other_9 = 90;
       const __match_89 = (__lto_self_8 < __lto_other_9);
-      if ((__match_89 === true)) {
+      if (__match_89) {
         return Ordering["less"];
       } else {
         const __match_90 = (__lto_self_8 === __lto_other_9);
-        if ((__match_90 === true)) {
+        if (__match_90) {
           return Ordering["equal"];
         } else {
           return Ordering["greater"];
         }
       }
-    })(code)) : false) === true)) {
+    })(code)) : false)) {
       let __match_68;
       let __match_67;
       const __lto_a_14 = 0;
-      if (((__lto_a_14 < i) === true)) {
+      if ((__lto_a_14 < i)) {
         __match_67 = Ordering["less"];
-      } else if (((__lto_a_14 === i) === true)) {
+      } else if ((__lto_a_14 === i)) {
         __match_67 = Ordering["equal"];
       } else {
         __match_67 = Ordering["greater"];
@@ -1113,13 +1113,13 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
       } else {
         __match_68 = false;
       }
-      if ((__match_68 === true)) {
+      if (__match_68) {
         const prev_code = String.char_code_at(String.char_at(name, ((__lto_self_16) => {
           return (__lto_self_16 - 1);
         })(i)), 0);
         const __lto_b_23 = 97;
-        const __match_80 = (((prev_code < __lto_b_23) === true) ? Ordering["less"] : ((__match_79) => {
-          if ((__match_79 === true)) {
+        const __match_80 = ((prev_code < __lto_b_23) ? Ordering["less"] : ((__match_79) => {
+          if (__match_79) {
             return Ordering["equal"];
           } else {
             return Ordering["greater"];
@@ -1128,8 +1128,8 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
           return (a === b);
         })(prev_code, __lto_b_23)));
         const __lto_b_31 = 48;
-        const __match_73 = (((prev_code < __lto_b_31) === true) ? Ordering["less"] : ((__match_72) => {
-          if ((__match_72 === true)) {
+        const __match_73 = ((prev_code < __lto_b_31) ? Ordering["less"] : ((__match_72) => {
+          if (__match_72) {
             return Ordering["equal"];
           } else {
             return Ordering["greater"];
@@ -1137,7 +1137,7 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
         })(((a, b) => {
           return (a === b);
         })(prev_code, __lto_b_31)));
-        if ((((((__match_80[LUMO_TAG] === "less") ? false : ((__match_80[LUMO_TAG] === "equal") ? true : true)) === true) ? ((__match_84) => {
+        if ((((__match_80[LUMO_TAG] === "less") ? false : ((__match_80[LUMO_TAG] === "equal") ? true : true)) ? ((__match_84) => {
           if ((__match_84[LUMO_TAG] === "less")) {
             return true;
           } else if ((__match_84[LUMO_TAG] === "equal")) {
@@ -1148,17 +1148,17 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
         })(((__lto_self_24) => {
           const __lto_other_25 = 122;
           const __match_82 = (__lto_self_24 < __lto_other_25);
-          if ((__match_82 === true)) {
+          if (__match_82) {
             return Ordering["less"];
           } else {
             const __match_83 = (__lto_self_24 === __lto_other_25);
-            if ((__match_83 === true)) {
+            if (__match_83) {
               return Ordering["equal"];
             } else {
               return Ordering["greater"];
             }
           }
-        })(prev_code)) : false) === true)) {
+        })(prev_code)) : false)) {
           return to_screaming_snake_loop__lto_73ce111b(name, ((__lto_self_36) => {
             return (__lto_self_36 + 1);
           })(i), ((__lto_self_40) => {
@@ -1166,7 +1166,7 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
           })(((__lto_self_42) => {
             return (__lto_self_42 + "_");
           })(acc)));
-        } else if ((((((__match_73[LUMO_TAG] === "less") ? false : ((__match_73[LUMO_TAG] === "equal") ? true : true)) === true) ? ((__match_77) => {
+        } else if ((((__match_73[LUMO_TAG] === "less") ? false : ((__match_73[LUMO_TAG] === "equal") ? true : true)) ? ((__match_77) => {
           if ((__match_77[LUMO_TAG] === "less")) {
             return true;
           } else if ((__match_77[LUMO_TAG] === "equal")) {
@@ -1177,17 +1177,17 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
         })(((__lto_self_32) => {
           const __lto_other_33 = 57;
           const __match_75 = (__lto_self_32 < __lto_other_33);
-          if ((__match_75 === true)) {
+          if (__match_75) {
             return Ordering["less"];
           } else {
             const __match_76 = (__lto_self_32 === __lto_other_33);
-            if ((__match_76 === true)) {
+            if (__match_76) {
               return Ordering["equal"];
             } else {
               return Ordering["greater"];
             }
           }
-        })(prev_code)) : false) === true)) {
+        })(prev_code)) : false)) {
           return to_screaming_snake_loop__lto_73ce111b(name, ((__lto_self_48) => {
             return (__lto_self_48 + 1);
           })(i), ((__lto_self_52) => {
@@ -1222,8 +1222,8 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
 export function to_upper_char__lto_f0f5f7cb(c) {
   const code = String.char_code_at(c, 0);
   const __lto_b_87 = 97;
-  const __match_94 = (((code < __lto_b_87) === true) ? Ordering["less"] : ((__match_93) => {
-    if ((__match_93 === true)) {
+  const __match_94 = ((code < __lto_b_87) ? Ordering["less"] : ((__match_93) => {
+    if (__match_93) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -1231,13 +1231,13 @@ export function to_upper_char__lto_f0f5f7cb(c) {
   })(((a, b) => {
     return (a === b);
   })(code, __lto_b_87)));
-  if ((((__match_94[LUMO_TAG] === "less") ? false : ((__match_94[LUMO_TAG] === "equal") ? true : true)) === true)) {
+  if (((__match_94[LUMO_TAG] === "less") ? false : ((__match_94[LUMO_TAG] === "equal") ? true : true))) {
     let __match_99;
     let __match_98;
     const __lto_b_91 = 122;
-    if (((code < __lto_b_91) === true)) {
+    if ((code < __lto_b_91)) {
       __match_98 = Ordering["less"];
-    } else if (((code === __lto_b_91) === true)) {
+    } else if ((code === __lto_b_91)) {
       __match_98 = Ordering["equal"];
     } else {
       __match_98 = Ordering["greater"];
@@ -1249,7 +1249,7 @@ export function to_upper_char__lto_f0f5f7cb(c) {
     } else {
       __match_99 = false;
     }
-    if ((__match_99 === true)) {
+    if (__match_99) {
       return fromCharCode((code - 32));
     } else {
       return c;
@@ -1269,8 +1269,8 @@ export function keyword_variant__lto_1ba4622a(__caps, kw, __k) {
 
 export function to_upper_string_loop__lto_1fab3ad0(s, i, acc) {
   const __lto_b_104 = String.len(s);
-  const __match_102 = (((i < __lto_b_104) === true) ? Ordering["less"] : ((__match_101) => {
-    if ((__match_101 === true)) {
+  const __match_102 = ((i < __lto_b_104) ? Ordering["less"] : ((__match_101) => {
+    if (__match_101) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -1278,7 +1278,7 @@ export function to_upper_string_loop__lto_1fab3ad0(s, i, acc) {
   })(((a, b) => {
     return (a === b);
   })(i, __lto_b_104)));
-  if ((((__match_102[LUMO_TAG] === "less") ? false : ((__match_102[LUMO_TAG] === "equal") ? true : true)) === true)) {
+  if (((__match_102[LUMO_TAG] === "less") ? false : ((__match_102[LUMO_TAG] === "equal") ? true : true))) {
     return acc;
   } else {
     return to_upper_string_loop__lto_1fab3ad0(s, ((__lto_self_105) => {
@@ -1290,65 +1290,65 @@ export function to_upper_string_loop__lto_1fab3ad0(s, i, acc) {
 }
 
 export function symbol_variant__lto_8227044e(sym) {
-  if (((sym === "#") === true)) {
+  if ((sym === "#")) {
     return "HASH";
-  } else if (((sym === "(") === true)) {
+  } else if ((sym === "(")) {
     return "L_PAREN";
-  } else if (((sym === ")") === true)) {
+  } else if ((sym === ")")) {
     return "R_PAREN";
-  } else if (((sym === "[") === true)) {
+  } else if ((sym === "[")) {
     return "L_BRACKET";
-  } else if (((sym === "]") === true)) {
+  } else if ((sym === "]")) {
     return "R_BRACKET";
-  } else if (((sym === "{") === true)) {
+  } else if ((sym === "{")) {
     return "L_BRACE";
-  } else if (((sym === "}") === true)) {
+  } else if ((sym === "}")) {
     return "R_BRACE";
-  } else if (((sym === ";") === true)) {
+  } else if ((sym === ";")) {
     return "SEMICOLON";
-  } else if (((sym === ":") === true)) {
+  } else if ((sym === ":")) {
     return "COLON";
-  } else if (((sym === ",") === true)) {
+  } else if ((sym === ",")) {
     return "COMMA";
-  } else if (((sym === "=") === true)) {
+  } else if ((sym === "=")) {
     return "EQUALS";
-  } else if (((sym === ":=") === true)) {
+  } else if ((sym === ":=")) {
     return "COLON_EQ";
-  } else if (((sym === "=>") === true)) {
+  } else if ((sym === "=>")) {
     return "FAT_ARROW";
-  } else if (((sym === "->") === true)) {
+  } else if ((sym === "->")) {
     return "ARROW";
-  } else if (((sym === ".") === true)) {
+  } else if ((sym === ".")) {
     return "DOT";
-  } else if (((sym === "+") === true)) {
+  } else if ((sym === "+")) {
     return "PLUS";
-  } else if (((sym === "-") === true)) {
+  } else if ((sym === "-")) {
     return "MINUS";
-  } else if (((sym === "*") === true)) {
+  } else if ((sym === "*")) {
     return "STAR";
-  } else if (((sym === "/") === true)) {
+  } else if ((sym === "/")) {
     return "SLASH";
-  } else if (((sym === "%") === true)) {
+  } else if ((sym === "%")) {
     return "PERCENT";
-  } else if (((sym === "!") === true)) {
+  } else if ((sym === "!")) {
     return "BANG";
-  } else if (((sym === "<") === true)) {
+  } else if ((sym === "<")) {
     return "LT";
-  } else if (((sym === ">") === true)) {
+  } else if ((sym === ">")) {
     return "GT";
-  } else if (((sym === "<=") === true)) {
+  } else if ((sym === "<=")) {
     return "LT_EQ";
-  } else if (((sym === ">=") === true)) {
+  } else if ((sym === ">=")) {
     return "GT_EQ";
-  } else if (((sym === "==") === true)) {
+  } else if ((sym === "==")) {
     return "EQ_EQ";
-  } else if (((sym === "!=") === true)) {
+  } else if ((sym === "!=")) {
     return "BANG_EQ";
-  } else if (((sym === "&&") === true)) {
+  } else if ((sym === "&&")) {
     return "AMP_AMP";
-  } else if (((sym === "||") === true)) {
+  } else if ((sym === "||")) {
     return "PIPE_PIPE";
-  } else if (((sym === "_") === true)) {
+  } else if ((sym === "_")) {
     return "UNDERSCORE";
   } else {
     return ("SYM_" + sym);
@@ -1364,8 +1364,8 @@ export function collect_tokens_from_alts__lto_9309ae26(__caps, alts, kws, syms, 
       const name = alts.args[0].args[0];
       return String.char_code_at(__caps, name, 0, (code) => {
         const __lto_b_240 = 65;
-        const __match_143 = (((code < __lto_b_240) === true) ? Ordering["less"] : ((__match_142) => {
-          if ((__match_142 === true)) {
+        const __match_143 = ((code < __lto_b_240) ? Ordering["less"] : ((__match_142) => {
+          if (__match_142) {
             return Ordering["equal"];
           } else {
             return Ordering["greater"];
@@ -1373,10 +1373,10 @@ export function collect_tokens_from_alts__lto_9309ae26(__caps, alts, kws, syms, 
         })(((a, b) => {
           return (a === b);
         })(code, __lto_b_240)));
-        if ((((__match_143[LUMO_TAG] === "less") ? false : ((__match_143[LUMO_TAG] === "equal") ? true : true)) === true)) {
+        if (((__match_143[LUMO_TAG] === "less") ? false : ((__match_143[LUMO_TAG] === "equal") ? true : true))) {
           const __lto_b_244 = 90;
-          const __match_140 = (((code < __lto_b_244) === true) ? Ordering["less"] : ((__match_139) => {
-            if ((__match_139 === true)) {
+          const __match_140 = ((code < __lto_b_244) ? Ordering["less"] : ((__match_139) => {
+            if (__match_139) {
               return Ordering["equal"];
             } else {
               return Ordering["greater"];
@@ -1384,7 +1384,7 @@ export function collect_tokens_from_alts__lto_9309ae26(__caps, alts, kws, syms, 
           })(((a, b) => {
             return (a === b);
           })(code, __lto_b_244)));
-          if ((((__match_140[LUMO_TAG] === "less") ? true : ((__match_140[LUMO_TAG] === "equal") ? true : false)) === true)) {
+          if (((__match_140[LUMO_TAG] === "less") ? true : ((__match_140[LUMO_TAG] === "equal") ? true : false))) {
             return collect_tokens_from_alts__lto_9309ae26(__caps, rest, kws, syms, __k);
           } else {
             return collect_alt_token(__caps, name, rest, kws, syms, __k);
@@ -1399,8 +1399,8 @@ export function collect_tokens_from_alts__lto_9309ae26(__caps, alts, kws, syms, 
 
 export function string_lt_loop__lto_090deca7(a, b, i) {
   const __lto_b_248 = String.len(a);
-  const __match_146 = (((i < __lto_b_248) === true) ? Ordering["less"] : ((__match_145) => {
-    if ((__match_145 === true)) {
+  const __match_146 = ((i < __lto_b_248) ? Ordering["less"] : ((__match_145) => {
+    if (__match_145) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -1408,13 +1408,13 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
   })(((a, b) => {
     return (a === b);
   })(i, __lto_b_248)));
-  if ((((__match_146[LUMO_TAG] === "less") ? false : ((__match_146[LUMO_TAG] === "equal") ? true : true)) === true)) {
+  if (((__match_146[LUMO_TAG] === "less") ? false : ((__match_146[LUMO_TAG] === "equal") ? true : true))) {
     let __match_163;
     let __match_162;
     const __lto_b_252 = String.len(b);
-    if (((i < __lto_b_252) === true)) {
+    if ((i < __lto_b_252)) {
       __match_162 = Ordering["less"];
-    } else if (((i === __lto_b_252) === true)) {
+    } else if ((i === __lto_b_252)) {
       __match_162 = Ordering["equal"];
     } else {
       __match_162 = Ordering["greater"];
@@ -1426,7 +1426,7 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
     } else {
       __match_163 = true;
     }
-    if ((__match_163 === true)) {
+    if (__match_163) {
       return false;
     } else {
       return true;
@@ -1435,9 +1435,9 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
     let __match_151;
     let __match_150;
     const __lto_b_256 = String.len(b);
-    if (((i < __lto_b_256) === true)) {
+    if ((i < __lto_b_256)) {
       __match_150 = Ordering["less"];
-    } else if (((i === __lto_b_256) === true)) {
+    } else if ((i === __lto_b_256)) {
       __match_150 = Ordering["equal"];
     } else {
       __match_150 = Ordering["greater"];
@@ -1449,13 +1449,13 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
     } else {
       __match_151 = true;
     }
-    if ((__match_151 === true)) {
+    if (__match_151) {
       return false;
     } else {
       const ca = String.char_code_at(i, i);
       const cb = String.char_code_at(b, i);
-      const __match_154 = (((ca < cb) === true) ? Ordering["less"] : ((__match_153) => {
-        if ((__match_153 === true)) {
+      const __match_154 = ((ca < cb) ? Ordering["less"] : ((__match_153) => {
+        if (__match_153) {
           return Ordering["equal"];
         } else {
           return Ordering["greater"];
@@ -1463,14 +1463,14 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
       })(((a, b) => {
         return (a === b);
       })(ca, cb)));
-      if ((((__match_154[LUMO_TAG] === "less") ? true : ((__match_154[LUMO_TAG] === "equal") ? false : false)) === true)) {
+      if (((__match_154[LUMO_TAG] === "less") ? true : ((__match_154[LUMO_TAG] === "equal") ? false : false))) {
         return true;
       } else {
         let __match_159;
         let __match_158;
-        if (((i < ca) === true)) {
+        if ((i < ca)) {
           __match_158 = Ordering["less"];
-        } else if (((cb === ca) === true)) {
+        } else if ((cb === ca)) {
           __match_158 = Ordering["equal"];
         } else {
           __match_158 = Ordering["greater"];
@@ -1482,7 +1482,7 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
         } else {
           __match_159 = false;
         }
-        if ((__match_159 === true)) {
+        if (__match_159) {
           return false;
         } else {
           return string_lt_loop__lto_090deca7(i, ca, ((__lto_self_265) => {
@@ -1500,8 +1500,8 @@ export function is_token_only_alternatives__lto_9309ae26(alts) {
   } else {
     const code = String.char_code_at(alts.args[0].args[0], 0);
     const __lto_b_272 = 65;
-    const __match_169 = (((code < __lto_b_272) === true) ? Ordering["less"] : ((__match_168) => {
-      if ((__match_168 === true)) {
+    const __match_169 = ((code < __lto_b_272) ? Ordering["less"] : ((__match_168) => {
+      if (__match_168) {
         return Ordering["equal"];
       } else {
         return Ordering["greater"];
@@ -1509,7 +1509,7 @@ export function is_token_only_alternatives__lto_9309ae26(alts) {
     })(((a, b) => {
       return (a === b);
     })(code, __lto_b_272)));
-    if ((((((__match_169[LUMO_TAG] === "less") ? false : ((__match_169[LUMO_TAG] === "equal") ? true : true)) === true) ? ((__match_173) => {
+    if ((((__match_169[LUMO_TAG] === "less") ? false : ((__match_169[LUMO_TAG] === "equal") ? true : true)) ? ((__match_173) => {
       if ((__match_173[LUMO_TAG] === "less")) {
         return true;
       } else if ((__match_173[LUMO_TAG] === "equal")) {
@@ -1520,17 +1520,17 @@ export function is_token_only_alternatives__lto_9309ae26(alts) {
     })(((__lto_self_273) => {
       const __lto_other_274 = 90;
       const __match_171 = (__lto_self_273 < __lto_other_274);
-      if ((__match_171 === true)) {
+      if (__match_171) {
         return Ordering["less"];
       } else {
         const __match_172 = (__lto_self_273 === __lto_other_274);
-        if ((__match_172 === true)) {
+        if (__match_172) {
           return Ordering["equal"];
         } else {
           return Ordering["greater"];
         }
       }
-    })(code)) : false) === true)) {
+    })(code)) : false)) {
       return false;
     } else {
       return is_token_only_alternatives__lto_9309ae26(alts.args[1]);
@@ -1630,7 +1630,7 @@ export function emit_node_kinds__lto_1ba4622a(__caps, s, rules, __k) {
             return (__lto_self_413 + (((("    " + __lto_other_404) + ", // ") + name) + "\n"));
           })(s), rest, __k);
         });
-      } else if ((is_token_only_alternatives__lto_9309ae26(__match_185.args[0]) === true)) {
+      } else if (is_token_only_alternatives__lto_9309ae26(__match_185.args[0])) {
         return to_screaming_snake(__caps, name, (__lto_other_424) => {
           return emit_node_kinds__lto_1ba4622a(__caps, ((__lto_self_433) => {
             return (__lto_self_433 + (((("    " + __lto_other_424) + ", // ") + name) + " (token wrapper)\n"));
@@ -1704,7 +1704,7 @@ export function emit_struct_node__lto_1ba4622a(__caps, s, name, elems, token_def
 
 export function emit_accessors__lto_1ba4622a(__caps, s, struct_name, elems, token_defs, __k) {
   return __thunk(() => {
-    if ((has_labeled_elements(elems) === true)) {
+    if (has_labeled_elements(elems)) {
       return emit_accessors_for_elements(__caps, (((s + "impl<'a> ") + struct_name) + "<'a> {\n"), elems, token_defs, (s) => {
         return __k((s + "}\n\n"));
       });
@@ -1716,7 +1716,7 @@ export function emit_accessors__lto_1ba4622a(__caps, s, struct_name, elems, toke
 
 export function emit_token_accessor__lto_1ba4622a(__caps, s, label, t, repeated, __k) {
   return token_kind_from_ref(__caps, t, (kind) => {
-    if ((repeated === true)) {
+    if (repeated) {
       return __k(((a, b) => {
         return (a + b);
       })((((((((((s + "    pub fn ") + label) + "(&self) -> impl Iterator<Item = &'a LosslessToken> + 'a {\n") + "        self.0.children.iter().filter_map(|c| match c {\n") + "            SyntaxElement::Token(t) if t.kind == SyntaxKind::") + kind) + " => Some(t),\n") + "            _ => None,\n") + "        })\n"), "    }\n"));
@@ -1729,7 +1729,7 @@ export function emit_token_accessor__lto_1ba4622a(__caps, s, label, t, repeated,
 }
 
 export function emit_node_accessor__lto_1ba4622a(s, label, node_name, repeated) {
-  if ((repeated === true)) {
+  if (repeated) {
     return ((((((((((((s + "    pub fn ") + label) + "(&self) -> impl Iterator<Item = ") + node_name) + "<'a>> + 'a {\n") + "        self.0.children.iter().filter_map(|c| match c {\n") + "            SyntaxElement::Node(n) => ") + node_name) + "::cast(n),\n") + "            _ => None,\n") + "        })\n") + "    }\n");
   } else {
     return ((((((((((((s + "    pub fn ") + label) + "(&self) -> Option<") + node_name) + "<'a>> {\n") + "        self.0.children.iter().find_map(|c| match c {\n") + "            SyntaxElement::Node(n) => ") + node_name) + "::cast(n),\n") + "            _ => None,\n") + "        })\n") + "    }\n");
@@ -1790,8 +1790,8 @@ export function run__lto_3829b133(__caps, __k) {
   return __thunk(() => {
     const __lto_a_955 = (__argv_length_raw() - 1);
     const __lto_b_956 = 2;
-    const __match_206 = (((__lto_a_955 < __lto_b_956) === true) ? Ordering["less"] : ((__match_205) => {
-      if ((__match_205 === true)) {
+    const __match_206 = ((__lto_a_955 < __lto_b_956) ? Ordering["less"] : ((__match_205) => {
+      if (__match_205) {
         return Ordering["equal"];
       } else {
         return Ordering["greater"];
@@ -1799,7 +1799,7 @@ export function run__lto_3829b133(__caps, __k) {
     })(((a, b) => {
       return (a === b);
     })(__lto_a_955, __lto_b_956)));
-    if ((((__match_206[LUMO_TAG] === "less") ? true : ((__match_206[LUMO_TAG] === "equal") ? false : false)) === true)) {
+    if (((__match_206[LUMO_TAG] === "less") ? true : ((__match_206[LUMO_TAG] === "equal") ? false : false))) {
       const __lto__err_958 = __console_error("Usage: langue <input.langue> [output_dir]");
       return __k(__exit_process(1));
     } else {
@@ -1831,8 +1831,8 @@ export function run__lto_3829b133(__caps, __k) {
 export function run_generate__lto_35421161(file, count, syntax_kind_code, ast_code) {
   const __lto_a_977 = (__argv_length_raw() - 1);
   const __lto_b_978 = 3;
-  const __match_209 = (((__lto_a_977 < __lto_b_978) === true) ? Ordering["less"] : ((__match_208) => {
-    if ((__match_208 === true)) {
+  const __match_209 = ((__lto_a_977 < __lto_b_978) ? Ordering["less"] : ((__match_208) => {
+    if (__match_208) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -1840,7 +1840,7 @@ export function run_generate__lto_35421161(file, count, syntax_kind_code, ast_co
   })(((a, b) => {
     return (a === b);
   })(__lto_a_977, __lto_b_978)));
-  if ((((__match_209[LUMO_TAG] === "less") ? true : ((__match_209[LUMO_TAG] === "equal") ? false : false)) === true)) {
+  if (((__match_209[LUMO_TAG] === "less") ? true : ((__match_209[LUMO_TAG] === "equal") ? false : false))) {
     return write_output__lto_155dcaa4(".", file, count, syntax_kind_code, ast_code);
   } else {
     return write_output__lto_155dcaa4(__argv_at_raw(((__lto___lto_self_1217_1239) => {
@@ -1868,13 +1868,13 @@ export function list_length_rules__lto_92991de6(xs) {
 }
 
 export function is_whitespace__lto_3890158f(c) {
-  if (((c === " ") === true)) {
+  if ((c === " ")) {
     return true;
-  } else if (((c === "\n") === true)) {
+  } else if ((c === "\n")) {
     return true;
-  } else if (((c === "\t") === true)) {
+  } else if ((c === "\t")) {
     return true;
-  } else if (((c === "\r") === true)) {
+  } else if ((c === "\r")) {
     return true;
   } else {
     return false;
@@ -1884,8 +1884,8 @@ export function is_whitespace__lto_3890158f(c) {
 export function is_alpha__lto_9309ae26(c) {
   const code = String.char_code_at(c, 0);
   const __lto_b_1038 = 97;
-  const __match_218 = (((code < __lto_b_1038) === true) ? Ordering["less"] : ((__match_217) => {
-    if ((__match_217 === true)) {
+  const __match_218 = ((code < __lto_b_1038) ? Ordering["less"] : ((__match_217) => {
+    if (__match_217) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -1893,12 +1893,12 @@ export function is_alpha__lto_9309ae26(c) {
   })(((a, b) => {
     return (a === b);
   })(code, __lto_b_1038)));
-  if ((((__match_218[LUMO_TAG] === "less") ? false : ((__match_218[LUMO_TAG] === "equal") ? true : true)) === true)) {
+  if (((__match_218[LUMO_TAG] === "less") ? false : ((__match_218[LUMO_TAG] === "equal") ? true : true))) {
     let __match_229;
     const __lto_b_1042 = 122;
-    if (((code < __lto_b_1042) === true)) {
+    if ((code < __lto_b_1042)) {
       __match_229 = Ordering["less"];
-    } else if (((code === __lto_b_1042) === true)) {
+    } else if ((code === __lto_b_1042)) {
       __match_229 = Ordering["equal"];
     } else {
       __match_229 = Ordering["greater"];
@@ -1914,9 +1914,9 @@ export function is_alpha__lto_9309ae26(c) {
     let __match_223;
     let __match_222;
     const __lto_b_1046 = 65;
-    if (((code < __lto_b_1046) === true)) {
+    if ((code < __lto_b_1046)) {
       __match_222 = Ordering["less"];
-    } else if (((code === __lto_b_1046) === true)) {
+    } else if ((code === __lto_b_1046)) {
       __match_222 = Ordering["equal"];
     } else {
       __match_222 = Ordering["greater"];
@@ -1928,12 +1928,12 @@ export function is_alpha__lto_9309ae26(c) {
     } else {
       __match_223 = true;
     }
-    if ((__match_223 === true)) {
+    if (__match_223) {
       let __match_226;
       const __lto_b_1050 = 90;
-      if (((code < __lto_b_1050) === true)) {
+      if ((code < __lto_b_1050)) {
         __match_226 = Ordering["less"];
-      } else if (((code === __lto_b_1050) === true)) {
+      } else if ((code === __lto_b_1050)) {
         __match_226 = Ordering["equal"];
       } else {
         __match_226 = Ordering["greater"];
@@ -1952,9 +1952,9 @@ export function is_alpha__lto_9309ae26(c) {
 }
 
 export function is_ident_continue__lto_3890158f(c) {
-  if ((is_alpha__lto_9309ae26(c) === true)) {
+  if (is_alpha__lto_9309ae26(c)) {
     return true;
-  } else if (((c === "_") === true)) {
+  } else if ((c === "_")) {
     return true;
   } else {
     return false;
@@ -1964,8 +1964,8 @@ export function is_ident_continue__lto_3890158f(c) {
 export function state_eof__lto_9309ae26(st) {
   const __lto_a_1057 = st.args[1];
   const __lto_b_1058 = String.len(st.args[0]);
-  const __match_235 = (((__lto_a_1057 < __lto_b_1058) === true) ? Ordering["less"] : ((__match_234) => {
-    if ((__match_234 === true)) {
+  const __match_235 = ((__lto_a_1057 < __lto_b_1058) ? Ordering["less"] : ((__match_234) => {
+    if (__match_234) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -1986,8 +1986,8 @@ export function state_peek__lto_9309ae26(st) {
   const src = st.args[0];
   const pos = st.args[1];
   const __lto_b_1062 = String.len(src);
-  const __match_239 = (((pos < __lto_b_1062) === true) ? Ordering["less"] : ((__match_238) => {
-    if ((__match_238 === true)) {
+  const __match_239 = ((pos < __lto_b_1062) ? Ordering["less"] : ((__match_238) => {
+    if (__match_238) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -1995,7 +1995,7 @@ export function state_peek__lto_9309ae26(st) {
   })(((a, b) => {
     return (a === b);
   })(pos, __lto_b_1062)));
-  if ((((__match_239[LUMO_TAG] === "less") ? true : ((__match_239[LUMO_TAG] === "equal") ? false : false)) === true)) {
+  if (((__match_239[LUMO_TAG] === "less") ? true : ((__match_239[LUMO_TAG] === "equal") ? false : false))) {
     return String.char_at(src, pos);
   } else {
     return "";
@@ -2009,17 +2009,17 @@ export function state_advance__lto_92991de6(st, n) {
 }
 
 export function skip_ws__lto_1bb67705(st) {
-  if ((state_eof__lto_9309ae26(st) === true)) {
+  if (state_eof__lto_9309ae26(st)) {
     return st;
   } else {
     const c = state_peek__lto_9309ae26(st);
-    if ((is_whitespace__lto_3890158f(c) === true)) {
+    if (is_whitespace__lto_3890158f(c)) {
       return skip_ws__lto_1bb67705(state_advance__lto_92991de6(st, 1));
-    } else if (((c === "/") === true)) {
+    } else if ((c === "/")) {
       const next_pos = (state_pos(st) + 1);
       const __lto_b_1078 = String.len(state_src(st));
-      const __match_247 = (((next_pos < __lto_b_1078) === true) ? Ordering["less"] : ((__match_246) => {
-        if ((__match_246 === true)) {
+      const __match_247 = ((next_pos < __lto_b_1078) ? Ordering["less"] : ((__match_246) => {
+        if (__match_246) {
           return Ordering["equal"];
         } else {
           return Ordering["greater"];
@@ -2027,8 +2027,8 @@ export function skip_ws__lto_1bb67705(st) {
       })(((a, b) => {
         return (a === b);
       })(next_pos, __lto_b_1078)));
-      if ((((__match_247[LUMO_TAG] === "less") ? true : ((__match_247[LUMO_TAG] === "equal") ? false : false)) === true)) {
-        if (((String.char_at(state_src(st), next_pos) === "/") === true)) {
+      if (((__match_247[LUMO_TAG] === "less") ? true : ((__match_247[LUMO_TAG] === "equal") ? false : false))) {
+        if ((String.char_at(state_src(st), next_pos) === "/")) {
           return skip_ws__lto_1bb67705(skip_line__lto_3890158f(state_advance__lto_92991de6(st, 2)));
         } else {
           return st;
@@ -2043,9 +2043,9 @@ export function skip_ws__lto_1bb67705(st) {
 }
 
 export function skip_line__lto_3890158f(st) {
-  if ((state_eof__lto_9309ae26(st) === true)) {
+  if (state_eof__lto_9309ae26(st)) {
     return st;
-  } else if (((state_peek__lto_9309ae26(st) === "\n") === true)) {
+  } else if ((state_peek__lto_9309ae26(st) === "\n")) {
     return state_advance__lto_92991de6(st, 1);
   } else {
     return skip_line__lto_3890158f(state_advance__lto_92991de6(st, 1));
@@ -2055,11 +2055,11 @@ export function skip_line__lto_3890158f(st) {
 export function parse_ident__lto_1ba4622a(__caps, st, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
-    if ((state_eof__lto_9309ae26(st2) === true)) {
+    if (state_eof__lto_9309ae26(st2)) {
       return __k(ParseResult["err"]("expected identifier, got EOF", state_pos(st2)));
     } else {
       return is_ident_start(__caps, state_peek__lto_9309ae26(st2), (__cps_v_34) => {
-        if ((__cps_v_34 === true)) {
+        if (__cps_v_34) {
           const start = state_pos(st2);
           return scan_ident_rest(__caps, state_advance__lto_92991de6(st2, 1), (end_st) => {
             return String.slice(__caps, state_src(st2), start, state_pos(end_st), (__cps_v_33) => {
@@ -2084,8 +2084,8 @@ export function expect__lto_f3280589(st, expected) {
   const src = state_src(st2);
   const pos = state_pos(st2);
   const __lto_a_1101 = (String.len(src) - pos);
-  const __match_256 = (((__lto_a_1101 < len) === true) ? Ordering["less"] : ((__match_255) => {
-    if ((__match_255 === true)) {
+  const __match_256 = ((__lto_a_1101 < len) ? Ordering["less"] : ((__match_255) => {
+    if (__match_255) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -2093,11 +2093,11 @@ export function expect__lto_f3280589(st, expected) {
   })(((a, b) => {
     return (a === b);
   })(__lto_a_1101, len)));
-  if ((((__match_256[LUMO_TAG] === "less") ? false : ((__match_256[LUMO_TAG] === "equal") ? true : true)) === true)) {
+  if (((__match_256[LUMO_TAG] === "less") ? false : ((__match_256[LUMO_TAG] === "equal") ? true : true))) {
     const slice = String.slice(src, pos, ((__lto_self_1103) => {
       return (__lto_self_1103 + len);
     })(pos));
-    if (((slice === expected) === true)) {
+    if ((slice === expected)) {
       return ParseResult["ok"](expected, state_advance__lto_92991de6(st2, len));
     } else {
       return ParseResult["err"](((__lto_self_1111) => {
@@ -2121,7 +2121,7 @@ export function expect__lto_f3280589(st, expected) {
 
 export function parse_quoted__lto_38e07bea(st) {
   const st2 = skip_ws__lto_1bb67705(st);
-  if (((state_peek__lto_9309ae26(st2) === "'") === true)) {
+  if ((state_peek__lto_9309ae26(st2) === "'")) {
     const end_st = scan_until_quote__lto_3890158f(state_advance__lto_92991de6(st2, 1));
     return ParseResult["ok"](String.slice(state_src(st2), (state_pos(st2) + 1), state_pos(end_st)), state_advance__lto_92991de6(end_st, 1));
   } else {
@@ -2130,9 +2130,9 @@ export function parse_quoted__lto_38e07bea(st) {
 }
 
 export function scan_until_quote__lto_3890158f(st) {
-  if ((state_eof__lto_9309ae26(st) === true)) {
+  if (state_eof__lto_9309ae26(st)) {
     return st;
-  } else if (((state_peek__lto_9309ae26(st) === "'") === true)) {
+  } else if ((state_peek__lto_9309ae26(st) === "'")) {
     return st;
   } else {
     return scan_until_quote__lto_3890158f(state_advance__lto_92991de6(st, 1));
@@ -2143,7 +2143,7 @@ export function peek_is_rule_start__lto_3890158f(__caps, st, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
     return is_ident_start(__caps, state_peek__lto_9309ae26(st2), (__cps_v_35) => {
-      if ((__cps_v_35 === true)) {
+      if (__cps_v_35) {
         return scan_ident_rest(__caps, state_advance__lto_92991de6(st2, 1), (st3) => {
           return __k(((a, b) => {
             return (a === b);
@@ -2158,8 +2158,8 @@ export function peek_is_rule_start__lto_3890158f(__caps, st, __k) {
 
 export function has_alpha__lto_090deca7(s, i) {
   const __lto_b_1154 = String.len(s);
-  const __match_265 = (((i < __lto_b_1154) === true) ? Ordering["less"] : ((__match_264) => {
-    if ((__match_264 === true)) {
+  const __match_265 = ((i < __lto_b_1154) ? Ordering["less"] : ((__match_264) => {
+    if (__match_264) {
       return Ordering["equal"];
     } else {
       return Ordering["greater"];
@@ -2167,9 +2167,9 @@ export function has_alpha__lto_090deca7(s, i) {
   })(((a, b) => {
     return (a === b);
   })(i, __lto_b_1154)));
-  if ((((__match_265[LUMO_TAG] === "less") ? false : ((__match_265[LUMO_TAG] === "equal") ? true : true)) === true)) {
+  if (((__match_265[LUMO_TAG] === "less") ? false : ((__match_265[LUMO_TAG] === "equal") ? true : true))) {
     return false;
-  } else if ((is_alpha__lto_9309ae26(String.char_at(s, i)) === true)) {
+  } else if (is_alpha__lto_9309ae26(String.char_at(s, i))) {
     return true;
   } else {
     return has_alpha__lto_090deca7(s, ((__lto_self_1155) => {
@@ -2181,9 +2181,9 @@ export function has_alpha__lto_090deca7(s, i) {
 export function parse_grammar_items__lto_3890158f(__caps, st, tokens, rules, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
-    if ((state_eof__lto_9309ae26(st2) === true)) {
+    if (state_eof__lto_9309ae26(st2)) {
       return __k(ParseResult["ok"](Grammar["mk"](list_reverse_string(tokens), list_reverse_rule(rules)), st2));
-    } else if (((state_peek__lto_9309ae26(st2) === "@") === true)) {
+    } else if ((state_peek__lto_9309ae26(st2) === "@")) {
       return parse_token_def(__caps, st2, (__cps_v_37) => {
         if ((__cps_v_37[LUMO_TAG] === "ok")) {
           return parse_grammar_items__lto_3890158f(__caps, __cps_v_37.args[1], list_concat_string(__cps_v_37.args[0], tokens), rules, __k);
@@ -2206,17 +2206,17 @@ export function parse_grammar_items__lto_3890158f(__caps, st, tokens, rules, __k
 export function parse_token_names__lto_3890158f(__caps, st, acc, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
-    if ((state_eof__lto_9309ae26(st2) === true)) {
+    if (state_eof__lto_9309ae26(st2)) {
       return __k(ParseResult["ok"](list_reverse_string(acc), st2));
     } else {
       return peek_is_rule_start__lto_3890158f(__caps, st2, (__cps_v_40) => {
-        if ((__cps_v_40 === true)) {
+        if (__cps_v_40) {
           return __k(ParseResult["ok"](list_reverse_string(acc), st2));
-        } else if (((state_peek__lto_9309ae26(st2) === "@") === true)) {
+        } else if ((state_peek__lto_9309ae26(st2) === "@")) {
           return __k(ParseResult["ok"](list_reverse_string(acc), st2));
         } else {
           return is_ident_start(__caps, state_peek__lto_9309ae26(st2), (__cps_v_39) => {
-            if ((__cps_v_39 === true)) {
+            if (__cps_v_39) {
               return parse_ident__lto_1ba4622a(__caps, st2, (__cps_v_38) => {
                 if ((__cps_v_38[LUMO_TAG] === "ok")) {
                   return parse_token_names__lto_3890158f(__caps, __cps_v_38.args[1], List["cons"](__cps_v_38.args[0], acc), __k);
@@ -2238,7 +2238,7 @@ export function parse_rule_body__lto_3890158f(__caps, st, rule_name, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
     return peek_char(__caps, st2, (__lto_self_1167) => {
-      if (((__lto_self_1167 === "|") === true)) {
+      if ((__lto_self_1167 === "|")) {
         return parse_alternatives(__caps, st2, __k);
       } else {
         return parse_sequence(__caps, st2, __k);
@@ -2251,10 +2251,10 @@ export function parse_alt_items__lto_3890158f(__caps, st, acc, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
     return peek_char(__caps, st2, (__lto_self_1171) => {
-      if (((__lto_self_1171 === "|") === true)) {
+      if ((__lto_self_1171 === "|")) {
         const st3 = state_advance__lto_92991de6(skip_ws__lto_1bb67705(st2), 1);
         const st4 = skip_ws__lto_1bb67705(st3);
-        if (((state_peek__lto_9309ae26(st4) === "'") === true)) {
+        if ((state_peek__lto_9309ae26(st4) === "'")) {
           const __match_281 = parse_quoted__lto_38e07bea(st4);
           if ((__match_281[LUMO_TAG] === "ok")) {
             return parse_alt_items__lto_3890158f(__caps, __match_281.args[1], List["cons"](Alternative["mk"](__match_281.args[0]), acc), __k);
@@ -2279,13 +2279,13 @@ export function parse_alt_items__lto_3890158f(__caps, st, acc, __k) {
 
 export function is_seq_terminator__lto_3890158f(__caps, st, __k) {
   return peek_char(__caps, st, (c) => {
-    if (((c === ")") === true)) {
+    if ((c === ")")) {
       return __k(true);
     } else {
       return peek_is_rule_start__lto_3890158f(__caps, st, (__cps_v_44) => {
-        if ((__cps_v_44 === true)) {
+        if (__cps_v_44) {
           return __k(true);
-        } else if (((c === "@") === true)) {
+        } else if ((c === "@")) {
           return __k(true);
         } else {
           return __k(false);
@@ -2296,11 +2296,11 @@ export function is_seq_terminator__lto_3890158f(__caps, st, __k) {
 }
 
 export function apply_postfix_elem__lto_3890158f(elem, st) {
-  if ((state_eof__lto_9309ae26(st) === true)) {
+  if (state_eof__lto_9309ae26(st)) {
     return ParseResult["ok"](elem, st);
-  } else if (((state_peek__lto_9309ae26(st) === "?") === true)) {
+  } else if ((state_peek__lto_9309ae26(st) === "?")) {
     return apply_postfix_elem__lto_3890158f(Element["optional"](elem), state_advance__lto_92991de6(st, 1));
-  } else if (((state_peek__lto_9309ae26(st) === "*") === true)) {
+  } else if ((state_peek__lto_9309ae26(st) === "*")) {
     return apply_postfix_elem__lto_3890158f(Element["repeated"](elem), state_advance__lto_92991de6(st, 1));
   } else {
     return ParseResult["ok"](elem, st);
@@ -2310,7 +2310,7 @@ export function apply_postfix_elem__lto_3890158f(elem, st) {
 export function parse_atom__lto_3890158f(__caps, st, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
-    if (((state_peek__lto_9309ae26(st2) === "'") === true)) {
+    if ((state_peek__lto_9309ae26(st2) === "'")) {
       const __match_295 = parse_quoted__lto_38e07bea(st2);
       if ((__match_295[LUMO_TAG] === "ok")) {
         return classify_literal(__caps, __match_295.args[0], (__cps_v_49) => {
@@ -2319,7 +2319,7 @@ export function parse_atom__lto_3890158f(__caps, st, __k) {
       } else {
         return __k(ParseResult["err"](__match_295.args[0], __match_295.args[1]));
       }
-    } else if (((state_peek__lto_9309ae26(st2) === "(") === true)) {
+    } else if ((state_peek__lto_9309ae26(st2) === "(")) {
       return parse_group_elements__lto_3890158f(__caps, state_advance__lto_92991de6(st2, 1), List["nil"], (__cps_v_47) => {
         if ((__cps_v_47[LUMO_TAG] === "ok")) {
           const __match_294 = expect__lto_f3280589(__cps_v_47.args[1], ")");
@@ -2339,7 +2339,7 @@ export function parse_atom__lto_3890158f(__caps, st, __k) {
         } else {
           const name = __cps_v_46.args[0];
           const st3 = __cps_v_46.args[1];
-          if (((state_peek__lto_9309ae26(st3) === ":") === true)) {
+          if ((state_peek__lto_9309ae26(st3) === ":")) {
             return parse_element(__caps, state_advance__lto_92991de6(st3, 1), (__cps_v_45) => {
               if ((__cps_v_45[LUMO_TAG] === "ok")) {
                 return __k(ParseResult["ok"](Element["labeled"](name, __cps_v_45.args[0]), __cps_v_45.args[1]));
@@ -2359,7 +2359,7 @@ export function parse_atom__lto_3890158f(__caps, st, __k) {
 export function parse_group_elements__lto_3890158f(__caps, st, acc, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
-    if (((state_peek__lto_9309ae26(st2) === ")") === true)) {
+    if ((state_peek__lto_9309ae26(st2) === ")")) {
       return __k(ParseResult["ok"](list_reverse_elem(acc), st2));
     } else {
       return parse_element(__caps, st2, (__cps_v_50) => {
@@ -2376,7 +2376,7 @@ export function parse_group_elements__lto_3890158f(__caps, st, acc, __k) {
 export function list_contains_string__lto_3890158f(xs, target) {
   if ((xs[LUMO_TAG] === "nil")) {
     return false;
-  } else if (((xs.args[0] === target) === true)) {
+  } else if ((xs.args[0] === target)) {
     return true;
   } else {
     return list_contains_string__lto_3890158f(xs.args[1], target);
