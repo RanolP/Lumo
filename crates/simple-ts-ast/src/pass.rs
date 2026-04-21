@@ -292,6 +292,396 @@ fn collapse_in_block(block: &mut Block) {
 }
 
 // ---------------------------------------------------------------------------
+// Pass: inline_single_use_consts
+//
+// Inlines `const x = e` at its single use site and removes the declaration.
+// Safety rules:
+//   - Pure RHS (no calls): inline at any single use, even inside arrows/ifs.
+//   - Impure RHS (calls): inline only when the use is at a top-level sequential
+//     position (not captured inside an arrow body that may run multiple times).
+// ---------------------------------------------------------------------------
+
+pub fn inline_single_use_consts(program: &mut Program) {
+    for stmt in &mut program.body {
+        single_use_in_stmt(stmt);
+    }
+}
+
+fn is_pure_expr(expr: &Expr) -> bool {
+    match expr {
+        Expr::Ident(_) | Expr::String(_) | Expr::Number(_) | Expr::Bool(_)
+        | Expr::Null | Expr::Undefined => true,
+        Expr::Binary { left, right, .. } => is_pure_expr(left) && is_pure_expr(right),
+        Expr::Unary { expr, .. } | Expr::Void(expr) => is_pure_expr(expr),
+        Expr::Member { object, .. } => is_pure_expr(object),
+        Expr::Index { object, index } => is_pure_expr(object) && is_pure_expr(index),
+        Expr::Array(items) => items.iter().all(|i| is_pure_expr(i)),
+        Expr::Object(props) => props.iter().all(|p| {
+            let key_pure = match &p.key {
+                ObjectKey::Computed(e) => is_pure_expr(e),
+                _ => true,
+            };
+            key_pure && is_pure_expr(&p.value)
+        }),
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            is_pure_expr(cond) && is_pure_expr(then_expr) && is_pure_expr(else_expr)
+        }
+        Expr::Arrow { .. } => true, // creating an arrow is pure
+        Expr::Call { .. } => false,
+    }
+}
+
+fn count_refs_expr(expr: &Expr, name: &str) -> usize {
+    match expr {
+        Expr::Ident(n) => (n == name) as usize,
+        Expr::Call { callee, args } => {
+            count_refs_expr(callee, name)
+                + args.iter().map(|a| count_refs_expr(a, name)).sum::<usize>()
+        }
+        Expr::Member { object, .. } => count_refs_expr(object, name),
+        Expr::Index { object, index } => {
+            count_refs_expr(object, name) + count_refs_expr(index, name)
+        }
+        Expr::Unary { expr, .. } | Expr::Void(expr) => count_refs_expr(expr, name),
+        Expr::Binary { left, right, .. } => {
+            count_refs_expr(left, name) + count_refs_expr(right, name)
+        }
+        Expr::Array(items) => items.iter().map(|i| count_refs_expr(i, name)).sum(),
+        Expr::Object(props) => props.iter().map(|p| {
+            let k = match &p.key {
+                ObjectKey::Computed(e) => count_refs_expr(e, name),
+                _ => 0,
+            };
+            k + count_refs_expr(&p.value, name)
+        }).sum(),
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            count_refs_expr(cond, name)
+                + count_refs_expr(then_expr, name)
+                + count_refs_expr(else_expr, name)
+        }
+        Expr::Arrow { params, body, .. } => {
+            if params.iter().any(|p| p.name == name) {
+                return 0;
+            }
+            match body.as_ref() {
+                FunctionBody::Expr(e) => count_refs_expr(e, name),
+                FunctionBody::Block(b) => {
+                    b.stmts.iter().map(|s| count_refs_stmt(s, name)).sum()
+                }
+            }
+        }
+        _ => 0,
+    }
+}
+
+fn count_refs_stmt(stmt: &Stmt, name: &str) -> usize {
+    match stmt {
+        Stmt::Expr(e) | Stmt::Return(Some(e)) => count_refs_expr(e, name),
+        Stmt::Const(decl) => {
+            if decl.name == name { return 0; }
+            count_refs_expr(&decl.init, name)
+        }
+        Stmt::Let { name: n, init: Some(init), .. } => {
+            if n == name { return 0; }
+            count_refs_expr(init, name)
+        }
+        Stmt::Assign { value, .. } => count_refs_expr(value, name),
+        Stmt::If { cond, then_branch, else_branch } => {
+            count_refs_expr(cond, name)
+                + then_branch.stmts.iter().map(|s| count_refs_stmt(s, name)).sum::<usize>()
+                + else_branch.as_ref().map_or(0, |eb| {
+                    eb.stmts.iter().map(|s| count_refs_stmt(s, name)).sum::<usize>()
+                })
+        }
+        Stmt::Block(b) => b.stmts.iter().map(|s| count_refs_stmt(s, name)).sum(),
+        _ => 0,
+    }
+}
+
+/// Like `count_refs_expr` but stops at Arrow boundaries (doesn't count captures).
+fn count_top_refs_expr(expr: &Expr, name: &str) -> usize {
+    match expr {
+        Expr::Ident(n) => (n == name) as usize,
+        Expr::Call { callee, args } => {
+            count_top_refs_expr(callee, name)
+                + args.iter().map(|a| count_top_refs_expr(a, name)).sum::<usize>()
+        }
+        Expr::Member { object, .. } => count_top_refs_expr(object, name),
+        Expr::Index { object, index } => {
+            count_top_refs_expr(object, name) + count_top_refs_expr(index, name)
+        }
+        Expr::Unary { expr, .. } | Expr::Void(expr) => count_top_refs_expr(expr, name),
+        Expr::Binary { left, right, .. } => {
+            count_top_refs_expr(left, name) + count_top_refs_expr(right, name)
+        }
+        Expr::Array(items) => items.iter().map(|i| count_top_refs_expr(i, name)).sum(),
+        Expr::Object(props) => props.iter().map(|p| {
+            let k = match &p.key {
+                ObjectKey::Computed(e) => count_top_refs_expr(e, name),
+                _ => 0,
+            };
+            k + count_top_refs_expr(&p.value, name)
+        }).sum(),
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            count_top_refs_expr(cond, name)
+                + count_top_refs_expr(then_expr, name)
+                + count_top_refs_expr(else_expr, name)
+        }
+        Expr::Arrow { .. } => 0, // don't count inside arrows
+        _ => 0,
+    }
+}
+
+fn count_top_refs_stmt(stmt: &Stmt, name: &str) -> usize {
+    match stmt {
+        Stmt::Expr(e) | Stmt::Return(Some(e)) => count_top_refs_expr(e, name),
+        Stmt::Const(decl) => {
+            if decl.name == name { return 0; }
+            count_top_refs_expr(&decl.init, name)
+        }
+        Stmt::Let { name: n, init: Some(init), .. } => {
+            if n == name { return 0; }
+            count_top_refs_expr(init, name)
+        }
+        Stmt::Assign { value, .. } => count_top_refs_expr(value, name),
+        Stmt::If { cond, then_branch, else_branch } => {
+            count_top_refs_expr(cond, name)
+                + then_branch.stmts.iter().map(|s| count_top_refs_stmt(s, name)).sum::<usize>()
+                + else_branch.as_ref().map_or(0, |eb| {
+                    eb.stmts.iter().map(|s| count_top_refs_stmt(s, name)).sum::<usize>()
+                })
+        }
+        Stmt::Block(b) => b.stmts.iter().map(|s| count_top_refs_stmt(s, name)).sum(),
+        _ => 0,
+    }
+}
+
+/// Replace the first occurrence of `name` in an expression with `replacement`.
+/// Returns true if a replacement was made.
+fn subst_first_expr(expr: &mut Expr, name: &str, replacement: &Expr) -> bool {
+    match expr {
+        Expr::Ident(n) if n == name => {
+            *expr = replacement.clone();
+            true
+        }
+        Expr::Call { callee, args } => {
+            if subst_first_expr(callee, name, replacement) {
+                return true;
+            }
+            for a in args {
+                if subst_first_expr(a, name, replacement) {
+                    return true;
+                }
+            }
+            false
+        }
+        Expr::Member { object, .. } => subst_first_expr(object, name, replacement),
+        Expr::Index { object, index } => {
+            subst_first_expr(object, name, replacement)
+                || subst_first_expr(index, name, replacement)
+        }
+        Expr::Unary { expr, .. } | Expr::Void(expr) => subst_first_expr(expr, name, replacement),
+        Expr::Binary { left, right, .. } => {
+            subst_first_expr(left, name, replacement)
+                || subst_first_expr(right, name, replacement)
+        }
+        Expr::Array(items) => {
+            for item in items {
+                if subst_first_expr(item, name, replacement) {
+                    return true;
+                }
+            }
+            false
+        }
+        Expr::Object(props) => {
+            for prop in props {
+                if let ObjectKey::Computed(e) = &mut prop.key {
+                    if subst_first_expr(e, name, replacement) {
+                        return true;
+                    }
+                }
+                if subst_first_expr(&mut prop.value, name, replacement) {
+                    return true;
+                }
+            }
+            false
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            subst_first_expr(cond, name, replacement)
+                || subst_first_expr(then_expr, name, replacement)
+                || subst_first_expr(else_expr, name, replacement)
+        }
+        Expr::Arrow { params, body, .. } => {
+            if params.iter().any(|p| p.name == name) {
+                return false;
+            }
+            match body.as_mut() {
+                FunctionBody::Expr(e) => subst_first_expr(e, name, replacement),
+                FunctionBody::Block(b) => {
+                    for s in &mut b.stmts {
+                        if subst_first_stmt(s, name, replacement) {
+                            return true;
+                        }
+                    }
+                    false
+                }
+            }
+        }
+        _ => false,
+    }
+}
+
+fn subst_first_stmt(stmt: &mut Stmt, name: &str, replacement: &Expr) -> bool {
+    match stmt {
+        Stmt::Expr(e) | Stmt::Return(Some(e)) => subst_first_expr(e, name, replacement),
+        Stmt::Const(decl) => {
+            if decl.name == name {
+                return false;
+            }
+            subst_first_expr(&mut decl.init, name, replacement)
+        }
+        Stmt::Let { name: n, init: Some(init), .. } => {
+            if n == name {
+                return false;
+            }
+            subst_first_expr(init, name, replacement)
+        }
+        Stmt::Assign { value, .. } => subst_first_expr(value, name, replacement),
+        Stmt::If { cond, then_branch, else_branch } => {
+            if subst_first_expr(cond, name, replacement) {
+                return true;
+            }
+            for s in &mut then_branch.stmts {
+                if subst_first_stmt(s, name, replacement) {
+                    return true;
+                }
+            }
+            if let Some(eb) = else_branch {
+                for s in &mut eb.stmts {
+                    if subst_first_stmt(s, name, replacement) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        Stmt::Block(b) => {
+            for s in &mut b.stmts {
+                if subst_first_stmt(s, name, replacement) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+fn single_use_in_block(block: &mut Block) {
+    let mut i = 0;
+    while i < block.stmts.len() {
+        if let Stmt::Const(decl) = &block.stmts[i] {
+            if !decl.export {
+                let name = decl.name.clone();
+                let init = decl.init.clone();
+                let pure = is_pure_expr(&init);
+                let total: usize = block.stmts[i + 1..]
+                    .iter()
+                    .map(|s| count_refs_stmt(s, &name))
+                    .sum();
+                if total == 1 {
+                    let inlinable = pure || {
+                        let top: usize = block.stmts[i + 1..]
+                            .iter()
+                            .map(|s| count_top_refs_stmt(s, &name))
+                            .sum();
+                        top == 1
+                    };
+                    if inlinable {
+                        for j in (i + 1)..block.stmts.len() {
+                            if count_refs_stmt(&block.stmts[j], &name) > 0 {
+                                subst_first_stmt(&mut block.stmts[j], &name, &init);
+                                break;
+                            }
+                        }
+                        block.stmts.remove(i);
+                        continue;
+                    }
+                }
+            }
+        }
+        single_use_in_stmt(&mut block.stmts[i]);
+        i += 1;
+    }
+}
+
+fn single_use_in_stmt(stmt: &mut Stmt) {
+    match stmt {
+        Stmt::Function(func) => match &mut func.body {
+            FunctionBody::Block(b) => single_use_in_block(b),
+            FunctionBody::Expr(e) => single_use_in_expr(e),
+        },
+        Stmt::If { then_branch, else_branch, .. } => {
+            single_use_in_block(then_branch);
+            if let Some(eb) = else_branch {
+                single_use_in_block(eb);
+            }
+        }
+        Stmt::Block(b) => single_use_in_block(b),
+        Stmt::Return(Some(e)) | Stmt::Expr(e) => single_use_in_expr(e),
+        Stmt::Const(decl) => single_use_in_expr(&mut decl.init),
+        Stmt::Let { init: Some(init), .. } | Stmt::Assign { value: init, .. } => {
+            single_use_in_expr(init)
+        }
+        _ => {}
+    }
+}
+
+fn single_use_in_expr(expr: &mut Expr) {
+    match expr {
+        Expr::Arrow { body, .. } => match body.as_mut() {
+            FunctionBody::Block(b) => single_use_in_block(b),
+            FunctionBody::Expr(e) => single_use_in_expr(e),
+        },
+        Expr::Call { callee, args } => {
+            single_use_in_expr(callee);
+            for a in args {
+                single_use_in_expr(a);
+            }
+        }
+        Expr::Member { object, .. } => single_use_in_expr(object),
+        Expr::Index { object, index } => {
+            single_use_in_expr(object);
+            single_use_in_expr(index);
+        }
+        Expr::Unary { expr, .. } | Expr::Void(expr) => single_use_in_expr(expr),
+        Expr::Binary { left, right, .. } => {
+            single_use_in_expr(left);
+            single_use_in_expr(right);
+        }
+        Expr::Array(items) => {
+            for item in items {
+                single_use_in_expr(item);
+            }
+        }
+        Expr::Object(props) => {
+            for prop in props {
+                if let ObjectKey::Computed(e) = &mut prop.key {
+                    single_use_in_expr(e);
+                }
+                single_use_in_expr(&mut prop.value);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            single_use_in_expr(cond);
+            single_use_in_expr(then_expr);
+            single_use_in_expr(else_expr);
+        }
+        _ => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Pass: inline_trivial_consts
 //
 // Eliminates `const x = y;` aliases by substituting `y` for every later

@@ -192,6 +192,7 @@ impl TypeScriptBackend {
         tsast::return_lifting(&mut program);
         tsast::flatten_iifes(&mut program); // catch IIFEs exposed by return_lifting
         tsast::collapse_let_to_const(&mut program);
+        tsast::inline_single_use_consts(&mut program);
         tsast::inline_trivial_consts(&mut program);
         validate_program_has_no_any_or_unknown(&program)?;
         Ok(program)

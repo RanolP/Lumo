@@ -121,8 +121,9 @@ fn ts_backend_lowers_nested_match_patterns_as_tree() {
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
     assert!(js.contains("n[LUMO_TAG] === \"succ\""), "{js}");
     assert!(js.contains("n.args[0][LUMO_TAG] === \"succ\""), "{js}");
-    assert!(js.contains("return m;"), "{js}");
-    assert!(js.contains("const m = n.args[0].args[0];"), "{js}");
+    // single-use `m` is inlined: const m = ...; return m; → return ...;
+    assert!(js.contains("return n.args[0].args[0];"), "{js}");
+    assert!(!js.contains("const m ="), "{js}");
     // exhaustive match: .zero is the last case, emitted as unconditional else
     assert!(!js.contains("n.args[0][LUMO_TAG] === \"zero\""), "{js}");
 }
@@ -226,13 +227,12 @@ fn ts_backend_flattens_let_iife_to_const() {
         "#[extern = \"string\"] extern type String; #[extern = \"String._+_\"] extern fn String_concat(a: String, b: String): String; fn main(): String { let s = String_concat(\"Hello, \", \"world!\"); String_concat(s, \"!\") }",
     );
     let js = backend::emit(&file, CodegenTarget::JavaScript).expect("js emit");
-    // IIFE is flattened: ((s) => ...)(expr) → const s = expr; ...
+    // IIFE is flattened, single-use `s` is then inlined away
+    assert!(!js.contains("((s) =>"), "IIFE should be flattened: {js}");
     assert!(
-        js.contains("const s = String_concat(\"Hello, \", \"world!\");"),
+        js.contains("return String_concat(String_concat(\"Hello, \", \"world!\"), \"!\");"),
         "{js}"
     );
-    assert!(js.contains("return String_concat(s, \"!\");"), "{js}");
-    assert!(!js.contains("((s) =>"), "IIFE should be flattened: {js}");
 }
 
 #[test]
