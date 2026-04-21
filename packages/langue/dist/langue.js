@@ -1185,8 +1185,7 @@ export const NumOps = (__k_handle) => {
         if ((__match_58 === true)) {
           return Ordering["less"];
         } else if ((__match_58 === false)) {
-          let __match_59;
-          __match_59 = (a === b);
+          const __match_59 = (a === b);
           if ((__match_59 === true)) {
             return Ordering["equal"];
           } else if ((__match_59 === false)) {
@@ -1275,12 +1274,9 @@ export const Process = (__k_handle) => {
 };
 
 export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
-  let __match_63;
-  let __match_62;
   const __lto_other_1 = String.len(name);
-  let __match_60;
-  __match_60 = (i < __lto_other_1);
-  __match_62 = ((__match_60 === true) ? Ordering["less"] : ((__match_60 === false) ? ((__match_61) => {
+  const __match_60 = (i < __lto_other_1);
+  const __match_62 = ((__match_60 === true) ? Ordering["less"] : ((__match_60 === false) ? ((__match_61) => {
     if ((__match_61 === true)) {
       return Ordering["equal"];
     } else if ((__match_61 === false)) {
@@ -1291,19 +1287,15 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
   })(((a, b) => {
     return (a === b);
   })(i, __lto_other_1)) : __lumo_match_error(__match_60)));
-  __match_63 = ((__match_62[LUMO_TAG] === "less") ? false : ((__match_62[LUMO_TAG] === "equal") ? true : ((__match_62[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_62))));
+  const __match_63 = ((__match_62[LUMO_TAG] === "less") ? false : ((__match_62[LUMO_TAG] === "equal") ? true : ((__match_62[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_62))));
   if ((__match_63 === true)) {
     return acc;
   } else if ((__match_63 === false)) {
     const c = String.char_at(name, i);
     const code = String.char_code_at(c, 0);
-    let is_upper;
-    let __match_88;
-    let __match_87;
     const __lto_other_5 = 65;
-    let __match_85;
-    __match_85 = (i < __lto_other_1);
-    __match_87 = ((__match_85 === true) ? Ordering["less"] : ((__match_85 === false) ? ((__match_86) => {
+    const __match_85 = (i < __lto_other_1);
+    const __match_87 = ((__match_85 === true) ? Ordering["less"] : ((__match_85 === false) ? ((__match_86) => {
       if ((__match_86 === true)) {
         return Ordering["equal"];
       } else if ((__match_86 === false)) {
@@ -1314,8 +1306,8 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
     })(((a, b) => {
       return (a === b);
     })(code, __lto_other_5)) : __lumo_match_error(__match_85)));
-    __match_88 = ((__match_87[LUMO_TAG] === "less") ? false : ((__match_87[LUMO_TAG] === "equal") ? true : ((__match_87[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_87))));
-    is_upper = ((__match_88 === true) ? ((__match_91) => {
+    const __match_88 = ((__match_87[LUMO_TAG] === "less") ? false : ((__match_87[LUMO_TAG] === "equal") ? true : ((__match_87[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_87))));
+    const is_upper = ((__match_88 === true) ? ((__match_91) => {
       if ((__match_91[LUMO_TAG] === "less")) {
         return true;
       } else if ((__match_91[LUMO_TAG] === "equal")) {
@@ -1325,13 +1317,11 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
       }
     })(((__lto_self_8) => {
       const __lto_other_9 = 90;
-      let __match_89;
-      __match_89 = (i < __lto_other_1);
+      const __match_89 = (i < __lto_other_1);
       if ((__match_89 === true)) {
         return Ordering["less"];
       } else if ((__match_89 === false)) {
-        let __match_90;
-        __match_90 = (i === __lto_other_1);
+        const __match_90 = (i === __lto_other_1);
         if ((__match_90 === true)) {
           return Ordering["equal"];
         } else if ((__match_90 === false)) {
@@ -1347,13 +1337,11 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
       let __match_68;
       let __match_67;
       const __lto_self_12 = 0;
-      let __match_65;
-      __match_65 = (i < __lto_other_1);
+      const __match_65 = (i < __lto_other_1);
       if ((__match_65 === true)) {
         __match_67 = Ordering["less"];
       } else if ((__match_65 === false)) {
-        let __match_66;
-        __match_66 = (i === __lto_other_1);
+        const __match_66 = (i === __lto_other_1);
         if ((__match_66 === true)) {
           __match_67 = Ordering["equal"];
         } else if ((__match_66 === false)) {
@@ -1376,13 +1364,9 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
           const __lto_other_17 = 1;
           return (i - __lto_other_1);
         })(i)), 0);
-        let prev_lower;
-        let __match_81;
-        let __match_80;
         const __lto_other_21 = 97;
-        let __match_78;
-        __match_78 = (i < __lto_other_1);
-        __match_80 = ((__match_78 === true) ? Ordering["less"] : ((__match_78 === false) ? ((__match_79) => {
+        const __match_78 = (i < __lto_other_1);
+        const __match_80 = ((__match_78 === true) ? Ordering["less"] : ((__match_78 === false) ? ((__match_79) => {
           if ((__match_79 === true)) {
             return Ordering["equal"];
           } else if ((__match_79 === false)) {
@@ -1393,8 +1377,8 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
         })(((a, b) => {
           return (a === b);
         })(prev_code, __lto_other_21)) : __lumo_match_error(__match_78)));
-        __match_81 = ((__match_80[LUMO_TAG] === "less") ? false : ((__match_80[LUMO_TAG] === "equal") ? true : ((__match_80[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_80))));
-        prev_lower = ((__match_81 === true) ? ((__match_84) => {
+        const __match_81 = ((__match_80[LUMO_TAG] === "less") ? false : ((__match_80[LUMO_TAG] === "equal") ? true : ((__match_80[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_80))));
+        const prev_lower = ((__match_81 === true) ? ((__match_84) => {
           if ((__match_84[LUMO_TAG] === "less")) {
             return true;
           } else if ((__match_84[LUMO_TAG] === "equal")) {
@@ -1404,13 +1388,11 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
           }
         })(((__lto_self_24) => {
           const __lto_other_25 = 122;
-          let __match_82;
-          __match_82 = (i < __lto_other_1);
+          const __match_82 = (i < __lto_other_1);
           if ((__match_82 === true)) {
             return Ordering["less"];
           } else if ((__match_82 === false)) {
-            let __match_83;
-            __match_83 = (i === __lto_other_1);
+            const __match_83 = (i === __lto_other_1);
             if ((__match_83 === true)) {
               return Ordering["equal"];
             } else if ((__match_83 === false)) {
@@ -1422,13 +1404,9 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
             return __lumo_match_error(__match_82);
           }
         })(prev_code)) : ((__match_81 === false) ? false : __lumo_match_error(__match_81)));
-        let prev_digit;
-        let __match_74;
-        let __match_73;
         const __lto_other_29 = 48;
-        let __match_71;
-        __match_71 = (prev_code < __lto_other_29);
-        __match_73 = ((__match_71 === true) ? Ordering["less"] : ((__match_71 === false) ? ((__match_72) => {
+        const __match_71 = (prev_code < __lto_other_29);
+        const __match_73 = ((__match_71 === true) ? Ordering["less"] : ((__match_71 === false) ? ((__match_72) => {
           if ((__match_72 === true)) {
             return Ordering["equal"];
           } else if ((__match_72 === false)) {
@@ -1439,8 +1417,8 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
         })(((a, b) => {
           return (a === b);
         })(prev_code, __lto_other_29)) : __lumo_match_error(__match_71)));
-        __match_74 = ((__match_73[LUMO_TAG] === "less") ? false : ((__match_73[LUMO_TAG] === "equal") ? true : ((__match_73[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_73))));
-        prev_digit = ((__match_74 === true) ? ((__match_77) => {
+        const __match_74 = ((__match_73[LUMO_TAG] === "less") ? false : ((__match_73[LUMO_TAG] === "equal") ? true : ((__match_73[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_73))));
+        const prev_digit = ((__match_74 === true) ? ((__match_77) => {
           if ((__match_77[LUMO_TAG] === "less")) {
             return true;
           } else if ((__match_77[LUMO_TAG] === "equal")) {
@@ -1450,13 +1428,11 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
           }
         })(((__lto_self_32) => {
           const __lto_other_33 = 57;
-          let __match_75;
-          __match_75 = (i < __lto_other_1);
+          const __match_75 = (i < __lto_other_1);
           if ((__match_75 === true)) {
             return Ordering["less"];
           } else if ((__match_75 === false)) {
-            let __match_76;
-            __match_76 = (i === __lto_other_1);
+            const __match_76 = (i === __lto_other_1);
             if ((__match_76 === true)) {
               return Ordering["equal"];
             } else if ((__match_76 === false)) {
@@ -1534,12 +1510,9 @@ export function to_screaming_snake_loop__lto_73ce111b(name, i, acc) {
 
 export function to_upper_char__lto_f0f5f7cb(c) {
   const code = String.char_code_at(c, 0);
-  let __match_95;
-  let __match_94;
   const __lto_other_85 = 97;
-  let __match_92;
-  __match_92 = (code < __lto_other_85);
-  __match_94 = ((__match_92 === true) ? Ordering["less"] : ((__match_92 === false) ? ((__match_93) => {
+  const __match_92 = (code < __lto_other_85);
+  const __match_94 = ((__match_92 === true) ? Ordering["less"] : ((__match_92 === false) ? ((__match_93) => {
     if ((__match_93 === true)) {
       return Ordering["equal"];
     } else if ((__match_93 === false)) {
@@ -1550,18 +1523,16 @@ export function to_upper_char__lto_f0f5f7cb(c) {
   })(((a, b) => {
     return (a === b);
   })(code, __lto_other_85)) : __lumo_match_error(__match_92)));
-  __match_95 = ((__match_94[LUMO_TAG] === "less") ? false : ((__match_94[LUMO_TAG] === "equal") ? true : ((__match_94[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_94))));
+  const __match_95 = ((__match_94[LUMO_TAG] === "less") ? false : ((__match_94[LUMO_TAG] === "equal") ? true : ((__match_94[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_94))));
   if ((__match_95 === true)) {
     let __match_99;
     let __match_98;
     const __lto_other_89 = 122;
-    let __match_96;
-    __match_96 = (code < __lto_other_85);
+    const __match_96 = (code < __lto_other_85);
     if ((__match_96 === true)) {
       __match_98 = Ordering["less"];
     } else if ((__match_96 === false)) {
-      let __match_97;
-      __match_97 = (code === __lto_other_85);
+      const __match_97 = (code === __lto_other_85);
       if ((__match_97 === true)) {
         __match_98 = Ordering["equal"];
       } else if ((__match_97 === false)) {
@@ -1580,9 +1551,8 @@ export function to_upper_char__lto_f0f5f7cb(c) {
       __match_99 = ((__match_98[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_98));
     }
     if ((__match_99 === true)) {
-      let __lto_code_92;
       const __lto_other_94 = 32;
-      __lto_code_92 = (code - __lto_other_85);
+      const __lto_code_92 = (code - __lto_other_85);
       return fromCharCode(__lto_code_92);
     } else if ((__match_99 === false)) {
       return c;
@@ -1606,12 +1576,9 @@ export function keyword_variant__lto_1ba4622a(__caps, kw, __k) {
 }
 
 export function to_upper_string_loop__lto_1fab3ad0(s, i, acc) {
-  let __match_103;
-  let __match_102;
   const __lto_other_102 = String.len(s);
-  let __match_100;
-  __match_100 = (i < __lto_other_102);
-  __match_102 = ((__match_100 === true) ? Ordering["less"] : ((__match_100 === false) ? ((__match_101) => {
+  const __match_100 = (i < __lto_other_102);
+  const __match_102 = ((__match_100 === true) ? Ordering["less"] : ((__match_100 === false) ? ((__match_101) => {
     if ((__match_101 === true)) {
       return Ordering["equal"];
     } else if ((__match_101 === false)) {
@@ -1622,7 +1589,7 @@ export function to_upper_string_loop__lto_1fab3ad0(s, i, acc) {
   })(((a, b) => {
     return (a === b);
   })(i, __lto_other_102)) : __lumo_match_error(__match_100)));
-  __match_103 = ((__match_102[LUMO_TAG] === "less") ? false : ((__match_102[LUMO_TAG] === "equal") ? true : ((__match_102[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_102))));
+  const __match_103 = ((__match_102[LUMO_TAG] === "less") ? false : ((__match_102[LUMO_TAG] === "equal") ? true : ((__match_102[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_102))));
   if ((__match_103 === true)) {
     return acc;
   } else if ((__match_103 === false)) {
@@ -1639,183 +1606,153 @@ export function to_upper_string_loop__lto_1fab3ad0(s, i, acc) {
 }
 
 export function symbol_variant__lto_8227044e(sym) {
-  let __match_104;
   const __lto_other_114 = "#";
-  __match_104 = (sym === __lto_other_114);
+  const __match_104 = (sym === __lto_other_114);
   if ((__match_104 === true)) {
     return "HASH";
   } else if ((__match_104 === false)) {
-    let __match_105;
     const __lto_other_118 = "(";
-    __match_105 = (sym === __lto_other_114);
+    const __match_105 = (sym === __lto_other_114);
     if ((__match_105 === true)) {
       return "L_PAREN";
     } else if ((__match_105 === false)) {
-      let __match_106;
       const __lto_other_122 = ")";
-      __match_106 = (sym === __lto_other_114);
+      const __match_106 = (sym === __lto_other_114);
       if ((__match_106 === true)) {
         return "R_PAREN";
       } else if ((__match_106 === false)) {
-        let __match_107;
         const __lto_other_126 = "[";
-        __match_107 = (sym === __lto_other_114);
+        const __match_107 = (sym === __lto_other_114);
         if ((__match_107 === true)) {
           return "L_BRACKET";
         } else if ((__match_107 === false)) {
-          let __match_108;
           const __lto_other_130 = "]";
-          __match_108 = (sym === __lto_other_114);
+          const __match_108 = (sym === __lto_other_114);
           if ((__match_108 === true)) {
             return "R_BRACKET";
           } else if ((__match_108 === false)) {
-            let __match_109;
             const __lto_other_134 = "{";
-            __match_109 = (sym === __lto_other_114);
+            const __match_109 = (sym === __lto_other_114);
             if ((__match_109 === true)) {
               return "L_BRACE";
             } else if ((__match_109 === false)) {
-              let __match_110;
               const __lto_other_138 = "}";
-              __match_110 = (sym === __lto_other_114);
+              const __match_110 = (sym === __lto_other_114);
               if ((__match_110 === true)) {
                 return "R_BRACE";
               } else if ((__match_110 === false)) {
-                let __match_111;
                 const __lto_other_142 = ";";
-                __match_111 = (sym === __lto_other_114);
+                const __match_111 = (sym === __lto_other_114);
                 if ((__match_111 === true)) {
                   return "SEMICOLON";
                 } else if ((__match_111 === false)) {
-                  let __match_112;
                   const __lto_other_146 = ":";
-                  __match_112 = (sym === __lto_other_114);
+                  const __match_112 = (sym === __lto_other_114);
                   if ((__match_112 === true)) {
                     return "COLON";
                   } else if ((__match_112 === false)) {
-                    let __match_113;
                     const __lto_other_150 = ",";
-                    __match_113 = (sym === __lto_other_114);
+                    const __match_113 = (sym === __lto_other_114);
                     if ((__match_113 === true)) {
                       return "COMMA";
                     } else if ((__match_113 === false)) {
-                      let __match_114;
                       const __lto_other_154 = "=";
-                      __match_114 = (sym === __lto_other_114);
+                      const __match_114 = (sym === __lto_other_114);
                       if ((__match_114 === true)) {
                         return "EQUALS";
                       } else if ((__match_114 === false)) {
-                        let __match_115;
                         const __lto_other_158 = ":=";
-                        __match_115 = (sym === __lto_other_114);
+                        const __match_115 = (sym === __lto_other_114);
                         if ((__match_115 === true)) {
                           return "COLON_EQ";
                         } else if ((__match_115 === false)) {
-                          let __match_116;
                           const __lto_other_162 = "=>";
-                          __match_116 = (sym === __lto_other_114);
+                          const __match_116 = (sym === __lto_other_114);
                           if ((__match_116 === true)) {
                             return "FAT_ARROW";
                           } else if ((__match_116 === false)) {
-                            let __match_117;
                             const __lto_other_166 = "->";
-                            __match_117 = (sym === __lto_other_114);
+                            const __match_117 = (sym === __lto_other_114);
                             if ((__match_117 === true)) {
                               return "ARROW";
                             } else if ((__match_117 === false)) {
-                              let __match_118;
                               const __lto_other_170 = ".";
-                              __match_118 = (sym === __lto_other_114);
+                              const __match_118 = (sym === __lto_other_114);
                               if ((__match_118 === true)) {
                                 return "DOT";
                               } else if ((__match_118 === false)) {
-                                let __match_119;
                                 const __lto_other_174 = "+";
-                                __match_119 = (sym === __lto_other_114);
+                                const __match_119 = (sym === __lto_other_114);
                                 if ((__match_119 === true)) {
                                   return "PLUS";
                                 } else if ((__match_119 === false)) {
-                                  let __match_120;
                                   const __lto_other_178 = "-";
-                                  __match_120 = (sym === __lto_other_114);
+                                  const __match_120 = (sym === __lto_other_114);
                                   if ((__match_120 === true)) {
                                     return "MINUS";
                                   } else if ((__match_120 === false)) {
-                                    let __match_121;
                                     const __lto_other_182 = "*";
-                                    __match_121 = (sym === __lto_other_114);
+                                    const __match_121 = (sym === __lto_other_114);
                                     if ((__match_121 === true)) {
                                       return "STAR";
                                     } else if ((__match_121 === false)) {
-                                      let __match_122;
                                       const __lto_other_186 = "/";
-                                      __match_122 = (sym === __lto_other_114);
+                                      const __match_122 = (sym === __lto_other_114);
                                       if ((__match_122 === true)) {
                                         return "SLASH";
                                       } else if ((__match_122 === false)) {
-                                        let __match_123;
                                         const __lto_other_190 = "%";
-                                        __match_123 = (sym === __lto_other_114);
+                                        const __match_123 = (sym === __lto_other_114);
                                         if ((__match_123 === true)) {
                                           return "PERCENT";
                                         } else if ((__match_123 === false)) {
-                                          let __match_124;
                                           const __lto_other_194 = "!";
-                                          __match_124 = (sym === __lto_other_114);
+                                          const __match_124 = (sym === __lto_other_114);
                                           if ((__match_124 === true)) {
                                             return "BANG";
                                           } else if ((__match_124 === false)) {
-                                            let __match_125;
                                             const __lto_other_198 = "<";
-                                            __match_125 = (sym === __lto_other_114);
+                                            const __match_125 = (sym === __lto_other_114);
                                             if ((__match_125 === true)) {
                                               return "LT";
                                             } else if ((__match_125 === false)) {
-                                              let __match_126;
                                               const __lto_other_202 = ">";
-                                              __match_126 = (sym === __lto_other_114);
+                                              const __match_126 = (sym === __lto_other_114);
                                               if ((__match_126 === true)) {
                                                 return "GT";
                                               } else if ((__match_126 === false)) {
-                                                let __match_127;
                                                 const __lto_other_206 = "<=";
-                                                __match_127 = (sym === __lto_other_114);
+                                                const __match_127 = (sym === __lto_other_114);
                                                 if ((__match_127 === true)) {
                                                   return "LT_EQ";
                                                 } else if ((__match_127 === false)) {
-                                                  let __match_128;
                                                   const __lto_other_210 = ">=";
-                                                  __match_128 = (sym === __lto_other_114);
+                                                  const __match_128 = (sym === __lto_other_114);
                                                   if ((__match_128 === true)) {
                                                     return "GT_EQ";
                                                   } else if ((__match_128 === false)) {
-                                                    let __match_129;
                                                     const __lto_other_214 = "==";
-                                                    __match_129 = (sym === __lto_other_114);
+                                                    const __match_129 = (sym === __lto_other_114);
                                                     if ((__match_129 === true)) {
                                                       return "EQ_EQ";
                                                     } else if ((__match_129 === false)) {
-                                                      let __match_130;
                                                       const __lto_other_218 = "!=";
-                                                      __match_130 = (sym === __lto_other_114);
+                                                      const __match_130 = (sym === __lto_other_114);
                                                       if ((__match_130 === true)) {
                                                         return "BANG_EQ";
                                                       } else if ((__match_130 === false)) {
-                                                        let __match_131;
                                                         const __lto_other_222 = "&&";
-                                                        __match_131 = (sym === __lto_other_114);
+                                                        const __match_131 = (sym === __lto_other_114);
                                                         if ((__match_131 === true)) {
                                                           return "AMP_AMP";
                                                         } else if ((__match_131 === false)) {
-                                                          let __match_132;
                                                           const __lto_other_226 = "||";
-                                                          __match_132 = (sym === __lto_other_114);
+                                                          const __match_132 = (sym === __lto_other_114);
                                                           if ((__match_132 === true)) {
                                                             return "PIPE_PIPE";
                                                           } else if ((__match_132 === false)) {
-                                                            let __match_133;
                                                             const __lto_other_230 = "_";
-                                                            __match_133 = (sym === __lto_other_114);
+                                                            const __match_133 = (sym === __lto_other_114);
                                                             if ((__match_133 === true)) {
                                                               return "UNDERSCORE";
                                                             } else if ((__match_133 === false)) {
@@ -1923,12 +1860,9 @@ export function collect_tokens_from_alts__lto_9309ae26(__caps, alts, kws, syms, 
       if ((alt[LUMO_TAG] === "mk")) {
         const name = alt.args[0];
         return String.char_code_at(__caps, name, 0, (code) => {
-          let __match_136;
-          let __match_143;
           const __lto_other_238 = 65;
-          let __match_141;
-          __match_141 = (code < __lto_other_238);
-          __match_143 = ((__match_141 === true) ? Ordering["less"] : ((__match_141 === false) ? ((__match_142) => {
+          const __match_141 = (code < __lto_other_238);
+          const __match_143 = ((__match_141 === true) ? Ordering["less"] : ((__match_141 === false) ? ((__match_142) => {
             if ((__match_142 === true)) {
               return Ordering["equal"];
             } else if ((__match_142 === false)) {
@@ -1939,14 +1873,11 @@ export function collect_tokens_from_alts__lto_9309ae26(__caps, alts, kws, syms, 
           })(((a, b) => {
             return (a === b);
           })(code, __lto_other_238)) : __lumo_match_error(__match_141)));
-          __match_136 = ((__match_143[LUMO_TAG] === "less") ? false : ((__match_143[LUMO_TAG] === "equal") ? true : ((__match_143[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_143))));
+          const __match_136 = ((__match_143[LUMO_TAG] === "less") ? false : ((__match_143[LUMO_TAG] === "equal") ? true : ((__match_143[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_143))));
           if ((__match_136 === true)) {
-            let __match_137;
-            let __match_140;
             const __lto_other_242 = 90;
-            let __match_138;
-            __match_138 = (code < __lto_other_238);
-            __match_140 = ((__match_138 === true) ? Ordering["less"] : ((__match_138 === false) ? ((__match_139) => {
+            const __match_138 = (code < __lto_other_238);
+            const __match_140 = ((__match_138 === true) ? Ordering["less"] : ((__match_138 === false) ? ((__match_139) => {
               if ((__match_139 === true)) {
                 return Ordering["equal"];
               } else if ((__match_139 === false)) {
@@ -1957,7 +1888,7 @@ export function collect_tokens_from_alts__lto_9309ae26(__caps, alts, kws, syms, 
             })(((a, b) => {
               return (a === b);
             })(code, __lto_other_242)) : __lumo_match_error(__match_138)));
-            __match_137 = ((__match_140[LUMO_TAG] === "less") ? true : ((__match_140[LUMO_TAG] === "equal") ? true : ((__match_140[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_140))));
+            const __match_137 = ((__match_140[LUMO_TAG] === "less") ? true : ((__match_140[LUMO_TAG] === "equal") ? true : ((__match_140[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_140))));
             if ((__match_137 === true)) {
               return collect_tokens_from_alts__lto_9309ae26(__caps, rest, kws, syms, __k);
             } else if ((__match_137 === false)) {
@@ -1981,12 +1912,9 @@ export function collect_tokens_from_alts__lto_9309ae26(__caps, alts, kws, syms, 
 }
 
 export function string_lt_loop__lto_090deca7(a, b, i) {
-  let __match_147;
-  let __match_146;
   const __lto_other_246 = String.len(a);
-  let __match_144;
-  __match_144 = (i < __lto_other_246);
-  __match_146 = ((__match_144 === true) ? Ordering["less"] : ((__match_144 === false) ? ((__match_145) => {
+  const __match_144 = (i < __lto_other_246);
+  const __match_146 = ((__match_144 === true) ? Ordering["less"] : ((__match_144 === false) ? ((__match_145) => {
     if ((__match_145 === true)) {
       return Ordering["equal"];
     } else if ((__match_145 === false)) {
@@ -1997,18 +1925,16 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
   })(((a, b) => {
     return (a === b);
   })(i, __lto_other_246)) : __lumo_match_error(__match_144)));
-  __match_147 = ((__match_146[LUMO_TAG] === "less") ? false : ((__match_146[LUMO_TAG] === "equal") ? true : ((__match_146[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_146))));
+  const __match_147 = ((__match_146[LUMO_TAG] === "less") ? false : ((__match_146[LUMO_TAG] === "equal") ? true : ((__match_146[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_146))));
   if ((__match_147 === true)) {
     let __match_163;
     let __match_162;
     const __lto_other_250 = String.len(b);
-    let __match_160;
-    __match_160 = (i < __lto_other_246);
+    const __match_160 = (i < __lto_other_246);
     if ((__match_160 === true)) {
       __match_162 = Ordering["less"];
     } else if ((__match_160 === false)) {
-      let __match_161;
-      __match_161 = (i === __lto_other_246);
+      const __match_161 = (i === __lto_other_246);
       if ((__match_161 === true)) {
         __match_162 = Ordering["equal"];
       } else if ((__match_161 === false)) {
@@ -2037,13 +1963,11 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
     let __match_151;
     let __match_150;
     const __lto_other_254 = String.len(b);
-    let __match_148;
-    __match_148 = (i < __lto_other_246);
+    const __match_148 = (i < __lto_other_246);
     if ((__match_148 === true)) {
       __match_150 = Ordering["less"];
     } else if ((__match_148 === false)) {
-      let __match_149;
-      __match_149 = (i === __lto_other_246);
+      const __match_149 = (i === __lto_other_246);
       if ((__match_149 === true)) {
         __match_150 = Ordering["equal"];
       } else if ((__match_149 === false)) {
@@ -2066,11 +1990,8 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
     } else if ((__match_151 === false)) {
       const ca = String.char_code_at(i, i);
       const cb = String.char_code_at(b, i);
-      let __match_155;
-      let __match_154;
-      let __match_152;
-      __match_152 = (i < __lto_other_246);
-      __match_154 = ((__match_152 === true) ? Ordering["less"] : ((__match_152 === false) ? ((__match_153) => {
+      const __match_152 = (i < __lto_other_246);
+      const __match_154 = ((__match_152 === true) ? Ordering["less"] : ((__match_152 === false) ? ((__match_153) => {
         if ((__match_153 === true)) {
           return Ordering["equal"];
         } else if ((__match_153 === false)) {
@@ -2081,19 +2002,17 @@ export function string_lt_loop__lto_090deca7(a, b, i) {
       })(((a, b) => {
         return (a === b);
       })(ca, cb)) : __lumo_match_error(__match_152)));
-      __match_155 = ((__match_154[LUMO_TAG] === "less") ? true : ((__match_154[LUMO_TAG] === "equal") ? false : ((__match_154[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_154))));
+      const __match_155 = ((__match_154[LUMO_TAG] === "less") ? true : ((__match_154[LUMO_TAG] === "equal") ? false : ((__match_154[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_154))));
       if ((__match_155 === true)) {
         return true;
       } else if ((__match_155 === false)) {
         let __match_159;
         let __match_158;
-        let __match_156;
-        __match_156 = (i < __lto_other_246);
+        const __match_156 = (i < __lto_other_246);
         if ((__match_156 === true)) {
           __match_158 = Ordering["less"];
         } else if ((__match_156 === false)) {
-          let __match_157;
-          __match_157 = (i === __lto_other_246);
+          const __match_157 = (i === __lto_other_246);
           if ((__match_157 === true)) {
             __match_158 = Ordering["equal"];
           } else if ((__match_157 === false)) {
@@ -2141,13 +2060,9 @@ export function is_token_only_alternatives__lto_9309ae26(alts) {
     if ((alt[LUMO_TAG] === "mk")) {
       const name = alt.args[0];
       const code = String.char_code_at(name, 0);
-      let is_upper;
-      let __match_170;
-      let __match_169;
       const __lto_other_270 = 65;
-      let __match_167;
-      __match_167 = (code < __lto_other_270);
-      __match_169 = ((__match_167 === true) ? Ordering["less"] : ((__match_167 === false) ? ((__match_168) => {
+      const __match_167 = (code < __lto_other_270);
+      const __match_169 = ((__match_167 === true) ? Ordering["less"] : ((__match_167 === false) ? ((__match_168) => {
         if ((__match_168 === true)) {
           return Ordering["equal"];
         } else if ((__match_168 === false)) {
@@ -2158,8 +2073,8 @@ export function is_token_only_alternatives__lto_9309ae26(alts) {
       })(((a, b) => {
         return (a === b);
       })(code, __lto_other_270)) : __lumo_match_error(__match_167)));
-      __match_170 = ((__match_169[LUMO_TAG] === "less") ? false : ((__match_169[LUMO_TAG] === "equal") ? true : ((__match_169[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_169))));
-      is_upper = ((__match_170 === true) ? ((__match_173) => {
+      const __match_170 = ((__match_169[LUMO_TAG] === "less") ? false : ((__match_169[LUMO_TAG] === "equal") ? true : ((__match_169[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_169))));
+      const is_upper = ((__match_170 === true) ? ((__match_173) => {
         if ((__match_173[LUMO_TAG] === "less")) {
           return true;
         } else if ((__match_173[LUMO_TAG] === "equal")) {
@@ -2169,13 +2084,11 @@ export function is_token_only_alternatives__lto_9309ae26(alts) {
         }
       })(((__lto_self_273) => {
         const __lto_other_274 = 90;
-        let __match_171;
-        __match_171 = (code < __lto_other_270);
+        const __match_171 = (code < __lto_other_270);
         if ((__match_171 === true)) {
           return Ordering["less"];
         } else if ((__match_171 === false)) {
-          let __match_172;
-          __match_172 = (code === __lto_other_270);
+          const __match_172 = (code === __lto_other_270);
           if ((__match_172 === true)) {
             return Ordering["equal"];
           } else if ((__match_172 === false)) {
@@ -2212,56 +2125,41 @@ export function generate_syntax_kind__lto_1ba4622a(__caps, grammar, __k) {
         const rules = grammar.args[1];
         const s = "// Auto-generated by langue. Do not edit.\n";
         const __lto_other_278 = "// Regenerate: scripts/gen_langue.sh\n\n";
-        let s_0;
-        s_0 = (s + __lto_other_278);
+        const s_0 = (s + __lto_other_278);
         const __lto_other_282 = "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\n";
-        let s_1;
-        s_1 = (s_0 + __lto_other_282);
+        const s_1 = (s_0 + __lto_other_282);
         const __lto_other_286 = "#[repr(u16)]\n";
-        let s_4;
-        s_4 = (s_1 + __lto_other_286);
+        const s_4 = (s_1 + __lto_other_286);
         const __lto_other_290 = "pub enum SyntaxKind {\n";
-        let s_7;
-        s_7 = (s_4 + __lto_other_290);
+        const s_7 = (s_4 + __lto_other_290);
         const __lto_other_294 = "    // Named tokens\n";
-        let s_10;
-        s_10 = (s_7 + __lto_other_294);
+        const s_10 = (s_7 + __lto_other_294);
         return emit_named_tokens__lto_1ba4622a(__caps, s_10, token_defs, (s) => {
           const __lto_other_298 = "    // Trivia\n";
-          let s_0;
-          s_0 = (s + __lto_other_278);
+          const s_0 = (s + __lto_other_278);
           const __lto_other_302 = "    WHITESPACE,\n    NEWLINE,\n    UNKNOWN,\n";
-          let s_1;
-          s_1 = (s_0 + __lto_other_282);
+          const s_1 = (s_0 + __lto_other_282);
           return emit_keywords__lto_1ba4622a(__caps, s_1, keywords, (s) => {
             const s__iife_0 = emit_symbols__lto_1ba4622a(s, symbols);
             const __lto_other_306 = "    // Nodes\n";
-            let s_0;
-            s_0 = (s + __lto_other_278);
+            const s_0 = (s + __lto_other_278);
             return emit_node_kinds__lto_1ba4622a(__caps, s_0, rules, (s) => {
               const __lto_other_310 = "    // Sentinel\n    ERROR,\n";
-              let s_0;
-              s_0 = (s + __lto_other_278);
+              const s_0 = (s + __lto_other_278);
               const __lto_other_314 = "}\n";
-              let s_1;
-              s_1 = (s_0 + __lto_other_282);
+              const s_1 = (s_0 + __lto_other_282);
               const __lto_other_318 = "\nimpl SyntaxKind {\n";
-              let s_4;
-              s_4 = (s_1 + __lto_other_286);
+              const s_4 = (s_1 + __lto_other_286);
               const __lto_other_322 = "    pub fn is_trivia(self) -> bool {\n";
-              let s_7;
-              s_7 = (s_4 + __lto_other_290);
+              const s_7 = (s_4 + __lto_other_290);
               const __lto_other_326 = "        matches!(self, Self::WHITESPACE | Self::NEWLINE)\n";
-              let s_10;
-              s_10 = (s_7 + __lto_other_294);
+              const s_10 = (s_7 + __lto_other_294);
               const __lto_other_330 = "    }\n";
-              let s_13;
-              s_13 = (s_10 + __lto_other_330);
+              const s_13 = (s_10 + __lto_other_330);
               return emit_from_keyword__lto_1ba4622a(__caps, s_13, keywords, (s) => {
                 const s__iife_1 = emit_from_symbol__lto_1ba4622a(s, symbols);
                 const __lto_other_334 = "}\n";
-                let s_0;
-                s_0 = (s + __lto_other_278);
+                const s_0 = (s + __lto_other_278);
                 return __k(s_0);
               });
             });
@@ -2284,14 +2182,11 @@ export function emit_named_tokens__lto_1ba4622a(__caps, s, tokens, __k) {
       const tok = tokens.args[0];
       const rest = tokens.args[1];
       const __lto_other_342 = "    ";
-      let __lto_self_339;
-      __lto_self_339 = (s + __lto_other_342);
+      const __lto_self_339 = (s + __lto_other_342);
       return to_screaming_snake(__caps, tok, (__lto_other_340) => {
-        let __lto_self_337;
-        __lto_self_337 = (s + __lto_other_342);
+        const __lto_self_337 = (s + __lto_other_342);
         const __lto_other_338 = ",\n";
-        let __cps_v_31;
-        __cps_v_31 = (__lto_self_337 + __lto_other_338);
+        const __cps_v_31 = (__lto_self_337 + __lto_other_338);
         return emit_named_tokens__lto_1ba4622a(__caps, __cps_v_31, rest, __k);
       });
     } else {
@@ -2306,8 +2201,7 @@ export function emit_keywords__lto_1ba4622a(__caps, s, kws, __k) {
       return __k(s);
     } else {
       const __lto_other_350 = "    // Keywords\n";
-      let s2;
-      s2 = (s + __lto_other_350);
+      const s2 = (s + __lto_other_350);
       return emit_keywords_items__lto_1ba4622a(__caps, s2, kws, __k);
     }
   });
@@ -2322,16 +2216,12 @@ export function emit_keywords_items__lto_1ba4622a(__caps, s, kws, __k) {
       const rest = kws.args[1];
       const __lto_self_359 = "    ";
       return keyword_variant__lto_1ba4622a(__caps, kw, (__lto_other_360) => {
-        let __lto_self_357;
-        __lto_self_357 = (__lto_self_359 + __lto_other_360);
+        const __lto_self_357 = (__lto_self_359 + __lto_other_360);
         const __lto_other_358 = ", // '";
-        let __lto_self_355;
-        __lto_self_355 = (__lto_self_357 + __lto_other_358);
-        let __lto_self_353;
-        __lto_self_353 = (__lto_self_355 + kw);
+        const __lto_self_355 = (__lto_self_357 + __lto_other_358);
+        const __lto_self_353 = (__lto_self_355 + kw);
         const __lto_other_354 = "'\n";
-        let line;
-        line = (__lto_self_353 + __lto_other_354);
+        const line = (__lto_self_353 + __lto_other_354);
         return emit_keywords_items__lto_1ba4622a(__caps, ((__lto_self_369) => {
           return (__lto_self_359 + __lto_other_360);
         })(s), rest, __k);
@@ -2348,8 +2238,7 @@ export function emit_symbols__lto_1ba4622a(s, syms) {
   } else if ((syms[LUMO_TAG] === "cons")) {
     const sym = syms.args[0];
     const rest = syms.args[1];
-    let s2;
-    s2 = ((rest[LUMO_TAG] === "nil") ? s : ((__match_181) => {
+    const s2 = ((rest[LUMO_TAG] === "nil") ? s : ((__match_181) => {
       const __lto_other_374 = "    // Symbols\n";
       return (s + __lto_other_374);
     })(syms));
@@ -2365,18 +2254,14 @@ export function emit_symbols_items__lto_1ba4622a(s, syms) {
   } else if ((syms[LUMO_TAG] === "cons")) {
     const sym = syms.args[0];
     const rest = syms.args[1];
-    let line;
-    let __lto_self_377;
-    let __lto_self_379;
-    let __lto_self_381;
     const __lto_self_383 = "    ";
     const __lto_other_384 = symbol_variant__lto_8227044e(sym);
-    __lto_self_381 = (__lto_self_383 + __lto_other_384);
+    const __lto_self_381 = (__lto_self_383 + __lto_other_384);
     const __lto_other_382 = ", // '";
-    __lto_self_379 = (__lto_self_381 + __lto_other_382);
-    __lto_self_377 = (__lto_self_379 + sym);
+    const __lto_self_379 = (__lto_self_381 + __lto_other_382);
+    const __lto_self_377 = (__lto_self_379 + sym);
     const __lto_other_378 = "'\n";
-    line = (__lto_self_377 + __lto_other_378);
+    const line = (__lto_self_377 + __lto_other_378);
     return emit_symbols_items__lto_1ba4622a(((__lto_self_393) => {
       return (__lto_self_383 + __lto_other_384);
     })(s), rest);
@@ -2399,16 +2284,12 @@ export function emit_node_kinds__lto_1ba4622a(__caps, s, rules, __k) {
           const elems = body.args[0];
           const __lto_self_403 = "    ";
           return to_screaming_snake(__caps, name, (__lto_other_404) => {
-            let __lto_self_401;
-            __lto_self_401 = (__lto_self_403 + __lto_other_404);
+            const __lto_self_401 = (__lto_self_403 + __lto_other_404);
             const __lto_other_402 = ", // ";
-            let __lto_self_399;
-            __lto_self_399 = (__lto_self_401 + __lto_other_402);
-            let __lto_self_397;
-            __lto_self_397 = (__lto_self_399 + name);
+            const __lto_self_399 = (__lto_self_401 + __lto_other_402);
+            const __lto_self_397 = (__lto_self_399 + name);
             const __lto_other_398 = "\n";
-            let line;
-            line = (__lto_self_397 + __lto_other_398);
+            const line = (__lto_self_397 + __lto_other_398);
             return emit_node_kinds__lto_1ba4622a(__caps, ((__lto_self_413) => {
               return (__lto_self_403 + __lto_other_404);
             })(s), rest, __k);
@@ -2419,16 +2300,12 @@ export function emit_node_kinds__lto_1ba4622a(__caps, s, rules, __k) {
           if ((__match_186 === true)) {
             const __lto_self_423 = "    ";
             return to_screaming_snake(__caps, name, (__lto_other_424) => {
-              let __lto_self_421;
-              __lto_self_421 = (__lto_self_423 + __lto_other_424);
+              const __lto_self_421 = (__lto_self_423 + __lto_other_424);
               const __lto_other_422 = ", // ";
-              let __lto_self_419;
-              __lto_self_419 = (__lto_self_421 + __lto_other_422);
-              let __lto_self_417;
-              __lto_self_417 = (__lto_self_419 + name);
+              const __lto_self_419 = (__lto_self_421 + __lto_other_422);
+              const __lto_self_417 = (__lto_self_419 + name);
               const __lto_other_418 = " (token wrapper)\n";
-              let line;
-              line = (__lto_self_417 + __lto_other_418);
+              const line = (__lto_self_417 + __lto_other_418);
               return emit_node_kinds__lto_1ba4622a(__caps, ((__lto_self_433) => {
                 return (__lto_self_423 + __lto_other_424);
               })(s), rest, __k);
@@ -2456,21 +2333,16 @@ export function emit_from_keyword__lto_1ba4622a(__caps, s, kws, __k) {
       return __k(s);
     } else {
       const __lto_other_438 = "\n    pub fn from_keyword(text: &str) -> Option<Self> {\n";
-      let s;
-      s = (s + __lto_other_438);
+      const s = (s + __lto_other_438);
       const __lto_other_442 = "        match text {\n";
-      let s_0;
-      s_0 = (s + __lto_other_442);
+      const s_0 = (s + __lto_other_442);
       return emit_keyword_arms__lto_1ba4622a(__caps, s_0, kws, (s) => {
         const __lto_other_446 = "            _ => None,\n";
-        let s_0;
-        s_0 = (s + __lto_other_438);
+        const s_0 = (s + __lto_other_438);
         const __lto_other_450 = "        }\n";
-        let s_1;
-        s_1 = (s_0 + __lto_other_450);
+        const s_1 = (s_0 + __lto_other_450);
         const __lto_other_454 = "    }\n";
-        let s_4;
-        s_4 = (s_1 + __lto_other_454);
+        const s_4 = (s_1 + __lto_other_454);
         return __k(s_4);
       });
     }
@@ -2485,17 +2357,13 @@ export function emit_keyword_arms__lto_1ba4622a(__caps, s, kws, __k) {
       const kw = kws.args[0];
       const rest = kws.args[1];
       const __lto_self_463 = "            \"";
-      let __lto_self_461;
-      __lto_self_461 = (__lto_self_463 + kw);
+      const __lto_self_461 = (__lto_self_463 + kw);
       const __lto_other_462 = "\" => Some(Self::";
-      let __lto_self_459;
-      __lto_self_459 = (__lto_self_461 + __lto_other_462);
+      const __lto_self_459 = (__lto_self_461 + __lto_other_462);
       return keyword_variant__lto_1ba4622a(__caps, kw, (__lto_other_460) => {
-        let __lto_self_457;
-        __lto_self_457 = (__lto_self_463 + kw);
+        const __lto_self_457 = (__lto_self_463 + kw);
         const __lto_other_458 = "),\n";
-        let line;
-        line = (__lto_self_461 + __lto_other_462);
+        const line = (__lto_self_461 + __lto_other_462);
         return emit_keyword_arms__lto_1ba4622a(__caps, ((__lto_self_473) => {
           return (__lto_self_463 + kw);
         })(s), rest, __k);
@@ -2510,22 +2378,17 @@ export function emit_from_symbol__lto_1ba4622a(s, syms) {
   if ((syms[LUMO_TAG] === "nil")) {
     return s;
   } else {
-    let s__iife_18;
     const __lto_other_478 = "\n    pub fn from_symbol(text: &str) -> Option<Self> {\n";
-    s__iife_18 = (s + __lto_other_478);
-    let s__iife_2;
+    const s__iife_18 = (s + __lto_other_478);
     const __lto_other_482 = "        match text {\n";
-    s__iife_2 = (s__iife_18 + __lto_other_482);
+    const s__iife_2 = (s__iife_18 + __lto_other_482);
     const s_0 = emit_symbol_arms__lto_1ba4622a(s__iife_2, syms);
-    let s__iife_3;
     const __lto_other_486 = "            _ => None,\n";
-    s__iife_3 = (s_0 + __lto_other_486);
-    let s_3;
+    const s__iife_3 = (s_0 + __lto_other_486);
     const __lto_other_490 = "        }\n";
-    s_3 = (s__iife_3 + __lto_other_490);
-    let s__iife_4;
+    const s_3 = (s__iife_3 + __lto_other_490);
     const __lto_other_494 = "    }\n";
-    s__iife_4 = (s_3 + __lto_other_494);
+    const s__iife_4 = (s_3 + __lto_other_494);
     return s__iife_4;
   }
 }
@@ -2536,18 +2399,14 @@ export function emit_symbol_arms__lto_1ba4622a(s, syms) {
   } else if ((syms[LUMO_TAG] === "cons")) {
     const sym = syms.args[0];
     const rest = syms.args[1];
-    let line;
-    let __lto_self_497;
-    let __lto_self_499;
-    let __lto_self_501;
     const __lto_self_503 = "            \"";
-    __lto_self_501 = (__lto_self_503 + sym);
+    const __lto_self_501 = (__lto_self_503 + sym);
     const __lto_other_502 = "\" => Some(Self::";
-    __lto_self_499 = (__lto_self_501 + __lto_other_502);
+    const __lto_self_499 = (__lto_self_501 + __lto_other_502);
     const __lto_other_500 = symbol_variant__lto_8227044e(sym);
-    __lto_self_497 = (__lto_self_499 + __lto_other_500);
+    const __lto_self_497 = (__lto_self_499 + __lto_other_500);
     const __lto_other_498 = "),\n";
-    line = (__lto_self_497 + __lto_other_498);
+    const line = (__lto_self_497 + __lto_other_498);
     return emit_symbol_arms__lto_1ba4622a(((__lto_self_513) => {
       return (__lto_self_503 + sym);
     })(s), rest);
@@ -2563,26 +2422,19 @@ export function generate_ast__lto_1ba4622a(__caps, grammar, __k) {
       const rules = grammar.args[1];
       const s = "// Auto-generated by langue. Do not edit.\n";
       const __lto_other_518 = "// Regenerate: scripts/gen_langue.sh\n\n";
-      let s_0;
-      s_0 = (s + __lto_other_518);
+      const s_0 = (s + __lto_other_518);
       const __lto_other_522 = "use super::SyntaxKind;\n";
-      let s_1;
-      s_1 = (s_0 + __lto_other_522);
+      const s_1 = (s_0 + __lto_other_522);
       const __lto_other_526 = "use super::{SyntaxNode, SyntaxElement, LosslessToken};\n\n";
-      let s_4;
-      s_4 = (s_1 + __lto_other_526);
+      const s_4 = (s_1 + __lto_other_526);
       const __lto_other_530 = "pub trait AstNode<'a>: Sized {\n";
-      let s_7;
-      s_7 = (s_4 + __lto_other_530);
+      const s_7 = (s_4 + __lto_other_530);
       const __lto_other_534 = "    fn cast(node: &'a SyntaxNode) -> Option<Self>;\n";
-      let s_10;
-      s_10 = (s_7 + __lto_other_534);
+      const s_10 = (s_7 + __lto_other_534);
       const __lto_other_538 = "    fn syntax(&self) -> &'a SyntaxNode;\n";
-      let s_13;
-      s_13 = (s_10 + __lto_other_538);
+      const s_13 = (s_10 + __lto_other_538);
       const __lto_other_542 = "}\n\n";
-      let s_16;
-      s_16 = (s_13 + __lto_other_542);
+      const s_16 = (s_13 + __lto_other_542);
       return emit_ast_rules(__caps, s_16, token_defs, rules, __k);
     } else {
       return __lumo_match_error(grammar);
@@ -2593,41 +2445,28 @@ export function generate_ast__lto_1ba4622a(__caps, grammar, __k) {
 export function emit_struct_node__lto_1ba4622a(__caps, s, name, elems, token_defs, __k) {
   return to_screaming_snake(__caps, name, (kind) => {
     const __lto_other_550 = "pub struct ";
-    let __lto_self_547;
-    __lto_self_547 = (s + __lto_other_550);
-    let __lto_self_545;
-    __lto_self_545 = (__lto_self_547 + name);
+    const __lto_self_547 = (s + __lto_other_550);
+    const __lto_self_545 = (__lto_self_547 + name);
     const __lto_other_546 = "<'a>(pub(crate) &'a SyntaxNode);\n\n";
-    let s;
-    s = (__lto_self_545 + __lto_other_546);
+    const s = (__lto_self_545 + __lto_other_546);
     const __lto_other_562 = "impl<'a> AstNode<'a> for ";
-    let __lto_self_559;
-    __lto_self_559 = (s + __lto_other_562);
-    let __lto_self_557;
-    __lto_self_557 = (__lto_self_559 + name);
+    const __lto_self_559 = (s + __lto_other_562);
+    const __lto_self_557 = (__lto_self_559 + name);
     const __lto_other_558 = "<'a> {\n";
-    let s_8;
-    s_8 = (__lto_self_557 + __lto_other_558);
+    const s_8 = (__lto_self_557 + __lto_other_558);
     const __lto_other_570 = "    fn cast(node: &'a SyntaxNode) -> Option<Self> {\n";
-    let s_11;
-    s_11 = (s_8 + __lto_other_570);
+    const s_11 = (s_8 + __lto_other_570);
     const __lto_other_578 = "        (node.kind == SyntaxKind::";
-    let __lto_self_575;
-    __lto_self_575 = (s_11 + __lto_other_578);
-    let __lto_self_573;
-    __lto_self_573 = (__lto_self_575 + kind);
+    const __lto_self_575 = (s_11 + __lto_other_578);
+    const __lto_self_573 = (__lto_self_575 + kind);
     const __lto_other_574 = ").then(|| Self(node))\n";
-    let s_18;
-    s_18 = (__lto_self_573 + __lto_other_574);
+    const s_18 = (__lto_self_573 + __lto_other_574);
     const __lto_other_586 = "    }\n";
-    let s_21;
-    s_21 = (s_18 + __lto_other_586);
+    const s_21 = (s_18 + __lto_other_586);
     const __lto_other_590 = "    fn syntax(&self) -> &'a SyntaxNode { self.0 }\n";
-    let s_24;
-    s_24 = (s_21 + __lto_other_590);
+    const s_24 = (s_21 + __lto_other_590);
     const __lto_other_594 = "}\n\n";
-    let s_27;
-    s_27 = (s_24 + __lto_other_594);
+    const s_27 = (s_24 + __lto_other_594);
     return emit_accessors__lto_1ba4622a(__caps, s_27, name, elems, token_defs, __k);
   });
 }
@@ -2637,17 +2476,13 @@ export function emit_accessors__lto_1ba4622a(__caps, s, struct_name, elems, toke
     const has_labeled = has_labeled_elements(elems);
     if ((has_labeled === true)) {
       const __lto_other_602 = "impl<'a> ";
-      let __lto_self_599;
-      __lto_self_599 = (s + __lto_other_602);
-      let __lto_self_597;
-      __lto_self_597 = (__lto_self_599 + struct_name);
+      const __lto_self_599 = (s + __lto_other_602);
+      const __lto_self_597 = (__lto_self_599 + struct_name);
       const __lto_other_598 = "<'a> {\n";
-      let s;
-      s = (__lto_self_597 + __lto_other_598);
+      const s = (__lto_self_597 + __lto_other_598);
       return emit_accessors_for_elements(__caps, s, elems, token_defs, (s) => {
         const __lto_other_610 = "}\n\n";
-        let s_0;
-        s_0 = (s + __lto_other_602);
+        const s_0 = (s + __lto_other_602);
         return __k(s_0);
       });
     } else if ((has_labeled === false)) {
@@ -2662,60 +2497,42 @@ export function emit_token_accessor__lto_1ba4622a(__caps, s, label, t, repeated,
   return token_kind_from_ref(__caps, t, (kind) => {
     if ((repeated === true)) {
       const __lto_other_618 = "    pub fn ";
-      let __lto_self_615;
-      __lto_self_615 = (s + __lto_other_618);
-      let __lto_self_613;
-      __lto_self_613 = (__lto_self_615 + label);
+      const __lto_self_615 = (s + __lto_other_618);
+      const __lto_self_613 = (__lto_self_615 + label);
       const __lto_other_614 = "(&self) -> impl Iterator<Item = &'a LosslessToken> + 'a {\n";
-      let s;
-      s = (__lto_self_613 + __lto_other_614);
+      const s = (__lto_self_613 + __lto_other_614);
       const __lto_other_626 = "        self.0.children.iter().filter_map(|c| match c {\n";
-      let s_4;
-      s_4 = (s + __lto_other_626);
+      const s_4 = (s + __lto_other_626);
       const __lto_other_634 = "            SyntaxElement::Token(t) if t.kind == SyntaxKind::";
-      let __lto_self_631;
-      __lto_self_631 = (s_4 + __lto_other_634);
-      let __lto_self_629;
-      __lto_self_629 = (__lto_self_631 + kind);
+      const __lto_self_631 = (s_4 + __lto_other_634);
+      const __lto_self_629 = (__lto_self_631 + kind);
       const __lto_other_630 = " => Some(t),\n";
-      let s_11;
-      s_11 = (__lto_self_629 + __lto_other_630);
+      const s_11 = (__lto_self_629 + __lto_other_630);
       const __lto_other_642 = "            _ => None,\n";
-      let s_14;
-      s_14 = (s_11 + __lto_other_642);
+      const s_14 = (s_11 + __lto_other_642);
       const __lto_other_646 = "        })\n";
-      let s_17;
-      s_17 = (s_14 + __lto_other_646);
+      const s_17 = (s_14 + __lto_other_646);
       const __lto_other_650 = "    }\n";
       return __k(((a, b) => {
         return (a + b);
       })(s_17, __lto_other_650));
     } else if ((repeated === false)) {
       const __lto_other_658 = "    pub fn ";
-      let __lto_self_655;
-      __lto_self_655 = (s + __lto_other_658);
-      let __lto_self_653;
-      __lto_self_653 = (__lto_self_655 + label);
+      const __lto_self_655 = (s + __lto_other_658);
+      const __lto_self_653 = (__lto_self_655 + label);
       const __lto_other_654 = "(&self) -> Option<&'a LosslessToken> {\n";
-      let s;
-      s = (__lto_self_653 + __lto_other_654);
+      const s = (__lto_self_653 + __lto_other_654);
       const __lto_other_666 = "        self.0.children.iter().find_map(|c| match c {\n";
-      let s_4;
-      s_4 = (s + __lto_other_666);
+      const s_4 = (s + __lto_other_666);
       const __lto_other_674 = "            SyntaxElement::Token(t) if t.kind == SyntaxKind::";
-      let __lto_self_671;
-      __lto_self_671 = (s_4 + __lto_other_674);
-      let __lto_self_669;
-      __lto_self_669 = (__lto_self_671 + kind);
+      const __lto_self_671 = (s_4 + __lto_other_674);
+      const __lto_self_669 = (__lto_self_671 + kind);
       const __lto_other_670 = " => Some(t),\n";
-      let s_11;
-      s_11 = (__lto_self_669 + __lto_other_670);
+      const s_11 = (__lto_self_669 + __lto_other_670);
       const __lto_other_682 = "            _ => None,\n";
-      let s_14;
-      s_14 = (s_11 + __lto_other_682);
+      const s_14 = (s_11 + __lto_other_682);
       const __lto_other_686 = "        })\n";
-      let s_17;
-      s_17 = (s_14 + __lto_other_686);
+      const s_17 = (s_14 + __lto_other_686);
       const __lto_other_690 = "    }\n";
       return __k(((a, b) => {
         return (a + b);
@@ -2728,69 +2545,47 @@ export function emit_token_accessor__lto_1ba4622a(__caps, s, label, t, repeated,
 
 export function emit_node_accessor__lto_1ba4622a(s, label, node_name, repeated) {
   if ((repeated === true)) {
-    let s__iife_19;
-    let __lto_self_693;
-    let __lto_self_695;
-    let __lto_self_697;
-    let __lto_self_699;
     const __lto_other_702 = "    pub fn ";
-    __lto_self_699 = (s + __lto_other_702);
-    __lto_self_697 = (__lto_self_699 + label);
+    const __lto_self_699 = (s + __lto_other_702);
+    const __lto_self_697 = (__lto_self_699 + label);
     const __lto_other_698 = "(&self) -> impl Iterator<Item = ";
-    __lto_self_695 = (__lto_self_697 + __lto_other_698);
-    __lto_self_693 = (__lto_self_695 + node_name);
+    const __lto_self_695 = (__lto_self_697 + __lto_other_698);
+    const __lto_self_693 = (__lto_self_695 + node_name);
     const __lto_other_694 = "<'a>> + 'a {\n";
-    s__iife_19 = (__lto_self_693 + __lto_other_694);
-    let s__iife_5;
+    const s__iife_19 = (__lto_self_693 + __lto_other_694);
     const __lto_other_714 = "        self.0.children.iter().filter_map(|c| match c {\n";
-    s__iife_5 = (s__iife_19 + __lto_other_714);
-    let s_0;
-    let __lto_self_717;
-    let __lto_self_719;
+    const s__iife_5 = (s__iife_19 + __lto_other_714);
     const __lto_other_722 = "            SyntaxElement::Node(n) => ";
-    __lto_self_719 = (s__iife_5 + __lto_other_722);
-    __lto_self_717 = (__lto_self_719 + node_name);
+    const __lto_self_719 = (s__iife_5 + __lto_other_722);
+    const __lto_self_717 = (__lto_self_719 + node_name);
     const __lto_other_718 = "::cast(n),\n";
-    s_0 = (__lto_self_717 + __lto_other_718);
-    let s__iife_6;
+    const s_0 = (__lto_self_717 + __lto_other_718);
     const __lto_other_730 = "            _ => None,\n";
-    s__iife_6 = (s_0 + __lto_other_730);
-    let s_9;
+    const s__iife_6 = (s_0 + __lto_other_730);
     const __lto_other_734 = "        })\n";
-    s_9 = (s__iife_6 + __lto_other_734);
+    const s_9 = (s__iife_6 + __lto_other_734);
     const __lto_other_738 = "    }\n";
     return (s_9 + __lto_other_738);
   } else if ((repeated === false)) {
-    let s__iife_20;
-    let __lto_self_741;
-    let __lto_self_743;
-    let __lto_self_745;
-    let __lto_self_747;
     const __lto_other_750 = "    pub fn ";
-    __lto_self_747 = (s + __lto_other_750);
-    __lto_self_745 = (__lto_self_747 + label);
+    const __lto_self_747 = (s + __lto_other_750);
+    const __lto_self_745 = (__lto_self_747 + label);
     const __lto_other_746 = "(&self) -> Option<";
-    __lto_self_743 = (__lto_self_745 + __lto_other_746);
-    __lto_self_741 = (__lto_self_743 + node_name);
+    const __lto_self_743 = (__lto_self_745 + __lto_other_746);
+    const __lto_self_741 = (__lto_self_743 + node_name);
     const __lto_other_742 = "<'a>> {\n";
-    s__iife_20 = (__lto_self_741 + __lto_other_742);
-    let s__iife_7;
+    const s__iife_20 = (__lto_self_741 + __lto_other_742);
     const __lto_other_762 = "        self.0.children.iter().find_map(|c| match c {\n";
-    s__iife_7 = (s__iife_20 + __lto_other_762);
-    let s_0;
-    let __lto_self_765;
-    let __lto_self_767;
+    const s__iife_7 = (s__iife_20 + __lto_other_762);
     const __lto_other_770 = "            SyntaxElement::Node(n) => ";
-    __lto_self_767 = (s__iife_7 + __lto_other_770);
-    __lto_self_765 = (__lto_self_767 + node_name);
+    const __lto_self_767 = (s__iife_7 + __lto_other_770);
+    const __lto_self_765 = (__lto_self_767 + node_name);
     const __lto_other_766 = "::cast(n),\n";
-    s_0 = (__lto_self_765 + __lto_other_766);
-    let s__iife_8;
+    const s_0 = (__lto_self_765 + __lto_other_766);
     const __lto_other_778 = "            _ => None,\n";
-    s__iife_8 = (s_0 + __lto_other_778);
-    let s_9;
+    const s__iife_8 = (s_0 + __lto_other_778);
     const __lto_other_782 = "        })\n";
-    s_9 = (s__iife_8 + __lto_other_782);
+    const s_9 = (s__iife_8 + __lto_other_782);
     const __lto_other_786 = "    }\n";
     return (s_9 + __lto_other_786);
   } else {
@@ -2799,52 +2594,37 @@ export function emit_node_accessor__lto_1ba4622a(s, label, node_name, repeated) 
 }
 
 export function emit_enum_node__lto_1ba4622a(s, name, alts) {
-  let s__iife_9;
-  let __lto_self_789;
-  let __lto_self_791;
   const __lto_other_794 = "pub enum ";
-  __lto_self_791 = (s + __lto_other_794);
-  __lto_self_789 = (__lto_self_791 + name);
+  const __lto_self_791 = (s + __lto_other_794);
+  const __lto_self_789 = (__lto_self_791 + name);
   const __lto_other_790 = "<'a> {\n";
-  s__iife_9 = (__lto_self_789 + __lto_other_790);
+  const s__iife_9 = (__lto_self_789 + __lto_other_790);
   const s_4 = emit_enum_variants__lto_1ba4622a(s__iife_9, alts);
-  let s__iife_10;
   const __lto_other_802 = "}\n\n";
-  s__iife_10 = (s_4 + __lto_other_802);
-  let s_7;
-  let __lto_self_805;
-  let __lto_self_807;
+  const s__iife_10 = (s_4 + __lto_other_802);
   const __lto_other_810 = "impl<'a> AstNode<'a> for ";
-  __lto_self_807 = (s__iife_10 + __lto_other_810);
-  __lto_self_805 = (__lto_self_807 + name);
+  const __lto_self_807 = (s__iife_10 + __lto_other_810);
+  const __lto_self_805 = (__lto_self_807 + name);
   const __lto_other_806 = "<'a> {\n";
-  s_7 = (__lto_self_805 + __lto_other_806);
-  let s__iife_11;
+  const s_7 = (__lto_self_805 + __lto_other_806);
   const __lto_other_818 = "    fn cast(node: &'a SyntaxNode) -> Option<Self> {\n";
-  s__iife_11 = (s_7 + __lto_other_818);
-  let s_16;
+  const s__iife_11 = (s_7 + __lto_other_818);
   const __lto_other_822 = "        None\n";
-  s_16 = (s__iife_11 + __lto_other_822);
+  const s_16 = (s__iife_11 + __lto_other_822);
   const s__iife_12 = emit_enum_cast_chain__lto_1ba4622a(s_16, alts);
-  let s_19;
   const __lto_other_826 = "    }\n";
-  s_19 = (s__iife_12 + __lto_other_826);
-  let s__iife_13;
+  const s_19 = (s__iife_12 + __lto_other_826);
   const __lto_other_830 = "    fn syntax(&self) -> &'a SyntaxNode {\n";
-  s__iife_13 = (s_19 + __lto_other_830);
-  let s_24;
+  const s__iife_13 = (s_19 + __lto_other_830);
   const __lto_other_834 = "        match self {\n";
-  s_24 = (s__iife_13 + __lto_other_834);
+  const s_24 = (s__iife_13 + __lto_other_834);
   const s__iife_14 = emit_enum_syntax_arms__lto_1ba4622a(s_24, alts);
-  let s_27;
   const __lto_other_838 = "        }\n";
-  s_27 = (s__iife_14 + __lto_other_838);
-  let s__iife_15;
+  const s_27 = (s__iife_14 + __lto_other_838);
   const __lto_other_842 = "    }\n";
-  s__iife_15 = (s_27 + __lto_other_842);
-  let s_32;
+  const s__iife_15 = (s_27 + __lto_other_842);
   const __lto_other_846 = "}\n\n";
-  s_32 = (s__iife_15 + __lto_other_846);
+  const s_32 = (s__iife_15 + __lto_other_846);
   return s_32;
 }
 
@@ -2886,17 +2666,13 @@ export function emit_enum_cast_chain__lto_1ba4622a(s, alts) {
     const rest = alts.args[1];
     if ((alt[LUMO_TAG] === "mk")) {
       const name = alt.args[0];
-      let line;
-      let __lto_self_869;
-      let __lto_self_871;
-      let __lto_self_873;
       const __lto_self_875 = "            .or_else(|| ";
-      __lto_self_873 = (__lto_self_875 + name);
+      const __lto_self_873 = (__lto_self_875 + name);
       const __lto_other_874 = "::cast(node).map(Self::";
-      __lto_self_871 = (__lto_self_873 + __lto_other_874);
-      __lto_self_869 = (__lto_self_871 + name);
+      const __lto_self_871 = (__lto_self_873 + __lto_other_874);
+      const __lto_self_869 = (__lto_self_871 + name);
       const __lto_other_870 = "))\n";
-      line = (__lto_self_869 + __lto_other_870);
+      const line = (__lto_self_869 + __lto_other_870);
       return emit_enum_cast_chain__lto_1ba4622a(((__lto_self_885) => {
         return (__lto_self_875 + name);
       })(s), rest);
@@ -2916,12 +2692,10 @@ export function emit_enum_syntax_arms__lto_1ba4622a(s, alts) {
     const rest = alts.args[1];
     if ((alt[LUMO_TAG] === "mk")) {
       const name = alt.args[0];
-      let line;
-      let __lto_self_889;
       const __lto_self_891 = "            Self::";
-      __lto_self_889 = (__lto_self_891 + name);
+      const __lto_self_889 = (__lto_self_891 + name);
       const __lto_other_890 = "(n) => n.syntax(),\n";
-      line = (__lto_self_889 + __lto_other_890);
+      const line = (__lto_self_889 + __lto_other_890);
       return emit_enum_syntax_arms__lto_1ba4622a(((__lto_self_897) => {
         return (__lto_self_891 + name);
       })(s), rest);
@@ -2936,57 +2710,40 @@ export function emit_enum_syntax_arms__lto_1ba4622a(s, alts) {
 export function emit_token_wrapper_node__lto_1ba4622a(__caps, s, name, __k) {
   return to_screaming_snake(__caps, name, (kind) => {
     const __lto_other_906 = "pub struct ";
-    let __lto_self_903;
-    __lto_self_903 = (s + __lto_other_906);
-    let __lto_self_901;
-    __lto_self_901 = (__lto_self_903 + name);
+    const __lto_self_903 = (s + __lto_other_906);
+    const __lto_self_901 = (__lto_self_903 + name);
     const __lto_other_902 = "<'a>(pub(crate) &'a SyntaxNode);\n\n";
-    let s;
-    s = (__lto_self_901 + __lto_other_902);
+    const s = (__lto_self_901 + __lto_other_902);
     const __lto_other_918 = "impl<'a> AstNode<'a> for ";
-    let __lto_self_915;
-    __lto_self_915 = (s + __lto_other_918);
-    let __lto_self_913;
-    __lto_self_913 = (__lto_self_915 + name);
+    const __lto_self_915 = (s + __lto_other_918);
+    const __lto_self_913 = (__lto_self_915 + name);
     const __lto_other_914 = "<'a> {\n";
-    let s_8;
-    s_8 = (__lto_self_913 + __lto_other_914);
+    const s_8 = (__lto_self_913 + __lto_other_914);
     const __lto_other_926 = "    fn cast(node: &'a SyntaxNode) -> Option<Self> {\n";
-    let s_11;
-    s_11 = (s_8 + __lto_other_926);
+    const s_11 = (s_8 + __lto_other_926);
     const __lto_other_934 = "        (node.kind == SyntaxKind::";
-    let __lto_self_931;
-    __lto_self_931 = (s_11 + __lto_other_934);
-    let __lto_self_929;
-    __lto_self_929 = (__lto_self_931 + kind);
+    const __lto_self_931 = (s_11 + __lto_other_934);
+    const __lto_self_929 = (__lto_self_931 + kind);
     const __lto_other_930 = ").then(|| Self(node))\n";
-    let s_18;
-    s_18 = (__lto_self_929 + __lto_other_930);
+    const s_18 = (__lto_self_929 + __lto_other_930);
     const __lto_other_942 = "    }\n";
-    let s_21;
-    s_21 = (s_18 + __lto_other_942);
+    const s_21 = (s_18 + __lto_other_942);
     const __lto_other_946 = "    fn syntax(&self) -> &'a SyntaxNode { self.0 }\n";
-    let s_24;
-    s_24 = (s_21 + __lto_other_946);
+    const s_24 = (s_21 + __lto_other_946);
     const __lto_other_950 = "}\n\n";
-    let s_27;
-    s_27 = (s_24 + __lto_other_950);
+    const s_27 = (s_24 + __lto_other_950);
     return __k(s_27);
   });
 }
 
 export function run__lto_3829b133(__caps, __k) {
   return __thunk(() => {
-    let __match_201;
-    let __match_206;
-    let __lto_self_953;
     const __lto___lto_self_1221_1225 = __argv_length_raw();
     const __lto___lto_other_1222_1226 = 1;
-    __lto_self_953 = (__lto___lto_self_1221_1225 - __lto___lto_other_1222_1226);
+    const __lto_self_953 = (__lto___lto_self_1221_1225 - __lto___lto_other_1222_1226);
     const __lto_other_954 = 2;
-    let __match_204;
-    __match_204 = (__lto_self_953 < __lto_other_954);
-    __match_206 = ((__match_204 === true) ? Ordering["less"] : ((__match_204 === false) ? ((__match_205) => {
+    const __match_204 = (__lto_self_953 < __lto_other_954);
+    const __match_206 = ((__match_204 === true) ? Ordering["less"] : ((__match_204 === false) ? ((__match_205) => {
       if ((__match_205 === true)) {
         return Ordering["equal"];
       } else if ((__match_205 === false)) {
@@ -2997,7 +2754,7 @@ export function run__lto_3829b133(__caps, __k) {
     })(((a, b) => {
       return (a === b);
     })(__lto_self_953, __lto_other_954)) : __lumo_match_error(__match_204)));
-    __match_201 = ((__match_206[LUMO_TAG] === "less") ? true : ((__match_206[LUMO_TAG] === "equal") ? false : ((__match_206[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_206))));
+    const __match_201 = ((__match_206[LUMO_TAG] === "less") ? true : ((__match_206[LUMO_TAG] === "equal") ? false : ((__match_206[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_206))));
     if ((__match_201 === true)) {
       const __lto_msg_957 = "Usage: langue <input.langue> [output_dir]";
       const __lto__err_958 = __console_error(__lto_msg_957);
@@ -3031,13 +2788,10 @@ export function run__lto_3829b133(__caps, __k) {
           const pos = __cps_v_32.args[1];
           const __lto_self_967 = "Parse error at position ";
           return Number.to_string(__caps, pos, (__lto_other_968) => {
-            let __lto_self_965;
-            __lto_self_965 = (__lto___lto_self_1221_1225 + __lto___lto_other_1222_1226);
+            const __lto_self_965 = (__lto___lto_self_1221_1225 + __lto___lto_other_1222_1226);
             const __lto_other_966 = ": ";
-            let __lto_self_963;
-            __lto_self_963 = (__lto_self_953 + __lto_other_954);
-            let __lto_msg_961;
-            __lto_msg_961 = (__lto_self_963 + msg);
+            const __lto_self_963 = (__lto_self_953 + __lto_other_954);
+            const __lto_msg_961 = (__lto_self_963 + msg);
             const __lto__err_962 = __console_error(__lto_msg_961);
             return __k(__exit_process(1));
           });
@@ -3052,16 +2806,12 @@ export function run__lto_3829b133(__caps, __k) {
 }
 
 export function run_generate__lto_35421161(file, count, syntax_kind_code, ast_code) {
-  let __match_210;
-  let __match_209;
-  let __lto_self_975;
   const __lto___lto_self_1221_1234 = __argv_length_raw();
   const __lto___lto_other_1222_1235 = 1;
-  __lto_self_975 = (__lto___lto_self_1221_1234 - __lto___lto_other_1222_1235);
+  const __lto_self_975 = (__lto___lto_self_1221_1234 - __lto___lto_other_1222_1235);
   const __lto_other_976 = 3;
-  let __match_207;
-  __match_207 = (__lto_self_975 < __lto_other_976);
-  __match_209 = ((__match_207 === true) ? Ordering["less"] : ((__match_207 === false) ? ((__match_208) => {
+  const __match_207 = (__lto_self_975 < __lto_other_976);
+  const __match_209 = ((__match_207 === true) ? Ordering["less"] : ((__match_207 === false) ? ((__match_208) => {
     if ((__match_208 === true)) {
       return Ordering["equal"];
     } else if ((__match_208 === false)) {
@@ -3072,13 +2822,12 @@ export function run_generate__lto_35421161(file, count, syntax_kind_code, ast_co
   })(((a, b) => {
     return (a === b);
   })(__lto_self_975, __lto_other_976)) : __lumo_match_error(__match_207)));
-  __match_210 = ((__match_209[LUMO_TAG] === "less") ? true : ((__match_209[LUMO_TAG] === "equal") ? false : ((__match_209[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_209))));
+  const __match_210 = ((__match_209[LUMO_TAG] === "less") ? true : ((__match_209[LUMO_TAG] === "equal") ? false : ((__match_209[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_209))));
   if ((__match_210 === true)) {
     return write_output__lto_155dcaa4(".", file, count, syntax_kind_code, ast_code);
   } else if ((__match_210 === false)) {
-    let out_dir;
     const __lto_idx_979 = 2;
-    out_dir = __argv_at_raw(((__lto___lto_self_1217_1239) => {
+    const out_dir = __argv_at_raw(((__lto___lto_self_1217_1239) => {
       const __lto___lto_other_1218_1240 = 1;
       return (__lto___lto_self_1221_1234 + __lto___lto_other_1222_1235);
     })(__lto_idx_979));
@@ -3089,35 +2838,24 @@ export function run_generate__lto_35421161(file, count, syntax_kind_code, ast_co
 }
 
 export function write_output__lto_155dcaa4(out_dir, file, count, syntax_kind_code, ast_code) {
-  let sk_path;
   const __lto_other_981 = "/syntax_kind.rs";
-  sk_path = (out_dir + __lto_other_981);
-  let ast_path;
+  const sk_path = (out_dir + __lto_other_981);
   const __lto_other_985 = "/ast.rs";
-  ast_path = (out_dir + __lto_other_985);
-  let w1;
-  w1 = writeFileSync(sk_path, syntax_kind_code, "utf8");
-  let w2;
-  w2 = writeFileSync(ast_path, ast_code, "utf8");
-  let p1;
-  let __lto_msg_992;
-  let __lto_self_993;
-  let __lto_self_995;
+  const ast_path = (out_dir + __lto_other_985);
+  const w1 = writeFileSync(sk_path, syntax_kind_code, "utf8");
+  const w2 = writeFileSync(ast_path, ast_code, "utf8");
   const __lto_self_997 = "Parsed ";
   const __lto_other_998 = Number.to_string(count);
-  __lto_self_995 = (__lto_self_997 + __lto_other_998);
+  const __lto_self_995 = (__lto_self_997 + __lto_other_998);
   const __lto_other_996 = " rules from ";
-  __lto_self_993 = (__lto_self_995 + __lto_other_996);
-  __lto_msg_992 = (__lto_self_993 + file);
-  p1 = globalThis.console.log(__lto_msg_992);
-  let p2;
-  let __lto_msg_1005;
+  const __lto_self_993 = (__lto_self_995 + __lto_other_996);
+  const __lto_msg_992 = (__lto_self_993 + file);
+  const p1 = globalThis.console.log(__lto_msg_992);
   const __lto_self_1006 = "Wrote ";
-  __lto_msg_1005 = (__lto_self_1006 + sk_path);
-  p2 = globalThis.console.log(__lto_msg_1005);
-  let __lto_msg_1010;
+  const __lto_msg_1005 = (__lto_self_1006 + sk_path);
+  const p2 = globalThis.console.log(__lto_msg_1005);
   const __lto_self_1011 = "Wrote ";
-  __lto_msg_1010 = (__lto_self_1011 + ast_path);
+  const __lto_msg_1010 = (__lto_self_1011 + ast_path);
   return globalThis.console.log(__lto_msg_1010);
 }
 
@@ -3135,27 +2873,23 @@ export function list_length_rules__lto_92991de6(xs) {
 }
 
 export function is_whitespace__lto_3890158f(c) {
-  let __match_212;
   const __lto_other_1020 = " ";
-  __match_212 = (c === __lto_other_1020);
+  const __match_212 = (c === __lto_other_1020);
   if ((__match_212 === true)) {
     return true;
   } else if ((__match_212 === false)) {
-    let __match_213;
     const __lto_other_1024 = "\n";
-    __match_213 = (c === __lto_other_1020);
+    const __match_213 = (c === __lto_other_1020);
     if ((__match_213 === true)) {
       return true;
     } else if ((__match_213 === false)) {
-      let __match_214;
       const __lto_other_1028 = "\t";
-      __match_214 = (c === __lto_other_1020);
+      const __match_214 = (c === __lto_other_1020);
       if ((__match_214 === true)) {
         return true;
       } else if ((__match_214 === false)) {
-        let __match_215;
         const __lto_other_1032 = "\r";
-        __match_215 = (c === __lto_other_1020);
+        const __match_215 = (c === __lto_other_1020);
         if ((__match_215 === true)) {
           return true;
         } else if ((__match_215 === false)) {
@@ -3176,12 +2910,9 @@ export function is_whitespace__lto_3890158f(c) {
 
 export function is_alpha__lto_9309ae26(c) {
   const code = String.char_code_at(c, 0);
-  let __match_219;
-  let __match_218;
   const __lto_other_1036 = 97;
-  let __match_216;
-  __match_216 = (code < __lto_other_1036);
-  __match_218 = ((__match_216 === true) ? Ordering["less"] : ((__match_216 === false) ? ((__match_217) => {
+  const __match_216 = (code < __lto_other_1036);
+  const __match_218 = ((__match_216 === true) ? Ordering["less"] : ((__match_216 === false) ? ((__match_217) => {
     if ((__match_217 === true)) {
       return Ordering["equal"];
     } else if ((__match_217 === false)) {
@@ -3192,17 +2923,15 @@ export function is_alpha__lto_9309ae26(c) {
   })(((a, b) => {
     return (a === b);
   })(code, __lto_other_1036)) : __lumo_match_error(__match_216)));
-  __match_219 = ((__match_218[LUMO_TAG] === "less") ? false : ((__match_218[LUMO_TAG] === "equal") ? true : ((__match_218[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_218))));
+  const __match_219 = ((__match_218[LUMO_TAG] === "less") ? false : ((__match_218[LUMO_TAG] === "equal") ? true : ((__match_218[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_218))));
   if ((__match_219 === true)) {
     let __match_229;
     const __lto_other_1040 = 122;
-    let __match_227;
-    __match_227 = (code < __lto_other_1036);
+    const __match_227 = (code < __lto_other_1036);
     if ((__match_227 === true)) {
       __match_229 = Ordering["less"];
     } else if ((__match_227 === false)) {
-      let __match_228;
-      __match_228 = (code === __lto_other_1036);
+      const __match_228 = (code === __lto_other_1036);
       if ((__match_228 === true)) {
         __match_229 = Ordering["equal"];
       } else if ((__match_228 === false)) {
@@ -3224,13 +2953,11 @@ export function is_alpha__lto_9309ae26(c) {
     let __match_223;
     let __match_222;
     const __lto_other_1044 = 65;
-    let __match_220;
-    __match_220 = (code < __lto_other_1036);
+    const __match_220 = (code < __lto_other_1036);
     if ((__match_220 === true)) {
       __match_222 = Ordering["less"];
     } else if ((__match_220 === false)) {
-      let __match_221;
-      __match_221 = (code === __lto_other_1036);
+      const __match_221 = (code === __lto_other_1036);
       if ((__match_221 === true)) {
         __match_222 = Ordering["equal"];
       } else if ((__match_221 === false)) {
@@ -3251,13 +2978,11 @@ export function is_alpha__lto_9309ae26(c) {
     if ((__match_223 === true)) {
       let __match_226;
       const __lto_other_1048 = 90;
-      let __match_224;
-      __match_224 = (code < __lto_other_1036);
+      const __match_224 = (code < __lto_other_1036);
       if ((__match_224 === true)) {
         __match_226 = Ordering["less"];
       } else if ((__match_224 === false)) {
-        let __match_225;
-        __match_225 = (code === __lto_other_1036);
+        const __match_225 = (code === __lto_other_1036);
         if ((__match_225 === true)) {
           __match_226 = Ordering["equal"];
         } else if ((__match_225 === false)) {
@@ -3290,9 +3015,8 @@ export function is_ident_continue__lto_3890158f(c) {
   if ((__match_230 === true)) {
     return true;
   } else if ((__match_230 === false)) {
-    let __match_231;
     const __lto_other_1052 = "_";
-    __match_231 = (c === __lto_other_1052);
+    const __match_231 = (c === __lto_other_1052);
     if ((__match_231 === true)) {
       return true;
     } else if ((__match_231 === false)) {
@@ -3309,11 +3033,9 @@ export function state_eof__lto_9309ae26(st) {
   if ((st[LUMO_TAG] === "mk")) {
     const src = st.args[0];
     const pos = st.args[1];
-    let __match_235;
     const __lto_other_1056 = String.len(src);
-    let __match_233;
-    __match_233 = (pos < __lto_other_1056);
-    __match_235 = ((__match_233 === true) ? Ordering["less"] : ((__match_233 === false) ? ((__match_234) => {
+    const __match_233 = (pos < __lto_other_1056);
+    const __match_235 = ((__match_233 === true) ? Ordering["less"] : ((__match_233 === false) ? ((__match_234) => {
       if ((__match_234 === true)) {
         return Ordering["equal"];
       } else if ((__match_234 === false)) {
@@ -3340,12 +3062,9 @@ export function state_peek__lto_9309ae26(st) {
   if ((st[LUMO_TAG] === "mk")) {
     const src = st.args[0];
     const pos = st.args[1];
-    let __match_240;
-    let __match_239;
     const __lto_other_1060 = String.len(src);
-    let __match_237;
-    __match_237 = (pos < __lto_other_1060);
-    __match_239 = ((__match_237 === true) ? Ordering["less"] : ((__match_237 === false) ? ((__match_238) => {
+    const __match_237 = (pos < __lto_other_1060);
+    const __match_239 = ((__match_237 === true) ? Ordering["less"] : ((__match_237 === false) ? ((__match_238) => {
       if ((__match_238 === true)) {
         return Ordering["equal"];
       } else if ((__match_238 === false)) {
@@ -3356,7 +3075,7 @@ export function state_peek__lto_9309ae26(st) {
     })(((a, b) => {
       return (a === b);
     })(pos, __lto_other_1060)) : __lumo_match_error(__match_237)));
-    __match_240 = ((__match_239[LUMO_TAG] === "less") ? true : ((__match_239[LUMO_TAG] === "equal") ? false : ((__match_239[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_239))));
+    const __match_240 = ((__match_239[LUMO_TAG] === "less") ? true : ((__match_239[LUMO_TAG] === "equal") ? false : ((__match_239[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_239))));
     if ((__match_240 === true)) {
       return String.char_at(src, pos);
     } else if ((__match_240 === false)) {
@@ -3391,20 +3110,15 @@ export function skip_ws__lto_1bb67705(st) {
     if ((__match_243 === true)) {
       return skip_ws__lto_1bb67705(state_advance__lto_92991de6(st, 1));
     } else if ((__match_243 === false)) {
-      let __match_244;
       const __lto_other_1068 = "/";
-      __match_244 = (c === __lto_other_1068);
+      const __match_244 = (c === __lto_other_1068);
       if ((__match_244 === true)) {
-        let next_pos;
         const __lto_self_1071 = state_pos(st);
         const __lto_other_1072 = 1;
-        next_pos = (c + __lto_other_1068);
-        let __match_248;
-        let __match_247;
+        const next_pos = (c + __lto_other_1068);
         const __lto_other_1076 = String.len(state_src(st));
-        let __match_245;
-        __match_245 = (next_pos < __lto_other_1076);
-        __match_247 = ((__match_245 === true) ? Ordering["less"] : ((__match_245 === false) ? ((__match_246) => {
+        const __match_245 = (next_pos < __lto_other_1076);
+        const __match_247 = ((__match_245 === true) ? Ordering["less"] : ((__match_245 === false) ? ((__match_246) => {
           if ((__match_246 === true)) {
             return Ordering["equal"];
           } else if ((__match_246 === false)) {
@@ -3415,12 +3129,11 @@ export function skip_ws__lto_1bb67705(st) {
         })(((a, b) => {
           return (a === b);
         })(next_pos, __lto_other_1076)) : __lumo_match_error(__match_245)));
-        __match_248 = ((__match_247[LUMO_TAG] === "less") ? true : ((__match_247[LUMO_TAG] === "equal") ? false : ((__match_247[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_247))));
+        const __match_248 = ((__match_247[LUMO_TAG] === "less") ? true : ((__match_247[LUMO_TAG] === "equal") ? false : ((__match_247[LUMO_TAG] === "greater") ? false : __lumo_match_error(__match_247))));
         if ((__match_248 === true)) {
-          let __match_249;
           const __lto_self_1079 = String.char_at(state_src(st), next_pos);
           const __lto_other_1080 = "/";
-          __match_249 = (c === __lto_other_1068);
+          const __match_249 = (c === __lto_other_1068);
           if ((__match_249 === true)) {
             return skip_ws__lto_1bb67705(skip_line__lto_3890158f(state_advance__lto_92991de6(st, 2)));
           } else if ((__match_249 === false)) {
@@ -3451,10 +3164,9 @@ export function skip_line__lto_3890158f(st) {
   if ((__match_250 === true)) {
     return st;
   } else if ((__match_250 === false)) {
-    let __match_251;
     const __lto_self_1083 = state_peek__lto_9309ae26(st);
     const __lto_other_1084 = "\n";
-    __match_251 = (__lto_self_1083 === __lto_other_1084);
+    const __match_251 = (__lto_self_1083 === __lto_other_1084);
     if ((__match_251 === true)) {
       return state_advance__lto_92991de6(st, 1);
     } else if ((__match_251 === false)) {
@@ -3506,14 +3218,10 @@ export function expect__lto_f3280589(st, expected) {
   const len = String.len(expected);
   const src = state_src(st2);
   const pos = state_pos(st2);
-  let remaining;
   const __lto_self_1095 = String.len(src);
-  remaining = (__lto_self_1095 - pos);
-  let __match_257;
-  let __match_256;
-  let __match_254;
-  __match_254 = (remaining < len);
-  __match_256 = ((__match_254 === true) ? Ordering["less"] : ((__match_254 === false) ? ((__match_255) => {
+  const remaining = (__lto_self_1095 - pos);
+  const __match_254 = (remaining < len);
+  const __match_256 = ((__match_254 === true) ? Ordering["less"] : ((__match_254 === false) ? ((__match_255) => {
     if ((__match_255 === true)) {
       return Ordering["equal"];
     } else if ((__match_255 === false)) {
@@ -3524,13 +3232,12 @@ export function expect__lto_f3280589(st, expected) {
   })(((a, b) => {
     return (a === b);
   })(remaining, len)) : __lumo_match_error(__match_254)));
-  __match_257 = ((__match_256[LUMO_TAG] === "less") ? false : ((__match_256[LUMO_TAG] === "equal") ? true : ((__match_256[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_256))));
+  const __match_257 = ((__match_256[LUMO_TAG] === "less") ? false : ((__match_256[LUMO_TAG] === "equal") ? true : ((__match_256[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_256))));
   if ((__match_257 === true)) {
     const slice = String.slice(src, pos, ((__lto_self_1103) => {
       return (__lto_self_1095 + pos);
     })(pos));
-    let __match_258;
-    __match_258 = (__lto_self_1095 === pos);
+    const __match_258 = (__lto_self_1095 === pos);
     if ((__match_258 === true)) {
       return ParseResult["ok"](expected, state_advance__lto_92991de6(st2, len));
     } else if ((__match_258 === false)) {
@@ -3562,15 +3269,13 @@ export function expect__lto_f3280589(st, expected) {
 
 export function parse_quoted__lto_38e07bea(st) {
   const st2 = skip_ws__lto_1bb67705(st);
-  let __match_259;
   const __lto_self_1135 = state_peek__lto_9309ae26(st2);
   const __lto_other_1136 = "'";
-  __match_259 = (__lto_self_1135 === __lto_other_1136);
+  const __match_259 = (__lto_self_1135 === __lto_other_1136);
   if ((__match_259 === true)) {
-    let start;
     const __lto_self_1139 = state_pos(st2);
     const __lto_other_1140 = 1;
-    start = (__lto_self_1135 + __lto_other_1136);
+    const start = (__lto_self_1135 + __lto_other_1136);
     const end_st = scan_until_quote__lto_3890158f(state_advance__lto_92991de6(st2, 1));
     const end_pos = state_pos(end_st);
     const content = String.slice(state_src(st2), start, end_pos);
@@ -3587,10 +3292,9 @@ export function scan_until_quote__lto_3890158f(st) {
   if ((__match_260 === true)) {
     return st;
   } else if ((__match_260 === false)) {
-    let __match_261;
     const __lto_self_1143 = state_peek__lto_9309ae26(st);
     const __lto_other_1144 = "'";
-    __match_261 = (__lto_self_1143 === __lto_other_1144);
+    const __match_261 = (__lto_self_1143 === __lto_other_1144);
     if ((__match_261 === true)) {
       return st;
     } else if ((__match_261 === false)) {
@@ -3626,12 +3330,9 @@ export function peek_is_rule_start__lto_3890158f(__caps, st, __k) {
 }
 
 export function has_alpha__lto_090deca7(s, i) {
-  let __match_266;
-  let __match_265;
   const __lto_other_1152 = String.len(s);
-  let __match_263;
-  __match_263 = (i < __lto_other_1152);
-  __match_265 = ((__match_263 === true) ? Ordering["less"] : ((__match_263 === false) ? ((__match_264) => {
+  const __match_263 = (i < __lto_other_1152);
+  const __match_265 = ((__match_263 === true) ? Ordering["less"] : ((__match_263 === false) ? ((__match_264) => {
     if ((__match_264 === true)) {
       return Ordering["equal"];
     } else if ((__match_264 === false)) {
@@ -3642,7 +3343,7 @@ export function has_alpha__lto_090deca7(s, i) {
   })(((a, b) => {
     return (a === b);
   })(i, __lto_other_1152)) : __lumo_match_error(__match_263)));
-  __match_266 = ((__match_265[LUMO_TAG] === "less") ? false : ((__match_265[LUMO_TAG] === "equal") ? true : ((__match_265[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_265))));
+  const __match_266 = ((__match_265[LUMO_TAG] === "less") ? false : ((__match_265[LUMO_TAG] === "equal") ? true : ((__match_265[LUMO_TAG] === "greater") ? true : __lumo_match_error(__match_265))));
   if ((__match_266 === true)) {
     return false;
   } else if ((__match_266 === false)) {
@@ -3669,10 +3370,9 @@ export function parse_grammar_items__lto_3890158f(__caps, st, tokens, rules, __k
     if ((__match_268 === true)) {
       return __k(ParseResult["ok"](Grammar["mk"](list_reverse_string(tokens), list_reverse_rule(rules)), st2));
     } else if ((__match_268 === false)) {
-      let __match_269;
       const __lto_self_1159 = state_peek__lto_9309ae26(st2);
       const __lto_other_1160 = "@";
-      __match_269 = (__lto_self_1159 === __lto_other_1160);
+      const __match_269 = (__lto_self_1159 === __lto_other_1160);
       if ((__match_269 === true)) {
         return parse_token_def(__caps, st2, (__cps_v_37) => {
           if ((__cps_v_37[LUMO_TAG] === "ok")) {
@@ -3721,10 +3421,9 @@ export function parse_token_names__lto_3890158f(__caps, st, acc, __k) {
         if ((__cps_v_40 === true)) {
           return __k(ParseResult["ok"](list_reverse_string(acc), st2));
         } else if ((__cps_v_40 === false)) {
-          let __match_274;
           const __lto_self_1163 = state_peek__lto_9309ae26(st2);
           const __lto_other_1164 = "@";
-          __match_274 = (__lto_self_1163 === __lto_other_1164);
+          const __match_274 = (__lto_self_1163 === __lto_other_1164);
           if ((__match_274 === true)) {
             return __k(ParseResult["ok"](list_reverse_string(acc), st2));
           } else if ((__match_274 === false)) {
@@ -3767,8 +3466,7 @@ export function parse_rule_body__lto_3890158f(__caps, st, rule_name, __k) {
     const st2 = skip_ws__lto_1bb67705(st);
     return peek_char(__caps, st2, (__lto_self_1167) => {
       const __lto_other_1168 = "|";
-      let __cps_v_41;
-      __cps_v_41 = (__lto_self_1167 === __lto_other_1168);
+      const __cps_v_41 = (__lto_self_1167 === __lto_other_1168);
       if ((__cps_v_41 === true)) {
         return parse_alternatives(__caps, st2, __k);
       } else if ((__cps_v_41 === false)) {
@@ -3785,15 +3483,13 @@ export function parse_alt_items__lto_3890158f(__caps, st, acc, __k) {
     const st2 = skip_ws__lto_1bb67705(st);
     return peek_char(__caps, st2, (__lto_self_1171) => {
       const __lto_other_1172 = "|";
-      let __cps_v_43;
-      __cps_v_43 = (__lto_self_1171 === __lto_other_1172);
+      const __cps_v_43 = (__lto_self_1171 === __lto_other_1172);
       if ((__cps_v_43 === true)) {
         const st3 = state_advance__lto_92991de6(skip_ws__lto_1bb67705(st2), 1);
         const st4 = skip_ws__lto_1bb67705(st3);
-        let __match_279;
         const __lto_self_1175 = state_peek__lto_9309ae26(st4);
         const __lto_other_1176 = "'";
-        __match_279 = (__lto_self_1171 === __lto_other_1172);
+        const __match_279 = (__lto_self_1171 === __lto_other_1172);
         if ((__match_279 === true)) {
           const __match_281 = parse_quoted__lto_38e07bea(st4);
           if ((__match_281[LUMO_TAG] === "ok")) {
@@ -3835,9 +3531,8 @@ export function parse_alt_items__lto_3890158f(__caps, st, acc, __k) {
 
 export function is_seq_terminator__lto_3890158f(__caps, st, __k) {
   return peek_char(__caps, st, (c) => {
-    let __match_282;
     const __lto_other_1180 = ")";
-    __match_282 = (c === __lto_other_1180);
+    const __match_282 = (c === __lto_other_1180);
     if ((__match_282 === true)) {
       return __k(true);
     } else if ((__match_282 === false)) {
@@ -3845,9 +3540,8 @@ export function is_seq_terminator__lto_3890158f(__caps, st, __k) {
         if ((__cps_v_44 === true)) {
           return __k(true);
         } else if ((__cps_v_44 === false)) {
-          let __match_284;
           const __lto_other_1184 = "@";
-          __match_284 = (c === __lto_other_1180);
+          const __match_284 = (c === __lto_other_1180);
           if ((__match_284 === true)) {
             return __k(true);
           } else if ((__match_284 === false)) {
@@ -3870,17 +3564,15 @@ export function apply_postfix_elem__lto_3890158f(elem, st) {
   if ((__match_285 === true)) {
     return ParseResult["ok"](elem, st);
   } else if ((__match_285 === false)) {
-    let __match_286;
     const __lto_self_1187 = state_peek__lto_9309ae26(st);
     const __lto_other_1188 = "?";
-    __match_286 = (__lto_self_1187 === __lto_other_1188);
+    const __match_286 = (__lto_self_1187 === __lto_other_1188);
     if ((__match_286 === true)) {
       return apply_postfix_elem__lto_3890158f(Element["optional"](elem), state_advance__lto_92991de6(st, 1));
     } else if ((__match_286 === false)) {
-      let __match_287;
       const __lto_self_1191 = state_peek__lto_9309ae26(st);
       const __lto_other_1192 = "*";
-      __match_287 = (__lto_self_1187 === __lto_other_1188);
+      const __match_287 = (__lto_self_1187 === __lto_other_1188);
       if ((__match_287 === true)) {
         return apply_postfix_elem__lto_3890158f(Element["repeated"](elem), state_advance__lto_92991de6(st, 1));
       } else if ((__match_287 === false)) {
@@ -3899,10 +3591,9 @@ export function apply_postfix_elem__lto_3890158f(elem, st) {
 export function parse_atom__lto_3890158f(__caps, st, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
-    let __match_288;
     const __lto_self_1195 = state_peek__lto_9309ae26(st2);
     const __lto_other_1196 = "'";
-    __match_288 = (__lto_self_1195 === __lto_other_1196);
+    const __match_288 = (__lto_self_1195 === __lto_other_1196);
     if ((__match_288 === true)) {
       const __match_295 = parse_quoted__lto_38e07bea(st2);
       if ((__match_295[LUMO_TAG] === "ok")) {
@@ -3920,10 +3611,9 @@ export function parse_atom__lto_3890158f(__caps, st, __k) {
         return __lumo_match_error(__match_295);
       }
     } else if ((__match_288 === false)) {
-      let __match_289;
       const __lto_self_1199 = state_peek__lto_9309ae26(st2);
       const __lto_other_1200 = "(";
-      __match_289 = (__lto_self_1195 === __lto_other_1196);
+      const __match_289 = (__lto_self_1195 === __lto_other_1196);
       if ((__match_289 === true)) {
         const st3 = state_advance__lto_92991de6(st2, 1);
         return parse_group_elements__lto_3890158f(__caps, st3, List["nil"], (__cps_v_47) => {
@@ -3958,10 +3648,9 @@ export function parse_atom__lto_3890158f(__caps, st, __k) {
           } else if ((__cps_v_46[LUMO_TAG] === "ok")) {
             const name = __cps_v_46.args[0];
             const st3 = __cps_v_46.args[1];
-            let __match_291;
             const __lto_self_1203 = state_peek__lto_9309ae26(st3);
             const __lto_other_1204 = ":";
-            __match_291 = (__lto_self_1195 === __lto_other_1196);
+            const __match_291 = (__lto_self_1195 === __lto_other_1196);
             if ((__match_291 === true)) {
               const st4 = state_advance__lto_92991de6(st3, 1);
               return parse_element(__caps, st4, (__cps_v_45) => {
@@ -3998,10 +3687,9 @@ export function parse_atom__lto_3890158f(__caps, st, __k) {
 export function parse_group_elements__lto_3890158f(__caps, st, acc, __k) {
   return __thunk(() => {
     const st2 = skip_ws__lto_1bb67705(st);
-    let __match_296;
     const __lto_self_1207 = state_peek__lto_9309ae26(st2);
     const __lto_other_1208 = ")";
-    __match_296 = (__lto_self_1207 === __lto_other_1208);
+    const __match_296 = (__lto_self_1207 === __lto_other_1208);
     if ((__match_296 === true)) {
       return __k(ParseResult["ok"](list_reverse_elem(acc), st2));
     } else if ((__match_296 === false)) {
@@ -4030,8 +3718,7 @@ export function list_contains_string__lto_3890158f(xs, target) {
   } else if ((xs[LUMO_TAG] === "cons")) {
     const x = xs.args[0];
     const rest = xs.args[1];
-    let __match_299;
-    __match_299 = (x === target);
+    const __match_299 = (x === target);
     if ((__match_299 === true)) {
       return true;
     } else if ((__match_299 === false)) {
