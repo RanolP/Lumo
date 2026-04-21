@@ -105,12 +105,9 @@ fn as_raw_variants_use_direct_eqeq_in_match() {
 
     let js = compile_js(src);
 
-    // Match arm comparisons should use `=== true` / `=== false` directly
-    // (not `[LUMO_TAG] === "true"`).
-    assert!(
-        js.contains("=== true"),
-        "expected `=== true` comparison, got:\n{js}"
-    );
+    // Match on Bool: `b === true` is simplified to just `b` by bool optimization,
+    // and `[LUMO_TAG]` tag comparison is never used for #[as__raw] variants.
+    assert!(js.contains("if (b)"), "expected simplified bool condition, got:\n{js}");
     assert!(
         !js.contains("[LUMO_TAG] === \"true\""),
         "should not use tagged comparison, got:\n{js}"

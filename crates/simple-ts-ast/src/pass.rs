@@ -292,6 +292,103 @@ fn collapse_in_block(block: &mut Block) {
 }
 
 // ---------------------------------------------------------------------------
+// Pass: simplify_bool_comparisons
+//
+// Rewrites redundant boolean comparisons:
+//   `e === true`  / `true === e`  → `e`
+//   `e === false` / `false === e` → `!e`
+// ---------------------------------------------------------------------------
+
+pub fn simplify_bool_comparisons(program: &mut Program) {
+    for stmt in &mut program.body {
+        simplify_bool_stmt(stmt);
+    }
+}
+
+fn simplify_bool_expr(expr: &mut Expr) {
+    // Recurse first so inner simplifications happen before we inspect.
+    match expr {
+        Expr::Binary { left, right, .. } => {
+            simplify_bool_expr(left);
+            simplify_bool_expr(right);
+        }
+        Expr::Unary { expr: e, .. } | Expr::Void(e) => simplify_bool_expr(e),
+        Expr::Call { callee, args } => {
+            simplify_bool_expr(callee);
+            for a in args { simplify_bool_expr(a); }
+        }
+        Expr::Member { object, .. } => simplify_bool_expr(object),
+        Expr::Index { object, index } => {
+            simplify_bool_expr(object);
+            simplify_bool_expr(index);
+        }
+        Expr::Array(items) => { for i in items { simplify_bool_expr(i); } }
+        Expr::Object(props) => {
+            for p in props {
+                if let ObjectKey::Computed(e) = &mut p.key { simplify_bool_expr(e); }
+                simplify_bool_expr(&mut p.value);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            simplify_bool_expr(cond);
+            simplify_bool_expr(then_expr);
+            simplify_bool_expr(else_expr);
+        }
+        Expr::Arrow { body, .. } => match body.as_mut() {
+            FunctionBody::Expr(e) => simplify_bool_expr(e),
+            FunctionBody::Block(b) => { for s in &mut b.stmts { simplify_bool_stmt(s); } }
+        },
+        _ => {}
+    }
+    // Now rewrite `e === true` → `e` and `e === false` → `!e`.
+    if let Expr::Binary { left, op: BinaryOp::EqEqEq, right } = expr {
+        let simplified = match (left.as_ref(), right.as_ref()) {
+            (_, Expr::Bool(true)) | (Expr::Bool(true), _) => {
+                let operand = if matches!(right.as_ref(), Expr::Bool(true)) {
+                    std::mem::replace(left.as_mut(), Expr::Undefined)
+                } else {
+                    std::mem::replace(right.as_mut(), Expr::Undefined)
+                };
+                Some(operand)
+            }
+            (_, Expr::Bool(false)) | (Expr::Bool(false), _) => {
+                let operand = if matches!(right.as_ref(), Expr::Bool(false)) {
+                    std::mem::replace(left.as_mut(), Expr::Undefined)
+                } else {
+                    std::mem::replace(right.as_mut(), Expr::Undefined)
+                };
+                Some(Expr::Unary { op: UnaryOp::Not, expr: Box::new(operand) })
+            }
+            _ => None,
+        };
+        if let Some(new_expr) = simplified {
+            *expr = new_expr;
+        }
+    }
+}
+
+fn simplify_bool_stmt(stmt: &mut Stmt) {
+    match stmt {
+        Stmt::Expr(e) | Stmt::Return(Some(e)) => simplify_bool_expr(e),
+        Stmt::Const(d) => simplify_bool_expr(&mut d.init),
+        Stmt::Let { init: Some(init), .. } | Stmt::Assign { value: init, .. } => {
+            simplify_bool_expr(init)
+        }
+        Stmt::If { cond, then_branch, else_branch } => {
+            simplify_bool_expr(cond);
+            for s in &mut then_branch.stmts { simplify_bool_stmt(s); }
+            if let Some(eb) = else_branch { for s in &mut eb.stmts { simplify_bool_stmt(s); } }
+        }
+        Stmt::Block(b) => { for s in &mut b.stmts { simplify_bool_stmt(s); } }
+        Stmt::Function(f) => match &mut f.body {
+            FunctionBody::Expr(e) => simplify_bool_expr(e),
+            FunctionBody::Block(b) => { for s in &mut b.stmts { simplify_bool_stmt(s); } }
+        },
+        _ => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Pass: inline_single_use_consts
 //
 // Inlines `const x = e` at its single use site and removes the declaration.
