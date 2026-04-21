@@ -149,6 +149,149 @@ fn inline_calls_in_expr(
 }
 
 // ---------------------------------------------------------------------------
+// Pass: collapse_let_to_const
+//
+// Flattening IIFEs that sit in `const x = ...` or `Stmt::Assign` position
+// emits `let x;` at the top of a block, then later assigns `x = e;`. When
+// `x` is written exactly once at the top level of the same block AND not
+// read between the declaration and the assignment, the two can be fused
+// into a single `const x = e;` at the assignment site.
+// ---------------------------------------------------------------------------
+
+pub fn collapse_let_to_const(program: &mut Program) {
+    for stmt in &mut program.body {
+        collapse_in_stmt(stmt);
+    }
+}
+
+fn collapse_in_stmt(stmt: &mut Stmt) {
+    match stmt {
+        Stmt::Function(f) => match &mut f.body {
+            FunctionBody::Block(b) => collapse_in_block(b),
+            FunctionBody::Expr(e) => collapse_in_expr(e),
+        },
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            collapse_in_expr(cond);
+            collapse_in_block(then_branch);
+            if let Some(eb) = else_branch {
+                collapse_in_block(eb);
+            }
+        }
+        Stmt::Block(b) => collapse_in_block(b),
+        Stmt::Const(d) => collapse_in_expr(&mut d.init),
+        Stmt::Let { init: Some(init), .. } => collapse_in_expr(init),
+        Stmt::Assign { value, .. } => collapse_in_expr(value),
+        Stmt::Return(Some(e)) | Stmt::Expr(e) => collapse_in_expr(e),
+        _ => {}
+    }
+}
+
+fn collapse_in_expr(expr: &mut Expr) {
+    match expr {
+        Expr::Arrow { body, .. } => match body.as_mut() {
+            FunctionBody::Block(b) => collapse_in_block(b),
+            FunctionBody::Expr(e) => collapse_in_expr(e),
+        },
+        Expr::Call { callee, args } => {
+            collapse_in_expr(callee);
+            for a in args {
+                collapse_in_expr(a);
+            }
+        }
+        Expr::Member { object, .. } => collapse_in_expr(object),
+        Expr::Index { object, index } => {
+            collapse_in_expr(object);
+            collapse_in_expr(index);
+        }
+        Expr::Unary { expr: e, .. } | Expr::Void(e) => collapse_in_expr(e),
+        Expr::Binary { left, right, .. } => {
+            collapse_in_expr(left);
+            collapse_in_expr(right);
+        }
+        Expr::Array(items) => {
+            for i in items {
+                collapse_in_expr(i);
+            }
+        }
+        Expr::Object(props) => {
+            for p in props {
+                if let ObjectKey::Computed(e) = &mut p.key {
+                    collapse_in_expr(e);
+                }
+                collapse_in_expr(&mut p.value);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            collapse_in_expr(cond);
+            collapse_in_expr(then_expr);
+            collapse_in_expr(else_expr);
+        }
+        _ => {}
+    }
+}
+
+fn collapse_in_block(block: &mut Block) {
+    for stmt in block.stmts.iter_mut() {
+        collapse_in_stmt(stmt);
+    }
+
+    let mut i = 0;
+    while i < block.stmts.len() {
+        let (name, type_ann) = match &block.stmts[i] {
+            Stmt::Let { name, init: None, type_ann, .. } => (name.clone(), type_ann.clone()),
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+
+        let mut assign_idx: Option<usize> = None;
+        let mut safe = true;
+        for j in (i + 1)..block.stmts.len() {
+            if let Stmt::Assign { name: n, value } = &block.stmts[j] {
+                if n == &name {
+                    if expr_references_name(value, &name) {
+                        safe = false;
+                        break;
+                    }
+                    if assign_idx.is_some() {
+                        safe = false;
+                        break;
+                    }
+                    assign_idx = Some(j);
+                    continue;
+                }
+            }
+            if assign_idx.is_none() && stmt_references_name(&block.stmts[j], &name) {
+                safe = false;
+                break;
+            }
+        }
+
+        if let (true, Some(a_idx)) = (safe, assign_idx) {
+            let (n, v) = match std::mem::replace(&mut block.stmts[a_idx], Stmt::Return(None)) {
+                Stmt::Assign { name, value } => (name, value),
+                _ => unreachable!(),
+            };
+            block.stmts[a_idx] = Stmt::Const(ConstDecl {
+                export: false,
+                name: n,
+                type_ann,
+                init: v,
+            });
+            block.stmts.remove(i);
+            continue;
+        }
+
+        i += 1;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Pass: inline_trivial_consts
 //
 // Eliminates `const x = y;` aliases by substituting `y` for every later
