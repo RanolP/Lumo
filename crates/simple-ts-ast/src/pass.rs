@@ -789,6 +789,180 @@ fn single_use_in_expr(expr: &mut Expr) {
 }
 
 // ---------------------------------------------------------------------------
+// Pass: inline_literal_consts
+//
+// Inlines `const x = <literal>` at ALL use sites regardless of use count, then
+// drops the declaration.  Literals (string, number, bool, null, undefined) are
+// zero-cost to duplicate and have no side effects, so substitution is always
+// safe.  Handles arrow-param shadowing correctly.
+// ---------------------------------------------------------------------------
+
+pub fn inline_literal_consts(program: &mut Program) {
+    for stmt in &mut program.body {
+        lit_in_stmt(stmt);
+    }
+}
+
+fn is_literal(expr: &Expr) -> bool {
+    matches!(
+        expr,
+        Expr::String(_) | Expr::Number(_) | Expr::Bool(_) | Expr::Null | Expr::Undefined
+    )
+}
+
+fn lit_subst_expr(expr: &mut Expr, subs: &std::collections::HashMap<String, Expr>) {
+    match expr {
+        Expr::Ident(name) => {
+            if let Some(replacement) = subs.get(name.as_str()) {
+                *expr = replacement.clone();
+            }
+        }
+        Expr::Call { callee, args } => {
+            lit_subst_expr(callee, subs);
+            for a in args { lit_subst_expr(a, subs); }
+        }
+        Expr::Member { object, .. } => lit_subst_expr(object, subs),
+        Expr::Index { object, index } => {
+            lit_subst_expr(object, subs);
+            lit_subst_expr(index, subs);
+        }
+        Expr::Unary { expr, .. } | Expr::Void(expr) => lit_subst_expr(expr, subs),
+        Expr::Binary { left, right, .. } => {
+            lit_subst_expr(left, subs);
+            lit_subst_expr(right, subs);
+        }
+        Expr::Array(items) => { for i in items { lit_subst_expr(i, subs); } }
+        Expr::Object(props) => {
+            for p in props {
+                if let ObjectKey::Computed(e) = &mut p.key { lit_subst_expr(e, subs); }
+                lit_subst_expr(&mut p.value, subs);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            lit_subst_expr(cond, subs);
+            lit_subst_expr(then_expr, subs);
+            lit_subst_expr(else_expr, subs);
+        }
+        Expr::Arrow { params, body, .. } => {
+            let shadowed: std::collections::HashSet<&str> =
+                params.iter().map(|p| p.name.as_str()).collect();
+            if shadowed.is_empty() {
+                lit_subst_fn_body(body, subs);
+            } else {
+                let filtered: std::collections::HashMap<String, Expr> = subs
+                    .iter()
+                    .filter(|(k, _)| !shadowed.contains(k.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                lit_subst_fn_body(body, &filtered);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn lit_subst_fn_body(body: &mut FunctionBody, subs: &std::collections::HashMap<String, Expr>) {
+    match body {
+        FunctionBody::Expr(e) => lit_subst_expr(e, subs),
+        FunctionBody::Block(b) => {
+            for s in &mut b.stmts { lit_subst_stmt(s, subs); }
+        }
+    }
+}
+
+fn lit_subst_stmt(stmt: &mut Stmt, subs: &std::collections::HashMap<String, Expr>) {
+    match stmt {
+        Stmt::Expr(e) | Stmt::Return(Some(e)) => lit_subst_expr(e, subs),
+        Stmt::Const(d) => {
+            if subs.contains_key(d.name.as_str()) { return; } // shadowed
+            lit_subst_expr(&mut d.init, subs);
+        }
+        Stmt::Let { name, init: Some(init), .. } => {
+            if subs.contains_key(name.as_str()) { return; }
+            lit_subst_expr(init, subs);
+        }
+        Stmt::Assign { value, .. } => lit_subst_expr(value, subs),
+        Stmt::If { cond, then_branch, else_branch } => {
+            lit_subst_expr(cond, subs);
+            for s in &mut then_branch.stmts { lit_subst_stmt(s, subs); }
+            if let Some(eb) = else_branch {
+                for s in &mut eb.stmts { lit_subst_stmt(s, subs); }
+            }
+        }
+        Stmt::Block(b) => { for s in &mut b.stmts { lit_subst_stmt(s, subs); } }
+        Stmt::Function(f) => lit_subst_fn_body(&mut f.body, subs),
+        _ => {}
+    }
+}
+
+fn lit_in_block(block: &mut Block) {
+    let mut subs: std::collections::HashMap<String, Expr> = std::collections::HashMap::new();
+    let mut new_stmts: Vec<Stmt> = Vec::with_capacity(block.stmts.len());
+    for mut stmt in std::mem::take(&mut block.stmts) {
+        if !subs.is_empty() {
+            lit_subst_stmt(&mut stmt, &subs);
+        }
+        if let Stmt::Const(decl) = &stmt {
+            if !decl.export && is_literal(&decl.init) {
+                subs.insert(decl.name.clone(), decl.init.clone());
+                continue; // drop the declaration
+            }
+        }
+        lit_in_stmt(&mut stmt);
+        new_stmts.push(stmt);
+    }
+    block.stmts = new_stmts;
+}
+
+fn lit_in_stmt(stmt: &mut Stmt) {
+    match stmt {
+        Stmt::Function(f) => match &mut f.body {
+            FunctionBody::Block(b) => lit_in_block(b),
+            FunctionBody::Expr(e) => lit_in_expr(e),
+        },
+        Stmt::If { then_branch, else_branch, .. } => {
+            lit_in_block(then_branch);
+            if let Some(eb) = else_branch { lit_in_block(eb); }
+        }
+        Stmt::Block(b) => lit_in_block(b),
+        Stmt::Return(Some(e)) | Stmt::Expr(e) => lit_in_expr(e),
+        Stmt::Const(d) => lit_in_expr(&mut d.init),
+        Stmt::Let { init: Some(init), .. } | Stmt::Assign { value: init, .. } => lit_in_expr(init),
+        _ => {}
+    }
+}
+
+fn lit_in_expr(expr: &mut Expr) {
+    match expr {
+        Expr::Arrow { body, .. } => match body.as_mut() {
+            FunctionBody::Block(b) => lit_in_block(b),
+            FunctionBody::Expr(e) => lit_in_expr(e),
+        },
+        Expr::Call { callee, args } => {
+            lit_in_expr(callee);
+            for a in args { lit_in_expr(a); }
+        }
+        Expr::Member { object, .. } => lit_in_expr(object),
+        Expr::Index { object, index } => { lit_in_expr(object); lit_in_expr(index); }
+        Expr::Unary { expr, .. } | Expr::Void(expr) => lit_in_expr(expr),
+        Expr::Binary { left, right, .. } => { lit_in_expr(left); lit_in_expr(right); }
+        Expr::Array(items) => { for i in items { lit_in_expr(i); } }
+        Expr::Object(props) => {
+            for p in props {
+                if let ObjectKey::Computed(e) = &mut p.key { lit_in_expr(e); }
+                lit_in_expr(&mut p.value);
+            }
+        }
+        Expr::IfElse { cond, then_expr, else_expr } => {
+            lit_in_expr(cond);
+            lit_in_expr(then_expr);
+            lit_in_expr(else_expr);
+        }
+        _ => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Pass: inline_trivial_consts
 //
 // Eliminates `const x = y;` aliases by substituting `y` for every later

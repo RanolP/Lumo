@@ -20,9 +20,8 @@ fn main(): Number = double(10)
 #   - LTO validation would have errored if `double` had an unresolvable cap;
 #     here it resolves via the typeclass default, so compile succeeds.
 __main_cps
-__lto_x
-= 10;
-js_add(__lto_
+js_add(10, 10)
 !function double(
 !double__lto
+!__lto_x
 !__caps.Add_Number.add(__caps, 10
