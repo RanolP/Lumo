@@ -1,14 +1,14 @@
 fn id(a: A): A / {} { a }
 ---
-id : (A) -> A
+id : fn(A) -> A
 ==========
 fn keep(a: A): A / {} { a }
 ---
-keep : (A) -> A
+keep : fn(A) -> A
 ==========
 fn f(a: A): A / {} { let x = a; x }
 ---
-f : (A) -> A
+f : fn(A) -> A
 ==========
 fn bad(): A / {} { x }
 ---
@@ -20,4 +20,4 @@ ERROR: type mismatch: expected B, got A
 ==========
 fn f(job: thunk A): A / {} { force job }
 ---
-f : (thunk A) -> A
+f : fn(thunk A) -> A

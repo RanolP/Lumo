@@ -1,6 +1,6 @@
 fn f(a: A): A / {} { (a : A) }
 ---
-f : (A) -> A
+f : fn(A) -> A
 ==========
 fn f(a: A): B / {} { (a : B) }
 ---
@@ -8,11 +8,11 @@ ERROR: type mismatch
 ==========
 fn f(a: A): A / {} { let x = (a : A); x }
 ---
-f : (A) -> A
+f : fn(A) -> A
 ==========
 fn f(a: A): A / {} { (a) }
 ---
-f : (A) -> A
+f : fn(A) -> A
 ==========
 data Bool { .true, .false }
 fn f(b: Bool): A / {} { (b : A) }

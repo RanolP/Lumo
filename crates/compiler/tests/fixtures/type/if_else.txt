@@ -1,9 +1,9 @@
 data Bool { .true, .false }
 fn f(x: Bool): Bool / {} { if x { Bool.true } else { Bool.false } }
 ---
-f : (Bool) -> Bool
+f : fn(Bool) -> Bool
 ==========
 data Bool { .true, .false }
 fn f(x: Bool, y: Bool): Bool / {} { if x { Bool.true } else if y { Bool.true } else { Bool.false } }
 ---
-f : (Bool, Bool) -> Bool
+f : fn(Bool, Bool) -> Bool

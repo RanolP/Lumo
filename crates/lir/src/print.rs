@@ -1,6 +1,6 @@
 use crate::{
-    BundleEntry, CapDecl, DataDecl, ExternFnDecl, ExternTypeDecl, Expr, File, FnDecl, ImplDecl,
-    ImplMethodDecl, Item, MatchArm, OperationDecl, Param, UseDecl, VariantDecl,
+    BundleEntry, CapDecl, DataDecl, ExternFnDecl, ExternTypeDecl, Expr, File, FnDecl, GenericParam,
+    ImplDecl, ImplMethodDecl, Item, MatchArm, OperationDecl, Param, UseDecl, VariantDecl,
 };
 use lumo_types::{CapRef, Pattern};
 
@@ -108,7 +108,7 @@ fn print_extern_fn(p: &mut Printer, ext: &ExternFnDecl) {
 fn print_data(p: &mut Printer, data: &DataDecl) {
     p.push("data ");
     p.push(&data.name);
-    print_generics(p, &data.generics);
+    print_str_generics(p, &data.generics);
     p.push(" {");
     for (i, v) in data.variants.iter().enumerate() {
         if i > 0 {
@@ -435,10 +435,24 @@ fn print_bundle_entry(p: &mut Printer, entry: &BundleEntry) {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-fn print_generics(p: &mut Printer, generics: &[String]) {
+fn print_str_generics(p: &mut Printer, generics: &[String]) {
     if !generics.is_empty() {
         p.push("[");
         p.push(&generics.join(", "));
+        p.push("]");
+    }
+}
+
+fn print_generics(p: &mut Printer, generics: &[GenericParam]) {
+    if !generics.is_empty() {
+        p.push("[");
+        for (i, g) in generics.iter().enumerate() {
+            if i > 0 { p.push(", "); }
+            if g.is_cap_row() {
+                p.push("cap ");
+            }
+            p.push(g.name());
+        }
         p.push("]");
     }
 }
@@ -458,26 +472,17 @@ fn print_param_list(p: &mut Printer, params: &[Param]) {
 
 fn print_cap_annotation(p: &mut Printer, cap: &Option<CapRef>) {
     if let Some(cap) = cap {
-        match cap {
-            CapRef::Pure => p.push(" / {}"),
-            CapRef::Named(entries) => {
-                p.push(" / {");
-                for (i, entry) in entries.iter().enumerate() {
-                    if i > 0 {
-                        p.push(", ");
-                    }
-                    p.push(&entry.display());
-                }
-                p.push("}");
-            }
-            CapRef::Infer(entries) => {
-                p.push(" / { ..");
-                for entry in entries {
+        if cap.is_empty() {
+            p.push(" / {}");
+        } else {
+            p.push(" / {");
+            for (i, entry) in cap.iter().enumerate() {
+                if i > 0 {
                     p.push(", ");
-                    p.push(&entry.display());
                 }
-                p.push(" }");
+                p.push(&entry.display());
             }
+            p.push("}");
         }
     }
 }

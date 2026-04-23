@@ -1,29 +1,29 @@
 cap E { fn op(): A }
 fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in E.op }
 ---
-f : (A) -> A
+f : fn(A) -> A
 ==========
 cap E { fn op(): A }
 fn f(a: A): A / {} { handle E with bundle { fn op() { a } } in E.op }
 ---
-f : (A) -> A
+f : fn(A) -> A
 ==========
 cap E { fn op(x: A): B }
 fn f(a: A, b: B): B / {} { handle E with bundle { fn op(x) { resume(b) } } in E.op(a) }
 ---
-f : (A, B) -> B
+f : fn(A, B) -> B
 ==========
 cap Choose { fn choose(): A }
 fn f(a: A): A / {} { handle Choose with bundle { fn choose() { a } } in { let x = Choose.choose; x } }
 ---
-f : (A) -> A
+f : fn(A) -> A
 ==========
 cap E { fn op1(): A; fn op2(x: A): B }
 fn f(a: A, b: B): A / {} { handle E with bundle { fn op1() { resume(a) }; fn op2(x) { b } } in E.op1 }
 ---
-f : (A, B) -> A
+f : fn(A, B) -> A
 ==========
 cap E { fn op(): A }
 fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in { let x = E.op; x } }
 ---
-f : (A) -> A
+f : fn(A) -> A

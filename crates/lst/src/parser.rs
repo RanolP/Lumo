@@ -132,6 +132,7 @@ pub struct ImplMethod {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericParam {
     pub name: String,
+    pub is_cap_row: bool,
     pub constraint: Option<TypeSig>,
     pub span: Span,
 }
@@ -1193,6 +1194,13 @@ impl<'a> Parser<'a> {
         self.expect_symbol(Symbol::LBracket);
 
         while !self.eof() && !self.at_symbol(Symbol::RBracket) {
+            // Check for `cap c` — a capability row variable.
+            let is_cap_row = self.at_keyword(Keyword::Cap);
+            let start_span = self.current_span();
+            if is_cap_row {
+                self.bump(); // consume `cap`
+            }
+
             if !self.at_ident() {
                 self.error_here("expected generic parameter name");
                 self.bump();
@@ -1204,7 +1212,7 @@ impl<'a> Parser<'a> {
             let mut end = name_token.span.end;
             let mut constraint = None;
 
-            if self.at_symbol(Symbol::Colon) {
+            if !is_cap_row && self.at_symbol(Symbol::Colon) {
                 self.bump();
                 let (repr, span) = self.collect_signature_until(|p| {
                     p.at_symbol(Symbol::Comma) || p.at_symbol(Symbol::RBracket)
@@ -1219,8 +1227,9 @@ impl<'a> Parser<'a> {
 
             out.push(GenericParam {
                 name,
+                is_cap_row,
                 constraint,
-                span: Span::new(name_token.span.start, end),
+                span: Span::new(start_span.start, end),
             });
 
             if self.at_symbol(Symbol::Comma) {
@@ -1246,9 +1255,7 @@ impl<'a> Parser<'a> {
             let name_token = self.bump().expect("checked at_ident").clone();
             let name = ident_text(&name_token).unwrap_or_default().to_owned();
             self.expect_symbol(Symbol::Colon);
-            let (repr, span) = self.collect_signature_until(|p| {
-                p.at_symbol(Symbol::Comma) || p.at_symbol(Symbol::RParen)
-            });
+            let (repr, span) = self.collect_param_type_signature();
             let ty = if let Some(span) = span {
                 TypeSig { repr, span }
             } else {
@@ -1272,6 +1279,39 @@ impl<'a> Parser<'a> {
 
         self.expect_symbol(Symbol::RParen);
         out
+    }
+
+    /// Like `collect_signature_until` but stops at `,` or `)` only at paren
+    /// depth 0, so nested types like `fn(T): R` are collected in full.
+    fn collect_param_type_signature(&mut self) -> (String, Option<Span>) {
+        let mut parts = Vec::new();
+        let mut start = None;
+        let mut end = None;
+        let mut depth: usize = 0;
+
+        while !self.eof() {
+            if self.at_symbol(Symbol::RParen) {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+            } else if self.at_symbol(Symbol::Comma) && depth == 0 {
+                break;
+            } else if self.at_symbol(Symbol::LParen) {
+                depth += 1;
+            }
+            let token = match self.bump() {
+                Some(t) => t,
+                None => break,
+            };
+            start.get_or_insert(token.span.start);
+            end = Some(token.span.end);
+            parts.push(token_text(token));
+        }
+
+        let repr = parts.join(" ");
+        let span = start.zip(end).map(|(s, e)| Span::new(s, e));
+        (repr, span)
     }
 
     fn collect_signature_until<F>(&mut self, stop: F) -> (String, Option<Span>)

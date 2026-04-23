@@ -1,12 +1,12 @@
 data OptionA { .some(A), .none }
 fn mk(a: A): OptionA / {} { OptionA.some(a) }
 ---
-mk : (A) -> OptionA
+mk : fn(A) -> OptionA
 ==========
 data OptionA { .some(A), .none }
 fn ok_mk(a: A): OptionA / {} { OptionA.some(a) }
 ---
-ok_mk : (A) -> OptionA
+ok_mk : fn(A) -> OptionA
 ==========
 data OptionA { .some(A), .none }
 fn badp1(a: OptionA, b: A): A / {} { match a { some(x) => b, .none => b } }
@@ -22,23 +22,23 @@ data Nat { .zero, .succ(Nat) }
 data Option[A] { .some(A), .none }
 fn sub1(x: Nat): Option[Nat] / {} { match x { .zero => Option.none, .succ(let x) => Option.some(x) } }
 ---
-sub1 : (Nat) -> Option[Nat]
+sub1 : fn(Nat) -> Option[Nat]
 ==========
 data Nat { .zero, .succ(Nat) }
 data Option[A] { .some(A), .none }
 fn get_or_zero(o: Option[Nat], z: Nat): Nat / {} { match o { .some(x) => x, .none => z } }
 ---
-get_or_zero : (Option[Nat], Nat) -> Nat
+get_or_zero : fn(Option[Nat], Nat) -> Nat
 ==========
 data Option[A] { .some(A), .none }
 fn ok_nil(u: Unit): Unit / {} { let x = Option.none; u }
 ---
-ok_nil : (Unit) -> Unit
+ok_nil : fn(Unit) -> Unit
 ==========
 data Bool { .true, .false }
 fn not(x: Bool): Bool / {} { match x { .true => Bool.false, .false => Bool.true } }
 ---
-not : (Bool) -> Bool
+not : fn(Bool) -> Bool
 ==========
 data Bool { .true, .false }
 fn not(x: Bool): Bool / {} { match x { .true => Bool.false(), .false => Bool.true() } }

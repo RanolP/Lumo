@@ -1,0 +1,20 @@
+fn id[cap c](a: A): A / { ..c } { a }
+---
+id : fn(A) -> A
+==========
+cap IO { fn op(): Result }
+fn with_io[cap c](): Result / { ..c, IO } { IO.op }
+---
+with_io : fn() -> Result / {IO[IO]}
+==========
+cap E1 { fn op1(): A }
+cap E2 { fn op2(): B }
+fn with_both[cap c](): A / { ..c, E1, E2 } { E1.op1 }
+---
+with_both : fn() -> A / {E1[E1], E2[E2]}
+==========
+fn pure_fn[cap c](a: A): A / { ..c } { a }
+fn caller(x: A): A / {} { pure_fn(x) }
+---
+pure_fn : fn(A) -> A
+caller : fn(A) -> A

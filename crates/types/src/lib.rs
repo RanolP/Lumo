@@ -158,9 +158,41 @@ impl TypeExpr {
     }
 }
 
-/// Parse a type expression, handling the `thunk` keyword.
+/// Parse a type expression, handling the `thunk` and `fn` keywords.
 fn parse_type_expr_full(text: &str) -> TypeExpr {
     let text = text.trim();
+    // Handle both `fn(` and `fn (` (spaced form from LST token join)
+    let fn_rest = text.strip_prefix("fn(")
+        .or_else(|| text.strip_prefix("fn").and_then(|r| r.trim_start().strip_prefix('(')));
+    if let Some(rest) = fn_rest {
+        // fn(T, U): R / { cap } — function type in value position
+        if let Some(paren_end) = find_close_paren(rest) {
+            let params_str = &rest[..paren_end];
+            let after_paren = rest[paren_end + 1..].trim_start();
+            let after_paren = after_paren
+                .strip_prefix("->").map(str::trim_start)
+                .or_else(|| after_paren.strip_prefix(':').map(str::trim_start))
+                .unwrap_or(after_paren);
+            // Parse cap annotation if present
+            let (ret_str, cap) = if let Some(slash_pos) = after_paren.find('/') {
+                let ret_part = after_paren[..slash_pos].trim();
+                let cap_part = after_paren[slash_pos + 1..].trim();
+                (ret_part, parse_cap_ref(cap_part))
+            } else {
+                (after_paren.trim(), vec![])
+            };
+            let params: Vec<TypeExpr> = if params_str.trim().is_empty() {
+                vec![]
+            } else {
+                split_type_args(params_str)
+                    .into_iter()
+                    .map(|p| parse_type_expr_full(&p))
+                    .collect()
+            };
+            let ret = parse_type_expr_full(ret_str);
+            return TypeExpr::Fn { params, ret: Box::new(ret), cap };
+        }
+    }
     if let Some(rest) = text.strip_prefix("thunk") {
         let rest = rest.trim_start();
         if rest.is_empty() {
@@ -175,6 +207,25 @@ fn parse_type_expr_full(text: &str) -> TypeExpr {
     // No keywords — strip whitespace and parse as Named/App
     let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();
     parse_type_expr_compact(&compact)
+}
+
+/// Find the position of the closing `)` matching the first `(`.
+/// The text starts AFTER the opening `(`.
+fn find_close_paren(text: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    for (i, ch) in text.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn parse_type_expr_compact(text: &str) -> TypeExpr {

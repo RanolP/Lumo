@@ -237,7 +237,7 @@ fn render_v_type(ty: &ValueType) -> String {
                 } else {
                     format!(" / {{{}}}", cap.iter().map(|e| e.display()).collect::<Vec<_>>().join(", "))
                 };
-                format!("fn({ps}): {}{cap_str}", render_c_type(ret))
+                format!("fn({ps}) -> {}{cap_str}", render_c_type(ret))
             }
             _ => format!("thunk {}", render_c_type(inner)),
         },
@@ -247,7 +247,7 @@ fn render_v_type(ty: &ValueType) -> String {
                 .map(render_v_type)
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("({ps}) -> {}", render_v_type(ret))
+            format!("fn({ps}) -> {}", render_v_type(ret))
         }
     }
 }
@@ -255,21 +255,18 @@ fn render_v_type(ty: &ValueType) -> String {
 fn render_c_type(ty: &CompType) -> String {
     match ty {
         CompType::Produce(inner) => render_v_type(inner),
-        CompType::Fn {
-            params,
-            ret,
-            cap,
-        } => {
+        CompType::Fn { params, ret, cap } => {
             let ps = params
                 .iter()
                 .map(render_v_type)
                 .collect::<Vec<_>>()
                 .join(", ");
-            if cap.is_empty() {
-                format!("({ps}) -> {}", render_c_type(ret))
+            let cap_str = if cap.is_empty() {
+                String::new()
             } else {
-                format!("({ps}) -> {} / {{{}}}", render_c_type(ret), cap.iter().map(|e| e.display()).collect::<Vec<_>>().join(", "))
-            }
+                format!(" / {{{}}}", cap.iter().map(|e| e.display()).collect::<Vec<_>>().join(", "))
+            };
+            format!("fn({ps}) -> {}{cap_str}", render_c_type(ret))
         }
     }
 }

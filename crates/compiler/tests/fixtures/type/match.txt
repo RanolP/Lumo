@@ -1,11 +1,11 @@
 fn pick(a: A): A / {} { match a { x => x } }
 ---
-pick : (A) -> A
+pick : fn(A) -> A
 ==========
 data OptionA { .some(A), .none }
 fn pick2(a: OptionA, b: A): A / {} { match a { .some(let x) => x, .none => b } }
 ---
-pick2 : (OptionA, A) -> A
+pick2 : fn(OptionA, A) -> A
 ==========
 data Option { .some(A), .none }
 fn bad(a: Option): Option / {} { match a { .some(let x, let y) => a, .none => a } }
@@ -20,7 +20,7 @@ ERROR: unknown variant `nope` in match pattern
 data OptionInt { .some(B), .none }
 fn ok(a: OptionInt, b: B): B / {} { match a { .some(x) => x, .none => b } }
 ---
-ok : (OptionInt, B) -> B
+ok : fn(OptionInt, B) -> B
 ==========
 data OptionInt { .some(B), .none }
 fn bad3(a: OptionInt, c: C): B / {} { match a { .some(x) => c, .none => c } }
@@ -31,7 +31,7 @@ data Pair { .pair(B, C) }
 data Wrap { .wrap(Pair), .empty }
 fn nested_ok(w: Wrap, b: B): B / {} { match w { .wrap(.pair(x, _)) => x, .empty => b } }
 ---
-nested_ok : (Wrap, B) -> B
+nested_ok : fn(Wrap, B) -> B
 ==========
 data Pair { .pair(B, C) }
 data Wrap { .wrap(Pair), .empty }
@@ -47,7 +47,7 @@ ERROR: non-exhaustive match: missing patterns .false
 data Bool { .true, .false }
 fn ex(b: Bool): Bool / {} { match b { .true => b, _ => b } }
 ---
-ex : (Bool) -> Bool
+ex : fn(Bool) -> Bool
 ==========
 data Bool { .true, .false }
 fn unreach1(b: Bool): Bool / {} { match b { _ => b, .true => b } }
@@ -63,7 +63,7 @@ data Bool { .true, .false }
 data Nat { .zero, .succ(Nat) }
 fn is_even(n: Nat, t: Bool, f: Bool): Bool / {} { match n { .zero => t, .succ(.zero) => f, .succ(.succ(let n)) => is_even(n, t, f) } }
 ---
-is_even : (Nat, Bool, Bool) -> Bool
+is_even : fn(Nat, Bool, Bool) -> Bool
 ==========
 data Bool { .true, .false }
 data Nat { .zero, .succ(Nat) }

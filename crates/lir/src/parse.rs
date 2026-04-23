@@ -1,6 +1,6 @@
 use crate::{
-    BundleEntry, CapDecl, DataDecl, ExternFnDecl, ExternTypeDecl, Expr, File, FnDecl, ImplDecl,
-    ImplMethodDecl, Item, MatchArm, OperationDecl, Param, UseDecl, VariantDecl,
+    BundleEntry, CapDecl, DataDecl, ExternFnDecl, ExternTypeDecl, Expr, File, FnDecl, GenericParam,
+    ImplDecl, ImplMethodDecl, Item, MatchArm, OperationDecl, Param, UseDecl, VariantDecl,
 };
 use lumo_lexer::{Keyword, Symbol, Token, TokenKind};
 use lumo_span::Span;
@@ -261,7 +261,8 @@ impl Parser {
     fn parse_data_decl(&mut self) -> Option<DataDecl> {
         let start = self.expect_kw(Keyword::Data).ok()?;
         let (name, _) = self.expect_ident().ok()?;
-        let generics = self.try_parse_generic_params();
+        let generics: Vec<String> = self.try_parse_generic_params()
+            .into_iter().map(|g| g.name().to_owned()).collect();
         self.expect_sym(Symbol::LBrace).ok()?;
         let mut variants = Vec::new();
         while self.peek() == Some(&TokenKind::Symbol(Symbol::Dot)) {
@@ -453,15 +454,27 @@ impl Parser {
     // Shared
     // -----------------------------------------------------------------------
 
-    fn try_parse_generic_params(&mut self) -> Vec<String> {
+    fn try_parse_generic_params(&mut self) -> Vec<GenericParam> {
         if !self.eat_sym(Symbol::LBracket) {
             return Vec::new();
         }
         let mut params = Vec::new();
-        while let Some(TokenKind::Ident(_)) = self.peek() {
-            let (name, _) = self.expect_ident().ok().unwrap();
-            params.push(name);
-            self.eat_sym(Symbol::Comma);
+        loop {
+            let is_cap_row = self.peek() == Some(&TokenKind::Keyword(Keyword::Cap));
+            if is_cap_row {
+                self.advance();
+            }
+            if let Some(TokenKind::Ident(_)) = self.peek() {
+                let (name, _) = self.expect_ident().ok().unwrap();
+                params.push(if is_cap_row {
+                    GenericParam::CapRow(name)
+                } else {
+                    GenericParam::Type(name)
+                });
+                self.eat_sym(Symbol::Comma);
+            } else {
+                break;
+            }
         }
         let _ = self.expect_sym(Symbol::RBracket);
         params
@@ -507,21 +520,23 @@ impl Parser {
     }
 
     fn try_parse_cap_annotation(&mut self) -> Option<CapRef> {
+        use lumo_types::CapEntry;
         if !self.eat_sym(Symbol::Slash) {
             return None;
         }
         self.expect_sym(Symbol::LBrace).ok()?;
         if self.eat_sym(Symbol::RBrace) {
-            return Some(CapRef::Pure);
+            return Some(vec![]);
         }
         let is_infer = self.eat_sym(Symbol::DotDot);
+        let mut entries: Vec<CapEntry> = Vec::new();
         if is_infer {
+            entries.push(CapEntry::Infer);
             if self.eat_sym(Symbol::RBrace) {
-                return Some(CapRef::Infer(vec![]));
+                return Some(entries);
             }
             self.eat_sym(Symbol::Comma);
         }
-        let mut entries = Vec::new();
         loop {
             let (name, _) = self.expect_ident().ok()?;
             let type_args = if self.peek_ident_text("for") {
@@ -531,17 +546,13 @@ impl Parser {
             } else {
                 vec![]
             };
-            entries.push(TypeExpr::Cap { name, type_args });
+            entries.push(CapEntry::Cap(TypeExpr::Cap { name, type_args }));
             if !self.eat_sym(Symbol::Comma) {
                 break;
             }
         }
         self.expect_sym(Symbol::RBrace).ok()?;
-        if is_infer {
-            Some(CapRef::Infer(entries))
-        } else {
-            Some(CapRef::Named(entries))
-        }
+        Some(entries)
     }
 
     fn parse_type_expr(&mut self) -> Option<Spanned<TypeExpr>> {
