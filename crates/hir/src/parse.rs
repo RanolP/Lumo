@@ -284,7 +284,8 @@ impl Parser {
     fn parse_data_decl(&mut self) -> Option<DataDecl> {
         let start = self.expect_kw(Keyword::Data).ok()?;
         let (name, _) = self.expect_ident().ok()?;
-        let generics = self.try_parse_generic_params();
+        let generics: Vec<String> = self.try_parse_generic_params()
+            .into_iter().map(|g| g.name().to_owned()).collect();
         self.expect_sym(Symbol::LBrace).ok()?;
         let mut variants = Vec::new();
         while self.peek() == Some(&TokenKind::Symbol(Symbol::Dot)) {
@@ -484,15 +485,28 @@ impl Parser {
     // Shared
     // -----------------------------------------------------------------------
 
-    fn try_parse_generic_params(&mut self) -> Vec<String> {
+    fn try_parse_generic_params(&mut self) -> Vec<crate::GenericParam> {
+        use crate::GenericParam;
         if !self.eat_sym(Symbol::LBracket) {
             return Vec::new();
         }
         let mut params = Vec::new();
-        while let Some(TokenKind::Ident(_)) = self.peek() {
-            let (name, _) = self.expect_ident().ok().unwrap();
-            params.push(name);
-            self.eat_sym(Symbol::Comma);
+        loop {
+            let is_cap_row = self.peek() == Some(&TokenKind::Keyword(Keyword::Cap));
+            if is_cap_row {
+                self.advance();
+            }
+            if let Some(TokenKind::Ident(_)) = self.peek() {
+                let (name, _) = self.expect_ident().ok().unwrap();
+                params.push(if is_cap_row {
+                    GenericParam::CapRow(name)
+                } else {
+                    GenericParam::Type(name)
+                });
+                self.eat_sym(Symbol::Comma);
+            } else {
+                break;
+            }
         }
         let _ = self.expect_sym(Symbol::RBracket);
         params
@@ -536,46 +550,67 @@ impl Parser {
     }
 
     fn try_parse_cap_annotation(&mut self) -> Option<CapRef> {
+        use lumo_types::CapEntry;
         if !self.eat_sym(Symbol::Slash) {
             return None;
         }
         self.expect_sym(Symbol::LBrace).ok()?;
         if self.eat_sym(Symbol::RBrace) {
-            return Some(CapRef::Pure);
+            return Some(vec![]);
         }
-        // Check for `..` (infer marker)
-        let is_infer = self.eat_sym(Symbol::DotDot);
-        if is_infer {
-            if self.eat_sym(Symbol::RBrace) {
-                return Some(CapRef::Infer(vec![]));
-            }
-            // Expect comma after `..` before cap entries
-            self.eat_sym(Symbol::Comma);
-        }
-        let mut entries = Vec::new();
+        let mut entries: Vec<CapEntry> = Vec::new();
         loop {
-            let (name, _) = self.expect_ident().ok()?;
-            let type_args = if self.peek_ident_text("for") {
-                self.advance(); // consume "for"
-                let (ty, _) = self.expect_ident().ok()?;
-                vec![TypeExpr::Named(ty)]
+            if self.eat_sym(Symbol::DotDot) {
+                // `..name` → Spread; bare `..` → Infer
+                if matches!(self.peek(), Some(TokenKind::Ident(_))) {
+                    let (var, _) = self.expect_ident().ok()?;
+                    entries.push(CapEntry::Spread(var));
+                } else {
+                    entries.push(CapEntry::Infer);
+                }
             } else {
-                vec![]
-            };
-            entries.push(TypeExpr::Cap { name, type_args });
+                let (name, _) = self.expect_ident().ok()?;
+                let type_args = if self.peek_ident_text("for") {
+                    self.advance(); // consume "for"
+                    let (ty, _) = self.expect_ident().ok()?;
+                    vec![TypeExpr::Named(ty)]
+                } else {
+                    vec![]
+                };
+                entries.push(CapEntry::Cap(TypeExpr::Cap { name, type_args }));
+            }
             if !self.eat_sym(Symbol::Comma) {
                 break;
             }
+            if self.peek() == Some(&TokenKind::Symbol(Symbol::RBrace)) {
+                break; // trailing comma
+            }
         }
         self.expect_sym(Symbol::RBrace).ok()?;
-        if is_infer {
-            Some(CapRef::Infer(entries))
-        } else {
-            Some(CapRef::Named(entries))
-        }
+        Some(entries)
     }
 
     fn parse_type_expr(&mut self) -> Option<Spanned<TypeExpr>> {
+        // `fn(T, U): R` or `fn(T): R / { IO }` — function type in value position
+        if self.peek() == Some(&TokenKind::Keyword(Keyword::Fn)) {
+            let start = self.advance().span; // consume `fn`
+            self.expect_sym(Symbol::LParen).ok()?;
+            let mut params = Vec::new();
+            while self.peek() != Some(&TokenKind::Symbol(Symbol::RParen)) && !self.at_end() {
+                if let Some(ty) = self.parse_type_expr() {
+                    params.push(ty.value);
+                }
+                self.eat_sym(Symbol::Comma);
+            }
+            self.expect_sym(Symbol::RParen).ok()?;
+            self.expect_sym(Symbol::Colon).ok()?;
+            let ret = self.parse_type_expr()?;
+            let cap = self.try_parse_cap_annotation().unwrap_or_default();
+            return Some(Spanned {
+                span: Span::new(start.start, ret.span.end),
+                value: TypeExpr::Fn { params, ret: Box::new(ret.value), cap },
+            });
+        }
         // Handle `produce`/`thunk` prefixes
         if self.peek() == Some(&TokenKind::Keyword(Keyword::Produce)) {
             let start = self.advance().span;
@@ -678,6 +713,7 @@ impl Parser {
     /// Parse a primary expression and return whether postfix is allowed.
     fn parse_expr_primary_flagged(&mut self) -> Option<(Expr, bool)> {
         match self.peek()? {
+            TokenKind::Keyword(Keyword::Fn) => self.parse_lambda_expr().map(|e| (e, false)),
             TokenKind::Keyword(Keyword::Produce) => self.parse_produce_expr().map(|e| (e, false)),
             TokenKind::Keyword(Keyword::Thunk) => self.parse_thunk_expr().map(|e| (e, false)),
             TokenKind::Keyword(Keyword::Force) => self.parse_force_expr().map(|e| (e, false)),
@@ -737,6 +773,31 @@ impl Parser {
         let end = inner.span();
         Some(Expr::Thunk {
             expr: Box::new(inner),
+            span: Span::new(start.start, end.end),
+        })
+    }
+
+    fn parse_lambda_expr(&mut self) -> Option<Expr> {
+        let start = self.advance().span; // consume `fn`
+        self.expect_sym(Symbol::LParen).ok()?;
+        let mut params = Vec::new();
+        while self.peek() != Some(&TokenKind::Symbol(Symbol::RParen)) && !self.at_end() {
+            let (name, _) = self.expect_ident().ok()?;
+            let ty = if self.eat_sym(Symbol::Colon) {
+                self.parse_type_expr()
+            } else {
+                None
+            };
+            params.push((name, ty));
+            self.eat_sym(Symbol::Comma);
+        }
+        self.expect_sym(Symbol::RParen).ok()?;
+        self.expect_sym(Symbol::LBrace).ok()?;
+        let body = self.parse_expr()?;
+        let end = self.expect_sym(Symbol::RBrace).ok()?;
+        Some(Expr::Lambda {
+            params,
+            body: Box::new(body),
             span: Span::new(start.start, end.end),
         })
     }

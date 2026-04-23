@@ -236,7 +236,7 @@ impl CheckCtx {
     }
 
     fn check_fn(&mut self, func: &FnDecl) {
-        let generics: HashSet<&str> = func.generics.iter().map(|s| s.as_str()).collect();
+        let generics: HashSet<&str> = func.generics.iter().map(|g| g.name()).collect();
         for param in &func.params {
             self.check_type_expr_with_generics(&param.ty.value, param.ty.span, &generics);
         }
@@ -250,7 +250,7 @@ impl CheckCtx {
     }
 
     fn check_impl(&mut self, impl_decl: &ImplDecl) {
-        let generics: HashSet<&str> = impl_decl.generics.iter().map(|s| s.as_str()).collect();
+        let generics: HashSet<&str> = impl_decl.generics.iter().map(|g| g.name()).collect();
         self.check_type_expr_with_generics(
             &impl_decl.target_type.value,
             impl_decl.target_type.span,
@@ -340,16 +340,24 @@ impl CheckCtx {
                     self.check_type_expr_with_generics(arg, span, generics);
                 }
             }
+            TypeExpr::Fn { params, ret, .. } => {
+                for p in params {
+                    self.check_type_expr_with_generics(p, span, generics);
+                }
+                self.check_type_expr_with_generics(ret, span, generics);
+            }
         }
     }
 
     fn check_cap_ref(&mut self, cap: &Option<CapRef>, span: Span) {
-        use lumo_types::CapRef;
-        if let Some(CapRef::Named(entries) | CapRef::Infer(entries)) = cap {
+        use lumo_types::CapEntry;
+        if let Some(entries) = cap {
             for entry in entries {
-                let name = entry.cap_name();
-                if !self.caps.contains_key(name) {
-                    self.error(span, format!("unknown capability `{name}`"));
+                if let CapEntry::Cap(ty) = entry {
+                    let name = ty.cap_name();
+                    if !self.caps.contains_key(name) {
+                        self.error(span, format!("unknown capability `{name}`"));
+                    }
                 }
             }
         }
@@ -440,6 +448,18 @@ impl CheckCtx {
             Expr::Ann { expr: inner, ty, .. } => {
                 self.check_expr(inner, locals);
                 self.check_type_expr(&ty.value, ty.span);
+            }
+            Expr::Lambda { params, body, .. } => {
+                for (name, ty) in params {
+                    if let Some(ty) = ty {
+                        self.check_type_expr(&ty.value, ty.span);
+                    }
+                    locals.insert(name.clone());
+                }
+                self.check_expr(body, locals);
+                for (name, _) in params {
+                    locals.remove(name);
+                }
             }
         }
     }

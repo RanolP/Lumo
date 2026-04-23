@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::lexer::Span;
 use crate::lir::{self, Expr};
-use crate::types::{CapRef, Pattern, TypeExpr};
+use crate::types::{CapEntry, CapRef, Pattern, TypeExpr, cap_ref_is_open};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeError {
@@ -55,7 +55,7 @@ pub enum CompType {
     Fn {
         params: Vec<ValueType>,
         ret: Box<CompType>,
-        cap: Vec<TypeExpr>,
+        cap: Vec<CapEntry>,
     },
 }
 
@@ -69,8 +69,8 @@ impl PartialEq for CompType {
 /// Compare two value types, treating `Self` as a wildcard that matches anything.
 fn v_types_match(a: &ValueType, b: &ValueType) -> bool {
     match (a, b) {
-        (ValueType::Named(n), _) if n == "Self" => true,
-        (_, ValueType::Named(n)) if n == "Self" => true,
+        // `Self` and `_` (inferred placeholder) are wildcards that match any type
+        (ValueType::Named(n), _) | (_, ValueType::Named(n)) if n == "Self" || n == "_" => true,
         (ValueType::Named(a), ValueType::Named(b)) => a == b,
         (ValueType::Thunk(a), ValueType::Thunk(b)) => c_types_match(a, b),
         (
@@ -169,7 +169,7 @@ pub fn typecheck_and_bindings(file: &lir::File) -> (Vec<CheckedBinding>, Vec<Typ
 /// plus per-Perform-site type_args resolutions.
 pub fn infer_caps_for_file(
     file: &lir::File,
-) -> (HashMap<String, Vec<TypeExpr>>, HashMap<u64, Vec<String>>) {
+) -> (HashMap<String, Vec<CapEntry>>, HashMap<u64, Vec<String>>) {
     let mut tc = TypeChecker {
         errors: Vec::new(),
         bindings: Vec::new(),
@@ -196,17 +196,17 @@ pub fn infer_caps_for_file(
 }
 
 /// Patch LIR `FnDecl.cap` fields with inferred caps from the type checker.
-pub fn apply_inferred_caps(file: &mut lir::File, inferred: &HashMap<String, Vec<TypeExpr>>) {
+pub fn apply_inferred_caps(file: &mut lir::File, inferred: &HashMap<String, Vec<CapEntry>>) {
     for item in &mut file.items {
         if let lir::Item::Fn(f) = item {
             if let Some(caps) = inferred.get(&f.name) {
-                // Only patch functions that have no annotation or Infer annotation.
-                // Use Infer variant so the type checker skips Self-validation.
-                match &f.cap {
-                    None | Some(CapRef::Infer(_)) => {
-                        f.cap = Some(CapRef::Infer(caps.clone()));
-                    }
-                    _ => {}
+                // Only patch functions that have no annotation or open (Infer) annotation.
+                let is_patchable = f.cap.as_ref().map_or(true, |c| cap_ref_is_open(c));
+                if is_patchable {
+                    let new_cap: Vec<CapEntry> = std::iter::once(CapEntry::Infer)
+                        .chain(caps.iter().filter(|e| matches!(e, CapEntry::Cap(_))).cloned())
+                        .collect();
+                    f.cap = Some(new_cap);
                 }
             }
         }
@@ -229,7 +229,18 @@ fn comp_type_return_value(ct: &CompType) -> Option<&ValueType> {
 fn render_v_type(ty: &ValueType) -> String {
     match ty {
         ValueType::Named(n) => n.clone(),
-        ValueType::Thunk(inner) => format!("thunk {}", render_c_type(inner)),
+        ValueType::Thunk(inner) => match inner.as_ref() {
+            CompType::Fn { params, ret, cap } => {
+                let ps = params.iter().map(render_v_type).collect::<Vec<_>>().join(", ");
+                let cap_str = if cap.is_empty() {
+                    String::new()
+                } else {
+                    format!(" / {{{}}}", cap.iter().map(|e| e.display()).collect::<Vec<_>>().join(", "))
+                };
+                format!("fn({ps}): {}{cap_str}", render_c_type(ret))
+            }
+            _ => format!("thunk {}", render_c_type(inner)),
+        },
         ValueType::Func { params, ret } => {
             let ps = params
                 .iter()
@@ -457,11 +468,13 @@ impl TypeChecker {
         for ty in self.fn_defs.values() {
             if let CompType::Fn { cap, .. } = ty {
                 for entry in cap {
-                    if entry.cap_for_type().is_some() {
-                        let args: Vec<String> = entry.cap_type_args().iter().map(|t| t.display()).collect();
-                        global_for_types
-                            .entry(entry.cap_name().to_owned())
-                            .or_insert(args);
+                    if let CapEntry::Cap(ty) = entry {
+                        if ty.cap_for_type().is_some() {
+                            let args: Vec<String> = ty.cap_type_args().iter().map(|t| t.display()).collect();
+                            global_for_types
+                                .entry(ty.cap_name().to_owned())
+                                .or_insert(args);
+                        }
                     }
                 }
             }
@@ -471,26 +484,9 @@ impl TypeChecker {
             let fn_names: Vec<String> = self.fn_defs.keys().cloned().collect();
             for fn_name in fn_names {
                 if let Some(CompType::Fn { params, ret, cap }) = self.fn_defs.remove(&fn_name) {
-                    let enriched: Vec<TypeExpr> = cap
+                    let enriched: Vec<CapEntry> = cap
                         .into_iter()
-                        .map(|entry| {
-                            if entry.cap_for_type().is_some() {
-                                return entry;
-                            }
-                            let cap_name = entry.cap_name();
-                            if let Some(type_args) = global_for_types.get(cap_name) {
-                                TypeExpr::Cap {
-                                    name: cap_name.to_owned(),
-                                    type_args: type_args.iter().map(|t| TypeExpr::Named(t.clone())).collect(),
-                                }
-                            } else {
-                                // Default: self = cap_name
-                                TypeExpr::Cap {
-                                    name: cap_name.to_owned(),
-                                    type_args: vec![TypeExpr::Named(cap_name.to_owned())],
-                                }
-                            }
-                        })
+                        .map(|entry| enrich_cap_entry(entry, &global_for_types))
                         .collect();
                     self.fn_defs.insert(
                         fn_name,
@@ -505,26 +501,9 @@ impl TypeChecker {
             // Also update bindings
             for binding in &mut self.bindings {
                 if let CompType::Fn { params, ret, cap } = &binding.ty {
-                    let enriched: Vec<TypeExpr> = cap
+                    let enriched: Vec<CapEntry> = cap
                         .iter()
-                        .map(|entry| {
-                            if entry.cap_for_type().is_some() {
-                                return entry.clone();
-                            }
-                            let cap_name = entry.cap_name();
-                            if let Some(type_args) = global_for_types.get(cap_name) {
-                                TypeExpr::Cap {
-                                    name: cap_name.to_owned(),
-                                    type_args: type_args.iter().map(|t| TypeExpr::Named(t.clone())).collect(),
-                                }
-                            } else {
-                                // Default: self = cap_name
-                                TypeExpr::Cap {
-                                    name: cap_name.to_owned(),
-                                    type_args: vec![TypeExpr::Named(cap_name.to_owned())],
-                                }
-                            }
-                        })
+                        .map(|entry| enrich_cap_entry(entry.clone(), &global_for_types))
                         .collect();
                     binding.ty = CompType::Fn {
                         params: params.clone(),
@@ -555,7 +534,9 @@ impl TypeChecker {
             }),
             None => CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))),
         };
-        let caps = cap.map(|c| c.entries().to_vec()).unwrap_or_default();
+        let caps: Vec<CapEntry> = cap
+            .map(|c| c.iter().filter(|e| matches!(e, CapEntry::Cap(_))).cloned().collect())
+            .unwrap_or_default();
         self.fn_defs.insert(
             name.to_owned(),
             CompType::Fn {
@@ -631,7 +612,7 @@ impl TypeChecker {
         }
 
         // Get caps: use inferred caps from fn_defs (set by infer_caps pass)
-        let caps: Vec<TypeExpr> = self
+        let caps: Vec<CapEntry> = self
             .fn_defs
             .get(&f.name)
             .and_then(|ty| {
@@ -673,15 +654,20 @@ impl TypeChecker {
             return;
         };
         // Validate explicit (closed) cap entries
-        let is_open = f.cap.is_none() || matches!(&f.cap, Some(CapRef::Infer(_)));
+        let is_open = f.cap.as_ref().map_or(true, |c| cap_ref_is_open(c));
         if !is_open {
-            self.validate_cap_entries(&caps, f.span);
+            let concrete_caps: Vec<TypeExpr> = caps.iter()
+                .filter_map(|e| if let CapEntry::Cap(ty) = e { Some(ty.clone()) } else { None })
+                .collect();
+            self.validate_cap_entries(&concrete_caps, f.span);
         }
         // Inject caps into env
         for entry in &caps {
-            let name = entry.cap_name();
-            if let Some(ty) = self.cap_handler_type(name) {
-                env.insert(format!("__cap_{name}"), ty);
+            if let CapEntry::Cap(ty) = entry {
+                let name = ty.cap_name();
+                if let Some(handler_ty) = self.cap_handler_type(name) {
+                    env.insert(format!("__cap_{name}"), handler_ty);
+                }
             }
         }
         let err_before = self.errors.len();
@@ -711,8 +697,13 @@ impl TypeChecker {
             };
             param_types.push(ty);
         }
-        let caps: Vec<TypeExpr> = f.cap.as_ref().map(|c| c.entries().to_vec()).unwrap_or_default();
-        self.validate_cap_entries(&caps, f.span);
+        let caps: Vec<CapEntry> = f.cap.as_ref()
+            .map(|c| c.iter().filter(|e| matches!(e, CapEntry::Cap(_))).cloned().collect())
+            .unwrap_or_default();
+        let concrete_caps: Vec<TypeExpr> = caps.iter()
+            .filter_map(|e| if let CapEntry::Cap(ty) = e { Some(ty.clone()) } else { None })
+            .collect();
+        self.validate_cap_entries(&concrete_caps, f.span);
         let ret = if let Some(ret) = &f.return_type {
             let Some(expected) = c_type_from_type_expr(&ret.value) else {
                 self.errors.push(TypeError::with_span(
@@ -1215,6 +1206,20 @@ impl TypeChecker {
                     let _ = self.infer_c_expr(handler, env);
                 }
             }
+            Expr::Lambda { .. } => {
+                if let Some(actual) = self.infer_c_expr(expr, env) {
+                    if !c_types_match(&actual, expected) {
+                        self.errors.push(TypeError::new(
+                            expr_node_id(expr),
+                            format!(
+                                "type mismatch: expected {}, got {}",
+                                render_c_type(expected),
+                                render_c_type(&actual)
+                            ),
+                        ));
+                    }
+                }
+            }
             _ => {
                 if let Some(actual) = self.infer_c_expr(expr, env) {
                     if &actual != expected {
@@ -1400,16 +1405,18 @@ impl TypeChecker {
                             if params.is_empty() {
                                 // Check that required caps are available at call site
                                 for cap_entry in callee_caps {
-                                    let cap_name = cap_entry.cap_name();
-                                    let cap_var = format!("__cap_{cap_name}");
-                                    if !env.contains_key(&cap_var) {
-                                        self.errors.push(TypeError::new(
-                                            id.0 as u64,
-                                            format!(
-                                                "function `{name}` requires cap `{cap_name}` which is not available; \
-                                                 provide it with `handle {cap_name} with <handler> in ...`",
-                                            ),
-                                        ));
+                                    if let CapEntry::Cap(cap_ty) = cap_entry {
+                                        let cap_name = cap_ty.cap_name();
+                                        let cap_var = format!("__cap_{cap_name}");
+                                        if !env.contains_key(&cap_var) {
+                                            self.errors.push(TypeError::new(
+                                                id.0 as u64,
+                                                format!(
+                                                    "function `{name}` requires cap `{cap_name}` which is not available; \
+                                                     provide it with `handle {cap_name} with <handler> in ...`",
+                                                ),
+                                            ));
+                                        }
                                     }
                                 }
                                 return Some(*ret.clone());
@@ -1499,17 +1506,19 @@ impl TypeChecker {
                 }
                 // Check that required caps are available at call site
                 for cap_entry in &callee_caps {
-                    let cap_name = cap_entry.cap_name();
-                    let cap_var = format!("__cap_{cap_name}");
-                    if !env.contains_key(&cap_var) {
-                        self.errors.push(TypeError::new(
-                            node_id,
-                            format!(
-                                "function `{}` requires cap `{cap_name}` which is not available; \
-                                 provide it with `handle {cap_name} with <handler> in ...`",
-                                render_expr_head(callee),
-                            ),
-                        ));
+                    if let CapEntry::Cap(cap_ty) = cap_entry {
+                        let cap_name = cap_ty.cap_name();
+                        let cap_var = format!("__cap_{cap_name}");
+                        if !env.contains_key(&cap_var) {
+                            self.errors.push(TypeError::new(
+                                node_id,
+                                format!(
+                                    "function `{}` requires cap `{cap_name}` which is not available; \
+                                     provide it with `handle {cap_name} with <handler> in ...`",
+                                    render_expr_head(callee),
+                                ),
+                            ));
+                        }
                     }
                 }
                 // Substitute Self in return type if we resolved it
@@ -1687,8 +1696,16 @@ impl TypeChecker {
                 None
             }
             Expr::Error { .. } => None,
+            Expr::Lambda { param, body, .. } => {
+                let mut child = env.clone();
+                child.insert(param.clone(), ValueType::Named("_".to_owned()));
+                self.infer_c_expr(body, &child).map(|ret| CompType::Fn {
+                    params: vec![ValueType::Named("_".to_owned())],
+                    ret: Box::new(ret),
+                    cap: vec![],
+                })
+            }
             Expr::Thunk { .. }
-            | Expr::Lambda { .. }
             | Expr::Unroll { .. }
             | Expr::Bundle { .. } => {
                 self.errors.push(TypeError::new(
@@ -2330,25 +2347,29 @@ impl TypeChecker {
             Some(r) => r,
             None => return CompType::Fn { params, ret, cap },
         };
-        let enriched: Vec<TypeExpr> = cap
+        let enriched: Vec<CapEntry> = cap
             .into_iter()
             .map(|entry| {
-                if entry.cap_for_type().is_some() {
-                    return entry; // already has type_args
-                }
-                let cap_name = entry.cap_name();
-                // Find the resolved type_args from this function's resolutions
-                if let Some((_, type_args)) = resolutions.iter().find(|(n, _)| n == cap_name) {
-                    TypeExpr::Cap {
-                        name: cap_name.to_owned(),
-                        type_args: type_args.iter().map(|t| TypeExpr::Named(t.clone())).collect(),
+                if let CapEntry::Cap(ty) = &entry {
+                    if ty.cap_for_type().is_some() {
+                        return entry; // already has type_args
+                    }
+                    let cap_name = ty.cap_name();
+                    // Find the resolved type_args from this function's resolutions
+                    if let Some((_, type_args)) = resolutions.iter().find(|(n, _)| n == cap_name) {
+                        CapEntry::Cap(TypeExpr::Cap {
+                            name: cap_name.to_owned(),
+                            type_args: type_args.iter().map(|t| TypeExpr::Named(t.clone())).collect(),
+                        })
+                    } else {
+                        // Default: self = cap_name
+                        CapEntry::Cap(TypeExpr::Cap {
+                            name: cap_name.to_owned(),
+                            type_args: vec![TypeExpr::Named(cap_name.to_owned())],
+                        })
                     }
                 } else {
-                    // Default: self = cap_name
-                    TypeExpr::Cap {
-                        name: cap_name.to_owned(),
-                        type_args: vec![TypeExpr::Named(cap_name.to_owned())],
-                    }
+                    entry // Spread and Infer pass through unchanged
                 }
             })
             .collect();
@@ -2371,11 +2392,14 @@ impl TypeChecker {
             .cloned()
             .collect();
 
-        // Build fn_caps map: fn_name → current cap TypeExpr list
+        // Build fn_caps map: fn_name → current cap TypeExpr list (concrete caps only, for inference)
         let mut fn_caps: HashMap<String, Vec<TypeExpr>> = HashMap::new();
         for (name, ty) in &self.fn_defs {
             if let CompType::Fn { cap, .. } = ty {
-                fn_caps.insert(name.clone(), cap.clone());
+                let cap_exprs: Vec<TypeExpr> = cap.iter()
+                    .filter_map(|e| if let CapEntry::Cap(ty) = e { Some(ty.clone()) } else { None })
+                    .collect();
+                fn_caps.insert(name.clone(), cap_exprs);
             }
         }
 
@@ -2387,7 +2411,7 @@ impl TypeChecker {
                 if let lir::Item::Fn(f) = item {
                     match &f.cap {
                         None => Some((f.name.clone(), true)),
-                        Some(CapRef::Infer(_)) => Some((f.name.clone(), true)),
+                        Some(c) if cap_ref_is_open(c) => Some((f.name.clone(), true)),
                         _ => None,
                     }
                 } else {
@@ -2415,12 +2439,16 @@ impl TypeChecker {
                     let handled = HashSet::new();
                     let mut inferred = collect_caps_from_expr(body, &handled, &fn_caps, &cap_names);
 
-                    // For Infer(min_caps), include minimum caps
-                    if let Some(CapRef::Infer(min_caps)) = &f.cap {
-                        for mc in min_caps {
-                            let name = mc.cap_name();
-                            if !inferred.iter().any(|c| c.cap_name() == name) {
-                                inferred.push(mc.clone());
+                    // For open cap set, include any explicitly-listed minimum caps
+                    if let Some(cap_entries) = &f.cap {
+                        if cap_ref_is_open(cap_entries) {
+                            for entry in cap_entries {
+                                if let CapEntry::Cap(ty) = entry {
+                                    let name = ty.cap_name();
+                                    if !inferred.iter().any(|c: &TypeExpr| c.cap_name() == name) {
+                                        inferred.push(ty.clone());
+                                    }
+                                }
                             }
                         }
                     }
@@ -2437,11 +2465,11 @@ impl TypeChecker {
             }
         }
 
-        // Write inferred caps back to fn_defs
+        // Write inferred caps back to fn_defs (convert TypeExpr → CapEntry::Cap)
         for (name, caps) in &fn_caps {
             if let Some(ty) = self.fn_defs.get_mut(name) {
                 if let CompType::Fn { cap, .. } = ty {
-                    *cap = caps.clone();
+                    *cap = caps.iter().map(|ty| CapEntry::Cap(ty.clone())).collect();
                 }
             }
         }
@@ -2629,6 +2657,29 @@ fn unwrap_apply_chain_ref(expr: &Expr) -> (&Expr, Vec<&Expr>) {
     (cursor, args)
 }
 
+/// Enrich a CapEntry::Cap with type_args from a global resolution map.
+/// Spread and Infer entries pass through unchanged.
+fn enrich_cap_entry(entry: CapEntry, global_for_types: &HashMap<String, Vec<String>>) -> CapEntry {
+    if let CapEntry::Cap(ty) = &entry {
+        if ty.cap_for_type().is_some() {
+            return entry; // already has type_args
+        }
+        let cap_name = ty.cap_name();
+        if let Some(type_args) = global_for_types.get(cap_name) {
+            return CapEntry::Cap(TypeExpr::Cap {
+                name: cap_name.to_owned(),
+                type_args: type_args.iter().map(|t| TypeExpr::Named(t.clone())).collect(),
+            });
+        } else {
+            return CapEntry::Cap(TypeExpr::Cap {
+                name: cap_name.to_owned(),
+                type_args: vec![TypeExpr::Named(cap_name.to_owned())],
+            });
+        }
+    }
+    entry
+}
+
 /// Add a cap entry to the list, deduplicating by cap name + type_args.
 fn add_cap(caps: &mut Vec<TypeExpr>, cap: TypeExpr) {
     let name = cap.cap_name();
@@ -2674,6 +2725,15 @@ fn v_type_from_type_expr(te: &TypeExpr) -> Option<ValueType> {
         }
         TypeExpr::Produce(_) => None, // `produce T` is not a value type
         TypeExpr::Cap { name, .. } => Some(ValueType::Named(name.clone())),
+        TypeExpr::Fn { params, ret, cap } => {
+            let param_types: Vec<ValueType> = params.iter().filter_map(v_type_from_type_expr).collect();
+            let ret_ct = c_type_from_type_expr(ret)?;
+            Some(ValueType::Thunk(Box::new(CompType::Fn {
+                params: param_types,
+                ret: Box::new(ret_ct),
+                cap: cap.clone(),
+            })))
+        }
     }
 }
 

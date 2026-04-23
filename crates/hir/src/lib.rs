@@ -7,6 +7,26 @@ use lumo_lst as lst;
 use lumo_lst::parser;
 use lumo_types::{CapRef, ContentHash, Pattern, Spanned, TypeExpr};
 
+/// A generic parameter in a function declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenericParam {
+    /// Type variable: `A`, `B`, `R`
+    Type(String),
+    /// Capability row variable: `cap c`
+    CapRow(String),
+}
+
+impl GenericParam {
+    pub fn name(&self) -> &str {
+        match self {
+            GenericParam::Type(n) | GenericParam::CapRow(n) => n,
+        }
+    }
+    pub fn is_cap_row(&self) -> bool {
+        matches!(self, GenericParam::CapRow(_))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // HIR types
 // ---------------------------------------------------------------------------
@@ -95,7 +115,7 @@ pub struct OperationDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnDecl {
     pub name: String,
-    pub generics: Vec<String>,
+    pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
     pub return_type: Option<Spanned<TypeExpr>>,
     pub cap: Option<CapRef>,
@@ -114,7 +134,7 @@ pub struct UseDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImplDecl {
     pub name: Option<String>,
-    pub generics: Vec<String>,
+    pub generics: Vec<GenericParam>,
     pub target_type: Spanned<TypeExpr>,
     pub capability: Option<Spanned<TypeExpr>>,
     pub methods: Vec<ImplMethodDecl>,
@@ -146,6 +166,8 @@ pub enum Expr {
     Member { object: Box<Expr>, member: String, span: Span },
     Produce { expr: Box<Expr>, span: Span },
     Thunk { expr: Box<Expr>, span: Span },
+    /// Anonymous function: `fn(x, y) { body }`
+    Lambda { params: Vec<(String, Option<Spanned<TypeExpr>>)>, body: Box<Expr>, span: Span },
     Force { expr: Box<Expr>, span: Span },
     Let { name: String, value: Box<Expr>, body: Box<Expr>, span: Span },
     Match { scrutinee: Box<Expr>, arms: Vec<MatchArm>, span: Span },
@@ -185,6 +207,7 @@ impl Expr {
             | Expr::Member { span, .. }
             | Expr::Produce { span, .. }
             | Expr::Thunk { span, .. }
+            | Expr::Lambda { span, .. }
             | Expr::Force { span, .. }
             | Expr::Let { span, .. }
             | Expr::Match { span, .. }
@@ -384,7 +407,13 @@ fn lower_operation(op: &lst::OperationDecl) -> OperationDecl {
 fn lower_fn(func: &lst::FnDecl, ctx: &mut LowerCtx) -> FnDecl {
     FnDecl {
         name: func.name.clone(),
-        generics: func.generics.iter().map(|g| g.name.clone()).collect(),
+        generics: func.generics.iter().map(|g| {
+            if g.is_cap_row {
+                GenericParam::CapRow(g.name.clone())
+            } else {
+                GenericParam::Type(g.name.clone())
+            }
+        }).collect(),
         params: func.params.iter().map(lower_param).collect(),
         return_type: func.return_type.as_ref().and_then(lower_type_sig),
         cap: func.cap.as_ref().map(lower_cap_sig),
@@ -441,7 +470,13 @@ fn lower_impl(impl_decl: &lst::ImplDecl, ctx: &mut LowerCtx) -> ImplDecl {
 
     ImplDecl {
         name: impl_decl.name.clone(),
-        generics: impl_decl.generics.iter().map(|g| g.name.clone()).collect(),
+        generics: impl_decl.generics.iter().map(|g| {
+            if g.is_cap_row {
+                GenericParam::CapRow(g.name.clone())
+            } else {
+                GenericParam::Type(g.name.clone())
+            }
+        }).collect(),
         target_type,
         capability,
         methods,
@@ -475,7 +510,7 @@ fn lower_type_sig_with_fallback(repr: &str, span: Span) -> Spanned<TypeExpr> {
 }
 
 fn lower_cap_sig(cap: &lst::CapSig) -> CapRef {
-    CapRef::parse(&cap.repr)
+    lumo_types::parse_cap_ref(&cap.repr)
 }
 
 /// Parse a handle's cap string: "Add for Number" → ("Add", vec!["Number"]), "IO" → ("IO", vec![])
@@ -1061,6 +1096,13 @@ fn hash_expr(h: &mut FnvHasher, expr: &Expr) {
         Expr::Thunk { expr, .. } => {
             h.write_tag("thunk");
             hash_expr(h, expr);
+        }
+        Expr::Lambda { params, body, .. } => {
+            h.write_tag("lambda");
+            for (name, _) in params {
+                h.write_str(name);
+            }
+            hash_expr(h, body);
         }
         Expr::Force { expr, .. } => {
             h.write_tag("force");

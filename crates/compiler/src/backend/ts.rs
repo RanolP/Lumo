@@ -1,7 +1,7 @@
 use crate::{
     backend::{Backend, BackendError, BackendKind, CodegenTarget},
     lir::{self, AsRawValue},
-    types::{CapRef, Pattern, TypeExpr},
+    types::{CapEntry, CapRef, Pattern, TypeExpr, cap_ref_is_effectful, cap_ref_mangled_params},
 };
 use simple_ts_ast as tsast;
 use std::cell::Cell;
@@ -213,7 +213,7 @@ fn collect_direct_callable_arities(file: &lir::File) -> HashMap<String, usize> {
                 let is_effectful = func
                     .cap
                     .as_ref()
-                    .map_or(false, |c| c.is_effectful());
+                    .map_or(false, |c| cap_ref_is_effectful(c));
                 if !is_effectful {
                     out.insert(func.name.clone(), func.params.len());
                 }
@@ -441,7 +441,7 @@ fn collect_fn_caps(file: &lir::File) -> HashMap<String, Vec<String>> {
                 let caps = func
                     .cap
                     .as_ref()
-                    .map(|c| c.cap_mangled_params())
+                    .map(|c| cap_ref_mangled_params(c))
                     .unwrap_or_default();
                 out.insert(func.name.clone(), caps);
             }
@@ -449,7 +449,7 @@ fn collect_fn_caps(file: &lir::File) -> HashMap<String, Vec<String>> {
                 let caps = func
                     .cap
                     .as_ref()
-                    .map(|c| c.cap_mangled_params())
+                    .map(|c| cap_ref_mangled_params(c))
                     .unwrap_or_default();
                 out.insert(func.name.clone(), caps);
             }
@@ -587,12 +587,15 @@ fn caps_type() -> tsast::TsType {
 /// Emits an inline structural type `{ readonly Key1: __Bundle_Cap1<T1>; ... }`
 /// so each key is individually typed against its specific bundle interface.
 fn caps_bundle_type(cap_ref: &CapRef) -> tsast::TsType {
-    let entries = cap_ref.entries();
-    if entries.is_empty() {
+    let concrete: Vec<&TypeExpr> = cap_ref
+        .iter()
+        .filter_map(|e| if let CapEntry::Cap(ty) = e { Some(ty) } else { None })
+        .collect();
+    if concrete.is_empty() {
         return caps_type();
     }
     let mut parts: Vec<String> = Vec::new();
-    for entry in entries {
+    for entry in concrete {
         match entry {
             TypeExpr::Cap { name, type_args } => {
                 let type_arg_names: Vec<String> =
@@ -657,6 +660,9 @@ fn type_refs_self(ty: &TypeExpr) -> bool {
         TypeExpr::App { head, args } => head == "Self" || args.iter().any(type_refs_self),
         TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => type_refs_self(inner),
         TypeExpr::Cap { type_args, .. } => type_args.iter().any(type_refs_self),
+        TypeExpr::Fn { params, ret, .. } => {
+            params.iter().any(type_refs_self) || type_refs_self(ret)
+        }
     }
 }
 
@@ -737,7 +743,7 @@ fn lower_fn_decl(
     let caps: Vec<String> = func
         .cap
         .as_ref()
-        .map(|c| c.cap_mangled_params())
+        .map(|c| cap_ref_mangled_params(c))
         .unwrap_or_default();
 
     let mut params: Vec<tsast::Param> = Vec::new();
@@ -781,7 +787,7 @@ fn lower_fn_decl(
         Ok(tsast::FunctionDecl {
             export: !is_main_entry,
             name: emitted_name,
-            type_params: func.generics.clone(),
+            type_params: func.generics.iter().filter(|g| !g.is_cap_row()).map(|g| g.name().to_owned()).collect(),
             params,
             return_type: Some(ret_type()),
             body: tsast::FunctionBody::Expr(Box::new(cps_body)),
@@ -799,7 +805,7 @@ fn lower_fn_decl(
         Ok(tsast::FunctionDecl {
             export: true,
             name: func.name.clone(),
-            type_params: func.generics.clone(),
+            type_params: func.generics.iter().filter(|g| !g.is_cap_row()).map(|g| g.name().to_owned()).collect(),
             params: user_params,
             return_type: Some(lower_type_expr_to_ts_type(return_ty)),
             body: tsast::FunctionBody::Expr(Box::new(lower_expr(lowered_body, ctx))),
@@ -817,7 +823,7 @@ fn emit_main_entry_wrapper(
     ctx: &LoweringContext,
 ) -> Result<Option<tsast::FunctionDecl>, BackendError> {
     let cap_ref = match &func.cap {
-        Some(c) if c.is_effectful() => c,
+        Some(c) if cap_ref_is_effectful(c) => c,
         _ => return Ok(None),
     };
 
@@ -827,8 +833,12 @@ fn emit_main_entry_wrapper(
     // everything any callee will look up.
     let mut required: Vec<(String, Vec<String>)> = Vec::new();
     let mut pending: Vec<(String, Vec<String>)> = Vec::new();
-    for entry in cap_ref.entries() {
-        let pair = match entry {
+    for cap_entry in cap_ref {
+        let ty = match cap_entry {
+            CapEntry::Cap(ty) => ty,
+            CapEntry::Infer | CapEntry::Spread(_) => continue,
+        };
+        let pair = match ty {
             TypeExpr::Cap { name, type_args } => (
                 name.clone(),
                 type_args.iter().map(|t| t.display()).collect(),
@@ -836,7 +846,7 @@ fn emit_main_entry_wrapper(
             TypeExpr::Named(name) => (name.clone(), vec![name.clone()]),
             _ => {
                 return Err(BackendError::EmitFailed(format!(
-                    "main() requires non-cap capability: {entry:?}"
+                    "main() requires non-cap capability: {cap_entry:?}"
                 )));
             }
         };
@@ -1283,6 +1293,10 @@ fn lower_type_expr_to_ts_type(ty: &TypeExpr) -> tsast::TsType {
         // `thunk T` → `() => T` in TS
         TypeExpr::Thunk(inner) => lower_type_expr_to_ts_type(inner),
         TypeExpr::Cap { name, .. } => tsast::TsType::TypeRef(name.clone()),
+        TypeExpr::Fn { params, ret, .. } => {
+            let ps = params.iter().map(type_expr_to_ts_text).collect::<Vec<_>>().join(", ");
+            tsast::TsType::TypeRef(format!("(({ps}) => {})", type_expr_to_ts_text(ret)))
+        }
     }
 }
 
@@ -1683,6 +1697,10 @@ fn type_expr_to_ts_text(ty: &TypeExpr) -> String {
         TypeExpr::Produce(inner) => type_expr_to_ts_text(inner),
         TypeExpr::Thunk(inner) => type_expr_to_ts_text(inner),
         TypeExpr::Cap { name, .. } => name.clone(),
+        TypeExpr::Fn { params, ret, .. } => {
+            let ps = params.iter().map(type_expr_to_ts_text).collect::<Vec<_>>().join(", ");
+            format!("(({ps}) => {})", type_expr_to_ts_text(ret))
+        }
     }
 }
 

@@ -243,6 +243,10 @@ fn type_expr_to_rust(ty: &TypeExpr) -> String {
         }
         TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => type_expr_to_rust(inner),
         TypeExpr::Cap { name, .. } => name.clone(),
+        TypeExpr::Fn { params, ret, .. } => {
+            let ps = params.iter().map(type_expr_to_rust).collect::<Vec<_>>().join(", ");
+            format!("fn({ps}) -> {}", type_expr_to_rust(ret))
+        }
     }
 }
 
@@ -443,15 +447,16 @@ fn emit_fn_decl(func: &lir::FnDecl, ctx: &LoweringContext) -> Result<String, Bac
         .map(|r| type_expr_to_rust(&r.value))
         .unwrap_or_else(|| "()".to_string());
 
-    let generics = if func.generics.is_empty() {
-        String::new()
-    } else {
-        let bounded: Vec<String> = func
-            .generics
-            .iter()
-            .map(|g| format!("{}: Clone + std::fmt::Debug", g))
+    let generics = {
+        let type_params: Vec<String> = func.generics.iter()
+            .filter(|g| !g.is_cap_row())
+            .map(|g| format!("{}: Clone + std::fmt::Debug", g.name()))
             .collect();
-        format!("<{}>", bounded.join(", "))
+        if type_params.is_empty() {
+            String::new()
+        } else {
+            format!("<{}>", type_params.join(", "))
+        }
     };
 
     let body_str = emit_expr(body, ctx);
@@ -512,15 +517,16 @@ fn emit_impl_decl(
             .map(|r| type_expr_to_rust(&r.value))
             .unwrap_or_else(|| "()".to_string());
 
-        let generics = if impl_decl.generics.is_empty() {
-            String::new()
-        } else {
-            let bounded: Vec<String> = impl_decl
-                .generics
-                .iter()
-                .map(|g| format!("{}: Clone + std::fmt::Debug", g))
+        let generics = {
+            let type_params: Vec<String> = impl_decl.generics.iter()
+                .filter(|g| !g.is_cap_row())
+                .map(|g| format!("{}: Clone + std::fmt::Debug", g.name()))
                 .collect();
-            format!("<{}>", bounded.join(", "))
+            if type_params.is_empty() {
+                String::new()
+            } else {
+                format!("<{}>", type_params.join(", "))
+            }
         };
 
         let body_str = emit_expr(body, ctx);

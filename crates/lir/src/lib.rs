@@ -5,6 +5,7 @@ pub mod validate;
 use std::collections::HashSet;
 
 use lumo_hir as hir;
+pub use lumo_hir::GenericParam;
 use lumo_span::Span;
 use lumo_types::{CapRef, ContentHash, ExprId, Pattern, Spanned, TypeExpr};
 
@@ -96,7 +97,7 @@ pub struct OperationDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnDecl {
     pub name: String,
-    pub generics: Vec<String>,
+    pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
     pub return_type: Option<Spanned<TypeExpr>>,
     pub cap: Option<CapRef>,
@@ -115,7 +116,7 @@ pub struct UseDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImplDecl {
     pub name: Option<String>,
-    pub generics: Vec<String>,
+    pub generics: Vec<GenericParam>,
     pub target_type: Spanned<TypeExpr>,
     pub capability: Option<Spanned<TypeExpr>>,
     pub methods: Vec<ImplMethodDecl>,
@@ -437,6 +438,20 @@ fn lower_expr(ctx: &mut LoweringCtx, expr: &hir::Expr) -> Expr {
             Expr::Thunk {
                 id: ctx.alloc(span),
                 expr: inner,
+            }
+        }
+        hir::Expr::Lambda { params, body, .. } => {
+            let lowered_body = lower_expr(ctx, body);
+            let lambda_chain = params.iter().rev().fold(lowered_body, |acc, (name, _ty)| {
+                Expr::Lambda {
+                    id: ctx.alloc(span),
+                    param: name.clone(),
+                    body: Box::new(acc),
+                }
+            });
+            Expr::Thunk {
+                id: ctx.alloc(span),
+                expr: Box::new(lambda_chain),
             }
         }
         hir::Expr::Force { expr, .. } => {
