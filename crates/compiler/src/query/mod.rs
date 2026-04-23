@@ -7,7 +7,7 @@ use crate::{
     lir, lst,
     parser::{self, ParseOutput},
     typecheck,
-    types::{CapRef, ExprId, Pattern, TypeExpr},
+    types::{CapEntry, CapRef, ExprId, Pattern, TypeExpr},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -412,6 +412,11 @@ fn simple_type_name(ty: &TypeExpr) -> Option<String> {
 
 /// Rewrite value method calls: `expr.method(args)` → `ImplConst.method(expr, args)`.
 ///
+/// Strip type arguments: `"List[T]"` → `"List"`, `"Number"` → `"Number"`.
+fn base_type_name(s: &str) -> &str {
+    if let Some(idx) = s.find('[') { &s[..idx] } else { s }
+}
+
 /// Builds a method table from all `Impl` items, then walks function and impl method bodies.
 /// For each `Member { object, field }` where the object's type has a matching impl method,
 /// replaces the Member with `Apply(Member(Ident(impl_const), field), original_object)`.
@@ -422,7 +427,8 @@ fn rewrite_value_method_calls(file: &mut lir::File) {
 
     for item in &file.items {
         if let lir::Item::Impl(impl_decl) = item {
-            let target = impl_decl.target_type.value.display();
+            let target_display = impl_decl.target_type.value.display();
+            let target = base_type_name(&target_display).to_owned();
             let const_name = impl_const_name_for(impl_decl);
             for method in &impl_decl.methods {
                 method_table
@@ -636,7 +642,7 @@ fn rewrite_method_calls_in_expr(
 
             // Then check if this member access should be rewritten
             if let Some(type_name) = determine_expr_type(object, scope, ctx) {
-                let key = (type_name, field.clone());
+                let key = (base_type_name(&type_name).to_owned(), field.clone());
                 if let Some(impl_const) = ctx.resolved.get(&key) {
                     let member_id = *id;
                     let span = spans.get(member_id.0 as usize).copied().unwrap_or(crate::lexer::Span::new(0, 0));
@@ -818,11 +824,11 @@ fn fill_default_type_args(file: &mut lir::File) {
 /// Fill default type_args in a CapRef's entries.
 fn fill_cap_ref_default_type_args(cap: &mut Option<CapRef>) {
     let entries = match cap {
-        Some(CapRef::Named(entries)) | Some(CapRef::Infer(entries)) => entries,
-        _ => return,
+        Some(entries) => entries,
+        None => return,
     };
     for entry in entries {
-        if let TypeExpr::Cap { name, type_args } = entry {
+        if let CapEntry::Cap(TypeExpr::Cap { name, type_args }) = entry {
             if type_args.is_empty() {
                 *type_args = vec![TypeExpr::Named(name.clone())];
             }
