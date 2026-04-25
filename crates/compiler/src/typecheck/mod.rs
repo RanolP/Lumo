@@ -40,6 +40,10 @@ pub enum ValueType {
         params: Vec<ValueType>,
         ret: Box<ValueType>,
     },
+    /// Iso-recursive type: `mu X. T`
+    Rec { var: String, body: Box<ValueType> },
+    /// Bound type variable inside a `mu` binder
+    Var(String),
 }
 
 /// `Self` is treated as a wildcard that matches any type.
@@ -77,6 +81,10 @@ fn v_types_match(a: &ValueType, b: &ValueType) -> bool {
             ValueType::Func { params: pa, ret: ra },
             ValueType::Func { params: pb, ret: rb },
         ) => pa.len() == pb.len() && pa.iter().zip(pb.iter()).all(|(a, b)| v_types_match(a, b)) && v_types_match(ra, rb),
+        (ValueType::Rec { var: va, body: ba }, ValueType::Rec { var: vb, body: bb }) => {
+            va == vb && v_types_match(ba, bb)
+        }
+        (ValueType::Var(a), ValueType::Var(b)) => a == b,
         _ => false,
     }
 }
@@ -103,6 +111,51 @@ fn subst_self_v(ty: &ValueType, concrete: &ValueType) -> ValueType {
             params: params.iter().map(|p| subst_self_v(p, concrete)).collect(),
             ret: Box::new(subst_self_v(ret, concrete)),
         },
+        ValueType::Rec { var, body } => ValueType::Rec {
+            var: var.clone(),
+            body: Box::new(subst_self_v(body, concrete)),
+        },
+        ValueType::Var(_) => ty.clone(),
+    }
+}
+
+/// Substitute a named type variable inside a ValueType.
+pub fn subst_v_named(ty: &ValueType, var: &str, replacement: &ValueType) -> ValueType {
+    match ty {
+        ValueType::Named(n) if n == var => replacement.clone(),
+        ValueType::Named(_) => ty.clone(),
+        ValueType::Thunk(inner) => ValueType::Thunk(Box::new(subst_c_named(inner, var, replacement))),
+        ValueType::Func { params, ret } => ValueType::Func {
+            params: params.iter().map(|p| subst_v_named(p, var, replacement)).collect(),
+            ret: Box::new(subst_v_named(ret, var, replacement)),
+        },
+        ValueType::Rec { var: v, body } => {
+            if v == var {
+                ty.clone() // shadowed
+            } else {
+                ValueType::Rec { var: v.clone(), body: Box::new(subst_v_named(body, var, replacement)) }
+            }
+        }
+        ValueType::Var(v) => if v == var { replacement.clone() } else { ty.clone() },
+    }
+}
+
+fn subst_c_named(ty: &CompType, var: &str, replacement: &ValueType) -> CompType {
+    match ty {
+        CompType::Produce(inner) => CompType::Produce(Box::new(subst_v_named(inner, var, replacement))),
+        CompType::Fn { params, ret, cap } => CompType::Fn {
+            params: params.iter().map(|p| subst_v_named(p, var, replacement)).collect(),
+            ret: Box::new(subst_c_named(ret, var, replacement)),
+            cap: cap.clone(),
+        },
+    }
+}
+
+/// Unfold one step of a Rec type: `mu X. T` → `T[mu X. T / X]`
+pub fn unfold_rec(ty: &ValueType) -> ValueType {
+    match ty {
+        ValueType::Rec { var, body } => subst_v_named(body, var, ty),
+        other => other.clone(),
     }
 }
 
@@ -113,6 +166,8 @@ fn v_type_references_self(ty: &ValueType) -> bool {
         ValueType::Func { params, ret } => {
             params.iter().any(v_type_references_self) || v_type_references_self(ret)
         }
+        ValueType::Rec { body, .. } => v_type_references_self(body),
+        ValueType::Var(_) => false,
     }
 }
 
@@ -257,6 +312,8 @@ fn render_v_type(ty: &ValueType) -> String {
                 .join(", ");
             format!("fn({ps}) -> {}", render_v_type(ret))
         }
+        ValueType::Rec { var, body } => format!("mu {var}. {}", render_v_type(body)),
+        ValueType::Var(v) => v.clone(),
     }
 }
 
@@ -315,6 +372,9 @@ struct TypeChecker {
 struct DataDef {
     generics: Vec<String>,
     variants: HashMap<String, Vec<ValueType>>,
+    /// The nominal mu-type for this data type: `mu Name. Name`
+    /// Represents that values of this type are iso-recursively folded.
+    mu_ty: ValueType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -354,11 +414,24 @@ impl TypeChecker {
                     }
                     variants.insert(v.name.clone(), payload);
                 }
+                // Nominal mu-type: `mu Name. Name[G1,G2,...]` — the data type
+                // is its own iso-recursive binder.
+                let nominal = if d.generics.is_empty() {
+                    ValueType::Named(d.name.clone())
+                } else {
+                    let args = d.generics.iter().map(|g| g.clone()).collect::<Vec<_>>().join(", ");
+                    ValueType::Named(format!("{}[{}]", d.name, args))
+                };
+                let mu_ty = ValueType::Rec {
+                    var: d.name.clone(),
+                    body: Box::new(nominal),
+                };
                 self.data_defs.insert(
                     d.name.clone(),
                     DataDef {
                         generics: d.generics.clone(),
                         variants,
+                        mu_ty,
                     },
                 );
             }
@@ -1315,7 +1388,12 @@ impl TypeChecker {
                 let inner = self.infer_c_expr(expr, env)?;
                 Some(ValueType::Thunk(Box::new(inner)))
             }
-            Expr::Unroll { expr, .. } => self.infer_v_expr(expr, env),
+            Expr::Unroll { expr, .. } => {
+                let inner_ty = self.infer_v_expr(expr, env)?;
+                // For Rec types, unfold one step: mu X. T → T[mu X. T / X]
+                // For Named types (nominal ADTs), return as-is (nominal unfolding = identity).
+                Some(unfold_rec(&inner_ty))
+            }
             Expr::Ann {
                 expr, ty, id, ..
             } => {
@@ -1897,6 +1975,17 @@ impl TypeChecker {
                             )
                             .unwrap_or_default()
                         }
+                        ValueType::Rec { body, .. } => {
+                            if let ValueType::Named(named) = body.as_ref() {
+                                let (head, args_text) = split_nominal_type_args(named);
+                                self.generic_subst_from_named_type(
+                                    &head, &args_text, &data_def, span,
+                                )
+                                .unwrap_or_default()
+                            } else {
+                                HashMap::new()
+                            }
+                        }
                         _ => HashMap::new(),
                     };
                     for (arg, payload_ty) in args.iter().zip(payload_types.iter()) {
@@ -2083,6 +2172,28 @@ impl TypeChecker {
                 }
                 self.unify_ctor_payload_type(template_ret, actual_ret, generics, subst, node_id)
             }
+            ValueType::Rec { var, body } => {
+                let ValueType::Rec { var: av, body: ab } = actual else {
+                    self.errors.push(TypeError::new(node_id, format!(
+                        "type mismatch: expected {}, got {}",
+                        render_v_type(template), render_v_type(actual)
+                    )));
+                    return false;
+                };
+                var == av && self.unify_ctor_payload_type(body, ab, generics, subst, node_id)
+            }
+            ValueType::Var(v) => {
+                if generics.contains(v) {
+                    if let Some(bound) = subst.get(v) {
+                        if bound != actual { return false; }
+                        return true;
+                    }
+                    subst.insert(v.clone(), actual.clone());
+                    true
+                } else {
+                    matches!(actual, ValueType::Var(av) if av == v)
+                }
+            }
         }
     }
 
@@ -2232,6 +2343,11 @@ impl TypeChecker {
                 params: params.iter().map(|p| Self::apply_subst_v(p, subst)).collect(),
                 ret: Box::new(Self::apply_subst_v(ret, subst)),
             },
+            ValueType::Rec { var, body } => ValueType::Rec {
+                var: var.clone(),
+                body: Box::new(Self::apply_subst_v(body, subst)),
+            },
+            ValueType::Var(v) => subst.get(v).cloned().unwrap_or_else(|| ty.clone()),
         }
     }
 
@@ -2938,6 +3054,11 @@ fn v_type_from_type_expr(te: &TypeExpr) -> Option<ValueType> {
                 cap: cap.clone(),
             })))
         }
+        TypeExpr::Mu { var, body } => {
+            let body_vt = v_type_from_type_expr(body)?;
+            Some(ValueType::Rec { var: var.clone(), body: Box::new(body_vt) })
+        }
+        TypeExpr::Var(v) => Some(ValueType::Var(v.clone())),
     }
 }
 
@@ -3033,6 +3154,11 @@ fn subst_v_type(ty: &ValueType, subst: &HashMap<String, ValueType>) -> ValueType
             params: params.iter().map(|p| subst_v_type(p, subst)).collect(),
             ret: Box::new(subst_v_type(ret, subst)),
         },
+        ValueType::Rec { var, body } => ValueType::Rec {
+            var: var.clone(),
+            body: Box::new(subst_v_type(body, subst)),
+        },
+        ValueType::Var(v) => subst.get(v).cloned().unwrap_or_else(|| ty.clone()),
     }
 }
 
@@ -3072,10 +3198,12 @@ fn render_pattern(pattern: &Pattern) -> String {
 }
 
 fn nominal_head_name(ty: &ValueType) -> Option<String> {
-    let ValueType::Named(n) = ty else {
-        return None;
-    };
-    Some(split_nominal_type_args(n).0)
+    match ty {
+        ValueType::Named(n) => Some(split_nominal_type_args(n).0),
+        // For Rec types, look at the unfolded form to get the nominal head
+        ValueType::Rec { body, .. } => nominal_head_name(body),
+        _ => None,
+    }
 }
 
 fn is_syntactic_value_expr(expr: &Expr) -> bool {

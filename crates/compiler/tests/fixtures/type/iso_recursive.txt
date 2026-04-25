@@ -1,0 +1,19 @@
+data Nat { .zero, .succ(Nat) }
+fn to_nat(n: Nat): Nat / {} { n }
+---
+to_nat : fn(Nat) -> Nat
+==========
+data List[A] { .nil, .cons(A, List[A]) }
+fn head_or(l: List[Number], d: Number): Number / {} { match l { .nil => d, .cons(x, xs) => x } }
+---
+head_or : fn(List[Number], Number) -> Number
+==========
+data Tree[A] { .leaf, .node(Tree[A], A, Tree[A]) }
+fn depth(t: Tree[Number]): Number / {} { match t { .leaf => 0, .node(l, x, r) => x } }
+---
+depth : fn(Tree[Number]) -> Number
+==========
+data Nat { .zero, .succ(Nat) }
+fn double(n: Nat): Nat / {} { match n { .zero => Nat.zero, .succ(let m) => Nat.succ(Nat.succ(m)) } }
+---
+double : fn(Nat) -> Nat

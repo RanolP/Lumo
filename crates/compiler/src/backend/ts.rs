@@ -663,6 +663,8 @@ fn type_refs_self(ty: &TypeExpr) -> bool {
         TypeExpr::Fn { params, ret, .. } => {
             params.iter().any(type_refs_self) || type_refs_self(ret)
         }
+        TypeExpr::Mu { body, .. } => type_refs_self(body),
+        TypeExpr::Var(_) => false,
     }
 }
 
@@ -1297,6 +1299,8 @@ fn lower_type_expr_to_ts_type(ty: &TypeExpr) -> tsast::TsType {
             let ps = params.iter().map(type_expr_to_ts_text).collect::<Vec<_>>().join(", ");
             tsast::TsType::TypeRef(format!("(({ps}) => {})", type_expr_to_ts_text(ret)))
         }
+        TypeExpr::Mu { body, .. } => lower_type_expr_to_ts_type(body),
+        TypeExpr::Var(v) => tsast::TsType::TypeRef(v.clone()),
     }
 }
 
@@ -1701,6 +1705,8 @@ fn type_expr_to_ts_text(ty: &TypeExpr) -> String {
             let ps = params.iter().map(type_expr_to_ts_text).collect::<Vec<_>>().join(", ");
             format!("(({ps}) => {})", type_expr_to_ts_text(ret))
         }
+        TypeExpr::Mu { body, .. } => type_expr_to_ts_text(body),
+        TypeExpr::Var(v) => v.clone(),
     }
 }
 

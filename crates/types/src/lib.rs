@@ -44,6 +44,10 @@ pub enum TypeExpr {
     Cap { name: String, type_args: Vec<TypeExpr> },
     /// Function type in value position: `fn(T, U): R` or `fn(T): R / { IO }`
     Fn { params: Vec<TypeExpr>, ret: Box<TypeExpr>, cap: Vec<CapEntry> },
+    /// Iso-recursive type binder: `mu X. T`
+    Mu { var: String, body: Box<TypeExpr> },
+    /// Bound type variable inside a `mu` binder
+    Var(String),
 }
 
 impl TypeExpr {
@@ -84,17 +88,20 @@ impl TypeExpr {
                 };
                 format!("fn({ps}): {}{cap_str}", ret.display())
             }
+            TypeExpr::Mu { var, body } => format!("mu {var}. {}", body.display()),
+            TypeExpr::Var(v) => v.clone(),
         }
     }
 
     /// The head name (for data type lookup).
     pub fn head_name(&self) -> &str {
         match self {
-            TypeExpr::Named(n) => n,
+            TypeExpr::Named(n) | TypeExpr::Var(n) => n,
             TypeExpr::App { head, .. } => head,
             TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => inner.head_name(),
             TypeExpr::Cap { name, .. } => name,
             TypeExpr::Fn { ret, .. } => ret.head_name(),
+            TypeExpr::Mu { body, .. } => body.head_name(),
         }
     }
 
@@ -112,6 +119,8 @@ impl TypeExpr {
             TypeExpr::Fn { params, ret, .. } => {
                 params.iter().any(|p| p.references_name(target)) || ret.references_name(target)
             }
+            TypeExpr::Mu { var, body } => var == target || body.references_name(target),
+            TypeExpr::Var(v) => v == target,
         }
     }
 
@@ -191,6 +200,14 @@ fn parse_type_expr_full(text: &str) -> TypeExpr {
             };
             let ret = parse_type_expr_full(ret_str);
             return TypeExpr::Fn { params, ret: Box::new(ret), cap };
+        }
+    }
+    if let Some(rest) = text.strip_prefix("mu ") {
+        // mu X. T — iso-recursive type binder
+        if let Some(dot_pos) = rest.find('.') {
+            let var = rest[..dot_pos].trim().to_owned();
+            let body_str = rest[dot_pos + 1..].trim();
+            return TypeExpr::Mu { var, body: Box::new(parse_type_expr_full(body_str)) };
         }
     }
     if let Some(rest) = text.strip_prefix("thunk") {
