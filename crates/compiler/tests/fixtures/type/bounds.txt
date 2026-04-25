@@ -1,0 +1,25 @@
+cap Add { fn add(self: Self, other: Self): Self }
+impl Number: Add { fn add(self: Number, other: Number): Number / {} { self } }
+fn add_twice[A: Add](x: A): A / {} { x }
+---
+add_twice : fn(A) -> A
+==========
+cap Eq { fn eq(self: Self, other: Self): Bool }
+impl Number: Eq { fn eq(self: Number, other: Number): Bool / {} { true } }
+fn both[A: Eq + Add](x: A): A / {} { x }
+---
+both : fn(A) -> A
+==========
+cap Add { fn add(self: Self, other: Self): Self }
+fn add_twice[A: Add](x: A): A / {} { x }
+fn caller(n: Number): Number / {} { add_twice(n) }
+---
+ERROR: type `Number` does not implement `Add`
+==========
+cap Add { fn add(self: Self, other: Self): Self }
+impl Number: Add { fn add(self: Number, other: Number): Number / {} { self } }
+fn add_twice[A: Add](x: A): A / {} { x }
+fn caller(n: Number): Number / {} { add_twice(n) }
+---
+add_twice : fn(A) -> A
+caller : fn(Number) -> Number

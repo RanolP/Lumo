@@ -469,7 +469,17 @@ impl Parser {
                 params.push(if is_cap_row {
                     GenericParam::CapRow(name)
                 } else {
-                    GenericParam::Type(name)
+                    let mut bounds = Vec::new();
+                    if self.eat_sym(Symbol::Colon) {
+                        loop {
+                            if let Some(TokenKind::Ident(_)) = self.peek() {
+                                let (bound, _) = self.expect_ident().ok().unwrap();
+                                bounds.push(bound);
+                                if !self.eat_sym(Symbol::Plus) { break; }
+                            } else { break; }
+                        }
+                    }
+                    GenericParam::Type(name, bounds)
                 });
                 self.eat_sym(Symbol::Comma);
             } else {

@@ -10,8 +10,8 @@ use lumo_types::{CapRef, ContentHash, Pattern, Spanned, TypeExpr};
 /// A generic parameter in a function declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GenericParam {
-    /// Type variable: `A`, `B`, `R`
-    Type(String),
+    /// Type variable with optional bounds: `A`, `A: Add`, `A: Add + Eq`
+    Type(String, Vec<String>),
     /// Capability row variable: `cap c`
     CapRow(String),
 }
@@ -19,7 +19,13 @@ pub enum GenericParam {
 impl GenericParam {
     pub fn name(&self) -> &str {
         match self {
-            GenericParam::Type(n) | GenericParam::CapRow(n) => n,
+            GenericParam::Type(n, _) | GenericParam::CapRow(n) => n,
+        }
+    }
+    pub fn bounds(&self) -> &[String] {
+        match self {
+            GenericParam::Type(_, b) => b,
+            GenericParam::CapRow(_) => &[],
         }
     }
     pub fn is_cap_row(&self) -> bool {
@@ -411,7 +417,10 @@ fn lower_fn(func: &lst::FnDecl, ctx: &mut LowerCtx) -> FnDecl {
             if g.is_cap_row {
                 GenericParam::CapRow(g.name.clone())
             } else {
-                GenericParam::Type(g.name.clone())
+                let bounds = g.constraint.as_ref()
+                    .map(|c| parse_bounds(&c.repr))
+                    .unwrap_or_default();
+                GenericParam::Type(g.name.clone(), bounds)
             }
         }).collect(),
         params: func.params.iter().map(lower_param).collect(),
@@ -474,7 +483,10 @@ fn lower_impl(impl_decl: &lst::ImplDecl, ctx: &mut LowerCtx) -> ImplDecl {
             if g.is_cap_row {
                 GenericParam::CapRow(g.name.clone())
             } else {
-                GenericParam::Type(g.name.clone())
+                let bounds = g.constraint.as_ref()
+                    .map(|c| parse_bounds(&c.repr))
+                    .unwrap_or_default();
+                GenericParam::Type(g.name.clone(), bounds)
             }
         }).collect(),
         target_type,
@@ -487,6 +499,11 @@ fn lower_impl(impl_decl: &lst::ImplDecl, ctx: &mut LowerCtx) -> ImplDecl {
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
+
+/// Parse `"Add + Eq"` → `["Add", "Eq"]`.
+fn parse_bounds(repr: &str) -> Vec<String> {
+    repr.split('+').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect()
+}
 
 fn lower_param(param: &lst::Param) -> Param {
     Param {

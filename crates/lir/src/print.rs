@@ -452,6 +452,11 @@ fn print_generics(p: &mut Printer, generics: &[GenericParam]) {
                 p.push("cap ");
             }
             p.push(g.name());
+            let bounds = g.bounds();
+            if !bounds.is_empty() {
+                p.push(": ");
+                p.push(&bounds.join(" + "));
+            }
         }
         p.push("]");
     }

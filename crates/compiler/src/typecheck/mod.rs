@@ -160,6 +160,10 @@ pub fn typecheck_and_bindings(file: &lir::File) -> (Vec<CheckedBinding>, Vec<Typ
         perform_for_types: HashMap::new(),
         impl_consts: HashMap::new(),
         value_type_methods: HashMap::new(),
+        impl_registry: HashMap::new(),
+        fn_generics: HashMap::new(),
+        current_generic_bounds: HashMap::new(),
+        current_generic_names: HashSet::new(),
     };
     tc.check_file(file);
     (tc.bindings, tc.errors)
@@ -182,6 +186,10 @@ pub fn infer_caps_for_file(
         perform_for_types: HashMap::new(),
         impl_consts: HashMap::new(),
         value_type_methods: HashMap::new(),
+        impl_registry: HashMap::new(),
+        fn_generics: HashMap::new(),
+        current_generic_bounds: HashMap::new(),
+        current_generic_names: HashSet::new(),
     };
     tc.check_file(file);
     let mut result = HashMap::new();
@@ -292,6 +300,15 @@ struct TypeChecker {
     /// Methods available on value types via inherent or typeclass impls.
     /// Maps type_name → { method_name → method CompType (including self param) }.
     value_type_methods: HashMap<String, HashMap<String, CompType>>,
+    /// Which capabilities/impls each concrete type implements.
+    /// e.g. "Number" → {"Add", "Eq"}
+    impl_registry: HashMap<String, HashSet<String>>,
+    /// Generics for each named function: fn_name → Vec<GenericParam>.
+    fn_generics: HashMap<String, Vec<lir::GenericParam>>,
+    /// Current function's generic type variable bounds: var_name → bound names.
+    current_generic_bounds: HashMap<String, Vec<String>>,
+    /// Current function's generic type variable names (for unification).
+    current_generic_names: HashSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -433,8 +450,13 @@ impl TypeChecker {
                         } else {
                             format!("__impl_{target}_{cap}")
                         };
-                        self.impl_consts.insert(const_name, cap);
+                        self.impl_consts.insert(const_name, cap.clone());
                         self.register_impl_methods(impl_decl, &target);
+                        // Track that `target` implements `cap`
+                        self.impl_registry
+                            .entry(target)
+                            .or_default()
+                            .insert(cap);
                     }
                 }
             }
@@ -551,6 +573,9 @@ impl TypeChecker {
             f.return_type.as_ref().map(|t| &t.value),
             f.cap.as_ref(),
         );
+        if !f.generics.is_empty() {
+            self.fn_generics.insert(f.name.clone(), f.generics.clone());
+        }
     }
 
     /// Register impl methods in `value_type_methods` for value method dispatch.
@@ -667,11 +692,38 @@ impl TypeChecker {
                 }
             }
         }
+        // Set up generic type variable context for this function
+        let old_generic_bounds = std::mem::take(&mut self.current_generic_bounds);
+        let old_generic_names = std::mem::take(&mut self.current_generic_names);
+        let mut synthesized_generic_vars: Vec<String> = Vec::new();
+        for g in &f.generics {
+            if let lir::GenericParam::Type(name, bounds) = g {
+                self.current_generic_names.insert(name.clone());
+                if !bounds.is_empty() {
+                    self.current_generic_bounds.insert(name.clone(), bounds.clone());
+                    // Inject bound methods into value_type_methods for this type var
+                    let methods = self.synthesize_bound_methods(name, bounds);
+                    if !methods.is_empty() {
+                        self.value_type_methods.insert(name.clone(), methods);
+                        synthesized_generic_vars.push(name.clone());
+                    }
+                }
+            }
+        }
+
         let err_before = self.errors.len();
         self.check_c_expr(body, &expected, &env);
         for e in &mut self.errors[err_before..] {
             e.fn_name = f.name.clone();
         }
+
+        // Tear down generic context
+        for var in &synthesized_generic_vars {
+            self.value_type_methods.remove(var);
+        }
+        self.current_generic_bounds = old_generic_bounds;
+        self.current_generic_names = old_generic_names;
+
         // Enrich inferred caps with for_type from Self resolutions
         let fn_ty = self.enrich_caps_with_for_types(&f.name, fn_ty);
         self.fn_defs.insert(f.name.clone(), fn_ty.clone());
@@ -768,6 +820,13 @@ impl TypeChecker {
                 }
                 BundleExprInferResult::Error => return,
                 BundleExprInferResult::NotBundleExpr => {}
+            }
+        }
+        // If the expected type is a generic type variable, skip checking here —
+        // unification in Apply handles consistency.
+        if let ValueType::Named(n) = expected {
+            if self.current_generic_names.contains(n) {
+                return;
             }
         }
         if let Some(actual) = self.infer_v_expr(expr, env) {
@@ -1477,16 +1536,85 @@ impl TypeChecker {
                     ));
                     return None;
                 }
-                // Infer concrete Self type from arguments matched against Self-typed params
-                let mut self_concrete: Option<ValueType> = None;
+
+                // --- Generic unification ---
+                // Collect generic params for this callee (if named function)
+                let callee_generics = extract_callee_name(callee)
+                    .and_then(|name| self.fn_generics.get(name))
+                    .cloned()
+                    .unwrap_or_default();
+                let generic_names: HashSet<String> = callee_generics.iter()
+                    .filter(|g| !g.is_cap_row())
+                    .map(|g| g.name().to_owned())
+                    .collect();
+
+                // Pass 1: infer arg types and build substitution
+                let mut subst: HashMap<String, ValueType> = HashMap::new();
+                let mut arg_tys: Vec<Option<ValueType>> = Vec::new();
                 for (arg, param_ty) in args.iter().zip(params.iter()) {
-                    if matches!(param_ty, ValueType::Named(n) if n == "Self") {
-                        if self_concrete.is_none() {
-                            self_concrete = self.infer_v_expr(arg, env);
+                    let arg_ty = self.infer_v_expr(arg, env);
+                    if let Some(ref at) = arg_ty {
+                        if !self.unify_type_var(param_ty, at, &generic_names, &mut subst) {
+                            self.errors.push(TypeError::new(
+                                node_id,
+                                format!(
+                                    "inconsistent type for generic: expected `{}`, got `{}`",
+                                    render_v_type(param_ty),
+                                    render_v_type(at),
+                                ),
+                            ));
                         }
                     }
-                    self.check_v_expr(arg, param_ty, env);
+                    arg_tys.push(arg_ty);
                 }
+
+                // Bound checking at call site
+                for g in &callee_generics {
+                    if let lir::GenericParam::Type(var, bounds) = g {
+                        if let Some(concrete) = subst.get(var) {
+                            let type_name = render_v_type(concrete);
+                            for bound in bounds {
+                                if !self.impl_satisfies_bound(&type_name, bound) {
+                                    self.errors.push(TypeError::new(
+                                        node_id,
+                                        format!(
+                                            "type `{type_name}` does not implement `{bound}`",
+                                        ),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Pass 2: check arg types against substituted param types
+                let mut self_concrete: Option<ValueType> = None;
+                for (arg_ty, (arg, param_ty)) in arg_tys.iter().zip(args.iter().zip(params.iter())) {
+                    let effective_param = Self::apply_subst_v(param_ty, &subst);
+                    if matches!(&effective_param, ValueType::Named(n) if n == "Self") {
+                        if self_concrete.is_none() {
+                            self_concrete = arg_ty.clone();
+                        }
+                        // Self check handled below
+                    } else if generic_names.contains(match param_ty { ValueType::Named(n) => n.as_str(), _ => "" }) {
+                        // Generic param: check inferred arg type matches effective param
+                        if let Some(at) = arg_ty {
+                            if at != &effective_param && !generic_names.contains(match &effective_param { ValueType::Named(n) => n.as_str(), _ => "" }) {
+                                self.errors.push(TypeError::new(
+                                    expr_node_id(arg),
+                                    format!(
+                                        "type mismatch: expected `{}`, got `{}`",
+                                        render_v_type(&effective_param),
+                                        render_v_type(at),
+                                    ),
+                                ));
+                            }
+                        }
+                    } else {
+                        self.check_v_expr(arg, &effective_param, env);
+                    }
+                }
+
                 // Record Self resolution for cap member calls
                 if let Some(ref concrete) = self_concrete {
                     if let Some(cap_name) = extract_cap_from_callee(callee) {
@@ -1495,7 +1623,6 @@ impl TypeChecker {
                             .entry(self.current_fn.clone())
                             .or_default()
                             .push((cap_name.to_owned(), vec![resolved_type.clone()]));
-                        // Also record per-Perform-site type_args
                         if let Some(perform_id) = extract_perform_id_from_callee(callee) {
                             self.perform_for_types.insert(perform_id, vec![resolved_type]);
                         }
@@ -1518,11 +1645,12 @@ impl TypeChecker {
                         }
                     }
                 }
-                // Substitute Self in return type if we resolved it
+                // Apply substitution to return type, then Self substitution
+                let subst_ret = Self::apply_subst_c(&ret, &subst);
                 let resolved_ret = if let Some(ref concrete) = self_concrete {
-                    subst_self_c(&ret, concrete)
+                    subst_self_c(&subst_ret, concrete)
                 } else {
-                    *ret
+                    subst_ret
                 };
                 Some(resolved_ret)
             }
@@ -2015,6 +2143,36 @@ impl TypeChecker {
     }
 
     /// Validate cap annotation entries: caps with Self must have type_args, caps without Self must not.
+    /// Build synthetic value_type_methods for a generic type variable `var` with given `bounds`.
+    /// Merges methods from all bound cap definitions, substituting `Self` → `var`.
+    fn synthesize_bound_methods(&self, var: &str, bounds: &[String]) -> HashMap<String, CompType> {
+        let mut methods = HashMap::new();
+        for bound in bounds {
+            // From cap definitions
+            if let Some(cap_def) = self.cap_defs.get(bound) {
+                for (op_name, op_ty) in &cap_def.operations {
+                    let specialized = subst_self_c(op_ty, &ValueType::Named(var.to_owned()));
+                    methods.insert(op_name.clone(), specialized);
+                }
+            }
+            // From impl methods (inherent impls registered under the bound name)
+            if let Some(impl_methods) = self.value_type_methods.get(bound) {
+                for (m_name, m_ty) in impl_methods {
+                    let specialized = subst_self_c(m_ty, &ValueType::Named(var.to_owned()));
+                    methods.entry(m_name.clone()).or_insert(specialized);
+                }
+            }
+        }
+        methods
+    }
+
+    /// Check whether `type_name` has an impl for `bound`.
+    fn impl_satisfies_bound(&self, type_name: &str, bound: &str) -> bool {
+        self.impl_registry
+            .get(type_name)
+            .map_or(false, |bs| bs.contains(bound))
+    }
+
     fn validate_cap_entries(&mut self, entries: &[TypeExpr], span: Span) {
         for entry in entries {
             let name = entry.cap_name();
@@ -2038,6 +2196,55 @@ impl TypeChecker {
     fn cap_handler_type(&self, name: &str) -> Option<ValueType> {
         self.cap_defs.get(name)?;
         Some(ValueType::Named(name.to_owned()))
+    }
+
+    /// Unify a param type pattern (may contain generic vars) with a concrete arg type.
+    /// Populates `subst` with `var → concrete` bindings.
+    /// Returns false if there's a hard conflict (two different concrete types for same var).
+    fn unify_type_var(
+        &self,
+        pattern: &ValueType,
+        concrete: &ValueType,
+        generic_names: &HashSet<String>,
+        subst: &mut HashMap<String, ValueType>,
+    ) -> bool {
+        match pattern {
+            ValueType::Named(n) if generic_names.contains(n) => {
+                if let Some(existing) = subst.get(n) {
+                    existing == concrete
+                } else {
+                    subst.insert(n.clone(), concrete.clone());
+                    true
+                }
+            }
+            _ => true, // non-generic: checked separately
+        }
+    }
+
+    /// Apply a type variable substitution to a ValueType.
+    fn apply_subst_v(ty: &ValueType, subst: &HashMap<String, ValueType>) -> ValueType {
+        match ty {
+            ValueType::Named(n) => subst.get(n).cloned().unwrap_or_else(|| ty.clone()),
+            ValueType::Thunk(inner) => {
+                ValueType::Thunk(Box::new(Self::apply_subst_c(inner, subst)))
+            }
+            ValueType::Func { params, ret } => ValueType::Func {
+                params: params.iter().map(|p| Self::apply_subst_v(p, subst)).collect(),
+                ret: Box::new(Self::apply_subst_v(ret, subst)),
+            },
+        }
+    }
+
+    /// Apply a type variable substitution to a CompType.
+    fn apply_subst_c(ty: &CompType, subst: &HashMap<String, ValueType>) -> CompType {
+        match ty {
+            CompType::Produce(v) => CompType::Produce(Box::new(Self::apply_subst_v(v, subst))),
+            CompType::Fn { params, ret, cap } => CompType::Fn {
+                params: params.iter().map(|p| Self::apply_subst_v(p, subst)).collect(),
+                ret: Box::new(Self::apply_subst_c(ret, subst)),
+                cap: cap.clone(),
+            },
+        }
     }
 
     fn check_match_exhaustive(
@@ -2995,6 +3202,19 @@ fn extract_perform_id_from_callee(callee: &Expr) -> Option<u64> {
 
 /// Extract cap name from a callee expression matching the pattern
 /// `Force(Member(Perform(cap), op))` — i.e. a cap member call.
+fn extract_callee_name(callee: &Expr) -> Option<&str> {
+    match callee {
+        Expr::Force { expr, .. } => {
+            if let Expr::Ident { name, .. } = expr.as_ref() {
+                return Some(name.as_str());
+            }
+            None
+        }
+        Expr::Ident { name, .. } => Some(name.as_str()),
+        _ => None,
+    }
+}
+
 fn extract_cap_from_callee(callee: &Expr) -> Option<&str> {
     if let Expr::Force { expr, .. } = callee {
         if let Expr::Member { object, .. } = expr.as_ref() {
