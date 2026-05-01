@@ -32,7 +32,7 @@ targets="${1:-all}"
 
 case "$targets" in
   compiler|all)
-    gen "compiler" "$REPO_ROOT/crates/compiler/lumo.langue" "$REPO_ROOT/crates/compiler/src"
+    gen "compiler" "$REPO_ROOT/crates/compiler/lumo.langue" "$REPO_ROOT/crates/lst/src"
     ;;&
   hir|all)
     gen "hir" "$REPO_ROOT/crates/hir/hir.langue" "$REPO_ROOT/crates/hir/src"

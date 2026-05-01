@@ -1,4 +1,7 @@
-use lumo_lexer::{lex_lossless, Keyword, LosslessToken, LosslessTokenKind, Span};
+use lumo_lexer::{lex_lossless, Keyword, LosslessTokenKind as LexKind};
+use lumo_span::Span;
+
+use crate::syntax_kind::SyntaxKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
@@ -6,29 +9,11 @@ pub struct ParseError {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SyntaxKind {
-    File,
-    DataDecl,
-    FnDecl,
-    ExternDecl,
-    LetExpr,
-    ProduceExpr,
-    ThunkExpr,
-    ForceExpr,
-    MatchExpr,
-    CapDecl,
-    IdentExpr,
-    StringExpr,
-    CallExpr,
-    PerformExpr,
-    HandleExpr,
-    BundleExpr,
-    NumberExpr,
-    UseDecl,
-    ImplDecl,
-    IfElseExpr,
-    Error,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LosslessToken {
+    pub kind: SyntaxKind,
+    pub span: Span,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,8 +65,38 @@ fn write_node_text(node: &SyntaxNode, out: &mut String) {
     }
 }
 
+fn lexer_kind_to_syntax_kind(kind: &LexKind, text: &str) -> SyntaxKind {
+    match kind {
+        LexKind::Ident => SyntaxKind::IDENT,
+        LexKind::StringLit => SyntaxKind::STRING_LIT,
+        LexKind::NumberLit => SyntaxKind::NUMBER_LIT,
+        LexKind::Whitespace => SyntaxKind::WHITESPACE,
+        LexKind::Newline => SyntaxKind::NEWLINE,
+        LexKind::Unknown => SyntaxKind::UNKNOWN,
+        LexKind::Keyword(kw) => match kw {
+            Keyword::Data => SyntaxKind::DATA_KW,
+            Keyword::Fn => SyntaxKind::FN_KW,
+            Keyword::Extern => SyntaxKind::EXTERN_KW,
+            Keyword::Let => SyntaxKind::LET_KW,
+            Keyword::In => SyntaxKind::IN_KW,
+            Keyword::Thunk => SyntaxKind::THUNK_KW,
+            Keyword::Force => SyntaxKind::FORCE_KW,
+            Keyword::Match => SyntaxKind::MATCH_KW,
+            Keyword::Cap => SyntaxKind::CAP_KW,
+            Keyword::Handle => SyntaxKind::HANDLE_KW,
+            Keyword::Bundle => SyntaxKind::BUNDLE_KW,
+            Keyword::Use => SyntaxKind::USE_KW,
+            Keyword::Impl => SyntaxKind::IMPL_KW,
+            Keyword::If => SyntaxKind::IF_KW,
+            Keyword::Else => SyntaxKind::ELSE_KW,
+            _ => SyntaxKind::UNKNOWN,
+        },
+        LexKind::Symbol(_) => SyntaxKind::from_symbol(text).unwrap_or(SyntaxKind::UNKNOWN),
+    }
+}
+
 struct Parser {
-    tokens: Vec<LosslessToken>,
+    tokens: Vec<lumo_lexer::LosslessToken>,
     index: usize,
     errors: Vec<ParseError>,
 }
@@ -135,7 +150,7 @@ impl Parser {
             children.push(SyntaxElement::Node(Box::new(self.parse_error_node())));
         }
 
-        node_from_children(SyntaxKind::File, children)
+        node_from_children(SyntaxKind::FILE, children)
     }
 
     fn parse_cap_decl(&mut self) -> SyntaxNode {
@@ -154,7 +169,7 @@ impl Parser {
             children.push(SyntaxElement::Token(self.bump().unwrap())); // {
         } else {
             self.error_here("expected `{` in cap declaration");
-            return node_from_children(SyntaxKind::CapDecl, children);
+            return node_from_children(SyntaxKind::CAP_DECL, children);
         }
 
         while !self.eof() && !self.at_symbol_text("}") {
@@ -167,7 +182,7 @@ impl Parser {
             self.error_here("expected `}` in cap declaration");
         }
 
-        node_from_children(SyntaxKind::CapDecl, children)
+        node_from_children(SyntaxKind::CAP_DECL, children)
     }
 
     fn parse_data_decl(&mut self) -> SyntaxNode {
@@ -186,7 +201,7 @@ impl Parser {
             children.push(SyntaxElement::Token(self.bump().unwrap())); // {
         } else {
             self.error_here("expected `{` in data declaration");
-            return node_from_children(SyntaxKind::DataDecl, children);
+            return node_from_children(SyntaxKind::DATA_DECL, children);
         }
 
         while !self.eof() && !self.at_symbol_text("}") {
@@ -199,26 +214,22 @@ impl Parser {
             self.error_here("expected `}` in data declaration");
         }
 
-        node_from_children(SyntaxKind::DataDecl, children)
+        node_from_children(SyntaxKind::DATA_DECL, children)
     }
 
     fn parse_fn_decl(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         children.push(SyntaxElement::Token(self.bump().unwrap())); // fn
 
-        // Consume signature tokens until the body `{` or `=`.
-        // Cap annotations like `/ {}` contain balanced braces that must be skipped.
-        // When we see `/ {`, the `{` opens a cap annotation — track brace depth.
         let mut sig_depth = 0usize;
         let mut after_slash = false;
         while !self.eof() {
-            // `=` at depth 0 starts an expression body
             if self.at_symbol_text("=") && sig_depth == 0 && !after_slash {
                 break;
             }
             if self.at_symbol_text("{") {
                 if sig_depth == 0 && !after_slash {
-                    break; // this `{` starts the body block
+                    break;
                 }
                 sig_depth += 1;
             } else if self.at_symbol_text("}") {
@@ -227,11 +238,7 @@ impl Parser {
                 }
             }
             let tok = self.bump().unwrap();
-            // Track whether we just saw `/` (skipping whitespace/newline)
-            let is_trivia = matches!(
-                tok.kind,
-                LosslessTokenKind::Whitespace | LosslessTokenKind::Newline
-            );
+            let is_trivia = matches!(tok.kind, SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE);
             if !is_trivia {
                 after_slash = tok.text == "/";
             }
@@ -239,11 +246,9 @@ impl Parser {
         }
 
         if !self.eof() && self.at_symbol_text("=") {
-            // Expression body: `= expr`
             children.push(SyntaxElement::Token(self.bump().unwrap())); // =
             self.consume_expr_body_tokens(&mut children);
         } else if !self.eof() && self.at_symbol_text("{") {
-            // Block body: `{ ... }`
             children.push(SyntaxElement::Token(self.bump().unwrap())); // {
             let mut depth = 1usize;
             while !self.eof() && depth > 0 {
@@ -266,7 +271,7 @@ impl Parser {
             self.error_here("expected `{` or `=` in fn declaration");
         }
 
-        node_from_children(SyntaxKind::FnDecl, children)
+        node_from_children(SyntaxKind::FN_DECL, children)
     }
 
     fn parse_extern_decl(&mut self) -> SyntaxNode {
@@ -281,7 +286,7 @@ impl Parser {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         }
 
-        node_from_children(SyntaxKind::ExternDecl, children)
+        node_from_children(SyntaxKind::EXTERN_FN_DECL, children)
     }
 
     fn parse_use_decl(&mut self) -> SyntaxNode {
@@ -296,14 +301,13 @@ impl Parser {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         }
 
-        node_from_children(SyntaxKind::UseDecl, children)
+        node_from_children(SyntaxKind::USE_DECL, children)
     }
 
     fn parse_impl_decl(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         children.push(SyntaxElement::Token(self.bump().unwrap())); // impl
 
-        // Consume everything until `{`
         while !self.eof() {
             if self.at_symbol_text("{") {
                 break;
@@ -315,10 +319,9 @@ impl Parser {
             children.push(SyntaxElement::Token(self.bump().unwrap())); // {
         } else {
             self.error_here("expected `{` in impl declaration");
-            return node_from_children(SyntaxKind::ImplDecl, children);
+            return node_from_children(SyntaxKind::IMPL_DECL, children);
         }
 
-        // Consume tokens until matching }
         let mut depth = 1usize;
         while !self.eof() && depth > 0 {
             if self.at_symbol_text("{") {
@@ -338,7 +341,7 @@ impl Parser {
             self.error_here("expected `}` in impl declaration");
         }
 
-        node_from_children(SyntaxKind::ImplDecl, children)
+        node_from_children(SyntaxKind::IMPL_DECL, children)
     }
 
     fn consume_attribute_tokens(&mut self, children: &mut Vec<SyntaxElement>) {
@@ -429,7 +432,7 @@ impl Parser {
             self.error_here("expected `=` in let expression");
         }
 
-        node_from_children(SyntaxKind::LetExpr, children)
+        node_from_children(SyntaxKind::LET_EXPR, children)
     }
 
     fn parse_thunk_expr(&mut self) -> SyntaxNode {
@@ -437,7 +440,7 @@ impl Parser {
         children.push(SyntaxElement::Token(self.bump().unwrap())); // thunk
         let payload = self.parse_expr();
         children.push(SyntaxElement::Node(Box::new(payload)));
-        node_from_children(SyntaxKind::ThunkExpr, children)
+        node_from_children(SyntaxKind::THUNK_EXPR, children)
     }
 
     fn parse_force_expr(&mut self) -> SyntaxNode {
@@ -445,7 +448,7 @@ impl Parser {
         children.push(SyntaxElement::Token(self.bump().unwrap())); // force
         let payload = self.parse_expr();
         children.push(SyntaxElement::Node(Box::new(payload)));
-        node_from_children(SyntaxKind::ForceExpr, children)
+        node_from_children(SyntaxKind::FORCE_EXPR, children)
     }
 
     fn parse_match_expr(&mut self) -> SyntaxNode {
@@ -459,7 +462,7 @@ impl Parser {
 
         if !self.at_symbol_text("{") {
             self.error_here("expected `{` in match expression");
-            return node_from_children(SyntaxKind::MatchExpr, children);
+            return node_from_children(SyntaxKind::MATCH_EXPR, children);
         }
         children.push(SyntaxElement::Token(self.bump().unwrap())); // {
 
@@ -487,19 +490,17 @@ impl Parser {
             self.error_here("expected `}` in match expression");
         }
 
-        node_from_children(SyntaxKind::MatchExpr, children)
+        node_from_children(SyntaxKind::MATCH_EXPR, children)
     }
 
     fn parse_if_else_expr(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         children.push(SyntaxElement::Token(self.bump().unwrap())); // if
 
-        // Collect condition tokens until `{`
         while !self.eof() && !self.at_symbol_text("{") {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         }
 
-        // Parse then-body `{ ... }`
         if self.at_symbol_text("{") {
             children.push(SyntaxElement::Token(self.bump().unwrap())); // {
             let mut depth = 1usize;
@@ -519,12 +520,10 @@ impl Parser {
             }
         }
 
-        // Skip trivia before potential `else`
         while self.at_trivia() {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         }
 
-        // Check for `else`
         if self.at_keyword(Keyword::Else) {
             children.push(SyntaxElement::Token(self.bump().unwrap())); // else
 
@@ -533,11 +532,9 @@ impl Parser {
             }
 
             if self.at_keyword(Keyword::If) {
-                // else if — recurse
                 let nested = self.parse_if_else_expr();
                 children.push(SyntaxElement::Node(Box::new(nested)));
             } else if self.at_symbol_text("{") {
-                // else { ... }
                 children.push(SyntaxElement::Token(self.bump().unwrap())); // {
                 let mut depth = 1usize;
                 while !self.eof() && depth > 0 {
@@ -557,52 +554,45 @@ impl Parser {
             }
         }
 
-        node_from_children(SyntaxKind::IfElseExpr, children)
+        node_from_children(SyntaxKind::IF_ELSE_EXPR, children)
     }
 
     fn parse_handle_expr(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         children.push(SyntaxElement::Token(self.bump().unwrap())); // handle
 
-        // parse operation name (ident or tokens until "with")
         let inner = self.parse_expr();
         children.push(SyntaxElement::Node(Box::new(inner)));
 
-        // skip trivia
         while !self.eof() && self.at_trivia() {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         }
 
-        // expect "with" (contextual keyword)
         if self.at_ident_text("with") {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         } else {
             self.error_here("expected `with` in handle expression");
-            return node_from_children(SyntaxKind::HandleExpr, children);
+            return node_from_children(SyntaxKind::HANDLE_EXPR, children);
         }
 
-        // parse handler expression
         let handler = self.parse_expr();
         children.push(SyntaxElement::Node(Box::new(handler)));
 
-        // skip trivia
         while !self.eof() && self.at_trivia() {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         }
 
-        // expect "in"
         if self.at_keyword(Keyword::In) {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         } else {
             self.error_here("expected `in` in handle expression");
-            return node_from_children(SyntaxKind::HandleExpr, children);
+            return node_from_children(SyntaxKind::HANDLE_EXPR, children);
         }
 
-        // parse body expression
         let body = self.parse_expr();
         children.push(SyntaxElement::Node(Box::new(body)));
 
-        node_from_children(SyntaxKind::HandleExpr, children)
+        node_from_children(SyntaxKind::HANDLE_EXPR, children)
     }
 
     fn parse_bundle_expr(&mut self) -> SyntaxNode {
@@ -615,11 +605,10 @@ impl Parser {
 
         if !self.at_symbol_text("{") {
             self.error_here("expected `{` after `bundle`");
-            return node_from_children(SyntaxKind::BundleExpr, children);
+            return node_from_children(SyntaxKind::BUNDLE_EXPR, children);
         }
         children.push(SyntaxElement::Token(self.bump().unwrap())); // {
 
-        // Consume tokens until matching }
         let mut depth = 1usize;
         while !self.eof() && depth > 0 {
             if self.at_symbol_text("{") {
@@ -639,13 +628,13 @@ impl Parser {
             self.error_here("expected `}` in bundle expression");
         }
 
-        node_from_children(SyntaxKind::BundleExpr, children)
+        node_from_children(SyntaxKind::BUNDLE_EXPR, children)
     }
 
     fn at_ident_text(&self, text: &str) -> bool {
         matches!(
             self.current().map(|t| (&t.kind, t.text.as_str())),
-            Some((LosslessTokenKind::Ident, actual)) if actual == text
+            Some((LexKind::Ident, actual)) if actual == text
         )
     }
 
@@ -692,9 +681,9 @@ impl Parser {
 
         node_from_children(
             if has_postfix {
-                SyntaxKind::CallExpr
+                SyntaxKind::CALL_EXPR
             } else {
-                SyntaxKind::IdentExpr
+                SyntaxKind::IDENT_EXPR
             },
             children,
         )
@@ -702,31 +691,29 @@ impl Parser {
 
     fn parse_string_expr(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        children.push(SyntaxElement::Token(self.bump().unwrap())); // string literal
-        node_from_children(SyntaxKind::StringExpr, children)
+        children.push(SyntaxElement::Token(self.bump().unwrap()));
+        node_from_children(SyntaxKind::STRING_EXPR, children)
     }
 
     fn parse_number_expr(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        children.push(SyntaxElement::Token(self.bump().unwrap())); // number literal
-        node_from_children(SyntaxKind::NumberExpr, children)
+        children.push(SyntaxElement::Token(self.bump().unwrap()));
+        node_from_children(SyntaxKind::NUMBER_EXPR, children)
     }
 
     fn parse_error_node(&mut self) -> SyntaxNode {
         if self.eof() {
             return SyntaxNode {
-                kind: SyntaxKind::Error,
+                kind: SyntaxKind::ERROR,
                 span: Span::new(0, 0),
                 children: Vec::new(),
             };
         }
 
         let token = self.bump().unwrap();
-        node_from_children(SyntaxKind::Error, vec![SyntaxElement::Token(token)])
+        node_from_children(SyntaxKind::ERROR, vec![SyntaxElement::Token(token)])
     }
 
-    /// Consume tokens for an expression body (`= expr`) until the next top-level declaration.
-    /// Tracks brace depth so keywords inside `{ ... }` blocks are not treated as boundaries.
     fn consume_expr_body_tokens(&mut self, children: &mut Vec<SyntaxElement>) {
         let mut depth = 0usize;
         while !self.eof() {
@@ -734,11 +721,10 @@ impl Parser {
                 depth += 1;
             } else if self.at_symbol_text("}") {
                 if depth == 0 {
-                    break; // unbalanced } — end of enclosing impl/bundle block
+                    break;
                 }
                 depth -= 1;
             }
-            // At depth 0, a top-level keyword signals the next item
             if depth == 0 && self.at_top_level_keyword() {
                 break;
             }
@@ -758,45 +744,34 @@ impl Parser {
     fn at_trivia(&self) -> bool {
         matches!(
             self.current().map(|t| &t.kind),
-            Some(LosslessTokenKind::Whitespace) | Some(LosslessTokenKind::Newline)
+            Some(LexKind::Whitespace) | Some(LexKind::Newline)
         )
     }
 
     fn at_trivia_or_unknown(&self) -> bool {
         matches!(
             self.current().map(|t| &t.kind),
-            Some(LosslessTokenKind::Whitespace)
-                | Some(LosslessTokenKind::Newline)
-                | Some(LosslessTokenKind::Unknown)
+            Some(LexKind::Whitespace) | Some(LexKind::Newline) | Some(LexKind::Unknown)
         )
     }
 
     fn at_keyword(&self, keyword: Keyword) -> bool {
         matches!(
             self.current().map(|t| &t.kind),
-            Some(LosslessTokenKind::Keyword(actual)) if *actual == keyword
+            Some(LexKind::Keyword(actual)) if *actual == keyword
         )
     }
 
     fn at_ident(&self) -> bool {
-        matches!(
-            self.current().map(|t| &t.kind),
-            Some(LosslessTokenKind::Ident)
-        )
+        matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident))
     }
 
     fn at_string_lit(&self) -> bool {
-        matches!(
-            self.current().map(|t| &t.kind),
-            Some(LosslessTokenKind::StringLit)
-        )
+        matches!(self.current().map(|t| &t.kind), Some(LexKind::StringLit))
     }
 
     fn at_number_lit(&self) -> bool {
-        matches!(
-            self.current().map(|t| &t.kind),
-            Some(LosslessTokenKind::NumberLit)
-        )
+        matches!(self.current().map(|t| &t.kind), Some(LexKind::NumberLit))
     }
 
     fn at_symbol_text(&self, text: &str) -> bool {
@@ -816,7 +791,7 @@ impl Parser {
             .unwrap_or(Span::new(0, 0))
     }
 
-    fn current(&self) -> Option<&LosslessToken> {
+    fn current(&self) -> Option<&lumo_lexer::LosslessToken> {
         self.tokens.get(self.index)
     }
 
@@ -825,7 +800,7 @@ impl Parser {
         if token.is_some() {
             self.index += 1;
         }
-        token
+        token.map(lexer_token_to_lst)
     }
 
     fn eof(&self) -> bool {
@@ -841,6 +816,15 @@ impl Parser {
     }
 }
 
+fn lexer_token_to_lst(tok: lumo_lexer::LosslessToken) -> LosslessToken {
+    let kind = lexer_kind_to_syntax_kind(&tok.kind, &tok.text);
+    LosslessToken {
+        kind,
+        span: tok.span,
+        text: tok.text,
+    }
+}
+
 fn span_from_children(children: &[SyntaxElement]) -> Span {
     let mut start = None;
     let mut end = None;
@@ -850,11 +834,7 @@ fn span_from_children(children: &[SyntaxElement]) -> Span {
             SyntaxElement::Node(n) => n.span,
             SyntaxElement::Token(t) => t.span,
         };
-        start = Some(
-            start
-                .map(|s: usize| s.min(span.start))
-                .unwrap_or(span.start),
-        );
+        start = Some(start.map(|s: usize| s.min(span.start)).unwrap_or(span.start));
         end = Some(end.map(|e: usize| e.max(span.end)).unwrap_or(span.end));
     }
 
@@ -870,11 +850,7 @@ fn node_from_children(kind: SyntaxKind, children: Vec<SyntaxElement>) -> SyntaxN
             SyntaxElement::Node(n) => n.span,
             SyntaxElement::Token(t) => t.span,
         };
-        start = Some(
-            start
-                .map(|s: usize| s.min(span.start))
-                .unwrap_or(span.start),
-        );
+        start = Some(start.map(|s: usize| s.min(span.start)).unwrap_or(span.start));
         end = Some(end.map(|e: usize| e.max(span.end)).unwrap_or(span.end));
     }
 

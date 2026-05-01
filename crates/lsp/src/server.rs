@@ -8,7 +8,7 @@ use lsp_types::{
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
     TextDocumentSyncKind, TextDocumentSyncOptions,
 };
-use lumo_compiler::lexer::LosslessTokenKind;
+use lumo_compiler::lst::SyntaxKind;
 use lumo_compiler::query::QueryEngine;
 use serde_json::{json, Value};
 
@@ -387,19 +387,20 @@ fn collect_lossless_tokens(
                 collect_lossless_tokens(n, out, state)
             }
             lumo_compiler::lst::lossless::SyntaxElement::Token(t) => {
-                let kind = match t.kind {
-                    LosslessTokenKind::Keyword(_) if state.expect_attr_name && state.depth > 0 => {
-                        Some(HighlightKind::Identifier)
+                let kw = is_syntax_keyword(t.kind);
+                let kind = if kw && state.expect_attr_name && state.depth > 0 {
+                    Some(HighlightKind::Identifier)
+                } else if kw {
+                    Some(HighlightKind::Keyword)
+                } else {
+                    match t.kind {
+                        SyntaxKind::IDENT if t.text == "type" => Some(HighlightKind::Keyword),
+                        SyntaxKind::IDENT => Some(HighlightKind::Identifier),
+                        SyntaxKind::STRING_LIT => Some(HighlightKind::String),
+                        SyntaxKind::NUMBER_LIT => Some(HighlightKind::Number),
+                        SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE | SyntaxKind::UNKNOWN => None,
+                        _ => Some(HighlightKind::Symbol),
                     }
-                    LosslessTokenKind::Keyword(_) => Some(HighlightKind::Keyword),
-                    LosslessTokenKind::Ident if t.text == "type" => Some(HighlightKind::Keyword),
-                    LosslessTokenKind::Ident => Some(HighlightKind::Identifier),
-                    LosslessTokenKind::StringLit => Some(HighlightKind::String),
-                    LosslessTokenKind::NumberLit => Some(HighlightKind::Number),
-                    LosslessTokenKind::Symbol(_) => Some(HighlightKind::Symbol),
-                    LosslessTokenKind::Whitespace
-                    | LosslessTokenKind::Newline
-                    | LosslessTokenKind::Unknown => None,
                 };
 
                 if let Some(kind) = kind {
@@ -410,7 +411,7 @@ fn collect_lossless_tokens(
                     });
                 }
 
-                state.observe(&t.kind, &t.text);
+                state.observe(t.kind, &t.text);
             }
         }
     }
@@ -424,18 +425,16 @@ struct AttrSemanticState {
 }
 
 impl AttrSemanticState {
-    fn observe(&mut self, kind: &LosslessTokenKind, text: &str) {
-        match kind {
-            LosslessTokenKind::Ident | LosslessTokenKind::Keyword(_) => {
-                self.pending_hash = false;
-                if self.expect_attr_name && self.depth > 0 {
-                    self.expect_attr_name = false;
-                }
+    fn observe(&mut self, kind: SyntaxKind, text: &str) {
+        if kind == SyntaxKind::IDENT || is_syntax_keyword(kind) {
+            self.pending_hash = false;
+            if self.expect_attr_name && self.depth > 0 {
+                self.expect_attr_name = false;
             }
-            LosslessTokenKind::Whitespace | LosslessTokenKind::Newline => {}
-            _ => {
-                self.pending_hash = false;
-            }
+        } else if matches!(kind, SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE) {
+            // trivia — no state change
+        } else {
+            self.pending_hash = false;
         }
 
         match text {
@@ -463,6 +462,29 @@ impl AttrSemanticState {
             _ => {}
         }
     }
+}
+
+fn is_syntax_keyword(k: SyntaxKind) -> bool {
+    matches!(
+        k,
+        SyntaxKind::BUNDLE_KW
+            | SyntaxKind::CAP_KW
+            | SyntaxKind::DATA_KW
+            | SyntaxKind::ELSE_KW
+            | SyntaxKind::EXTERN_KW
+            | SyntaxKind::FN_KW
+            | SyntaxKind::FORCE_KW
+            | SyntaxKind::HANDLE_KW
+            | SyntaxKind::IF_KW
+            | SyntaxKind::IMPL_KW
+            | SyntaxKind::IN_KW
+            | SyntaxKind::LET_KW
+            | SyntaxKind::MATCH_KW
+            | SyntaxKind::THUNK_KW
+            | SyntaxKind::TYPE_KW
+            | SyntaxKind::USE_KW
+            | SyntaxKind::WITH_KW
+    )
 }
 
 fn token_type_index(kind: HighlightKind) -> u32 {

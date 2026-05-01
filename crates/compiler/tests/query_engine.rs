@@ -1,6 +1,6 @@
 use lumo_compiler::{
     backend::{self, CodegenTarget},
-    lst::lossless::{node_text, SyntaxKind},
+    lst::{lossless::node_text, SyntaxKind},
     query::QueryEngine,
     typecheck,
 };
@@ -12,7 +12,7 @@ fn parse_lower_diagnostics_are_callable() {
 
     let parsed = q.parse("main.lumo").expect("parse result");
     assert_eq!(parsed.file.items.len(), 2);
-    assert_eq!(parsed.lossless.root.kind, SyntaxKind::File);
+    assert_eq!(parsed.lossless.root.kind, SyntaxKind::FILE);
     assert_eq!(
         node_text(&parsed.lossless.root),
         "data X { .a } fn id() { a+ }"

@@ -89,9 +89,46 @@ impl<'a> AstNode<'a> for AttributeArgs<'a> {
 }
 
 impl<'a> AttributeArgs<'a> {
-    pub fn args(&self) -> impl Iterator<Item = AttributeArg<'a>> + 'a {
+    pub fn items(&self) -> impl Iterator<Item = AttributeArgItem<'a>> + 'a {
         self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => AttributeArg::cast(n),
+            SyntaxElement::Node(n) => AttributeArgItem::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub enum AttributeArgItem<'a> {
+    AttributeArgIdent(AttributeArgIdent<'a>),
+    AttributeArg(AttributeArg<'a>),
+}
+
+impl<'a> AstNode<'a> for AttributeArgItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| AttributeArgIdent::cast(node).map(Self::AttributeArgIdent))
+            .or_else(|| AttributeArg::cast(node).map(Self::AttributeArg))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::AttributeArgIdent(n) => n.syntax(),
+            Self::AttributeArg(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct AttributeArgIdent<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AttributeArgIdent<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ATTRIBUTE_ARG_IDENT).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> AttributeArgIdent<'a> {
+    pub fn name(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
             _ => None,
         })
     }
@@ -167,6 +204,12 @@ impl<'a> AstNode<'a> for Variant<'a> {
 }
 
 impl<'a> Variant<'a> {
+    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) => Attribute::cast(n),
+            _ => None,
+        })
+    }
     pub fn name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),

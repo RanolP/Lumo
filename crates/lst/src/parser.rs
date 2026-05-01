@@ -400,42 +400,45 @@ fn collect_lossless_tokens(
             crate::lossless::SyntaxElement::Node(n) => {
                 collect_lossless_tokens(n, tokens, lex_errors);
             }
-            crate::lossless::SyntaxElement::Token(t) => match &t.kind {
-                lumo_lexer::LosslessTokenKind::Keyword(kw) => tokens.push(Token {
-                    kind: TokenKind::Keyword(*kw),
-                    span: t.span,
-                }),
-                lumo_lexer::LosslessTokenKind::Ident => tokens.push(Token {
-                    kind: TokenKind::Ident(t.text.clone()),
-                    span: t.span,
-                }),
-                lumo_lexer::LosslessTokenKind::StringLit => tokens.push(Token {
-                    kind: TokenKind::StringLit(t.text.clone()),
-                    span: t.span,
-                }),
-                lumo_lexer::LosslessTokenKind::NumberLit => tokens.push(Token {
-                    kind: TokenKind::NumberLit(t.text.clone()),
-                    span: t.span,
-                }),
-                lumo_lexer::LosslessTokenKind::Symbol(sym) => tokens.push(Token {
-                    kind: TokenKind::Symbol(*sym),
-                    span: t.span,
-                }),
-                lumo_lexer::LosslessTokenKind::Whitespace
-                | lumo_lexer::LosslessTokenKind::Newline => {}
-                lumo_lexer::LosslessTokenKind::Unknown => {
-                    let message = match t.text.chars().next() {
-                        Some(ch) if t.text.chars().count() == 1 => {
-                            format!("unexpected character: {ch:?}")
+            crate::lossless::SyntaxElement::Token(t) => {
+                use crate::syntax_kind::SyntaxKind;
+                let kind = match t.kind {
+                    SyntaxKind::IDENT => Some(TokenKind::Ident(t.text.clone())),
+                    SyntaxKind::STRING_LIT => Some(TokenKind::StringLit(t.text.clone())),
+                    SyntaxKind::NUMBER_LIT => Some(TokenKind::NumberLit(t.text.clone())),
+                    SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE => None,
+                    SyntaxKind::UNKNOWN => {
+                        // Some valid symbols (e.g. ',') aren't in the grammar's SyntaxKind.
+                        // Try symbol lookup before reporting a lex error.
+                        if let Some(sym) = lumo_lexer::Symbol::from_str(&t.text) {
+                            Some(TokenKind::Symbol(sym))
+                        } else {
+                            let message = match t.text.chars().next() {
+                                Some(ch) if t.text.chars().count() == 1 => {
+                                    format!("unexpected character: {ch:?}")
+                                }
+                                _ => format!("unexpected character: {:?}", t.text),
+                            };
+                            lex_errors.push(LexError { span: t.span, message });
+                            None
                         }
-                        _ => format!("unexpected character: {:?}", t.text),
-                    };
-                    lex_errors.push(LexError {
-                        span: t.span,
-                        message,
-                    });
+                    }
+                    _ => {
+                        // Keyword or symbol — reconstruct from text
+                        if let Some(kw) = lumo_lexer::Keyword::from_str(&t.text) {
+                            Some(TokenKind::Keyword(kw))
+                        } else if let Some(sym) = lumo_lexer::Symbol::from_str(&t.text) {
+                            Some(TokenKind::Symbol(sym))
+                        } else {
+                            // Contextual keyword like "with" / "type" treated as ident
+                            Some(TokenKind::Ident(t.text.clone()))
+                        }
+                    }
+                };
+                if let Some(kind) = kind {
+                    tokens.push(Token { kind, span: t.span });
                 }
-            },
+            }
         }
     }
 }

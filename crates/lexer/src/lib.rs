@@ -74,6 +74,72 @@ pub enum Symbol {
     PipePipe,
 }
 
+impl Keyword {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "data" => Some(Self::Data),
+            "fn" => Some(Self::Fn),
+            "extern" => Some(Self::Extern),
+            "let" => Some(Self::Let),
+            "in" => Some(Self::In),
+            "produce" => Some(Self::Produce),
+            "thunk" => Some(Self::Thunk),
+            "force" => Some(Self::Force),
+            "match" => Some(Self::Match),
+            "cap" => Some(Self::Cap),
+            "perform" => Some(Self::Perform),
+            "handle" => Some(Self::Handle),
+            "bundle" => Some(Self::Bundle),
+            "use" => Some(Self::Use),
+            "impl" => Some(Self::Impl),
+            "if" => Some(Self::If),
+            "else" => Some(Self::Else),
+            "lambda" => Some(Self::Lambda),
+            "roll" => Some(Self::Roll),
+            "unroll" => Some(Self::Unroll),
+            "ctor" => Some(Self::Ctor),
+            _ => None,
+        }
+    }
+}
+
+impl Symbol {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "#" => Some(Self::Hash),
+            "[" => Some(Self::LBracket),
+            "]" => Some(Self::RBracket),
+            "(" => Some(Self::LParen),
+            ")" => Some(Self::RParen),
+            "{" => Some(Self::LBrace),
+            "}" => Some(Self::RBrace),
+            ";" => Some(Self::Semi),
+            ":" => Some(Self::Colon),
+            "," => Some(Self::Comma),
+            "=" => Some(Self::Equals),
+            ":=" => Some(Self::ColonEquals),
+            "/" => Some(Self::Slash),
+            "*" => Some(Self::Star),
+            "=>" => Some(Self::FatArrow),
+            "." => Some(Self::Dot),
+            ".." => Some(Self::DotDot),
+            "+" => Some(Self::Plus),
+            "-" => Some(Self::Minus),
+            "%" => Some(Self::Percent),
+            "!" => Some(Self::Bang),
+            "<" => Some(Self::Lt),
+            ">" => Some(Self::Gt),
+            "<=" => Some(Self::LtEq),
+            ">=" => Some(Self::GtEq),
+            "==" => Some(Self::EqEq),
+            "!=" => Some(Self::BangEq),
+            "&&" => Some(Self::AmpAmp),
+            "||" => Some(Self::PipePipe),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LexError {
     pub span: Span,

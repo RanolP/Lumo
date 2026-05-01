@@ -23,7 +23,11 @@ Item =
 // === Attributes ===
 
 Attribute = '#' '[' name:Ident AttributeArgs? ']'
-AttributeArgs = '(' (positional:Ident | args:AttributeArg)* ')'
+AttributeArgs = '(' items:AttributeArgItem* ')'
+AttributeArgItem =
+  | AttributeArgIdent
+  | AttributeArg
+AttributeArgIdent = name:Ident
 AttributeArg = key:Ident '=' value:Expr
 
 // === Data types ===
