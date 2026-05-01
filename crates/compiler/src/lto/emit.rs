@@ -217,7 +217,15 @@ fn rename_free_idents(expr: &mut lir::Expr, map: &[(String, String)]) {
 const INLINE_SIZE_THRESHOLD: usize = 16;
 
 pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis, resolution: &ResolutionMap) {
-    // Step 1: identify dep-free fns under empty binding (v1).
+    let mut ctx = AlphaCtx::default();
+
+    // Step 0: rewrite dep-free inherent impl method bodies in place.
+    // This makes them non-effectful so the backend emits them as direct fns.
+    // Typeclass impls (capability != None) are intentionally skipped — they
+    // need to remain CPS for `resume` to work.
+    apply_dep_free_impl_methods(file, analysis, resolution, &mut ctx);
+
+    // Step 1: identify dep-free top-level fns under empty binding (v1).
     let mut dep_free_fns: Vec<String> = analysis
         .status
         .iter()
@@ -272,9 +280,65 @@ pub fn transform(file: &mut lir::File, analysis: &DepFreeAnalysis, resolution: &
 
     // Apply clones first — clones rename callees in-place. Inlines replace
     // calls outright and drop the original fn from `file.items`.
-    let mut ctx = AlphaCtx::default();
     apply_clones(file, &to_clone, analysis, resolution, &mut ctx);
     apply_inlines(file, &to_inline, analysis, resolution, &mut ctx);
+}
+
+/// Rewrite dep-free inherent impl method bodies in place by resolving their
+/// Perform calls to direct extern calls. After this pass the backend sees no
+/// Perform nodes in these methods and emits them as direct (non-CPS) functions.
+///
+/// Only inherent impls (no capability annotation) are processed. Typeclass
+/// impls must stay CPS because their methods use `resume`.
+fn apply_dep_free_impl_methods(
+    file: &mut lir::File,
+    analysis: &DepFreeAnalysis,
+    resolution: &ResolutionMap,
+    ctx: &mut AlphaCtx,
+) {
+    // Collect the dep-free impl-method keys: ("ConstName.method", []).
+    let dep_free_methods: std::collections::HashSet<String> = analysis
+        .status
+        .iter()
+        .filter(|(_, s)| matches!(**s, DepFreeStatus::DepFree))
+        .filter_map(|((name, args), _)| {
+            if args.is_empty() && name.contains('.') {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if dep_free_methods.is_empty() {
+        return;
+    }
+
+    // Take items out to allow simultaneous mutable borrow of file.spans.
+    let mut items = std::mem::take(&mut file.items);
+    for item in items.iter_mut() {
+        let lir::Item::Impl(impl_decl) = item else { continue };
+        // Skip typeclass impls — they need resume/CPS.
+        if impl_decl.capability.is_some() {
+            continue;
+        }
+        let const_name = impl_decl.name.clone().unwrap_or_else(|| {
+            impl_decl.target_type.value.display()
+        });
+        for method in impl_decl.methods.iter_mut() {
+            let key = format!("{const_name}.{}", method.name);
+            if dep_free_methods.contains(&key) {
+                rewrite_performs(
+                    &mut method.value,
+                    &analysis.perform_resolution,
+                    resolution,
+                    &mut file.spans,
+                    ctx,
+                );
+            }
+        }
+    }
+    file.items = items;
 }
 
 fn apply_clones(

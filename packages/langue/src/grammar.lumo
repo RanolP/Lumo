@@ -7,11 +7,19 @@ data Grammar { .mk(List[String], List[Rule]) }
 // A named rule: `Name = body`
 data Rule { .mk(String, RuleBody) }
 
-// Rule body: either a sequence of elements or alternatives
+// Rule body: sequence, alternatives, or a Pratt expression table
 data RuleBody {
   .sequence(List[Element]),
-  .alternatives(List[Alternative])
+  .alternatives(List[Alternative]),
+  .pratt(List[String], List[PrattAlt])
 }
+
+// One row in a pratt block: `Name: <pattern> with bp(L, R)`
+data PrattAlt { .mk(String, List[Element], BindingPower) }
+
+// bp(left, right) — None means no operand on that side (prefix / postfix)
+data BindingPower { .mk(BpVal, BpVal) }
+data BpVal { .none, .num(Number) }
 
 // An alternative in `| A | B | C`
 data Alternative { .mk(String) }

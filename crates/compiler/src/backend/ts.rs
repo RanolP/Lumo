@@ -2123,6 +2123,10 @@ fn collect_member_apply_chain<'a>(
     if !ctx.impl_method_arities.contains_key(&key) {
         return None;
     }
+    // Effectful methods need CPS (__caps, __k) — skip direct-call fast-path
+    if ctx.impl_method_caps.contains_key(&key) {
+        return None;
+    }
 
     args.reverse();
     Some((obj_name.clone(), field.clone(), args))
