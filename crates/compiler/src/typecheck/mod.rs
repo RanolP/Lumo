@@ -70,11 +70,20 @@ impl PartialEq for CompType {
     }
 }
 
+/// Single uppercase letter = universally-quantified type variable (Lumo convention).
+fn is_type_var(n: &str) -> bool {
+    let mut chars = n.chars();
+    matches!((chars.next(), chars.next()), (Some(c), None) if c.is_ascii_uppercase())
+}
+
 /// Compare two value types, treating `Self` as a wildcard that matches anything.
 fn v_types_match(a: &ValueType, b: &ValueType) -> bool {
     match (a, b) {
-        // `Self` and `_` (inferred placeholder) are wildcards that match any type
-        (ValueType::Named(n), _) | (_, ValueType::Named(n)) if n == "Self" || n == "_" => true,
+        // `Self` and `_` are wildcards on both sides
+        (ValueType::Named(n), _) if n == "Self" || n == "_" => true,
+        (_, ValueType::Named(n)) if n == "Self" || n == "_" => true,
+        // Type variables only act as wildcards on the LHS (formal/expected type)
+        (ValueType::Named(n), ValueType::Named(m)) if is_type_var(n) && !is_type_var(m) => true,
         (ValueType::Named(a), ValueType::Named(b)) => a == b,
         (ValueType::Thunk(a), ValueType::Thunk(b)) => c_types_match(a, b),
         (
