@@ -13,6 +13,11 @@ Skipping step 1–2 leaves the generated files inconsistent with the actual lang
 
 ### Grammar correctness rules
 
-- Comma-separated lists must use `(Item (',' Item)* ','?)?` — never `Item* ','?` or `Item?` (those allow items without separators)
+- Comma-separated lists **must use wrapper nodes** to preserve accessors:
+  ```
+  FooList = '(' items:FooItems? ')'
+  FooItems = Foo (',' Foo)* ','?
+  ```
+  Never use `Foo* ','?` (items without enforced separators) or inline `(Foo (',' Foo)*)?` (loses the label, no accessor generated).
 - Optional type annotations use `(':' ty:TypeExpr)?`
 - Reuse existing nodes where possible (`FnBody`, `ParamList`, `GenericParams`)
