@@ -300,6 +300,14 @@ fn render_expr(expr: &Expr) -> String {
                 None => format!("If(cond={}, then={})", render_expr(condition), render_expr(then_body)),
             }
         }
+        Expr::Lambda { params, body, .. } => {
+            let ps = params
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("Lambda(params=[{}], body={})", ps, render_expr(body))
+        }
         Expr::Error { .. } => "Error".to_owned(),
     }
 }

@@ -76,6 +76,19 @@ fn is_type_var(n: &str) -> bool {
     matches!((chars.next(), chars.next()), (Some(c), None) if c.is_ascii_uppercase())
 }
 
+/// Split a stringified parameterized type name into `(head, args)`.
+/// E.g. `"List[T]"` → `("List", vec!["T"])`, `"Number"` → `("Number", vec![])`.
+fn split_named_type(s: &str) -> (&str, Vec<&str>) {
+    if let Some(bracket) = s.find('[') {
+        let head = &s[..bracket];
+        let rest = s[bracket + 1..].trim_end_matches(']');
+        let args: Vec<&str> = rest.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+        (head, args)
+    } else {
+        (s, vec![])
+    }
+}
+
 /// Compare two value types, treating `Self` as a wildcard that matches anything.
 fn v_types_match(a: &ValueType, b: &ValueType) -> bool {
     match (a, b) {
@@ -84,7 +97,23 @@ fn v_types_match(a: &ValueType, b: &ValueType) -> bool {
         (_, ValueType::Named(n)) if n == "Self" || n == "_" => true,
         // Type variables only act as wildcards on the LHS (formal/expected type)
         (ValueType::Named(n), ValueType::Named(m)) if is_type_var(n) && !is_type_var(m) => true,
-        (ValueType::Named(a), ValueType::Named(b)) => a == b,
+        // Parameterized types: `List[T]` matches `List[Number]` when T is a type var
+        (ValueType::Named(a), ValueType::Named(b)) => {
+            let (ha, args_a) = split_named_type(a);
+            let (hb, args_b) = split_named_type(b);
+            if ha != hb || args_a.len() != args_b.len() {
+                return a == b;
+            }
+            // Heads match; check args with type-var wildcard logic
+            args_a.iter().zip(args_b.iter()).all(|(ta, tb)| {
+                // Type vars on either side are wildcards (formal/expected type may appear on either side)
+                (is_type_var(ta) && !is_type_var(tb))
+                    || (is_type_var(tb) && !is_type_var(ta))
+                    || (*ta == "Self" || *ta == "_")
+                    || (*tb == "Self" || *tb == "_")
+                    || ta == tb
+            })
+        }
         (ValueType::Thunk(a), ValueType::Thunk(b)) => c_types_match(a, b),
         (
             ValueType::Func { params: pa, ret: ra },
@@ -1911,7 +1940,16 @@ impl TypeChecker {
             Expr::Lambda { param, body, .. } => {
                 let mut child = env.clone();
                 child.insert(param.clone(), ValueType::Named("_".to_owned()));
-                self.infer_c_expr(body, &child).map(|ret| CompType::Fn {
+                // If the body is a syntactic value expression (e.g. `fn(x) { x }`),
+                // implicitly wrap it in Produce so we don't error with "x is a value,
+                // not a computation".
+                let body_ty = if is_syntactic_value_expr(body) {
+                    self.infer_v_expr(body, &child)
+                        .map(|vt| CompType::Produce(Box::new(vt)))
+                } else {
+                    self.infer_c_expr(body, &child)
+                };
+                body_ty.map(|ret| CompType::Fn {
                     params: vec![ValueType::Named("_".to_owned())],
                     ret: Box::new(ret),
                     cap: vec![],

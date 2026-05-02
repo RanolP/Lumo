@@ -13,3 +13,11 @@ fn list_reverse[A](xs: List[A]): List[A] = list_reverse_acc(xs, List.nil)
 
 fn list_length[A](xs: List[A]): Number / { NumOps } =
   match xs { .nil => 0, .cons(_, t) => NumOps.add(1, list_length(t)) }
+
+impl[T] List[T] {
+    fn map[R](self: List[T], mapper: (T) -> R): List[R] =
+        match self {
+            .nil => List.nil,
+            .cons(h, t) => List.cons(mapper(h), t.map(mapper))
+        }
+}

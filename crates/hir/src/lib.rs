@@ -736,6 +736,24 @@ fn lower_expr(expr: &lst::Expr, ctx: &mut LowerCtx) -> Expr {
                 span: *span,
             }
         },
+        lst::Expr::Lambda { params, body, span } => {
+            // `fn(x, y: T) { body }` → HIR Lambda with (name, Option<TypeExpr>) params
+            let hir_params: Vec<(String, Option<Spanned<TypeExpr>>)> = params
+                .iter()
+                .map(|p| {
+                    let ty_ann = p.ty.as_ref().and_then(|t| {
+                        TypeExpr::parse(&t.repr).map(|value| Spanned { value, span: t.span })
+                    });
+                    (p.name.clone(), ty_ann)
+                })
+                .collect();
+            let lowered_body = lower_expr(body, ctx);
+            Expr::Lambda {
+                params: hir_params,
+                body: Box::new(lowered_body),
+                span: *span,
+            }
+        }
         lst::Expr::Error { span } => Expr::Error { span: *span },
     }
 }

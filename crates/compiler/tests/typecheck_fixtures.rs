@@ -6,6 +6,7 @@ use lumo_compiler::{
     lexer::lex,
     lir,
     parser::parse,
+    query::rewrite_value_method_calls,
     typecheck::{render_type, typecheck_and_bindings},
 };
 
@@ -36,7 +37,10 @@ fn typecheck_fixtures() {
         let lexed = lex(&source);
         let parsed = parse(&lexed.tokens, &lexed.errors);
         let hir = hir::lower(&parsed.file);
-        let lir = lir::lower(&hir);
+        let mut lir = lir::lower(&hir);
+        // Apply the value-method-call rewrite (e.g. xs.map(f) → List[T].map(xs, f))
+        // so fixture cases can test method dispatch end-to-end.
+        rewrite_value_method_calls(&mut lir);
         let (bindings, errors) = typecheck_and_bindings(&lir);
 
         // Collect all errors: HIR lowering errors + typecheck errors

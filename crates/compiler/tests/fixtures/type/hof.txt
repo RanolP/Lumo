@@ -5,3 +5,36 @@ f : ((T) -> T) -> (T) -> T
 fn g(mapper: (T) -> T / { .. }): (T) -> T / {} { mapper }
 ---
 g : ((T) -> T / {..}) -> (T) -> T
+==========
+fn apply(f: (A) -> B, x: A): B / {} { f(x) }
+---
+apply : ((A) -> B, A) -> B
+==========
+fn identity(f: (T) -> T): (T) -> T / {} { f }
+---
+identity : ((T) -> T) -> (T) -> T
+==========
+data List[A] { .nil, .cons(A, List[A]) }
+impl[T] List[T] {
+    fn len(self: List[T]): Number = 0
+}
+fn count(xs: List[Number]): Number / {} { xs.len() }
+---
+count : (List[Number]) -> Number
+==========
+data List[A] { .nil, .cons(A, List[A]) }
+impl[T] List[T] {
+    fn map_simple[R](self: List[T], mapper: (T) -> R): List[R] = List.nil
+}
+fn test_id(xs: List[Number]): List[Number] / {} { xs.map_simple(fn(x) { x }) }
+---
+test_id : (List[Number]) -> List[Number]
+==========
+data List[A] { .nil, .cons(A, List[A]) }
+impl[T] List[T] {
+    fn map[R](self: List[T], mapper: (T) -> R): List[R] =
+        match self { .nil => List.nil, .cons(h, t) => List.cons(mapper(h), t.map(mapper)) }
+}
+fn double_list(xs: List[Number]): List[Number] / {} { xs.map(fn(x) { x }) }
+---
+double_list : (List[Number]) -> List[Number]

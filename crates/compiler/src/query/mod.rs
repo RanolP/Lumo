@@ -420,7 +420,7 @@ fn base_type_name(s: &str) -> &str {
 /// Builds a method table from all `Impl` items, then walks function and impl method bodies.
 /// For each `Member { object, field }` where the object's type has a matching impl method,
 /// replaces the Member with `Apply(Member(Ident(impl_const), field), original_object)`.
-fn rewrite_value_method_calls(file: &mut lir::File) {
+pub fn rewrite_value_method_calls(file: &mut lir::File) {
     // Build method table: (target_type, method_name) → [impl_const_name]
     let mut method_table: HashMap<(String, String), Vec<String>> = HashMap::new();
     let mut method_return_types: HashMap<(String, String), String> = HashMap::new();
@@ -480,14 +480,11 @@ fn rewrite_value_method_calls(file: &mut lir::File) {
             }
             lir::Item::Data(d) => {
                 for variant in &d.variants {
-                    let field_types: Vec<Option<String>> =
-                        variant.payload.iter().map(|p| simple_type_name(&p.value)).collect();
-                    if field_types.iter().all(|t| t.is_some()) {
-                        data_variant_fields.insert(
-                            variant.name.clone(),
-                            field_types.into_iter().map(|t| t.unwrap()).collect(),
-                        );
-                    }
+                    // Use display() for all field types so that parameterized types
+                    // like `List[A]` are included (simple_type_name only handles Named).
+                    let field_types: Vec<String> =
+                        variant.payload.iter().map(|p| p.value.display()).collect();
+                    data_variant_fields.insert(variant.name.clone(), field_types);
                 }
             }
             lir::Item::Cap(c) => {

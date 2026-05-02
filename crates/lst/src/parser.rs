@@ -268,9 +268,21 @@ pub enum Expr {
         else_body: Option<Box<Expr>>,
         span: Span,
     },
+    Lambda {
+        params: Vec<LambdaParam>,
+        body: Box<Expr>,
+        span: Span,
+    },
     Error {
         span: Span,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LambdaParam {
+    pub name: String,
+    pub ty: Option<TypeSig>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1085,6 +1097,12 @@ impl<'a> Parser<'a> {
             self.bump(); // fn
 
             let method_name = self.expect_ident();
+            // Skip optional generic type params on the method: `fn map[R](...)`.
+            // The generic names are used structurally in type annotations but are
+            // not stored separately (they're treated as wildcards during type-checking).
+            if self.at_symbol(Symbol::LBracket) {
+                let _ = self.parse_generics();
+            }
             let params = if self.at_symbol(Symbol::LParen) {
                 self.parse_impl_params()
             } else {
@@ -1163,9 +1181,9 @@ impl<'a> Parser<'a> {
                 });
             } else {
                 self.expect_symbol(Symbol::Colon);
-                let (repr, span) = self.collect_signature_until(|p| {
-                    p.at_symbol(Symbol::Comma) || p.at_symbol(Symbol::RParen)
-                });
+                // Use depth-aware collection so nested parens in types like
+                // `(T) -> R` are captured in full (same as `parse_params`).
+                let (repr, span) = self.collect_param_type_signature();
                 let ty = if let Some(span) = span {
                     TypeSig { repr, span }
                 } else {
@@ -1241,6 +1259,44 @@ impl<'a> Parser<'a> {
         }
 
         self.expect_symbol(Symbol::RBracket);
+        out
+    }
+
+    /// Parse parameters for a `fn(x, y: T) { ... }` lambda expression.
+    /// Types are optional: `fn(x)` is valid (type inferred), `fn(x: T)` provides annotation.
+    fn parse_lambda_params(&mut self) -> Vec<LambdaParam> {
+        let mut out = Vec::new();
+        self.expect_symbol(Symbol::LParen);
+
+        while !self.eof() && !self.at_symbol(Symbol::RParen) {
+            if !self.at_ident() {
+                self.error_here("expected parameter name");
+                self.bump();
+                continue;
+            }
+
+            let name_token = self.bump().expect("checked at_ident").clone();
+            let name = ident_text(&name_token).unwrap_or_default().to_owned();
+            let ty = if self.at_symbol(Symbol::Colon) {
+                self.bump();
+                let (repr, span) = self.collect_param_type_signature();
+                span.map(|span| TypeSig { repr, span })
+            } else {
+                None
+            };
+            let end = ty.as_ref().map(|t| t.span.end).unwrap_or(name_token.span.end);
+            out.push(LambdaParam {
+                name,
+                ty,
+                span: Span::new(name_token.span.start, end),
+            });
+
+            if self.at_symbol(Symbol::Comma) {
+                self.bump();
+            }
+        }
+
+        self.expect_symbol(Symbol::RParen);
         out
     }
 
@@ -1530,12 +1586,32 @@ impl<'a> Parser<'a> {
                 self.expect_symbol(Symbol::RParen);
                 inner
             }
+        } else if self.at_keyword(Keyword::Fn) {
+            // Lambda expression: `fn(param, ...) { body }` or `fn(param, ...) = expr`
+            let start = self.expect_keyword(Keyword::Fn);
+            let params = if self.at_symbol(Symbol::LParen) {
+                self.parse_lambda_params()
+            } else {
+                self.error_here("expected parameter list `(...)` in lambda");
+                Vec::new()
+            };
+            let body = if self.at_symbol(Symbol::Equals) {
+                self.bump();
+                self.parse_expr()
+            } else {
+                self.parse_block()
+            };
+            let end = expr_span(&body);
+            Expr::Lambda {
+                params,
+                body: Box::new(body),
+                span: Span::new(start.start, end.end),
+            }
         } else {
             let span = self.current_span();
             self.error_here("expected expression");
             if !(self.at_keyword(Keyword::Data)
                 || self.at_keyword(Keyword::Cap)
-                || self.at_keyword(Keyword::Fn)
                 || self.at_keyword(Keyword::Extern)
                 || self.at_keyword(Keyword::Use)
                 || self.at_keyword(Keyword::Impl))
@@ -2031,6 +2107,7 @@ fn expr_span(expr: &Expr) -> Span {
         Expr::Ann { span, .. } => *span,
         Expr::Block { span, .. } => *span,
         Expr::IfElse { span, .. } => *span,
+        Expr::Lambda { span, .. } => *span,
         Expr::Error { span } => *span,
     }
 }
