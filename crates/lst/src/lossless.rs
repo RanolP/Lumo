@@ -657,7 +657,7 @@ impl Parser {
         node_from_children(SyntaxKind::IMPL_METHOD, children)
     }
 
-    fn can_parse_expr(&self) -> bool { self.at_pratt_unary_expr() || self.can_parse_ident_expr() || self.can_parse_string_expr() || self.can_parse_number_expr() || self.can_parse_let_expr() || self.can_parse_thunk_expr() || self.can_parse_force_expr() || self.can_parse_match_expr() || self.can_parse_handle_expr() || self.can_parse_bundle_expr() || self.can_parse_if_else_expr() || self.can_parse_block_expr() || self.can_parse_paren_expr() || self.can_parse_annotation_expr() }
+    fn can_parse_expr(&self) -> bool { self.at_pratt_unary_expr() || self.can_parse_ident_expr() || self.can_parse_string_expr() || self.can_parse_number_expr() || self.can_parse_let_expr() || self.can_parse_thunk_expr() || self.can_parse_force_expr() || self.can_parse_match_expr() || self.can_parse_handle_expr() || self.can_parse_bundle_expr() || self.can_parse_if_else_expr() || self.can_parse_block_expr() || self.can_parse_paren_expr() || self.can_parse_annotation_expr() || self.can_parse_lambda_expr() }
     fn parse_expr(&mut self) -> SyntaxNode {
         self.parse_expr_bp(0)
     }
@@ -763,6 +763,7 @@ impl Parser {
         if self.can_parse_block_expr() { return self.parse_block_expr(); }
         if self.can_parse_paren_expr() { return self.parse_paren_expr(); }
         if self.can_parse_annotation_expr() { return self.parse_annotation_expr(); }
+        if self.can_parse_lambda_expr() { return self.parse_lambda_expr(); }
         self.error_here("expected expression");
         node_from_children(SyntaxKind::ERROR, Vec::new())
     }
@@ -921,6 +922,47 @@ impl Parser {
         children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
         self.expect_symbol(")", &mut children);
         node_from_children(SyntaxKind::ANNOTATION_EXPR, children)
+    }
+
+    fn can_parse_lambda_expr(&self) -> bool { self.at_non_trivia_keyword(Keyword::Fn) }
+    fn parse_lambda_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.expect_keyword(Keyword::Fn, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_lambda_param_list())));
+        children.push(SyntaxElement::Node(Box::new(self.parse_fn_body())));
+        node_from_children(SyntaxKind::LAMBDA_EXPR, children)
+    }
+
+    fn can_parse_lambda_param_list(&self) -> bool { self.at_non_trivia_symbol("(") }
+    fn parse_lambda_param_list(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.expect_symbol("(", &mut children);
+        if self.can_parse_lambda_param() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_lambda_param())));
+            while self.at_non_trivia_symbol(",") {
+                self.expect_symbol(",", &mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_lambda_param())));
+            }
+            if self.at_non_trivia_symbol(",") {
+                self.expect_symbol(",", &mut children);
+            }
+        }
+        self.expect_symbol(")", &mut children);
+        node_from_children(SyntaxKind::LAMBDA_PARAM_LIST, children)
+    }
+
+    fn can_parse_lambda_param(&self) -> bool { self.at_non_trivia_ident() }
+    fn parse_lambda_param(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.skip_trivia_into(&mut children);
+        if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else { self.error_here("expected Ident"); }
+        if self.at_non_trivia_symbol(":") {
+            self.expect_symbol(":", &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        node_from_children(SyntaxKind::LAMBDA_PARAM, children)
     }
 
     fn can_parse_block_expr(&self) -> bool { self.at_non_trivia_symbol("{") }

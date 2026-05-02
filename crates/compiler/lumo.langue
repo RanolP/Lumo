@@ -108,7 +108,7 @@ ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? bo
 // === Expressions ===
 
 Expr = pratt {
-  atom: IdentExpr | StringExpr | NumberExpr | LetExpr | ThunkExpr | ForceExpr | MatchExpr | HandleExpr | BundleExpr | IfElseExpr | BlockExpr | ParenExpr | AnnotationExpr
+  atom: IdentExpr | StringExpr | NumberExpr | LetExpr | ThunkExpr | ForceExpr | MatchExpr | HandleExpr | BundleExpr | IfElseExpr | BlockExpr | ParenExpr | AnnotationExpr | LambdaExpr
 
   UnaryExpr:  ('-' | '!') bp(50)
   MemberExpr: bp(90) '.' member:Ident
@@ -139,6 +139,9 @@ BundleEntry = 'fn' name:Ident param_list:ParamList body:FnBody
 
 ParenExpr = '(' inner:Expr ')'
 AnnotationExpr = '(' expr:Expr ':' ty:TypeExpr ')'
+LambdaExpr = 'fn' param_list:LambdaParamList body:FnBody
+LambdaParamList = '(' (LambdaParam (',' LambdaParam)* ','?)? ')'
+LambdaParam = name:Ident (':' ty:TypeExpr)?
 BlockExpr = '{' stmts:BlockStmt* '}'
 
 IfElseExpr = 'if' condition:Expr then_body:BlockExpr ('else' else_clause:ElseClause)?

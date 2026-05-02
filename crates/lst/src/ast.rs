@@ -861,6 +861,7 @@ pub enum Expr<'a> {
     BlockExpr(BlockExpr<'a>),
     ParenExpr(ParenExpr<'a>),
     AnnotationExpr(AnnotationExpr<'a>),
+    LambdaExpr(LambdaExpr<'a>),
     UnaryExpr(UnaryExpr<'a>),
     MemberExpr(MemberExpr<'a>),
     CallExpr(CallExpr<'a>),
@@ -884,6 +885,7 @@ impl<'a> AstNode<'a> for Expr<'a> {
             .or_else(|| BlockExpr::cast(node).map(Self::BlockExpr))
             .or_else(|| ParenExpr::cast(node).map(Self::ParenExpr))
             .or_else(|| AnnotationExpr::cast(node).map(Self::AnnotationExpr))
+            .or_else(|| LambdaExpr::cast(node).map(Self::LambdaExpr))
             .or_else(|| UnaryExpr::cast(node).map(Self::UnaryExpr))
             .or_else(|| MemberExpr::cast(node).map(Self::MemberExpr))
             .or_else(|| CallExpr::cast(node).map(Self::CallExpr))
@@ -905,6 +907,7 @@ impl<'a> AstNode<'a> for Expr<'a> {
             Self::BlockExpr(n) => n.syntax(),
             Self::ParenExpr(n) => n.syntax(),
             Self::AnnotationExpr(n) => n.syntax(),
+            Self::LambdaExpr(n) => n.syntax(),
             Self::UnaryExpr(n) => n.syntax(),
             Self::MemberExpr(n) => n.syntax(),
             Self::CallExpr(n) => n.syntax(),
@@ -1191,6 +1194,57 @@ impl<'a> AnnotationExpr<'a> {
     pub fn ty(&self) -> Option<TypeExpr<'a>> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Node(n) => TypeExpr::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct LambdaExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for LambdaExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::LAMBDA_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> LambdaExpr<'a> {
+    pub fn param_list(&self) -> Option<LambdaParamList<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => LambdaParamList::cast(n),
+            _ => None,
+        })
+    }
+    pub fn body(&self) -> Option<FnBody<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => FnBody::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct LambdaParamList<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for LambdaParamList<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::LAMBDA_PARAM_LIST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+pub struct LambdaParam<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for LambdaParam<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::LAMBDA_PARAM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> LambdaParam<'a> {
+    pub fn name(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
             _ => None,
         })
     }

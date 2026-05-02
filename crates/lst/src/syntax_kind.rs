@@ -110,6 +110,9 @@ pub enum SyntaxKind {
     BUNDLE_ENTRY, // BundleEntry
     PAREN_EXPR, // ParenExpr
     ANNOTATION_EXPR, // AnnotationExpr
+    LAMBDA_EXPR, // LambdaExpr
+    LAMBDA_PARAM_LIST, // LambdaParamList
+    LAMBDA_PARAM, // LambdaParam
     BLOCK_EXPR, // BlockExpr
     IF_ELSE_EXPR, // IfElseExpr
     LET_STMT, // LetStmt
