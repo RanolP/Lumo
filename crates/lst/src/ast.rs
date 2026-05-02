@@ -27,9 +27,32 @@ impl<'a> File<'a> {
     }
 }
 
-pub enum Item<'a> {
-    ExternTypeDecl(ExternTypeDecl<'a>),
-    ExternFnDecl(ExternFnDecl<'a>),
+pub struct Item<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for Item<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ITEM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> Item<'a> {
+    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) => Attribute::cast(n),
+            _ => None,
+        })
+    }
+    pub fn body(&self) -> Option<ItemBody<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => ItemBody::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub enum ItemBody<'a> {
+    ExternDecl(ExternDecl<'a>),
     DataDecl(DataDecl<'a>),
     CapDecl(CapDecl<'a>),
     FnDecl(FnDecl<'a>),
@@ -37,11 +60,10 @@ pub enum Item<'a> {
     ImplDecl(ImplDecl<'a>),
 }
 
-impl<'a> AstNode<'a> for Item<'a> {
+impl<'a> AstNode<'a> for ItemBody<'a> {
     fn cast(node: &'a SyntaxNode) -> Option<Self> {
         None
-            .or_else(|| ExternTypeDecl::cast(node).map(Self::ExternTypeDecl))
-            .or_else(|| ExternFnDecl::cast(node).map(Self::ExternFnDecl))
+            .or_else(|| ExternDecl::cast(node).map(Self::ExternDecl))
             .or_else(|| DataDecl::cast(node).map(Self::DataDecl))
             .or_else(|| CapDecl::cast(node).map(Self::CapDecl))
             .or_else(|| FnDecl::cast(node).map(Self::FnDecl))
@@ -50,8 +72,7 @@ impl<'a> AstNode<'a> for Item<'a> {
     }
     fn syntax(&self) -> &'a SyntaxNode {
         match self {
-            Self::ExternTypeDecl(n) => n.syntax(),
-            Self::ExternFnDecl(n) => n.syntax(),
+            Self::ExternDecl(n) => n.syntax(),
             Self::DataDecl(n) => n.syntax(),
             Self::CapDecl(n) => n.syntax(),
             Self::FnDecl(n) => n.syntax(),
@@ -73,7 +94,7 @@ impl<'a> AstNode<'a> for Attribute<'a> {
 impl<'a> Attribute<'a> {
     pub fn name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::ATTR_NAME => Some(t),
             _ => None,
         })
     }
@@ -97,62 +118,19 @@ impl<'a> AttributeArgs<'a> {
     }
 }
 
-pub enum AttributeArgItem<'a> {
-    AttributeArgIdent(AttributeArgIdent<'a>),
-    AttributeArg(AttributeArg<'a>),
-}
+pub struct AttributeArgItem<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for AttributeArgItem<'a> {
     fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        None
-            .or_else(|| AttributeArgIdent::cast(node).map(Self::AttributeArgIdent))
-            .or_else(|| AttributeArg::cast(node).map(Self::AttributeArg))
-    }
-    fn syntax(&self) -> &'a SyntaxNode {
-        match self {
-            Self::AttributeArgIdent(n) => n.syntax(),
-            Self::AttributeArg(n) => n.syntax(),
-        }
-    }
-}
-
-pub struct AttributeArgIdent<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for AttributeArgIdent<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::ATTRIBUTE_ARG_IDENT).then(|| Self(node))
+        (node.kind == SyntaxKind::ATTRIBUTE_ARG_ITEM).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
-impl<'a> AttributeArgIdent<'a> {
+impl<'a> AttributeArgItem<'a> {
     pub fn name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
-            _ => None,
-        })
-    }
-}
-
-pub struct AttributeArg<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for AttributeArg<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::ATTRIBUTE_ARG).then(|| Self(node))
-    }
-    fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-impl<'a> AttributeArg<'a> {
-    pub fn key(&self) -> Option<&'a LosslessToken> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
-            _ => None,
-        })
-    }
-    pub fn value(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::ATTR_NAME => Some(t),
             _ => None,
         })
     }
@@ -168,12 +146,6 @@ impl<'a> AstNode<'a> for DataDecl<'a> {
 }
 
 impl<'a> DataDecl<'a> {
-    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => Attribute::cast(n),
-            _ => None,
-        })
-    }
     pub fn name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
@@ -252,12 +224,6 @@ impl<'a> AstNode<'a> for FnDecl<'a> {
 }
 
 impl<'a> FnDecl<'a> {
-    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => Attribute::cast(n),
-            _ => None,
-        })
-    }
     pub fn name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
@@ -415,8 +381,45 @@ impl<'a> AstNode<'a> for CapAnnotation<'a> {
 }
 
 impl<'a> CapAnnotation<'a> {
-    pub fn cap(&self) -> Option<CapSig<'a>> {
+    pub fn cap(&self) -> Option<CapAnnotationBody<'a>> {
         self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => CapAnnotationBody::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub enum CapAnnotationBody<'a> {
+    CapSet(CapSet<'a>),
+    CapSig(CapSig<'a>),
+}
+
+impl<'a> AstNode<'a> for CapAnnotationBody<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| CapSet::cast(node).map(Self::CapSet))
+            .or_else(|| CapSig::cast(node).map(Self::CapSig))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::CapSet(n) => n.syntax(),
+            Self::CapSig(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct CapSet<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapSet<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_SET).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> CapSet<'a> {
+    pub fn sigs(&self) -> impl Iterator<Item = CapSig<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
             SyntaxElement::Node(n) => CapSig::cast(n),
             _ => None,
         })
@@ -495,22 +498,53 @@ impl<'a> OperationDecl<'a> {
     }
 }
 
-pub struct ExternTypeDecl<'a>(pub(crate) &'a SyntaxNode);
+pub struct ExternDecl<'a>(pub(crate) &'a SyntaxNode);
 
-impl<'a> AstNode<'a> for ExternTypeDecl<'a> {
+impl<'a> AstNode<'a> for ExternDecl<'a> {
     fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::EXTERN_TYPE_DECL).then(|| Self(node))
+        (node.kind == SyntaxKind::EXTERN_DECL).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
-impl<'a> ExternTypeDecl<'a> {
-    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => Attribute::cast(n),
+impl<'a> ExternDecl<'a> {
+    pub fn rest(&self) -> Option<ExternRest<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => ExternRest::cast(n),
             _ => None,
         })
     }
+}
+
+pub enum ExternRest<'a> {
+    ExternTypeTail(ExternTypeTail<'a>),
+    ExternFnTail(ExternFnTail<'a>),
+}
+
+impl<'a> AstNode<'a> for ExternRest<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| ExternTypeTail::cast(node).map(Self::ExternTypeTail))
+            .or_else(|| ExternFnTail::cast(node).map(Self::ExternFnTail))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::ExternTypeTail(n) => n.syntax(),
+            Self::ExternFnTail(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct ExternTypeTail<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExternTypeTail<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXTERN_TYPE_TAIL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> ExternTypeTail<'a> {
     pub fn name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
@@ -519,22 +553,16 @@ impl<'a> ExternTypeDecl<'a> {
     }
 }
 
-pub struct ExternFnDecl<'a>(pub(crate) &'a SyntaxNode);
+pub struct ExternFnTail<'a>(pub(crate) &'a SyntaxNode);
 
-impl<'a> AstNode<'a> for ExternFnDecl<'a> {
+impl<'a> AstNode<'a> for ExternFnTail<'a> {
     fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::EXTERN_FN_DECL).then(|| Self(node))
+        (node.kind == SyntaxKind::EXTERN_FN_TAIL).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
-impl<'a> ExternFnDecl<'a> {
-    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => Attribute::cast(n),
-            _ => None,
-        })
-    }
+impl<'a> ExternFnTail<'a> {
     pub fn name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
@@ -1200,12 +1228,6 @@ impl<'a> BlockExpr<'a> {
     pub fn stmts(&self) -> impl Iterator<Item = BlockStmt<'a>> + 'a {
         self.0.children.iter().filter_map(|c| match c {
             SyntaxElement::Node(n) => BlockStmt::cast(n),
-            _ => None,
-        })
-    }
-    pub fn result(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
             _ => None,
         })
     }

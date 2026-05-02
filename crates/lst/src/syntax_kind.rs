@@ -6,6 +6,7 @@
 #[repr(u16)]
 pub enum SyntaxKind {
     // Named tokens
+    ATTR_NAME,
     NUMBER_LIT,
     STRING_LIT,
     IDENT,
@@ -62,10 +63,10 @@ pub enum SyntaxKind {
     R_BRACE, // '}'
     // Nodes
     FILE, // File
+    ITEM, // Item
     ATTRIBUTE, // Attribute
     ATTRIBUTE_ARGS, // AttributeArgs
-    ATTRIBUTE_ARG_IDENT, // AttributeArgIdent
-    ATTRIBUTE_ARG, // AttributeArg
+    ATTRIBUTE_ARG_ITEM, // AttributeArgItem
     DATA_DECL, // DataDecl
     VARIANT, // Variant
     VARIANT_FIELDS, // VariantFields
@@ -76,11 +77,13 @@ pub enum SyntaxKind {
     PARAM_LIST, // ParamList
     PARAM, // Param
     CAP_ANNOTATION, // CapAnnotation
+    CAP_SET, // CapSet
     CAP_SIG, // CapSig
     CAP_DECL, // CapDecl
     OPERATION_DECL, // OperationDecl
-    EXTERN_TYPE_DECL, // ExternTypeDecl
-    EXTERN_FN_DECL, // ExternFnDecl
+    EXTERN_DECL, // ExternDecl
+    EXTERN_TYPE_TAIL, // ExternTypeTail
+    EXTERN_FN_TAIL, // ExternFnTail
     USE_DECL, // UseDecl
     USE_PATH, // UsePath
     USE_PATH_REST, // UsePathRest

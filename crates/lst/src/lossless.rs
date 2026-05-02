@@ -158,6 +158,20 @@ impl Parser {
     fn at_non_trivia_ident(&self) -> bool {
         matches!(self.peek_non_trivia_token(0).map(|t| &t.kind), Some(LexKind::Ident))
     }
+    fn at_non_trivia_string_lit(&self) -> bool {
+        matches!(self.peek_non_trivia_token(0).map(|t| &t.kind), Some(LexKind::StringLit))
+    }
+    fn at_non_trivia_number_lit(&self) -> bool {
+        matches!(self.peek_non_trivia_token(0).map(|t| &t.kind), Some(LexKind::NumberLit))
+    }
+    fn at_non_trivia_name(&self) -> bool {
+        matches!(self.peek_non_trivia_token(0).map(|t| &t.kind), Some(LexKind::Ident) | Some(LexKind::Keyword(_)))
+    }
+    fn expect_name(&mut self, children: &mut Vec<SyntaxElement>) {
+        self.skip_trivia_into(children);
+        if self.at_non_trivia_name() { children.push(SyntaxElement::Token(self.bump().unwrap())); }
+        else { self.error_here("expected identifier"); }
+    }
     fn at_non_trivia_ident_text(&self, text: &str) -> bool {
         matches!(self.peek_non_trivia_token(0), Some(tok) if matches!(tok.kind, LexKind::Ident) && tok.text == text)
     }
@@ -209,16 +223,25 @@ impl Parser {
         node_from_children(SyntaxKind::FILE, children)
     }
 
-    fn can_parse_item(&self) -> bool { self.can_parse_extern_type_decl() || self.can_parse_extern_fn_decl() || self.can_parse_data_decl() || self.can_parse_cap_decl() || self.can_parse_fn_decl() || self.can_parse_use_decl() || self.can_parse_impl_decl() }
+    fn can_parse_item(&self) -> bool { self.at_non_trivia_symbol("#") || self.can_parse_item_body() }
     fn parse_item(&mut self) -> SyntaxNode {
-        if self.can_parse_extern_type_decl() { return self.parse_extern_type_decl(); }
-        if self.can_parse_extern_fn_decl() { return self.parse_extern_fn_decl(); }
+        let mut children = Vec::new();
+        while self.can_parse_attribute() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_attribute())));
+        }
+        children.push(SyntaxElement::Node(Box::new(self.parse_item_body())));
+        node_from_children(SyntaxKind::ITEM, children)
+    }
+
+    fn can_parse_item_body(&self) -> bool { self.can_parse_extern_decl() || self.can_parse_data_decl() || self.can_parse_cap_decl() || self.can_parse_fn_decl() || self.can_parse_use_decl() || self.can_parse_impl_decl() }
+    fn parse_item_body(&mut self) -> SyntaxNode {
+        if self.can_parse_extern_decl() { return self.parse_extern_decl(); }
         if self.can_parse_data_decl() { return self.parse_data_decl(); }
         if self.can_parse_cap_decl() { return self.parse_cap_decl(); }
         if self.can_parse_fn_decl() { return self.parse_fn_decl(); }
         if self.can_parse_use_decl() { return self.parse_use_decl(); }
         if self.can_parse_impl_decl() { return self.parse_impl_decl(); }
-        self.error_here("expected Item");
+        self.error_here("expected ItemBody");
         node_from_children(SyntaxKind::ERROR, Vec::new())
     }
 
@@ -227,10 +250,7 @@ impl Parser {
         let mut children = Vec::new();
         self.expect_symbol("#", &mut children);
         self.expect_symbol("[", &mut children);
-        self.skip_trivia_into(&mut children);
-        if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
-            children.push(SyntaxElement::Token(self.bump().unwrap()));
-        } else { self.error_here("expected Ident"); }
+        self.expect_name(&mut children);
         if self.can_parse_attribute_args() {
             children.push(SyntaxElement::Node(Box::new(self.parse_attribute_args())));
         }
@@ -249,42 +269,23 @@ impl Parser {
         node_from_children(SyntaxKind::ATTRIBUTE_ARGS, children)
     }
 
-    fn can_parse_attribute_arg_item(&self) -> bool { self.can_parse_attribute_arg_ident() || self.can_parse_attribute_arg() }
+    fn can_parse_attribute_arg_item(&self) -> bool { self.at_non_trivia_name() }
     fn parse_attribute_arg_item(&mut self) -> SyntaxNode {
-        if self.can_parse_attribute_arg_ident() { return self.parse_attribute_arg_ident(); }
-        if self.can_parse_attribute_arg() { return self.parse_attribute_arg(); }
-        self.error_here("expected AttributeArgItem");
-        node_from_children(SyntaxKind::ERROR, Vec::new())
-    }
-
-    fn can_parse_attribute_arg_ident(&self) -> bool { self.at_non_trivia_ident() }
-    fn parse_attribute_arg_ident(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        self.skip_trivia_into(&mut children);
-        if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
-            children.push(SyntaxElement::Token(self.bump().unwrap()));
-        } else { self.error_here("expected Ident"); }
-        node_from_children(SyntaxKind::ATTRIBUTE_ARG_IDENT, children)
-    }
-
-    fn can_parse_attribute_arg(&self) -> bool { self.at_non_trivia_ident() }
-    fn parse_attribute_arg(&mut self) -> SyntaxNode {
-        let mut children = Vec::new();
-        self.skip_trivia_into(&mut children);
-        if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
-            children.push(SyntaxElement::Token(self.bump().unwrap()));
-        } else { self.error_here("expected Ident"); }
-        self.expect_symbol("=", &mut children);
-        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
-        node_from_children(SyntaxKind::ATTRIBUTE_ARG, children)
+        self.expect_name(&mut children);
+        if self.at_non_trivia_symbol("=") {
+            self.expect_symbol("=", &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        }
+        if self.at_non_trivia_symbol(",") {
+            self.expect_symbol(",", &mut children);
+        }
+        node_from_children(SyntaxKind::ATTRIBUTE_ARG_ITEM, children)
     }
 
     fn can_parse_data_decl(&self) -> bool { self.at_non_trivia_keyword(Keyword::Data) }
     fn parse_data_decl(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        while self.can_parse_attribute() {
-            children.push(SyntaxElement::Node(Box::new(self.parse_attribute())));
-        }
         self.expect_keyword(Keyword::Data, &mut children);
         self.skip_trivia_into(&mut children);
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
@@ -301,7 +302,7 @@ impl Parser {
         node_from_children(SyntaxKind::DATA_DECL, children)
     }
 
-    fn can_parse_variant(&self) -> bool { self.at_non_trivia_symbol(".") }
+    fn can_parse_variant(&self) -> bool { self.at_non_trivia_symbol("#") || self.at_non_trivia_symbol(".") }
     fn parse_variant(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         while self.can_parse_attribute() {
@@ -314,6 +315,9 @@ impl Parser {
         } else { self.error_here("expected Ident"); }
         if self.can_parse_variant_fields() {
             children.push(SyntaxElement::Node(Box::new(self.parse_variant_fields())));
+        }
+        if self.at_non_trivia_symbol(",") {
+            self.expect_symbol(",", &mut children);
         }
         node_from_children(SyntaxKind::VARIANT, children)
     }
@@ -332,9 +336,6 @@ impl Parser {
     fn can_parse_fn_decl(&self) -> bool { self.at_non_trivia_keyword(Keyword::Fn) }
     fn parse_fn_decl(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        while self.can_parse_attribute() {
-            children.push(SyntaxElement::Node(Box::new(self.parse_attribute())));
-        }
         self.expect_keyword(Keyword::Fn, &mut children);
         self.skip_trivia_into(&mut children);
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
@@ -423,8 +424,27 @@ impl Parser {
     fn parse_cap_annotation(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         self.expect_symbol("/", &mut children);
-        children.push(SyntaxElement::Node(Box::new(self.parse_cap_sig())));
+        children.push(SyntaxElement::Node(Box::new(self.parse_cap_annotation_body())));
         node_from_children(SyntaxKind::CAP_ANNOTATION, children)
+    }
+
+    fn can_parse_cap_annotation_body(&self) -> bool { self.can_parse_cap_set() || self.can_parse_cap_sig() }
+    fn parse_cap_annotation_body(&mut self) -> SyntaxNode {
+        if self.can_parse_cap_set() { return self.parse_cap_set(); }
+        if self.can_parse_cap_sig() { return self.parse_cap_sig(); }
+        self.error_here("expected CapAnnotationBody");
+        node_from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_cap_set(&self) -> bool { self.at_non_trivia_symbol("{") }
+    fn parse_cap_set(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.expect_symbol("{", &mut children);
+        while self.can_parse_cap_sig() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_cap_sig())));
+        }
+        self.expect_symbol("}", &mut children);
+        node_from_children(SyntaxKind::CAP_SET, children)
     }
 
     fn can_parse_cap_sig(&self) -> bool { self.at_non_trivia_ident() }
@@ -472,13 +492,25 @@ impl Parser {
         node_from_children(SyntaxKind::OPERATION_DECL, children)
     }
 
-    fn can_parse_extern_type_decl(&self) -> bool { self.at_non_trivia_keyword(Keyword::Extern) }
-    fn parse_extern_type_decl(&mut self) -> SyntaxNode {
+    fn can_parse_extern_decl(&self) -> bool { self.at_non_trivia_keyword(Keyword::Extern) }
+    fn parse_extern_decl(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        while self.can_parse_attribute() {
-            children.push(SyntaxElement::Node(Box::new(self.parse_attribute())));
-        }
         self.expect_keyword(Keyword::Extern, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_extern_rest())));
+        node_from_children(SyntaxKind::EXTERN_DECL, children)
+    }
+
+    fn can_parse_extern_rest(&self) -> bool { self.can_parse_extern_type_tail() || self.can_parse_extern_fn_tail() }
+    fn parse_extern_rest(&mut self) -> SyntaxNode {
+        if self.can_parse_extern_type_tail() { return self.parse_extern_type_tail(); }
+        if self.can_parse_extern_fn_tail() { return self.parse_extern_fn_tail(); }
+        self.error_here("expected ExternRest");
+        node_from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_extern_type_tail(&self) -> bool { self.at_non_trivia_ident_text("type") }
+    fn parse_extern_type_tail(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
         self.skip_trivia_into(&mut children);
         if self.current().map(|t| matches!(t.kind, LexKind::Ident) && t.text.as_str() == "type").unwrap_or(false) {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
@@ -487,16 +519,15 @@ impl Parser {
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         } else { self.error_here("expected Ident"); }
-        node_from_children(SyntaxKind::EXTERN_TYPE_DECL, children)
+        if self.at_non_trivia_symbol(";") {
+            self.expect_symbol(";", &mut children);
+        }
+        node_from_children(SyntaxKind::EXTERN_TYPE_TAIL, children)
     }
 
-    fn can_parse_extern_fn_decl(&self) -> bool { self.at_non_trivia_keyword(Keyword::Extern) }
-    fn parse_extern_fn_decl(&mut self) -> SyntaxNode {
+    fn can_parse_extern_fn_tail(&self) -> bool { self.at_non_trivia_keyword(Keyword::Fn) }
+    fn parse_extern_fn_tail(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        while self.can_parse_attribute() {
-            children.push(SyntaxElement::Node(Box::new(self.parse_attribute())));
-        }
-        self.expect_keyword(Keyword::Extern, &mut children);
         self.expect_keyword(Keyword::Fn, &mut children);
         self.skip_trivia_into(&mut children);
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
@@ -510,7 +541,10 @@ impl Parser {
         if self.can_parse_cap_annotation() {
             children.push(SyntaxElement::Node(Box::new(self.parse_cap_annotation())));
         }
-        node_from_children(SyntaxKind::EXTERN_FN_DECL, children)
+        if self.at_non_trivia_symbol(";") {
+            self.expect_symbol(";", &mut children);
+        }
+        node_from_children(SyntaxKind::EXTERN_FN_TAIL, children)
     }
 
     fn can_parse_use_decl(&self) -> bool { self.at_non_trivia_keyword(Keyword::Use) }
@@ -756,7 +790,7 @@ impl Parser {
         node_from_children(SyntaxKind::IDENT_EXPR, children)
     }
 
-    fn can_parse_string_expr(&self) -> bool { self.at_non_trivia_ident() }
+    fn can_parse_string_expr(&self) -> bool { self.at_non_trivia_string_lit() }
     fn parse_string_expr(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         self.skip_trivia_into(&mut children);
@@ -766,7 +800,7 @@ impl Parser {
         node_from_children(SyntaxKind::STRING_EXPR, children)
     }
 
-    fn can_parse_number_expr(&self) -> bool { self.at_non_trivia_ident() }
+    fn can_parse_number_expr(&self) -> bool { self.at_non_trivia_number_lit() }
     fn parse_number_expr(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         self.skip_trivia_into(&mut children);
@@ -828,6 +862,9 @@ impl Parser {
         children.push(SyntaxElement::Node(Box::new(self.parse_pattern())));
         self.expect_symbol("=>", &mut children);
         children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        if self.at_non_trivia_symbol(",") {
+            self.expect_symbol(",", &mut children);
+        }
         node_from_children(SyntaxKind::MATCH_ARM, children)
     }
 
@@ -901,7 +938,6 @@ impl Parser {
         while self.can_parse_block_stmt() {
             children.push(SyntaxElement::Node(Box::new(self.parse_block_stmt())));
         }
-        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
         self.expect_symbol("}", &mut children);
         node_from_children(SyntaxKind::BLOCK_EXPR, children)
     }
@@ -953,7 +989,9 @@ impl Parser {
     fn parse_expr_stmt(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
-        self.expect_symbol(";", &mut children);
+        if self.at_non_trivia_symbol(";") {
+            self.expect_symbol(";", &mut children);
+        }
         node_from_children(SyntaxKind::EXPR_STMT, children)
     }
 

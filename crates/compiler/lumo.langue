@@ -7,15 +7,16 @@
 
 #[parser(generate = true, path = "lossless.rs")]
 
-@token Ident StringLit NumberLit
+@token Ident StringLit NumberLit AttrName
 
 // === Top-level ===
 
 File = items:Item*
 
-Item =
-  | ExternTypeDecl
-  | ExternFnDecl
+Item = attrs:Attribute* body:ItemBody
+
+ItemBody =
+  | ExternDecl
   | DataDecl
   | CapDecl
   | FnDecl
@@ -24,23 +25,19 @@ Item =
 
 // === Attributes ===
 
-Attribute = '#' '[' name:Ident AttributeArgs? ']'
+Attribute = '#' '[' name:AttrName AttributeArgs? ']'
 AttributeArgs = '(' items:AttributeArgItem* ')'
-AttributeArgItem =
-  | AttributeArgIdent
-  | AttributeArg
-AttributeArgIdent = name:Ident
-AttributeArg = key:Ident '=' value:Expr
+AttributeArgItem = name:AttrName ('=' value:Expr)? ','?
 
 // === Data types ===
 
-DataDecl = attrs:Attribute* 'data' name:Ident generic_params:GenericParams? '{' variants:Variant* '}'
-Variant = attrs:Attribute* '.' name:Ident variant_fields:VariantFields?
+DataDecl = 'data' name:Ident generic_params:GenericParams? '{' variants:Variant* '}'
+Variant = attrs:Attribute* '.' name:Ident variant_fields:VariantFields? ','?
 VariantFields = '(' fields:TypeExpr* ')'
 
 // === Functions ===
 
-FnDecl = attrs:Attribute* 'fn' name:Ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? body:FnBody
+FnDecl = 'fn' name:Ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? body:FnBody
 
 FnBody =
   | BlockExpr
@@ -60,7 +57,11 @@ Param = name:Ident ':' ty:TypeExpr
 
 // === Capabilities ===
 
-CapAnnotation = '/' cap:CapSig
+CapAnnotation = '/' cap:CapAnnotationBody
+CapAnnotationBody =
+  | CapSet
+  | CapSig
+CapSet = '{' sigs:CapSig* '}'
 CapSig = name:Ident generic_args:GenericArgs?
 CapDecl = 'cap' name:Ident '{' operations:OperationDecl* '}'
 OperationDecl = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)?
@@ -83,8 +84,12 @@ OperationDecl = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)?
 //
 // Parser flattens blocks into individual ExternFnDecl / ExternTypeDecl items
 // with the block's attrs merged into each. No distinct CST node.
-ExternTypeDecl = attrs:Attribute* 'extern' 'type' name:Ident
-ExternFnDecl = attrs:Attribute* 'extern' 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation?
+ExternDecl = 'extern' rest:ExternRest
+ExternRest =
+  | ExternTypeTail
+  | ExternFnTail
+ExternTypeTail = 'type' name:Ident ';'?
+ExternFnTail = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? ';'?
 
 // === Use declarations ===
 
@@ -128,7 +133,7 @@ ThunkExpr = 'thunk' body:Expr
 ForceExpr = 'force' expr:Expr
 
 MatchExpr = 'match' scrutinee:Expr '{' arms:MatchArm* '}'
-MatchArm = pattern:Pattern '=>' body:Expr
+MatchArm = pattern:Pattern '=>' body:Expr ','?
 
 // Surface handle: cap is a raw signature string (e.g. "Add" or "Add for Number")
 HandleExpr = 'handle' cap:Ident 'with' handler:Expr 'in' body:Expr
@@ -137,7 +142,7 @@ BundleEntry = 'fn' name:Ident param_list:ParamList body:FnBody
 
 ParenExpr = '(' inner:Expr ')'
 AnnotationExpr = '(' expr:Expr ':' ty:TypeExpr ')'
-BlockExpr = '{' stmts:BlockStmt* result:Expr '}'
+BlockExpr = '{' stmts:BlockStmt* '}'
 
 IfElseExpr = 'if' condition:Expr then_body:BlockExpr ('else' else_clause:ElseClause)?
 ElseClause =
@@ -148,7 +153,7 @@ BlockStmt =
   | LetStmt
   | ExprStmt
 LetStmt = 'let' name:Ident '=' value:Expr ';'
-ExprStmt = expr:Expr ';'
+ExprStmt = expr:Expr ';'?
 
 // === Patterns ===
 

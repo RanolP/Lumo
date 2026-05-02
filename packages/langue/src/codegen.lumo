@@ -842,6 +842,20 @@ fn emit_parser_helpers(s: String): String {
   let s = s + "    fn at_non_trivia_ident(&self) -> bool {\n";
   let s = s + "        matches!(self.peek_non_trivia_token(0).map(|t| &t.kind), Some(LexKind::Ident))\n";
   let s = s + "    }\n";
+  let s = s + "    fn at_non_trivia_string_lit(&self) -> bool {\n";
+  let s = s + "        matches!(self.peek_non_trivia_token(0).map(|t| &t.kind), Some(LexKind::StringLit))\n";
+  let s = s + "    }\n";
+  let s = s + "    fn at_non_trivia_number_lit(&self) -> bool {\n";
+  let s = s + "        matches!(self.peek_non_trivia_token(0).map(|t| &t.kind), Some(LexKind::NumberLit))\n";
+  let s = s + "    }\n";
+  let s = s + "    fn at_non_trivia_name(&self) -> bool {\n";
+  let s = s + "        matches!(self.peek_non_trivia_token(0).map(|t| &t.kind), Some(LexKind::Ident) | Some(LexKind::Keyword(_)))\n";
+  let s = s + "    }\n";
+  let s = s + "    fn expect_name(&mut self, children: &mut Vec<SyntaxElement>) {\n";
+  let s = s + "        self.skip_trivia_into(children);\n";
+  let s = s + "        if self.at_non_trivia_name() { children.push(SyntaxElement::Token(self.bump().unwrap())); }\n";
+  let s = s + "        else { self.error_here(\"expected identifier\"); }\n";
+  let s = s + "    }\n";
   let s = s + "    fn at_non_trivia_ident_text(&self, text: &str) -> bool {\n";
   let s = s + "        matches!(self.peek_non_trivia_token(0), Some(tok) if matches!(tok.kind, LexKind::Ident) && tok.text == text)\n";
   let s = s + "    }\n";
@@ -916,10 +930,25 @@ fn make_first_elem_lookahead(elems: List[Element], token_defs: List[String]): St
       let core = unwrap_labeled_elem(elem);
       match core {
         .optional(inner) => make_first_elem_lookahead(rest, token_defs),
-        .repeated(inner) => make_first_elem_lookahead(rest, token_defs),
+        .repeated(inner) => {
+          let suffix = make_first_elem_lookahead(rest, token_defs);
+          let attr_prefix = make_attr_star_prefix(inner);
+          if attr_prefix == "" { suffix }
+          else if suffix == "false" { attr_prefix }
+          else { attr_prefix + " || " + suffix }
+        },
         _ => make_element_lookahead(elem, token_defs)
       }
     }
+  }
+
+fn make_attr_star_prefix(inner: Element): String =
+  match inner {
+    .node(ref) => match ref { .mk(name) =>
+      if name == "Attribute" { "self.at_non_trivia_symbol(\"#\")" }
+      else { "" }
+    },
+    _ => ""
   }
 
 fn unwrap_labeled_elem(elem: Element): Element =
@@ -1195,7 +1224,9 @@ fn emit_parse_element(s: String, elem: Element, token_defs: List[String], indent
     .token(t) => emit_parse_token_element(s, t, indent),
     .node(ref) =>
       match ref { .mk(name) =>
-        if list_contains_string(token_defs, name) {
+        if name == "AttrName" {
+          s + indent + "self.expect_name(&mut children);\n"
+        } else if list_contains_string(token_defs, name) {
           s + indent + "self.skip_trivia_into(&mut children);\n" +
           indent + "if matches!(self.current().map(|t| &t.kind), Some(LexKind::" + to_named_lex(name) + ")) {\n" +
           indent + "    children.push(SyntaxElement::Token(self.bump().unwrap()));\n" +
@@ -1224,10 +1255,14 @@ fn emit_parse_token_element(s: String, t: TokenRef, indent: String): String =
     .symbol(sym) =>
       s + indent + "self.expect_symbol(\"" + sym + "\", &mut children);\n",
     .named(name) =>
-      s + indent + "self.skip_trivia_into(&mut children);\n" +
-      indent + "if matches!(self.current().map(|t| &t.kind), Some(LexKind::" + to_named_lex(name) + ")) {\n" +
-      indent + "    children.push(SyntaxElement::Token(self.bump().unwrap()));\n" +
-      indent + "} else { self.error_here(\"expected " + name + "\"); }\n"
+      if name == "AttrName" {
+        s + indent + "self.expect_name(&mut children);\n"
+      } else {
+        s + indent + "self.skip_trivia_into(&mut children);\n" +
+        indent + "if matches!(self.current().map(|t| &t.kind), Some(LexKind::" + to_named_lex(name) + ")) {\n" +
+        indent + "    children.push(SyntaxElement::Token(self.bump().unwrap()));\n" +
+        indent + "} else { self.error_here(\"expected " + name + "\"); }\n"
+      }
   }
 
 fn emit_parse_optional(s: String, inner: Element, token_defs: List[String], indent: String): String {
@@ -1252,11 +1287,16 @@ fn make_element_lookahead(elem: Element, token_defs: List[String]): String =
           if is_lexer_keyword(kw) { "self.at_non_trivia_keyword(Keyword::" + keyword_variant_pascal(kw) + ")" }
           else { "self.at_non_trivia_ident_text(\"" + kw + "\")" },
         .symbol(sym) => "self.at_non_trivia_symbol(\"" + sym + "\")",
-        .named(name) => "self.at_non_trivia_ident()"
+        .named(name) =>
+          if name == "AttrName" { "self.at_non_trivia_name()" }
+          else if name == "StringLit" { "self.at_non_trivia_string_lit()" }
+          else if name == "NumberLit" { "self.at_non_trivia_number_lit()" }
+          else { "self.at_non_trivia_ident()" }
       },
     .node(ref) =>
       match ref { .mk(name) =>
-        if list_contains_string(token_defs, name) { "self.at_non_trivia_ident()" }
+        if name == "AttrName" { "self.at_non_trivia_name()" }
+        else if list_contains_string(token_defs, name) { "self.at_non_trivia_ident()" }
         else { "self.can_parse_" + to_snake(name) + "()" }
       },
     .labeled(label, inner) => make_element_lookahead(inner, token_defs),
