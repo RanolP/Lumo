@@ -41,6 +41,7 @@ pub enum SyntaxKind {
     R_PAREN, // ')'
     STAR, // '*'
     PLUS, // '+'
+    COMMA, // ','
     MINUS, // '-'
     DOT, // '.'
     SLASH, // '/'
@@ -82,7 +83,10 @@ pub enum SyntaxKind {
     EXTERN_FN_DECL, // ExternFnDecl
     USE_DECL, // UseDecl
     USE_PATH, // UsePath
+    USE_PATH_REST, // UsePathRest
+    USE_PATH_BRANCH, // UsePathBranch
     USE_TREE, // UseTree
+    USE_NAME_ITEM, // UseNameItem
     IMPL_DECL, // ImplDecl
     IMPL_METHOD, // ImplMethod
     UNARY_EXPR, // UnaryExpr
@@ -112,8 +116,6 @@ pub enum SyntaxKind {
     WILDCARD_PATTERN, // WildcardPattern
     TYPE_EXPR, // TypeExpr
     GENERIC_ARGS, // GenericArgs
-    BINARY_OP, // BinaryOp (token wrapper)
-    UNARY_OP, // UnaryOp (token wrapper)
     // Sentinel
     ERROR,
 }
@@ -157,6 +159,7 @@ impl SyntaxKind {
             ")" => Some(Self::R_PAREN),
             "*" => Some(Self::STAR),
             "+" => Some(Self::PLUS),
+            "," => Some(Self::COMMA),
             "-" => Some(Self::MINUS),
             "." => Some(Self::DOT),
             "/" => Some(Self::SLASH),

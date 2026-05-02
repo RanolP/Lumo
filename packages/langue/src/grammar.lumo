@@ -1,8 +1,13 @@
 use libcore.prelude.{String, Number, Bool};
 use libstd.list.{List};
 
-// A complete grammar: token declarations + node rules
-data Grammar { .mk(List[String], List[Rule]) }
+// File-level attributes parsed from #[...] directives before rules
+data GrammarAttr {
+  .parser_generate(String)  // path to emit the parser to
+}
+
+// A complete grammar: token declarations + file attrs + node rules
+data Grammar { .mk(List[String], List[GrammarAttr], List[Rule]) }
 
 // A named rule: `Name = body`
 data Rule { .mk(String, RuleBody) }

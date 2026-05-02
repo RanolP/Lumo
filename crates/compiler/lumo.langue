@@ -5,6 +5,8 @@
 // To update: edit this file, then run `scripts/gen_langue.sh compiler`
 // Reference: crates/lst/src/parser.rs (Expr enum, Item enum)
 
+#[parser(generate = true, path = "lossless.rs")]
+
 @token Ident StringLit NumberLit
 
 // === Top-level ===
@@ -87,8 +89,14 @@ ExternFnDecl = attrs:Attribute* 'extern' 'fn' name:Ident param_list:ParamList ('
 // === Use declarations ===
 
 UseDecl = 'use' path:UsePath ';'
-UsePath = segments:Ident* use_tree:UseTree?
-UseTree = '.' '{' names:Ident* '}'
+UsePath = head:Ident rest:UsePathRest?
+UsePathRest = '.' item:UsePathItem
+UsePathItem =
+  | UsePathBranch
+  | UseTree
+UsePathBranch = next:Ident cont:UsePathRest?
+UseTree = '{' names:UseNameItem* '}'
+UseNameItem = name:Ident ','?
 
 // === Impl blocks ===
 
@@ -159,24 +167,3 @@ WildcardPattern = '_'
 TypeExpr = name:Ident generic_args:GenericArgs?
 GenericArgs = '[' args:TypeExpr* ']'
 
-// === Operators ===
-// Token-only alternatives: no node wrapper, just SyntaxKind variants
-
-BinaryOp =
-  | '+'
-  | '-'
-  | '*'
-  | '/'
-  | '%'
-  | '=='
-  | '!='
-  | '<'
-  | '<='
-  | '>'
-  | '>='
-  | '&&'
-  | '||'
-
-UnaryOp =
-  | '-'
-  | '!'

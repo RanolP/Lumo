@@ -239,23 +239,112 @@ fn has_alpha(s: String, i: Number): Bool =
 // grammar = (token_def | rule)*
 fn parse_grammar(src: String): ParseResult[Grammar] {
   let st = ParseState.mk(src, 0);
-  parse_grammar_items(st, List.nil, List.nil)
+  parse_grammar_items(st, List.nil, List.nil, List.nil)
 }
 
-fn parse_grammar_items(st: ParseState, tokens: List[String], rules: List[Rule]): ParseResult[Grammar] {
+fn parse_grammar_items(st: ParseState, tokens: List[String], attrs: List[GrammarAttr], rules: List[Rule]): ParseResult[Grammar] {
   let st2 = skip_ws(st);
-  if state_eof(st2) { ParseResult.ok(Grammar.mk(list_reverse_string(tokens), list_reverse_rule(rules)), st2) }
+  if state_eof(st2) {
+    ParseResult.ok(
+      Grammar.mk(list_reverse_string(tokens), list_reverse_attr(attrs), list_reverse_rule(rules)),
+      st2
+    )
+  }
   else if state_peek(st2) == "@" {
-    // @token declaration
     match parse_token_def(st2) {
-      .ok(new_tokens, st3) => parse_grammar_items(st3, list_concat_string(new_tokens, tokens), rules),
+      .ok(new_tokens, st3) => parse_grammar_items(st3, list_concat_string(new_tokens, tokens), attrs, rules),
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
+  }
+  else if state_peek(st2) == "#" {
+    match parse_grammar_attr(st2) {
+      .ok(attr, st3) => parse_grammar_items(st3, tokens, List.cons(attr, attrs), rules),
       .err(msg, pos) => ParseResult.err(msg, pos)
     }
   }
   else {
-    // Rule
     match parse_rule(st2) {
-      .ok(rule, st3) => parse_grammar_items(st3, tokens, List.cons(rule, rules)),
+      .ok(rule, st3) => parse_grammar_items(st3, tokens, attrs, List.cons(rule, rules)),
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
+  }
+}
+
+// Parse #[parser(generate = true, path = "...")]
+fn parse_grammar_attr(st: ParseState): ParseResult[GrammarAttr] {
+  match expect(st, "#") {
+    .err(msg, pos) => ParseResult.err(msg, pos),
+    .ok(_, st2) =>
+      match expect(st2, "[") {
+        .err(msg, pos) => ParseResult.err(msg, pos),
+        .ok(_, st3) =>
+          match parse_ident(st3) {
+            .err(msg, pos) => ParseResult.err(msg, pos),
+            .ok(attr_name, st4) =>
+              if attr_name == "parser" {
+                match expect(st4, "(") {
+                  .err(msg, pos) => ParseResult.err(msg, pos),
+                  .ok(_, st5) =>
+                    match parse_parser_attr_args(st5, Bool.false, "") {
+                      .err(msg, pos) => ParseResult.err(msg, pos),
+                      .ok(path, st6) =>
+                        match expect(st6, ")") {
+                          .err(msg, pos) => ParseResult.err(msg, pos),
+                          .ok(_, st7) =>
+                            match expect(st7, "]") {
+                              .err(msg, pos) => ParseResult.err(msg, pos),
+                              .ok(_, st8) => ParseResult.ok(GrammarAttr.parser_generate(path), st8)
+                            }
+                        }
+                    }
+                }
+              } else {
+                ParseResult.err("unknown file attribute: " + attr_name, state_pos(st4))
+              }
+          }
+      }
+  }
+}
+
+// Parse key=value pairs inside #[parser(...)], extract path= string
+fn parse_parser_attr_args(st: ParseState, has_path: Bool, path: String): ParseResult[String] {
+  let st2 = skip_ws(st);
+  if state_peek(st2) == ")" { ParseResult.ok(path, st2) }
+  else if state_peek(st2) == "," { parse_parser_attr_args(state_advance(st2, 1), has_path, path) }
+  else {
+    match parse_ident(st2) {
+      .err(msg, pos) => ParseResult.err(msg, pos),
+      .ok(key, st3) =>
+        match expect(st3, "=") {
+          .err(msg, pos) => ParseResult.err(msg, pos),
+          .ok(_, st4) =>
+            if key == "path" {
+              match parse_string_lit(st4) {
+                .err(msg, pos) => ParseResult.err(msg, pos),
+                .ok(val, st5) => parse_parser_attr_args(st5, Bool.true, val)
+              }
+            } else {
+              // skip value (ident or string)
+              match try_skip_attr_value(st4) {
+                .err(msg, pos) => ParseResult.err(msg, pos),
+                .ok(_, st5) => parse_parser_attr_args(st5, has_path, path)
+              }
+            }
+        }
+    }
+  }
+}
+
+fn try_skip_attr_value(st: ParseState): ParseResult[String] {
+  let st2 = skip_ws(st);
+  if state_peek(st2) == "\"" {
+    match parse_string_lit(st2) {
+      .ok(_, st3) => ParseResult.ok("", st3),
+      .err(msg, pos) => ParseResult.err(msg, pos)
+    }
+  } else {
+    match parse_ident(st2) {
+      .ok(_, st3) => ParseResult.ok("", st3),
       .err(msg, pos) => ParseResult.err(msg, pos)
     }
   }
@@ -634,8 +723,8 @@ fn parse_group_elements(st: ParseState, acc: List[Element]): ParseResult[List[El
 // ---------------------------------------------------------------------------
 
 fn resolve_grammar(g: Grammar): Grammar =
-  match g { .mk(token_defs, rules) =>
-    Grammar.mk(token_defs, resolve_rules(token_defs, rules))
+  match g { .mk(token_defs, attrs, rules) =>
+    Grammar.mk(token_defs, attrs, resolve_rules(token_defs, rules))
   }
 
 fn resolve_rules(token_defs: List[String], rules: List[Rule]): List[Rule] =
@@ -744,4 +833,30 @@ fn list_concat_string(xs: List[String], ys: List[String]): List[String] =
   match xs {
     .nil => ys,
     .cons(x, rest) => List.cons(x, list_concat_string(rest, ys))
+  }
+
+fn parse_string_lit(st: ParseState): ParseResult[String] {
+  let st2 = skip_ws(st);
+  if state_peek(st2) == "\"" {
+    let start = state_pos(st2) + 1;
+    let end_st = scan_until_double_quote(state_advance(st2, 1));
+    let end_pos = state_pos(end_st);
+    let content = state_src(st2).slice(start, end_pos);
+    ParseResult.ok(content, state_advance(end_st, 1))
+  }
+  else { ParseResult.err("expected string literal", state_pos(st2)) }
+}
+
+fn scan_until_double_quote(st: ParseState): ParseState =
+  if state_eof(st) { st }
+  else if state_peek(st) == "\"" { st }
+  else { scan_until_double_quote(state_advance(st, 1)) }
+
+fn list_reverse_attr(xs: List[GrammarAttr]): List[GrammarAttr] =
+  list_reverse_attr_acc(xs, List.nil)
+
+fn list_reverse_attr_acc(xs: List[GrammarAttr], acc: List[GrammarAttr]): List[GrammarAttr] =
+  match xs {
+    .nil => acc,
+    .cons(x, rest) => list_reverse_attr_acc(rest, List.cons(x, acc))
   }

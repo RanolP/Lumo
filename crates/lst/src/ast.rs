@@ -583,15 +583,76 @@ impl<'a> AstNode<'a> for UsePath<'a> {
 }
 
 impl<'a> UsePath<'a> {
-    pub fn segments(&self) -> impl Iterator<Item = &'a LosslessToken> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
+    pub fn head(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
             _ => None,
         })
     }
-    pub fn use_tree(&self) -> Option<UseTree<'a>> {
+    pub fn rest(&self) -> Option<UsePathRest<'a>> {
         self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => UseTree::cast(n),
+            SyntaxElement::Node(n) => UsePathRest::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct UsePathRest<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UsePathRest<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_PATH_REST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> UsePathRest<'a> {
+    pub fn item(&self) -> Option<UsePathItem<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => UsePathItem::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub enum UsePathItem<'a> {
+    UsePathBranch(UsePathBranch<'a>),
+    UseTree(UseTree<'a>),
+}
+
+impl<'a> AstNode<'a> for UsePathItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| UsePathBranch::cast(node).map(Self::UsePathBranch))
+            .or_else(|| UseTree::cast(node).map(Self::UseTree))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::UsePathBranch(n) => n.syntax(),
+            Self::UseTree(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct UsePathBranch<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UsePathBranch<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_PATH_BRANCH).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> UsePathBranch<'a> {
+    pub fn next(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
+            _ => None,
+        })
+    }
+    pub fn cont(&self) -> Option<UsePathRest<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => UsePathRest::cast(n),
             _ => None,
         })
     }
@@ -607,8 +668,26 @@ impl<'a> AstNode<'a> for UseTree<'a> {
 }
 
 impl<'a> UseTree<'a> {
-    pub fn names(&self) -> impl Iterator<Item = &'a LosslessToken> + 'a {
+    pub fn names(&self) -> impl Iterator<Item = UseNameItem<'a>> + 'a {
         self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) => UseNameItem::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct UseNameItem<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UseNameItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_NAME_ITEM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> UseNameItem<'a> {
+    pub fn name(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
             _ => None,
         })
@@ -1343,23 +1422,5 @@ impl<'a> GenericArgs<'a> {
             _ => None,
         })
     }
-}
-
-pub struct BinaryOp<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for BinaryOp<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::BINARY_OP).then(|| Self(node))
-    }
-    fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-pub struct UnaryOp<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for UnaryOp<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::UNARY_OP).then(|| Self(node))
-    }
-    fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 

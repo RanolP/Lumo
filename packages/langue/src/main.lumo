@@ -18,11 +18,12 @@ fn run() =
     match parse_grammar(src) {
       .ok(raw_grammar, _) => {
         let grammar = resolve_grammar(raw_grammar);
-        match grammar { .mk(tokens, rules) => {
+        match grammar { .mk(tokens, attrs, rules) => {
           let count = list_length_rules(rules);
           let syntax_kind_code = generate_syntax_kind(grammar);
           let ast_code = generate_ast(grammar);
-          run_generate(file, count, syntax_kind_code, ast_code)
+          let parser_path = find_parser_path(attrs);
+          run_generate(file, count, syntax_kind_code, ast_code, grammar, parser_path)
         }}
       },
       .err(msg, pos) =>
@@ -30,23 +31,39 @@ fn run() =
     }
   }
 
-fn run_generate(file: String, count: Number, syntax_kind_code: String, ast_code: String) =
+fn run_generate(file: String, count: Number, syntax_kind_code: String, ast_code: String, grammar: Grammar, parser_path: String) =
   if Process.args_count() < 3 {
-    write_output(".", file, count, syntax_kind_code, ast_code)
+    write_output(".", file, count, syntax_kind_code, ast_code, grammar, parser_path)
   } else {
     let out_dir = Process.arg_at(2);
-    write_output(out_dir, file, count, syntax_kind_code, ast_code)
+    write_output(out_dir, file, count, syntax_kind_code, ast_code, grammar, parser_path)
   }
 
-fn write_output(out_dir: String, file: String, count: Number, syntax_kind_code: String, ast_code: String) {
+fn write_output(out_dir: String, file: String, count: Number, syntax_kind_code: String, ast_code: String, grammar: Grammar, parser_path: String) {
   let sk_path = out_dir + "/syntax_kind.rs";
   let ast_path = out_dir + "/ast.rs";
   let w1 = FS.write_file(sk_path, syntax_kind_code);
   let w2 = FS.write_file(ast_path, ast_code);
   let p1 = IO.println("Parsed " + count.to_string() + " rules from " + file);
   let p2 = IO.println("Wrote " + sk_path);
-  IO.println("Wrote " + ast_path)
+  let p3 = IO.println("Wrote " + ast_path);
+  if parser_path == "" { IO.println("") }
+  else {
+    let full_path = out_dir + "/" + parser_path;
+    let parser_code = generate_parser(grammar);
+    let w3 = FS.write_file(full_path, parser_code);
+    IO.println("Wrote " + full_path)
+  }
 }
+
+fn find_parser_path(attrs: List[GrammarAttr]): String =
+  match attrs {
+    .nil => "",
+    .cons(attr, rest) =>
+      match attr {
+        .parser_generate(path) => path
+      }
+  }
 
 fn list_length_rules(xs: List[Rule]): Number =
   match xs {
