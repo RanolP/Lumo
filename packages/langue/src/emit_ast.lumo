@@ -133,27 +133,57 @@ fn emit_accessors(s: String, struct_name: String, elems: List[Element], token_de
   } else { s }
 }
 
+fn has_labeled_element(elem: Element): Bool =
+  match elem {
+    .labeled(_, _) => Bool.true,
+    .group(elems) => has_labeled_elements(elems),
+    .repeated(inner) => has_labeled_element(inner),
+    .optional(inner) => has_labeled_element(inner),
+    _ => Bool.false
+  }
+
 fn has_labeled_elements(elems: List[Element]): Bool =
   match elems {
     .nil => Bool.false,
     .cons(elem, rest) =>
-      match elem {
-        .labeled(_, _) => Bool.true,
-        _ => has_labeled_elements(rest)
-      }
+      if has_labeled_element(elem) { Bool.true }
+      else { has_labeled_elements(rest) }
+  }
+
+fn emit_accessors_for_element(s: String, elem: Element, token_defs: List[String]): String =
+  match elem {
+    .labeled(label, inner) => emit_single_accessor(s, label, inner, token_defs),
+    .repeated(inner) => emit_accessors_for_element_repeated(s, inner, token_defs),
+    .optional(inner) => emit_accessors_for_element(s, inner, token_defs),
+    .group(inner_elems) => emit_accessors_for_elements(s, inner_elems, token_defs),
+    _ => s
   }
 
 fn emit_accessors_for_elements(s: String, elems: List[Element], token_defs: List[String]): String =
   match elems {
     .nil => s,
-    .cons(elem, rest) =>
-      match elem {
-        .labeled(label, inner) => {
-          let s2 = emit_single_accessor(s, label, inner, token_defs);
-          emit_accessors_for_elements(s2, rest, token_defs)
-        },
-        _ => emit_accessors_for_elements(s, rest, token_defs)
-      }
+    .cons(elem, rest) => {
+      let s2 = emit_accessors_for_element(s, elem, token_defs);
+      emit_accessors_for_elements(s2, rest, token_defs)
+    }
+  }
+
+fn emit_accessors_for_element_repeated(s: String, elem: Element, token_defs: List[String]): String =
+  match elem {
+    .labeled(label, inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
+    .group(elems) => emit_accessors_for_elements_repeated(s, elems, token_defs),
+    .repeated(inner) => emit_accessors_for_element_repeated(s, inner, token_defs),
+    .optional(inner) => emit_accessors_for_element_repeated(s, inner, token_defs),
+    _ => s
+  }
+
+fn emit_accessors_for_elements_repeated(s: String, elems: List[Element], token_defs: List[String]): String =
+  match elems {
+    .nil => s,
+    .cons(elem, rest) => {
+      let s2 = emit_accessors_for_element_repeated(s, elem, token_defs);
+      emit_accessors_for_elements_repeated(s2, rest, token_defs)
+    }
   }
 
 fn emit_single_accessor(s: String, label: String, elem: Element, token_defs: List[String]): String =
@@ -167,7 +197,7 @@ fn emit_single_accessor(s: String, label: String, elem: Element, token_defs: Lis
     .optional(inner) => emit_single_accessor(s, label, inner, token_defs),
     .repeated(inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
     .labeled(_, inner) => emit_single_accessor(s, label, inner, token_defs),
-    .group(elems) => s
+    .group(elems) => emit_accessors_for_elements(s, elems, token_defs)
   }
 
 fn emit_single_accessor_repeated(s: String, label: String, elem: Element, token_defs: List[String]): String =
@@ -181,7 +211,7 @@ fn emit_single_accessor_repeated(s: String, label: String, elem: Element, token_
     .optional(inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
     .repeated(inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
     .labeled(_, inner) => emit_single_accessor_repeated(s, label, inner, token_defs),
-    .group(elems) => s
+    .group(elems) => emit_accessors_for_elements_repeated(s, elems, token_defs)
   }
 
 fn token_kind_from_ref(t: TokenRef): String =
