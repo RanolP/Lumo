@@ -70,11 +70,14 @@ pub enum SyntaxKind {
     DATA_DECL, // DataDecl
     VARIANT, // Variant
     VARIANT_FIELDS, // VariantFields
+    VARIANT_FIELD_ITEMS, // VariantFieldItems
     FN_DECL, // FnDecl
     EXPR_BODY, // ExprBody
     GENERIC_PARAMS, // GenericParams
+    GENERIC_PARAM_ITEMS, // GenericParamItems
     GENERIC_PARAM, // GenericParam
     PARAM_LIST, // ParamList
+    PARAM_ITEMS, // ParamItems
     PARAM, // Param
     CAP_ANNOTATION, // CapAnnotation
     CAP_SET, // CapSet
@@ -89,6 +92,7 @@ pub enum SyntaxKind {
     USE_PATH_REST, // UsePathRest
     USE_PATH_BRANCH, // UsePathBranch
     USE_TREE, // UseTree
+    USE_NAME_ITEMS, // UseNameItems
     USE_NAME_ITEM, // UseNameItem
     IMPL_DECL, // ImplDecl
     IMPL_METHOD, // ImplMethod
@@ -97,6 +101,7 @@ pub enum SyntaxKind {
     CALL_EXPR, // CallExpr
     BINARY_EXPR, // BinaryExpr
     ASSIGN_EXPR, // AssignExpr
+    CALL_ARG_ITEMS, // CallArgItems
     IDENT_EXPR, // IdentExpr
     STRING_EXPR, // StringExpr
     NUMBER_EXPR, // NumberExpr
@@ -112,16 +117,19 @@ pub enum SyntaxKind {
     ANNOTATION_EXPR, // AnnotationExpr
     LAMBDA_EXPR, // LambdaExpr
     LAMBDA_PARAM_LIST, // LambdaParamList
+    LAMBDA_PARAM_ITEMS, // LambdaParamItems
     LAMBDA_PARAM, // LambdaParam
     BLOCK_EXPR, // BlockExpr
     IF_ELSE_EXPR, // IfElseExpr
     LET_STMT, // LetStmt
     EXPR_STMT, // ExprStmt
     VARIANT_PATTERN, // VariantPattern
+    VARIANT_PATTERN_FIELDS, // VariantPatternFields
     BIND_PATTERN, // BindPattern
     WILDCARD_PATTERN, // WildcardPattern
     TYPE_EXPR, // TypeExpr
     GENERIC_ARGS, // GenericArgs
+    GENERIC_ARG_ITEMS, // GenericArgItems
     // Sentinel
     ERROR,
 }

@@ -205,6 +205,24 @@ impl<'a> AstNode<'a> for VariantFields<'a> {
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
+impl<'a> VariantFields<'a> {
+    pub fn fields(&self) -> Option<VariantFieldItems<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => VariantFieldItems::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct VariantFieldItems<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for VariantFieldItems<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::VARIANT_FIELD_ITEMS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
 pub struct FnDecl<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for FnDecl<'a> {
@@ -293,6 +311,24 @@ impl<'a> AstNode<'a> for GenericParams<'a> {
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
+impl<'a> GenericParams<'a> {
+    pub fn params(&self) -> Option<GenericParamItems<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => GenericParamItems::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct GenericParamItems<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for GenericParamItems<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::GENERIC_PARAM_ITEMS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
 pub struct GenericParam<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for GenericParam<'a> {
@@ -316,6 +352,24 @@ pub struct ParamList<'a>(pub(crate) &'a SyntaxNode);
 impl<'a> AstNode<'a> for ParamList<'a> {
     fn cast(node: &'a SyntaxNode) -> Option<Self> {
         (node.kind == SyntaxKind::PARAM_LIST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> ParamList<'a> {
+    pub fn params(&self) -> Option<ParamItems<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => ParamItems::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct ParamItems<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ParamItems<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::PARAM_ITEMS).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
@@ -649,6 +703,24 @@ impl<'a> AstNode<'a> for UseTree<'a> {
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
+impl<'a> UseTree<'a> {
+    pub fn names(&self) -> Option<UseNameItems<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => UseNameItems::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct UseNameItems<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UseNameItems<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_NAME_ITEMS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
 pub struct UseNameItem<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for UseNameItem<'a> {
@@ -769,6 +841,15 @@ impl<'a> AstNode<'a> for CallExpr<'a> {
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
+impl<'a> CallExpr<'a> {
+    pub fn args(&self) -> Option<CallArgItems<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => CallArgItems::cast(n),
+            _ => None,
+        })
+    }
+}
+
 pub struct BinaryExpr<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for BinaryExpr<'a> {
@@ -870,6 +951,15 @@ impl<'a> AstNode<'a> for Expr<'a> {
             Self::AssignExpr(n) => n.syntax(),
         }
     }
+}
+
+pub struct CallArgItems<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CallArgItems<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CALL_ARG_ITEMS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
 pub struct IdentExpr<'a>(pub(crate) &'a SyntaxNode);
@@ -1187,6 +1277,24 @@ impl<'a> AstNode<'a> for LambdaParamList<'a> {
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
+impl<'a> LambdaParamList<'a> {
+    pub fn params(&self) -> Option<LambdaParamItems<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => LambdaParamItems::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct LambdaParamItems<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for LambdaParamItems<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::LAMBDA_PARAM_ITEMS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
 pub struct LambdaParam<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for LambdaParam<'a> {
@@ -1367,6 +1475,15 @@ impl<'a> VariantPattern<'a> {
     }
 }
 
+pub struct VariantPatternFields<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for VariantPatternFields<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::VARIANT_PATTERN_FIELDS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
 pub struct BindPattern<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for BindPattern<'a> {
@@ -1423,6 +1540,24 @@ pub struct GenericArgs<'a>(pub(crate) &'a SyntaxNode);
 impl<'a> AstNode<'a> for GenericArgs<'a> {
     fn cast(node: &'a SyntaxNode) -> Option<Self> {
         (node.kind == SyntaxKind::GENERIC_ARGS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> GenericArgs<'a> {
+    pub fn args(&self) -> Option<GenericArgItems<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => GenericArgItems::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct GenericArgItems<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for GenericArgItems<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::GENERIC_ARG_ITEMS).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }

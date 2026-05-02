@@ -4,6 +4,12 @@
 //
 // To update: edit this file, then run `scripts/gen_langue.sh compiler`
 // Reference: crates/lst/src/parser.rs (Expr enum, Item enum)
+//
+// Comma-separated lists use wrapper nodes so accessors are generated:
+//   FooList = '(' items:FooItems? ')'
+//   FooItems = Foo (',' Foo)* ','?
+// Items inside FooItems are unlabeled (langue limitation); walk lossless
+// tree children of FooItems to get individual Foo nodes.
 
 #[parser(generate = true, path = "lossless.rs")]
 
@@ -33,7 +39,8 @@ AttributeArgItem = name:AttrName ('=' value:Expr)? ','?
 
 DataDecl = 'data' name:Ident generic_params:GenericParams? '{' variants:Variant* '}'
 Variant = attrs:Attribute* '.' name:Ident variant_fields:VariantFields? ','?
-VariantFields = '(' (TypeExpr (',' TypeExpr)* ','?)? ')'
+VariantFields = '(' fields:VariantFieldItems? ')'
+VariantFieldItems = TypeExpr (',' TypeExpr)* ','?
 
 // === Functions ===
 
@@ -47,12 +54,14 @@ ExprBody = '=' body:Expr
 
 // === Generics ===
 
-GenericParams = '[' (GenericParam (',' GenericParam)* ','?)? ']'
+GenericParams = '[' params:GenericParamItems? ']'
+GenericParamItems = GenericParam (',' GenericParam)* ','?
 GenericParam = name:Ident (':' constraint:TypeExpr)?
 
 // === Parameters ===
 
-ParamList = '(' (Param (',' Param)* ','?)? ')'
+ParamList = '(' params:ParamItems? ')'
+ParamItems = Param (',' Param)* ','?
 Param = name:Ident ':' ty:TypeExpr
 
 // === Capabilities ===
@@ -97,7 +106,8 @@ UsePathItem =
   | UsePathBranch
   | UseTree
 UsePathBranch = next:Ident cont:UsePathRest?
-UseTree = '{' (UseNameItem (',' UseNameItem)* ','?)? '}'
+UseTree = '{' names:UseNameItems? '}'
+UseNameItems = UseNameItem (',' UseNameItem)* ','?
 UseNameItem = name:Ident
 
 // === Impl blocks ===
@@ -112,7 +122,7 @@ Expr = pratt {
 
   UnaryExpr:  ('-' | '!') bp(50)
   MemberExpr: bp(90) '.' member:Ident
-  CallExpr:   bp(90) '(' (Expr (',' Expr)* ','?)? ')'
+  CallExpr:   bp(90) '(' args:CallArgItems? ')'
   BinaryExpr: bp(30) ('*' | '/' | '%') bp(30)
   BinaryExpr: bp(20) ('+' | '-') bp(20)
   BinaryExpr: bp(10) ('==' | '!=' | '<' | '<=' | '>' | '>=') bp(10)
@@ -120,6 +130,8 @@ Expr = pratt {
   BinaryExpr: bp(3)  '||' bp(3)
   AssignExpr: bp(1)  '=' value:Expr ';' body:Expr
 }
+
+CallArgItems = Expr (',' Expr)* ','?
 
 IdentExpr = name:Ident
 StringExpr = value:StringLit
@@ -140,7 +152,8 @@ BundleEntry = 'fn' name:Ident param_list:ParamList body:FnBody
 ParenExpr = '(' inner:Expr ')'
 AnnotationExpr = '(' expr:Expr ':' ty:TypeExpr ')'
 LambdaExpr = 'fn' param_list:LambdaParamList body:FnBody
-LambdaParamList = '(' (LambdaParam (',' LambdaParam)* ','?)? ')'
+LambdaParamList = '(' params:LambdaParamItems? ')'
+LambdaParamItems = LambdaParam (',' LambdaParam)* ','?
 LambdaParam = name:Ident (':' ty:TypeExpr)?
 BlockExpr = '{' stmts:BlockStmt* '}'
 
@@ -162,7 +175,8 @@ Pattern =
   | BindPattern
   | WildcardPattern
 
-VariantPattern = '.' name:Ident ('(' (Pattern (',' Pattern)* ','?)? ')')?
+VariantPattern = '.' name:Ident ('(' fields:VariantPatternFields? ')')?
+VariantPatternFields = Pattern (',' Pattern)* ','?
 BindPattern = 'let' name:Ident
 WildcardPattern = '_'
 
@@ -170,5 +184,5 @@ WildcardPattern = '_'
 // Types are kept simple in the CST. The typechecker does deeper parsing.
 
 TypeExpr = name:Ident generic_args:GenericArgs?
-GenericArgs = '[' (TypeExpr (',' TypeExpr)* ','?)? ']'
-
+GenericArgs = '[' args:GenericArgItems? ']'
+GenericArgItems = TypeExpr (',' TypeExpr)* ','?
