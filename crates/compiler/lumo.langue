@@ -57,10 +57,7 @@ Param = name:Ident ':' ty:TypeExpr
 
 // === Capabilities ===
 
-CapAnnotation = '/' cap:CapAnnotationBody
-CapAnnotationBody =
-  | CapSet
-  | CapSig
+CapAnnotation = '/' cap:CapSet
 CapSet = '{' sigs:CapSig* '}'
 CapSig = name:Ident generic_args:GenericArgs?
 CapDecl = 'cap' name:Ident '{' operations:OperationDecl* '}'

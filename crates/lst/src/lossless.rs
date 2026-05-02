@@ -424,16 +424,8 @@ impl Parser {
     fn parse_cap_annotation(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         self.expect_symbol("/", &mut children);
-        children.push(SyntaxElement::Node(Box::new(self.parse_cap_annotation_body())));
+        children.push(SyntaxElement::Node(Box::new(self.parse_cap_set())));
         node_from_children(SyntaxKind::CAP_ANNOTATION, children)
-    }
-
-    fn can_parse_cap_annotation_body(&self) -> bool { self.can_parse_cap_set() || self.can_parse_cap_sig() }
-    fn parse_cap_annotation_body(&mut self) -> SyntaxNode {
-        if self.can_parse_cap_set() { return self.parse_cap_set(); }
-        if self.can_parse_cap_sig() { return self.parse_cap_sig(); }
-        self.error_here("expected CapAnnotationBody");
-        node_from_children(SyntaxKind::ERROR, Vec::new())
     }
 
     fn can_parse_cap_set(&self) -> bool { self.at_non_trivia_symbol("{") }

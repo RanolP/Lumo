@@ -381,30 +381,11 @@ impl<'a> AstNode<'a> for CapAnnotation<'a> {
 }
 
 impl<'a> CapAnnotation<'a> {
-    pub fn cap(&self) -> Option<CapAnnotationBody<'a>> {
+    pub fn cap(&self) -> Option<CapSet<'a>> {
         self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => CapAnnotationBody::cast(n),
+            SyntaxElement::Node(n) => CapSet::cast(n),
             _ => None,
         })
-    }
-}
-
-pub enum CapAnnotationBody<'a> {
-    CapSet(CapSet<'a>),
-    CapSig(CapSig<'a>),
-}
-
-impl<'a> AstNode<'a> for CapAnnotationBody<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        None
-            .or_else(|| CapSet::cast(node).map(Self::CapSet))
-            .or_else(|| CapSig::cast(node).map(Self::CapSig))
-    }
-    fn syntax(&self) -> &'a SyntaxNode {
-        match self {
-            Self::CapSet(n) => n.syntax(),
-            Self::CapSig(n) => n.syntax(),
-        }
     }
 }
 
