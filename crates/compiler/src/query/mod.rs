@@ -382,11 +382,18 @@ fn impl_const_name_for(impl_decl: &lir::ImplDecl) -> String {
     if let Some(name) = &impl_decl.name {
         name.clone()
     } else if let Some(cap) = &impl_decl.capability {
-        let target = impl_decl.target_type.value.display();
+        let target_full = impl_decl.target_type.value.display();
+        let target = target_full.split('[').next().unwrap_or(&target_full);
         let cap = cap.value.display();
         format!("__impl_{target}_{cap}")
     } else {
-        impl_decl.target_type.value.display()
+        let full = impl_decl.target_type.value.display();
+        let base = full.split('[').next().unwrap_or(&full);
+        if full.contains('[') {
+            format!("__impl_{base}")
+        } else {
+            base.to_owned()
+        }
     }
 }
 

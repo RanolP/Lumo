@@ -544,28 +544,41 @@ impl TypeChecker {
         let cap_name_set: HashSet<String> = self.cap_defs.keys().cloned().collect();
         for item in &file.items {
             if let lir::Item::Impl(impl_decl) = item {
-                let target = impl_decl.target_type.value.display();
-                if impl_decl.capability.is_none() && cap_name_set.contains(&target) {
+                let target_full = impl_decl.target_type.value.display();
+                let target_base = target_full
+                    .split('[')
+                    .next()
+                    .unwrap_or(&target_full)
+                    .to_owned();
+                if impl_decl.capability.is_none() && cap_name_set.contains(&target_full) {
                     // Platform: inherent impl whose target = cap name
-                    self.impl_consts.insert(target.clone(), target.clone());
-                    self.register_impl_methods(impl_decl, &target);
+                    self.impl_consts
+                        .insert(target_full.clone(), target_full.clone());
+                    self.register_impl_methods(impl_decl, &target_full);
                 } else if impl_decl.capability.is_none() {
-                    // Non-cap inherent impl: register const and methods
-                    self.impl_consts.insert(target.clone(), target.clone());
-                    self.register_impl_methods(impl_decl, &target);
+                    // Non-cap inherent impl: register const and methods.
+                    // Generic targets (e.g. List[T]) use __impl_{Base} to avoid clashing
+                    // with the data bundle const.
+                    let const_name = if target_full.contains('[') {
+                        format!("__impl_{target_base}")
+                    } else {
+                        target_full.clone()
+                    };
+                    self.impl_consts.insert(const_name, target_base.clone());
+                    self.register_impl_methods(impl_decl, &target_base);
                 } else if let Some(cap_ty) = &impl_decl.capability {
                     let cap = cap_ty.value.display();
                     if cap_name_set.contains(&cap) {
                         let const_name = if let Some(name) = &impl_decl.name {
                             name.clone()
                         } else {
-                            format!("__impl_{target}_{cap}")
+                            format!("__impl_{target_base}_{cap}")
                         };
                         self.impl_consts.insert(const_name, cap.clone());
-                        self.register_impl_methods(impl_decl, &target);
-                        // Track that `target` implements `cap`
+                        self.register_impl_methods(impl_decl, &target_base);
+                        // Track that `target_base` implements `cap`
                         self.impl_registry
-                            .entry(target)
+                            .entry(target_base)
                             .or_default()
                             .insert(cap);
                     }

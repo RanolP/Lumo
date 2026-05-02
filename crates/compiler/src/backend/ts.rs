@@ -1085,12 +1085,21 @@ fn impl_const_name(impl_decl: &lir::ImplDecl) -> String {
         name.clone()
     } else if let Some(cap) = &impl_decl.capability {
         // Unnamed cap impl: __impl_{Target}_{Cap}
-        let target = impl_decl.target_type.value.display();
+        let target_full = impl_decl.target_type.value.display();
+        let target = target_full.split('[').next().unwrap_or(&target_full);
         let cap = cap.value.display();
         format!("__impl_{target}_{cap}")
     } else {
-        // Inherent impl: name after target type
-        impl_decl.target_type.value.display()
+        // Inherent impl: name after target type, strip generic params.
+        // If the target has generic params (e.g. List[T]), prefix with __impl_ to avoid
+        // clashing with the data bundle const of the same name.
+        let full = impl_decl.target_type.value.display();
+        let base = full.split('[').next().unwrap_or(&full);
+        if full.contains('[') {
+            format!("__impl_{base}")
+        } else {
+            base.to_owned()
+        }
     }
 }
 
