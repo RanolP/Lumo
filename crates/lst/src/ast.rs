@@ -205,15 +205,6 @@ impl<'a> AstNode<'a> for VariantFields<'a> {
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
-impl<'a> VariantFields<'a> {
-    pub fn fields(&self) -> impl Iterator<Item = TypeExpr<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => TypeExpr::cast(n),
-            _ => None,
-        })
-    }
-}
-
 pub struct FnDecl<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for FnDecl<'a> {
@@ -302,15 +293,6 @@ impl<'a> AstNode<'a> for GenericParams<'a> {
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
-impl<'a> GenericParams<'a> {
-    pub fn params(&self) -> impl Iterator<Item = GenericParam<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => GenericParam::cast(n),
-            _ => None,
-        })
-    }
-}
-
 pub struct GenericParam<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for GenericParam<'a> {
@@ -336,15 +318,6 @@ impl<'a> AstNode<'a> for ParamList<'a> {
         (node.kind == SyntaxKind::PARAM_LIST).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-impl<'a> ParamList<'a> {
-    pub fn params(&self) -> impl Iterator<Item = Param<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => Param::cast(n),
-            _ => None,
-        })
-    }
 }
 
 pub struct Param<'a>(pub(crate) &'a SyntaxNode);
@@ -676,15 +649,6 @@ impl<'a> AstNode<'a> for UseTree<'a> {
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
-impl<'a> UseTree<'a> {
-    pub fn names(&self) -> impl Iterator<Item = UseNameItem<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => UseNameItem::cast(n),
-            _ => None,
-        })
-    }
-}
-
 pub struct UseNameItem<'a>(pub(crate) &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for UseNameItem<'a> {
@@ -803,15 +767,6 @@ impl<'a> AstNode<'a> for CallExpr<'a> {
         (node.kind == SyntaxKind::CALL_EXPR).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-impl<'a> CallExpr<'a> {
-    pub fn args(&self) -> impl Iterator<Item = Expr<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
-    }
 }
 
 pub struct BinaryExpr<'a>(pub(crate) &'a SyntaxNode);
@@ -1470,14 +1425,5 @@ impl<'a> AstNode<'a> for GenericArgs<'a> {
         (node.kind == SyntaxKind::GENERIC_ARGS).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-impl<'a> GenericArgs<'a> {
-    pub fn args(&self) -> impl Iterator<Item = TypeExpr<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => TypeExpr::cast(n),
-            _ => None,
-        })
-    }
 }
 

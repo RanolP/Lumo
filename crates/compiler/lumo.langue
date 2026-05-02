@@ -33,7 +33,7 @@ AttributeArgItem = name:AttrName ('=' value:Expr)? ','?
 
 DataDecl = 'data' name:Ident generic_params:GenericParams? '{' variants:Variant* '}'
 Variant = attrs:Attribute* '.' name:Ident variant_fields:VariantFields? ','?
-VariantFields = '(' fields:TypeExpr* ')'
+VariantFields = '(' (TypeExpr (',' TypeExpr)* ','?)? ')'
 
 // === Functions ===
 
@@ -47,12 +47,12 @@ ExprBody = '=' body:Expr
 
 // === Generics ===
 
-GenericParams = '[' params:GenericParam* ']'
+GenericParams = '[' (GenericParam (',' GenericParam)* ','?)? ']'
 GenericParam = name:Ident (':' constraint:TypeExpr)?
 
 // === Parameters ===
 
-ParamList = '(' params:Param* ')'
+ParamList = '(' (Param (',' Param)* ','?)? ')'
 Param = name:Ident ':' ty:TypeExpr
 
 // === Capabilities ===
@@ -97,8 +97,8 @@ UsePathItem =
   | UsePathBranch
   | UseTree
 UsePathBranch = next:Ident cont:UsePathRest?
-UseTree = '{' names:UseNameItem* '}'
-UseNameItem = name:Ident ','?
+UseTree = '{' (UseNameItem (',' UseNameItem)* ','?)? '}'
+UseNameItem = name:Ident
 
 // === Impl blocks ===
 
@@ -112,7 +112,7 @@ Expr = pratt {
 
   UnaryExpr:  ('-' | '!') bp(50)
   MemberExpr: bp(90) '.' member:Ident
-  CallExpr:   bp(90) '(' args:Expr* ')'
+  CallExpr:   bp(90) '(' (Expr (',' Expr)* ','?)? ')'
   BinaryExpr: bp(30) ('*' | '/' | '%') bp(30)
   BinaryExpr: bp(20) ('+' | '-') bp(20)
   BinaryExpr: bp(10) ('==' | '!=' | '<' | '<=' | '>' | '>=') bp(10)
@@ -162,7 +162,7 @@ Pattern =
   | BindPattern
   | WildcardPattern
 
-VariantPattern = '.' name:Ident ('(' fields:Pattern* ')')?
+VariantPattern = '.' name:Ident ('(' (Pattern (',' Pattern)* ','?)? ')')?
 BindPattern = 'let' name:Ident
 WildcardPattern = '_'
 
@@ -170,5 +170,5 @@ WildcardPattern = '_'
 // Types are kept simple in the CST. The typechecker does deeper parsing.
 
 TypeExpr = name:Ident generic_args:GenericArgs?
-GenericArgs = '[' args:TypeExpr* ']'
+GenericArgs = '[' (TypeExpr (',' TypeExpr)* ','?)? ']'
 
