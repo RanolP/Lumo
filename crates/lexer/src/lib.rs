@@ -57,6 +57,7 @@ pub enum Symbol {
     ColonEquals,
     Slash,
     Star,
+    Arrow,
     FatArrow,
     Dot,
     DotDot,
@@ -120,6 +121,7 @@ impl Symbol {
             ":=" => Some(Self::ColonEquals),
             "/" => Some(Self::Slash),
             "*" => Some(Self::Star),
+            "->" => Some(Self::Arrow),
             "=>" => Some(Self::FatArrow),
             "." => Some(Self::Dot),
             ".." => Some(Self::DotDot),
@@ -388,6 +390,15 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
             index += 2;
             output.tokens.push(LosslessToken {
                 kind: LosslessTokenKind::Symbol(Symbol::ColonEquals),
+                span: Span::new(start, index),
+                text: input[start..index].to_owned(),
+            });
+            continue;
+        }
+        if starts_with_at(input, index, "->") {
+            index += 2;
+            output.tokens.push(LosslessToken {
+                kind: LosslessTokenKind::Symbol(Symbol::Arrow),
                 span: Span::new(start, index),
                 text: input[start..index].to_owned(),
             });

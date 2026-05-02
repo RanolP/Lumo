@@ -139,6 +139,40 @@ impl Parser {
         }
     }
 
+    /// Returns true if, starting at the current `(`, the token stream looks like
+    /// a function type `(T, ...) -> R`. Scans forward to find the matching `)`,
+    /// then checks if the next token is `->` (Symbol::Arrow).
+    fn lookahead_is_fn_type(&self) -> bool {
+        let mut depth = 0usize;
+        let mut i = self.pos;
+        while i < self.tokens.len() {
+            match &self.tokens[i].kind {
+                TokenKind::Symbol(Symbol::LParen) => {
+                    depth += 1;
+                    i += 1;
+                }
+                TokenKind::Symbol(Symbol::RParen) => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                    i += 1;
+                    if depth == 0 {
+                        // We've found the matching `)` — check next token
+                        return matches!(
+                            self.tokens.get(i).map(|t| &t.kind),
+                            Some(TokenKind::Symbol(Symbol::Arrow))
+                        );
+                    }
+                }
+                _ => {
+                    i += 1;
+                }
+            }
+        }
+        false
+    }
+
     fn error(&mut self, message: String) {
         let span = self.peek_span();
         self.errors.push(ParseError { span, message });
@@ -601,10 +635,10 @@ impl Parser {
     }
 
     fn parse_type_expr(&mut self) -> Option<Spanned<TypeExpr>> {
-        // `fn(T, U): R` or `fn(T): R / { IO }` — function type in value position
-        if self.peek() == Some(&TokenKind::Keyword(Keyword::Fn)) {
-            let start = self.advance().span; // consume `fn`
-            self.expect_sym(Symbol::LParen).ok()?;
+        // `(A, B) -> R` or `(A) -> R / { IO }` — function type in value position
+        // Detect by lookahead: find matching `)` then check for `->`
+        if self.peek() == Some(&TokenKind::Symbol(Symbol::LParen)) && self.lookahead_is_fn_type() {
+            let start = self.advance().span; // consume `(`
             let mut params = Vec::new();
             while self.peek() != Some(&TokenKind::Symbol(Symbol::RParen)) && !self.at_end() {
                 if let Some(ty) = self.parse_type_expr() {
@@ -613,7 +647,7 @@ impl Parser {
                 self.eat_sym(Symbol::Comma);
             }
             self.expect_sym(Symbol::RParen).ok()?;
-            self.expect_sym(Symbol::Colon).ok()?;
+            self.expect_sym(Symbol::Arrow).ok()?;
             let ret = self.parse_type_expr()?;
             let cap = self.try_parse_cap_annotation().unwrap_or_default();
             return Some(Spanned {

@@ -2102,6 +2102,7 @@ fn token_text(token: &Token) -> String {
         TokenKind::Symbol(Symbol::ColonEquals) => ":=".to_owned(),
         TokenKind::Symbol(Symbol::Slash) => "/".to_owned(),
         TokenKind::Symbol(Symbol::Star) => "*".to_owned(),
+        TokenKind::Symbol(Symbol::Arrow) => "->".to_owned(),
         TokenKind::Symbol(Symbol::FatArrow) => "=>".to_owned(),
         TokenKind::Symbol(Symbol::Dot) => ".".to_owned(),
         TokenKind::Symbol(Symbol::DotDot) => "..".to_owned(),

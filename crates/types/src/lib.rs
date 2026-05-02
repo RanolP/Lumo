@@ -42,7 +42,7 @@ pub enum TypeExpr {
     Thunk(Box<TypeExpr>),
     /// Capability type: `Add[Number]`, or bare `IO`
     Cap { name: String, type_args: Vec<TypeExpr> },
-    /// Function type in value position: `fn(T, U): R` or `fn(T): R / { IO }`
+    /// Function type in value position: `(T, U) -> R` or `(T) -> R / { IO }`
     Fn { params: Vec<TypeExpr>, ret: Box<TypeExpr>, cap: Vec<CapEntry> },
     /// Iso-recursive type binder: `mu X. T`
     Mu { var: String, body: Box<TypeExpr> },
@@ -86,7 +86,7 @@ impl TypeExpr {
                 } else {
                     format!(" / {{{}}}", cap.iter().map(|e| e.display()).collect::<Vec<_>>().join(", "))
                 };
-                format!("fn({ps}): {}{cap_str}", ret.display())
+                format!("({ps}) -> {}{cap_str}", ret.display())
             }
             TypeExpr::Mu { var, body } => format!("mu {var}. {}", body.display()),
             TypeExpr::Var(v) => v.clone(),
@@ -170,7 +170,34 @@ impl TypeExpr {
 /// Parse a type expression, handling the `thunk` and `fn` keywords.
 fn parse_type_expr_full(text: &str) -> TypeExpr {
     let text = text.trim();
-    // Handle both `fn(` and `fn (` (spaced form from LST token join)
+    // Handle `(A, B) -> R` — new arrow function type syntax
+    if text.starts_with('(') {
+        if let Some(paren_end) = find_close_paren(&text[1..]) {
+            let params_str = &text[1..paren_end + 1];
+            let after_paren = text[paren_end + 2..].trim_start();
+            if let Some(ret_str) = after_paren.strip_prefix("->").map(str::trim_start) {
+                // Parse cap annotation if present
+                let (ret_str, cap) = if let Some(slash_pos) = ret_str.find('/') {
+                    let ret_part = ret_str[..slash_pos].trim();
+                    let cap_part = ret_str[slash_pos + 1..].trim();
+                    (ret_part, parse_cap_ref(cap_part))
+                } else {
+                    (ret_str.trim(), vec![])
+                };
+                let params: Vec<TypeExpr> = if params_str.trim().is_empty() {
+                    vec![]
+                } else {
+                    split_type_args(params_str)
+                        .into_iter()
+                        .map(|p| parse_type_expr_full(&p))
+                        .collect()
+                };
+                let ret = parse_type_expr_full(ret_str);
+                return TypeExpr::Fn { params, ret: Box::new(ret), cap };
+            }
+        }
+    }
+    // Handle legacy `fn(` and `fn (` forms (backwards compat for stored repr strings)
     let fn_rest = text.strip_prefix("fn(")
         .or_else(|| text.strip_prefix("fn").and_then(|r| r.trim_start().strip_prefix('(')));
     if let Some(rest) = fn_rest {

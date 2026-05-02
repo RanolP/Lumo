@@ -44,6 +44,7 @@ pub fn highlight(source: &str) -> Vec<HighlightToken> {
             | TokenKind::Symbol(Symbol::ColonEquals)
             | TokenKind::Symbol(Symbol::Slash)
             | TokenKind::Symbol(Symbol::Star)
+            | TokenKind::Symbol(Symbol::Arrow)
             | TokenKind::Symbol(Symbol::FatArrow)
             | TokenKind::Symbol(Symbol::Dot)
             | TokenKind::Symbol(Symbol::DotDot)
