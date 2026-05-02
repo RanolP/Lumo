@@ -85,6 +85,11 @@ pub enum SyntaxKind {
     USE_TREE, // UseTree
     IMPL_DECL, // ImplDecl
     IMPL_METHOD, // ImplMethod
+    UNARY_EXPR, // UnaryExpr
+    MEMBER_EXPR, // MemberExpr
+    CALL_EXPR, // CallExpr
+    BINARY_EXPR, // BinaryExpr
+    ASSIGN_EXPR, // AssignExpr
     IDENT_EXPR, // IdentExpr
     STRING_EXPR, // StringExpr
     NUMBER_EXPR, // NumberExpr
@@ -93,10 +98,6 @@ pub enum SyntaxKind {
     FORCE_EXPR, // ForceExpr
     MATCH_EXPR, // MatchExpr
     MATCH_ARM, // MatchArm
-    CALL_EXPR, // CallExpr
-    MEMBER_EXPR, // MemberExpr
-    BINARY_EXPR, // BinaryExpr
-    UNARY_EXPR, // UnaryExpr
     HANDLE_EXPR, // HandleExpr
     BUNDLE_EXPR, // BundleExpr
     BUNDLE_ENTRY, // BundleEntry
@@ -104,7 +105,6 @@ pub enum SyntaxKind {
     ANNOTATION_EXPR, // AnnotationExpr
     BLOCK_EXPR, // BlockExpr
     IF_ELSE_EXPR, // IfElseExpr
-    ASSIGN_EXPR, // AssignExpr
     LET_STMT, // LetStmt
     EXPR_STMT, // ExprStmt
     VARIANT_PATTERN, // VariantPattern

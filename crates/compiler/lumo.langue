@@ -97,25 +97,19 @@ ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? bo
 
 // === Expressions ===
 
-Expr =
-  | IdentExpr
-  | StringExpr
-  | NumberExpr
-  | LetExpr
-  | ThunkExpr
-  | ForceExpr
-  | MatchExpr
-  | CallExpr
-  | MemberExpr
-  | BinaryExpr
-  | UnaryExpr
-  | HandleExpr
-  | BundleExpr
-  | ParenExpr
-  | AnnotationExpr
-  | BlockExpr
-  | IfElseExpr
-  | AssignExpr
+Expr = pratt {
+  atom: IdentExpr | StringExpr | NumberExpr | LetExpr | ThunkExpr | ForceExpr | MatchExpr | HandleExpr | BundleExpr | IfElseExpr | BlockExpr | ParenExpr | AnnotationExpr
+
+  UnaryExpr:  ('-' | '!') bp(50)
+  MemberExpr: bp(90) '.' member:Ident
+  CallExpr:   bp(90) '(' args:Expr* ')'
+  BinaryExpr: bp(30) ('*' | '/' | '%') bp(30)
+  BinaryExpr: bp(20) ('+' | '-') bp(20)
+  BinaryExpr: bp(10) ('==' | '!=' | '<' | '<=' | '>' | '>=') bp(10)
+  BinaryExpr: bp(5)  '&&' bp(5)
+  BinaryExpr: bp(3)  '||' bp(3)
+  AssignExpr: bp(1)  '=' value:Expr ';' body:Expr
+}
 
 IdentExpr = name:Ident
 StringExpr = value:StringLit
@@ -127,11 +121,6 @@ ForceExpr = 'force' expr:Expr
 
 MatchExpr = 'match' scrutinee:Expr '{' arms:MatchArm* '}'
 MatchArm = pattern:Pattern '=>' body:Expr
-
-CallExpr = callee:Expr '(' args:Expr* ')'
-MemberExpr = object:Expr '.' member:Ident
-BinaryExpr = lhs:Expr op:BinaryOp rhs:Expr
-UnaryExpr = op:UnaryOp operand:Expr
 
 // Surface handle: cap is a raw signature string (e.g. "Add" or "Add for Number")
 HandleExpr = 'handle' cap:Ident 'with' handler:Expr 'in' body:Expr
@@ -146,8 +135,6 @@ IfElseExpr = 'if' condition:Expr then_body:BlockExpr ('else' else_clause:ElseCla
 ElseClause =
   | IfElseExpr
   | BlockExpr
-
-AssignExpr = name:Ident '=' value:Expr ';' body:Expr
 
 BlockStmt =
   | LetStmt

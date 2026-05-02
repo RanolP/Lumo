@@ -353,13 +353,20 @@ fn emit_node_kinds(s: String, rules: List[Rule]): String =
   }
 
 fn emit_pratt_alt_kinds(s: String, alts: List[PrattAlt]): String =
+  emit_pratt_alt_kinds_dedup(s, alts, List.nil)
+
+fn emit_pratt_alt_kinds_dedup(s: String, alts: List[PrattAlt], seen: List[String]): String =
   match alts {
     .nil => s,
     .cons(alt, rest) =>
-      match alt { .mk(name, elems, bp) => {
-        let line = "    " + to_screaming_snake(name) + ", // " + name + "\n";
-        emit_pratt_alt_kinds(s + line, rest)
-      }}
+      match alt { .mk(name, elems, bp) =>
+        if list_contains_string(seen, name) {
+          emit_pratt_alt_kinds_dedup(s, rest, seen)
+        } else {
+          let line = "    " + to_screaming_snake(name) + ", // " + name + "\n";
+          emit_pratt_alt_kinds_dedup(s + line, rest, List.cons(name, seen))
+        }
+      }
   }
 
 fn emit_from_keyword(s: String, kws: List[String]): String =
@@ -449,21 +456,35 @@ fn emit_pratt_rule(s: String, rule_name: String, atom_names: List[String], alts:
 }
 
 fn emit_pratt_alt_structs(s: String, alts: List[PrattAlt], token_defs: List[String]): String =
+  emit_pratt_alt_structs_dedup(s, alts, token_defs, List.nil)
+
+fn emit_pratt_alt_structs_dedup(s: String, alts: List[PrattAlt], token_defs: List[String], seen: List[String]): String =
   match alts {
     .nil => s,
     .cons(alt, rest) =>
-      match alt { .mk(name, elems, bp) => {
-        let s2 = emit_struct_node(s, name, elems, token_defs);
-        emit_pratt_alt_structs(s2, rest, token_defs)
-      }}
+      match alt { .mk(name, elems, bp) =>
+        if list_contains_string(seen, name) {
+          emit_pratt_alt_structs_dedup(s, rest, token_defs, seen)
+        } else {
+          let s2 = emit_struct_node(s, name, elems, token_defs);
+          emit_pratt_alt_structs_dedup(s2, rest, token_defs, List.cons(name, seen))
+        }
+      }
   }
 
 fn collect_pratt_alt_names(alts: List[PrattAlt]): List[String] =
+  collect_pratt_alt_names_dedup(alts, List.nil)
+
+fn collect_pratt_alt_names_dedup(alts: List[PrattAlt], seen: List[String]): List[String] =
   match alts {
     .nil => List.nil,
     .cons(alt, rest) =>
       match alt { .mk(name, elems, bp) =>
-        List.cons(name, collect_pratt_alt_names(rest))
+        if list_contains_string(seen, name) {
+          collect_pratt_alt_names_dedup(rest, seen)
+        } else {
+          List.cons(name, collect_pratt_alt_names_dedup(rest, List.cons(name, seen)))
+        }
       }
   }
 

@@ -168,12 +168,47 @@ fn peek_is_pratt(st: ParseState): Bool = peek_is_word(st, "pratt")
 // Check if the next non-whitespace chars form `Ident :`  (start of a pratt item)
 fn peek_is_pratt_item_start(st: ParseState): Bool {
   let st2 = skip_ws(st);
-  if is_ident_start(state_peek(st2)) {
+  let c = state_peek(st2);
+  let code = c.char_code_at(0);
+  let is_upper = if code >= 65 { code <= 90 } else { Bool.false };
+  if is_upper {
     let st3 = scan_ident_rest(state_advance(st2, 1));
     let st4 = skip_ws(st3);
     state_peek(st4) == ":"
   }
   else { Bool.false }
+}
+
+// Check if the next non-whitespace chars are `bp(`
+fn peek_is_bp_marker(st: ParseState): Bool {
+  let st2 = skip_ws(st);
+  if peek_is_word(st2, "bp") {
+    let st3 = state_advance(st2, 2);
+    let st4 = skip_ws(st3);
+    state_peek(st4) == "("
+  }
+  else { Bool.false }
+}
+
+// Try to parse `bp(N)`, returns err (without consuming) if not present
+fn try_parse_bp(st: ParseState): ParseResult[BpVal] {
+  let st2 = skip_ws(st);
+  if peek_is_bp_marker(st2) {
+    let st3 = state_advance(st2, 2);
+    match expect(st3, "(") {
+      .err(msg, pos) => ParseResult.err(msg, pos),
+      .ok(_, st4) =>
+        match parse_bp_val(st4) {
+          .err(msg, pos) => ParseResult.err(msg, pos),
+          .ok(v, st5) =>
+            match expect(st5, ")") {
+              .err(msg, pos) => ParseResult.err(msg, pos),
+              .ok(_, st6) => ParseResult.ok(v, st6)
+            }
+        }
+    }
+  }
+  else { ParseResult.err("no bp marker", state_pos(st2)) }
 }
 
 // Check if the next non-whitespace chars form `Ident =`  (start of a rule)
@@ -346,51 +381,39 @@ fn parse_pratt_atom_list(st: ParseState, acc: List[String]): ParseResult[List[St
   else { ParseResult.ok(list_reverse_string(acc), st2) }
 }
 
-// Name: <pattern elements> with bp(L, R)
-fn parse_pratt_alt_body(st: ParseState, name: String): ParseResult[PrattAlt] =
-  match parse_pratt_pattern(st, List.nil) {
-    .err(msg, pos) => ParseResult.err(msg, pos),
-    .ok(elems, st2) =>
-      match expect(st2, "with") {
+// Name: bp(L)? <elements> bp(R)?
+// Leading bp(N) = lbp, trailing bp(N) = rbp; both optional (None if absent)
+fn parse_pratt_alt_body(st: ParseState, name: String): ParseResult[PrattAlt] {
+  let lbp_res = try_parse_bp(st);
+  match lbp_res {
+    .ok(lbp, st2) =>
+      match parse_pratt_pattern(st2, List.nil) {
         .err(msg, pos) => ParseResult.err(msg, pos),
-        .ok(_, st3) =>
-          match expect(st3, "bp") {
-            .err(msg, pos) => ParseResult.err(msg, pos),
-            .ok(_, st4) =>
-              match expect(st4, "(") {
-                .err(msg, pos) => ParseResult.err(msg, pos),
-                .ok(_, st5) =>
-                  match parse_bp_val(st5) {
-                    .err(msg, pos) => ParseResult.err(msg, pos),
-                    .ok(left, st6) =>
-                      match expect(st6, ",") {
-                        .err(msg, pos) => ParseResult.err(msg, pos),
-                        .ok(_, st7) =>
-                          match parse_bp_val(st7) {
-                            .err(msg, pos) => ParseResult.err(msg, pos),
-                            .ok(right, st8) =>
-                              match expect(st8, ")") {
-                                .err(msg, pos) => ParseResult.err(msg, pos),
-                                .ok(_, st9) =>
-                                  ParseResult.ok(
-                                    PrattAlt.mk(name, elems, BindingPower.mk(left, right)),
-                                    st9
-                                  )
-                              }
-                          }
-                      }
-                  }
-              }
+        .ok(elems, st3) =>
+          match try_parse_bp(st3) {
+            .ok(rbp, st4) => ParseResult.ok(PrattAlt.mk(name, elems, BindingPower.mk(lbp, rbp)), st4),
+            .err(_, _) => ParseResult.ok(PrattAlt.mk(name, elems, BindingPower.mk(lbp, BpVal.none)), st3)
+          }
+      },
+    .err(_, _) =>
+      match parse_pratt_pattern(st, List.nil) {
+        .err(msg, pos) => ParseResult.err(msg, pos),
+        .ok(elems, st2) =>
+          match try_parse_bp(st2) {
+            .ok(rbp, st3) => ParseResult.ok(PrattAlt.mk(name, elems, BindingPower.mk(BpVal.none, rbp)), st3),
+            .err(_, _) => ParseResult.ok(PrattAlt.mk(name, elems, BindingPower.mk(BpVal.none, BpVal.none)), st2)
           }
       }
   }
+}
 
-// Parse pattern elements for a pratt alt, stopping before `with`
+// Parse pattern elements for a pratt alt, stopping at `}`, next `Name:`, or `bp(`
 fn parse_pratt_pattern(st: ParseState, acc: List[Element]): ParseResult[List[Element]] {
   let st2 = skip_ws(st);
   if state_eof(st2) { ParseResult.ok(list_reverse_elem(acc), st2) }
-  else if peek_is_word(st2, "with") { ParseResult.ok(list_reverse_elem(acc), st2) }
   else if state_peek(st2) == "}" { ParseResult.ok(list_reverse_elem(acc), st2) }
+  else if peek_is_pratt_item_start(st2) { ParseResult.ok(list_reverse_elem(acc), st2) }
+  else if peek_is_bp_marker(st2) { ParseResult.ok(list_reverse_elem(acc), st2) }
   else {
     match parse_pratt_pattern_element(st2) {
       .ok(elem, st3) => parse_pratt_pattern(st3, List.cons(elem, acc)),
@@ -437,6 +460,7 @@ fn parse_pratt_pattern_element(st: ParseState): ParseResult[Element] {
 fn parse_pratt_group(st: ParseState, acc: List[Element]): ParseResult[List[Element]] {
   let st2 = skip_ws(st);
   if state_peek(st2) == ")" { ParseResult.ok(list_reverse_elem(acc), st2) }
+  else if state_peek(st2) == "|" { parse_pratt_group(state_advance(st2, 1), acc) }
   else {
     match parse_pratt_pattern_element(st2) {
       .ok(elem, st3) => parse_pratt_group(st3, List.cons(elem, acc)),

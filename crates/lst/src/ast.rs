@@ -681,6 +681,84 @@ impl<'a> ImplMethod<'a> {
     }
 }
 
+pub struct UnaryExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UnaryExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::UNARY_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+pub struct MemberExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for MemberExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::MEMBER_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> MemberExpr<'a> {
+    pub fn member(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
+            _ => None,
+        })
+    }
+}
+
+pub struct CallExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CallExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CALL_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> CallExpr<'a> {
+    pub fn args(&self) -> impl Iterator<Item = Expr<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) => Expr::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct BinaryExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for BinaryExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::BINARY_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+pub struct AssignExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AssignExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ASSIGN_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> AssignExpr<'a> {
+    pub fn value(&self) -> Option<Expr<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => Expr::cast(n),
+            _ => None,
+        })
+    }
+    pub fn body(&self) -> Option<Expr<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => Expr::cast(n),
+            _ => None,
+        })
+    }
+}
+
 pub enum Expr<'a> {
     IdentExpr(IdentExpr<'a>),
     StringExpr(StringExpr<'a>),
@@ -689,16 +767,16 @@ pub enum Expr<'a> {
     ThunkExpr(ThunkExpr<'a>),
     ForceExpr(ForceExpr<'a>),
     MatchExpr(MatchExpr<'a>),
-    CallExpr(CallExpr<'a>),
-    MemberExpr(MemberExpr<'a>),
-    BinaryExpr(BinaryExpr<'a>),
-    UnaryExpr(UnaryExpr<'a>),
     HandleExpr(HandleExpr<'a>),
     BundleExpr(BundleExpr<'a>),
+    IfElseExpr(IfElseExpr<'a>),
+    BlockExpr(BlockExpr<'a>),
     ParenExpr(ParenExpr<'a>),
     AnnotationExpr(AnnotationExpr<'a>),
-    BlockExpr(BlockExpr<'a>),
-    IfElseExpr(IfElseExpr<'a>),
+    UnaryExpr(UnaryExpr<'a>),
+    MemberExpr(MemberExpr<'a>),
+    CallExpr(CallExpr<'a>),
+    BinaryExpr(BinaryExpr<'a>),
     AssignExpr(AssignExpr<'a>),
 }
 
@@ -712,16 +790,16 @@ impl<'a> AstNode<'a> for Expr<'a> {
             .or_else(|| ThunkExpr::cast(node).map(Self::ThunkExpr))
             .or_else(|| ForceExpr::cast(node).map(Self::ForceExpr))
             .or_else(|| MatchExpr::cast(node).map(Self::MatchExpr))
-            .or_else(|| CallExpr::cast(node).map(Self::CallExpr))
-            .or_else(|| MemberExpr::cast(node).map(Self::MemberExpr))
-            .or_else(|| BinaryExpr::cast(node).map(Self::BinaryExpr))
-            .or_else(|| UnaryExpr::cast(node).map(Self::UnaryExpr))
             .or_else(|| HandleExpr::cast(node).map(Self::HandleExpr))
             .or_else(|| BundleExpr::cast(node).map(Self::BundleExpr))
+            .or_else(|| IfElseExpr::cast(node).map(Self::IfElseExpr))
+            .or_else(|| BlockExpr::cast(node).map(Self::BlockExpr))
             .or_else(|| ParenExpr::cast(node).map(Self::ParenExpr))
             .or_else(|| AnnotationExpr::cast(node).map(Self::AnnotationExpr))
-            .or_else(|| BlockExpr::cast(node).map(Self::BlockExpr))
-            .or_else(|| IfElseExpr::cast(node).map(Self::IfElseExpr))
+            .or_else(|| UnaryExpr::cast(node).map(Self::UnaryExpr))
+            .or_else(|| MemberExpr::cast(node).map(Self::MemberExpr))
+            .or_else(|| CallExpr::cast(node).map(Self::CallExpr))
+            .or_else(|| BinaryExpr::cast(node).map(Self::BinaryExpr))
             .or_else(|| AssignExpr::cast(node).map(Self::AssignExpr))
     }
     fn syntax(&self) -> &'a SyntaxNode {
@@ -733,16 +811,16 @@ impl<'a> AstNode<'a> for Expr<'a> {
             Self::ThunkExpr(n) => n.syntax(),
             Self::ForceExpr(n) => n.syntax(),
             Self::MatchExpr(n) => n.syntax(),
-            Self::CallExpr(n) => n.syntax(),
-            Self::MemberExpr(n) => n.syntax(),
-            Self::BinaryExpr(n) => n.syntax(),
-            Self::UnaryExpr(n) => n.syntax(),
             Self::HandleExpr(n) => n.syntax(),
             Self::BundleExpr(n) => n.syntax(),
+            Self::IfElseExpr(n) => n.syntax(),
+            Self::BlockExpr(n) => n.syntax(),
             Self::ParenExpr(n) => n.syntax(),
             Self::AnnotationExpr(n) => n.syntax(),
-            Self::BlockExpr(n) => n.syntax(),
-            Self::IfElseExpr(n) => n.syntax(),
+            Self::UnaryExpr(n) => n.syntax(),
+            Self::MemberExpr(n) => n.syntax(),
+            Self::CallExpr(n) => n.syntax(),
+            Self::BinaryExpr(n) => n.syntax(),
             Self::AssignExpr(n) => n.syntax(),
         }
     }
@@ -903,108 +981,6 @@ impl<'a> MatchArm<'a> {
         })
     }
     pub fn body(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
-    }
-}
-
-pub struct CallExpr<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for CallExpr<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::CALL_EXPR).then(|| Self(node))
-    }
-    fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-impl<'a> CallExpr<'a> {
-    pub fn callee(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
-    }
-    pub fn args(&self) -> impl Iterator<Item = Expr<'a>> + 'a {
-        self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
-    }
-}
-
-pub struct MemberExpr<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for MemberExpr<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::MEMBER_EXPR).then(|| Self(node))
-    }
-    fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-impl<'a> MemberExpr<'a> {
-    pub fn object(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
-    }
-    pub fn member(&self) -> Option<&'a LosslessToken> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
-            _ => None,
-        })
-    }
-}
-
-pub struct BinaryExpr<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for BinaryExpr<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::BINARY_EXPR).then(|| Self(node))
-    }
-    fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-impl<'a> BinaryExpr<'a> {
-    pub fn lhs(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
-    }
-    pub fn op(&self) -> Option<BinaryOp<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => BinaryOp::cast(n),
-            _ => None,
-        })
-    }
-    pub fn rhs(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
-    }
-}
-
-pub struct UnaryExpr<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for UnaryExpr<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::UNARY_EXPR).then(|| Self(node))
-    }
-    fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-impl<'a> UnaryExpr<'a> {
-    pub fn op(&self) -> Option<UnaryOp<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => UnaryOp::cast(n),
-            _ => None,
-        })
-    }
-    pub fn operand(&self) -> Option<Expr<'a>> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Node(n) => Expr::cast(n),
             _ => None,
@@ -1196,36 +1172,6 @@ impl<'a> AstNode<'a> for ElseClause<'a> {
             Self::IfElseExpr(n) => n.syntax(),
             Self::BlockExpr(n) => n.syntax(),
         }
-    }
-}
-
-pub struct AssignExpr<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for AssignExpr<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::ASSIGN_EXPR).then(|| Self(node))
-    }
-    fn syntax(&self) -> &'a SyntaxNode { self.0 }
-}
-
-impl<'a> AssignExpr<'a> {
-    pub fn name(&self) -> Option<&'a LosslessToken> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
-            _ => None,
-        })
-    }
-    pub fn value(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
-    }
-    pub fn body(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
     }
 }
 
