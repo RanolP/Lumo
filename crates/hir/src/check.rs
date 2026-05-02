@@ -257,7 +257,10 @@ impl CheckCtx {
             &generics,
         );
         if let Some(cap) = &impl_decl.capability {
-            self.check_type_expr_with_generics(&cap.value, cap.span, &generics);
+            let cap_name = cap.value.cap_name();
+            if !cap_name.is_empty() && !self.caps.contains_key(cap_name) {
+                self.error(cap.span, format!("unknown capability `{cap_name}`"));
+            }
         }
 
         let mut method_names: HashSet<String> = HashSet::new();
@@ -266,6 +269,26 @@ impl CheckCtx {
                 self.error(method.span, format!("duplicate method `{}`", method.name));
             }
             self.check_impl_method(method, &generics);
+        }
+
+        // Impl completeness: all cap operations must be implemented
+        if let Some(cap_ty) = &impl_decl.capability {
+            let cap_name = cap_ty.value.cap_name().to_owned();
+            if let Some(cap_info) = self.caps.get(&cap_name) {
+                let mut missing: Vec<String> = cap_info
+                    .operations
+                    .keys()
+                    .filter(|op| !method_names.contains(*op))
+                    .cloned()
+                    .collect();
+                missing.sort();
+                for op in missing {
+                    self.error(
+                        cap_ty.span,
+                        format!("impl of `{cap_name}` is missing method `{op}`"),
+                    );
+                }
+            }
         }
     }
 
@@ -748,6 +771,67 @@ mod tests {
         assert!(
             msgs.iter().any(|m| m.contains("undefined variable `x`")),
             "x should not be in scope after let-in: {msgs:?}"
+        );
+    }
+
+    #[test]
+    fn impl_unknown_capability() {
+        let msgs = check_msgs("extern type Number\nimpl Number: Unknown { }");
+        assert!(
+            msgs.iter().any(|m| m.contains("unknown capability `Unknown`")),
+            "expected unknown-capability error, got: {msgs:?}"
+        );
+    }
+
+    #[test]
+    fn impl_cap_complete() {
+        let errors = check(
+            "extern type Number
+             cap Add { fn add(a: Number, b: Number) }
+             impl Number: Add { fn add(a: Number, b: Number) := produce a }",
+        );
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    }
+
+    #[test]
+    fn impl_cap_missing_method() {
+        let msgs = check_msgs(
+            "extern type Number
+             cap Add { fn add(a: Number, b: Number) }
+             impl Number: Add { }",
+        );
+        assert!(
+            msgs.iter().any(|m| m.contains("impl of `Add` is missing method `add`")),
+            "expected missing-method error, got: {msgs:?}"
+        );
+    }
+
+    #[test]
+    fn impl_cap_missing_multiple_methods() {
+        let msgs = check_msgs(
+            "extern type Number
+             cap Ops { fn add(a: Number, b: Number) fn mul(a: Number, b: Number) }
+             impl Number: Ops { }",
+        );
+        let missing_add = msgs.iter().any(|m| m.contains("impl of `Ops` is missing method `add`"));
+        let missing_mul = msgs.iter().any(|m| m.contains("impl of `Ops` is missing method `mul`"));
+        assert!(missing_add && missing_mul, "expected both missing-method errors, got: {msgs:?}");
+    }
+
+    #[test]
+    fn impl_cap_partial_implementation() {
+        let msgs = check_msgs(
+            "extern type Number
+             cap Ops { fn add(a: Number, b: Number) fn mul(a: Number, b: Number) }
+             impl Number: Ops { fn add(a: Number, b: Number) := produce a }",
+        );
+        assert!(
+            msgs.iter().any(|m| m.contains("impl of `Ops` is missing method `mul`")),
+            "expected missing mul error, got: {msgs:?}"
+        );
+        assert!(
+            !msgs.iter().any(|m| m.contains("missing method `add`")),
+            "add should not be reported missing: {msgs:?}"
         );
     }
 }
