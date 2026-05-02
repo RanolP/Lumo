@@ -1,7 +1,7 @@
 fn f(mapper: fn(T): T): fn(T): T / {} { mapper }
 ---
-f : fn(fn(T) -> T) -> fn(T) -> T
+f : fn(fn(T): T): fn(T): T
 ==========
 fn g(mapper: fn(T): T / { .. }): fn(T): T / {} { mapper }
 ---
-g : fn(fn(T) -> T / {..}) -> fn(T) -> T
+g : fn(fn(T): T / {..}): fn(T): T

@@ -300,7 +300,7 @@ fn render_v_type(ty: &ValueType) -> String {
                 } else {
                     format!(" / {{{}}}", cap.iter().map(|e| e.display()).collect::<Vec<_>>().join(", "))
                 };
-                format!("fn({ps}) -> {}{cap_str}", render_c_type(ret))
+                format!("fn({ps}): {}{cap_str}", render_c_type(ret))
             }
             _ => format!("thunk {}", render_c_type(inner)),
         },
@@ -331,7 +331,7 @@ fn render_c_type(ty: &CompType) -> String {
             } else {
                 format!(" / {{{}}}", cap.iter().map(|e| e.display()).collect::<Vec<_>>().join(", "))
             };
-            format!("fn({ps}) -> {}{cap_str}", render_c_type(ret))
+            format!("fn({ps}): {}{cap_str}", render_c_type(ret))
         }
     }
 }
