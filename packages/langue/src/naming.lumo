@@ -1,0 +1,95 @@
+use libcore.prelude.{String, Number, Bool};
+use libcore.string.{StrOps};
+
+// PascalCase to SCREAMING_SNAKE_CASE
+fn to_screaming_snake(name: String): String =
+  to_screaming_snake_loop(name, 0, "")
+
+fn to_screaming_snake_loop(name: String, i: Number, acc: String): String =
+  if i >= name.len() { acc } else {
+    let c = name.char_at(i);
+    let code = c.char_code_at(0);
+    let is_upper = if code >= 65 { code <= 90 } else { Bool.false };
+    if is_upper {
+      if 0 < i {
+        let prev_code = name.char_at(i - 1).char_code_at(0);
+        let prev_lower = if prev_code >= 97 { prev_code <= 122 } else { Bool.false };
+        let prev_digit = if prev_code >= 48 { prev_code <= 57 } else { Bool.false };
+        if prev_lower { to_screaming_snake_loop(name, i + 1, acc + "_" + to_upper_char(c)) }
+        else if prev_digit { to_screaming_snake_loop(name, i + 1, acc + "_" + to_upper_char(c)) }
+        else { to_screaming_snake_loop(name, i + 1, acc + to_upper_char(c)) }
+      } else { to_screaming_snake_loop(name, i + 1, acc + to_upper_char(c)) }
+    } else { to_screaming_snake_loop(name, i + 1, acc + to_upper_char(c)) }
+  }
+
+fn to_upper_char(c: String): String {
+  let code = c.char_code_at(0);
+  if code >= 97 {
+    if code <= 122 { StrOps.from_char_code(code - 32) } else { c }
+  } else { c }
+}
+
+fn keyword_variant(kw: String): String =
+  to_upper_string(kw) + "_KW"
+
+fn to_upper_string(s: String): String =
+  to_upper_string_loop(s, 0, "")
+
+fn to_upper_string_loop(s: String, i: Number, acc: String): String =
+  if i >= s.len() { acc }
+  else { to_upper_string_loop(s, i + 1, acc + to_upper_char(s.char_at(i))) }
+
+fn symbol_variant(sym: String): String =
+  if sym == "#" { "HASH" }
+  else if sym == "(" { "L_PAREN" }
+  else if sym == ")" { "R_PAREN" }
+  else if sym == "[" { "L_BRACKET" }
+  else if sym == "]" { "R_BRACKET" }
+  else if sym == "{" { "L_BRACE" }
+  else if sym == "}" { "R_BRACE" }
+  else if sym == ";" { "SEMICOLON" }
+  else if sym == ":" { "COLON" }
+  else if sym == "," { "COMMA" }
+  else if sym == "=" { "EQUALS" }
+  else if sym == ":=" { "COLON_EQ" }
+  else if sym == "=>" { "FAT_ARROW" }
+  else if sym == "->" { "ARROW" }
+  else if sym == "." { "DOT" }
+  else if sym == "+" { "PLUS" }
+  else if sym == "-" { "MINUS" }
+  else if sym == "*" { "STAR" }
+  else if sym == "/" { "SLASH" }
+  else if sym == "%" { "PERCENT" }
+  else if sym == "!" { "BANG" }
+  else if sym == "<" { "LT" }
+  else if sym == ">" { "GT" }
+  else if sym == "<=" { "LT_EQ" }
+  else if sym == ">=" { "GT_EQ" }
+  else if sym == "==" { "EQ_EQ" }
+  else if sym == "!=" { "BANG_EQ" }
+  else if sym == "&&" { "AMP_AMP" }
+  else if sym == "||" { "PIPE_PIPE" }
+  else if sym == "_" { "UNDERSCORE" }
+  else { "SYM_" + sym }
+
+fn to_snake(name: String): String =
+  to_snake_loop(name, 0, "")
+
+fn to_snake_loop(name: String, i: Number, acc: String): String =
+  if i >= name.len() { acc } else {
+    let c = name.char_at(i);
+    let code = c.char_code_at(0);
+    let is_upper = if code >= 65 { code <= 90 } else { Bool.false };
+    if is_upper {
+      if 0 < i {
+        to_snake_loop(name, i + 1, acc + "_" + to_lower_char(c))
+      } else { to_snake_loop(name, i + 1, acc + to_lower_char(c)) }
+    } else { to_snake_loop(name, i + 1, acc + c) }
+  }
+
+fn to_lower_char(c: String): String {
+  let code = c.char_code_at(0);
+  if code >= 65 {
+    if code <= 90 { StrOps.from_char_code(code + 32) } else { c }
+  } else { c }
+}
