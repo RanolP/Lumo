@@ -1,4 +1,5 @@
 pub mod check;
+pub mod from_cst;
 pub mod parse;
 pub mod print;
 
@@ -296,7 +297,7 @@ pub fn merge_files(files: &[File]) -> File {
     }
 }
 
-fn dedupe_data_with_as_raw(items: Vec<Item>) -> Vec<Item> {
+pub fn dedupe_data_with_as_raw(items: Vec<Item>) -> Vec<Item> {
     // For each data name, decide whether any of its decls carries `as_raw`.
     use std::collections::HashMap;
     let mut any_as_raw: HashMap<String, bool> = HashMap::new();
@@ -1018,6 +1019,10 @@ fn find_link_module(attrs: &[lst::Attribute], fallback_fn_name: &str) -> Option<
 // ---------------------------------------------------------------------------
 // File-level content hashing (FNV-1a)
 // ---------------------------------------------------------------------------
+
+pub fn hash_file_pub(items: &[Item]) -> ContentHash {
+    hash_file(items)
+}
 
 fn hash_file(items: &[Item]) -> ContentHash {
     let mut h = FnvHasher::new();
