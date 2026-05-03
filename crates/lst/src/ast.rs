@@ -909,12 +909,6 @@ impl<'a> ImplDecl<'a> {
             _ => None,
         })
     }
-    pub fn name(&self) -> Option<&'a LosslessToken> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
-            _ => None,
-        })
-    }
     pub fn target(&self) -> Option<TypeExpr<'a>> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Node(n) => TypeExpr::cast(n),

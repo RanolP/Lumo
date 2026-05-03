@@ -118,7 +118,7 @@ UseNameItem = name:Ident
 
 // === Impl blocks ===
 
-ImplDecl = 'impl' generic_params:GenericParams? name:Ident? target:TypeExpr (':' cap:TypeExpr)? '{' methods:ImplMethod* '}'
+ImplDecl = 'impl' generic_params:GenericParams? target:TypeExpr (':' cap:TypeExpr)? '{' methods:ImplMethod* '}'
 ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? body:FnBody
 
 // === Expressions ===

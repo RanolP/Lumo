@@ -64,7 +64,21 @@ struct LowerCtx {
 // ---------------------------------------------------------------------------
 
 fn attr_name(attr: &ast::Attribute) -> Option<String> {
-    attr.name().map(|t| t.text.clone())
+    // attr.name() looks for ATTR_NAME, but keyword tokens like `extern` keep their keyword kind.
+    // Walk children: first non-trivia token after `[` is the attribute name.
+    let mut past_bracket = false;
+    for child in &attr.syntax().children {
+        if let SyntaxElement::Token(t) = child {
+            if !past_bracket {
+                if t.kind == SyntaxKind::L_BRACKET {
+                    past_bracket = true;
+                }
+            } else if t.kind != SyntaxKind::WHITESPACE && t.kind != SyntaxKind::NEWLINE {
+                return Some(t.text.clone());
+            }
+        }
+    }
+    None
 }
 
 fn attr_args<'a>(attr: &'a ast::Attribute) -> impl Iterator<Item = ast::AttributeArgItem<'a>> + 'a {
@@ -81,12 +95,25 @@ fn attr_args<'a>(attr: &'a ast::Attribute) -> impl Iterator<Item = ast::Attribut
 
 fn attr_arg_str(attr: &ast::Attribute, key: &str) -> Option<String> {
     for arg in attr_args(attr) {
-        let k = arg.name().map(|t| t.text.clone()).unwrap_or_default();
-        if k == key {
+        // arg.name() looks for ATTR_NAME but keys are lexed as IDENT; scan children directly.
+        let k = arg_item_key_text(&arg);
+        if k.as_deref() == Some(key) {
             if let Some(val_expr) = arg.value() {
                 if let Some(s) = extract_string_expr(&val_expr) {
                     return Some(s);
                 }
+            }
+        }
+    }
+    None
+}
+
+fn arg_item_key_text(arg: &ast::AttributeArgItem) -> Option<String> {
+    // The key token is the first non-trivia token in the arg item (stored as IDENT or ATTR_NAME).
+    for child in &arg.syntax().children {
+        if let SyntaxElement::Token(t) = child {
+            if t.kind != SyntaxKind::WHITESPACE && t.kind != SyntaxKind::NEWLINE {
+                return Some(t.text.clone());
             }
         }
     }
@@ -673,7 +700,8 @@ fn lower_impl_decl(impl_decl: &ast::ImplDecl, ctx: &mut LowerCtx) -> ImplDecl {
     let capability = cap_type_node.and_then(|ty| lower_type_expr(ty));
 
     // For `self` parameter type substitution
-    let name = impl_decl.name().map(|t| t.text.clone());
+    // Named impls (impl Name = ...) are not in the surface grammar; name is always None from CST.
+    let name: Option<String> = None;
 
     let methods: Vec<ImplMethodDecl> = impl_decl
         .methods()
