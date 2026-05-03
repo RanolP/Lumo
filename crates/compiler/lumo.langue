@@ -97,8 +97,7 @@ ExternRest =
   | ExternBlockTail
 ExternTypeTail = 'type' name:Ident ';'?
 ExternFnTail = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? ';'?
-ExternBlockTail = '{' items:ExternBlockItems? '}'
-ExternBlockItems = ExternBlockItem ExternBlockItem*
+ExternBlockTail = '{' items:ExternBlockItem* '}'
 ExternBlockItem = attrs:Attribute* body:ExternBlockItemBody
 ExternBlockItemBody =
   | ExternTypeTail

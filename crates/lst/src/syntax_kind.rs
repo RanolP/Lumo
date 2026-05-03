@@ -89,7 +89,6 @@ pub enum SyntaxKind {
     EXTERN_TYPE_TAIL, // ExternTypeTail
     EXTERN_FN_TAIL, // ExternFnTail
     EXTERN_BLOCK_TAIL, // ExternBlockTail
-    EXTERN_BLOCK_ITEMS, // ExternBlockItems
     EXTERN_BLOCK_ITEM, // ExternBlockItem
     USE_DECL, // UseDecl
     USE_PATH, // UsePath

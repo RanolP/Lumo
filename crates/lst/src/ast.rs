@@ -679,21 +679,12 @@ impl<'a> AstNode<'a> for ExternBlockTail<'a> {
 }
 
 impl<'a> ExternBlockTail<'a> {
-    pub fn items(&self) -> Option<ExternBlockItems<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => ExternBlockItems::cast(n),
+    pub fn items(&self) -> impl Iterator<Item = ExternBlockItem<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) => ExternBlockItem::cast(n),
             _ => None,
         })
     }
-}
-
-pub struct ExternBlockItems<'a>(pub(crate) &'a SyntaxNode);
-
-impl<'a> AstNode<'a> for ExternBlockItems<'a> {
-    fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::EXTERN_BLOCK_ITEMS).then(|| Self(node))
-    }
-    fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
 pub struct ExternBlockItem<'a>(pub(crate) &'a SyntaxNode);

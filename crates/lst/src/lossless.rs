@@ -585,21 +585,11 @@ impl Parser {
     fn parse_extern_block_tail(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         self.expect_symbol("{", &mut children);
-        if self.can_parse_extern_block_items() {
-            children.push(SyntaxElement::Node(Box::new(self.parse_extern_block_items())));
-        }
-        self.expect_symbol("}", &mut children);
-        node_from_children(SyntaxKind::EXTERN_BLOCK_TAIL, children)
-    }
-
-    fn can_parse_extern_block_items(&self) -> bool { self.can_parse_extern_block_item() }
-    fn parse_extern_block_items(&mut self) -> SyntaxNode {
-        let mut children = Vec::new();
-        children.push(SyntaxElement::Node(Box::new(self.parse_extern_block_item())));
         while self.can_parse_extern_block_item() {
             children.push(SyntaxElement::Node(Box::new(self.parse_extern_block_item())));
         }
-        node_from_children(SyntaxKind::EXTERN_BLOCK_ITEMS, children)
+        self.expect_symbol("}", &mut children);
+        node_from_children(SyntaxKind::EXTERN_BLOCK_TAIL, children)
     }
 
     fn can_parse_extern_block_item(&self) -> bool { self.at_non_trivia_symbol("#") || self.can_parse_extern_block_item_body() }
