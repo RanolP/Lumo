@@ -5,7 +5,6 @@ use crate::{
     hir,
     lexer::Span,
     lir, lst,
-    parser::{self, ParseOutput},
     typecheck,
     types::{CapEntry, CapRef, ExprId, Pattern, TypeExpr},
 };
@@ -13,8 +12,8 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseResult {
     pub lossless: lst::lossless::ParseOutput,
-    pub file: crate::lst::File,
-    pub errors: Vec<parser::ParseError>,
+    pub file: hir::File,
+    pub errors: Vec<lst::lossless::ParseError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,12 +127,13 @@ impl QueryEngine {
         }
 
         let lossless = lst::lossless::parse(&entry.source);
-        let parsed: ParseOutput = parser::parse_lossless(&lossless);
+        let errors = lossless.errors.clone();
+        let file = hir::lower_lossless(&lossless);
 
         let parse = ParseResult {
             lossless,
-            file: parsed.file,
-            errors: parsed.errors,
+            file,
+            errors,
         };
 
         entry.parsed_at_hash = Some(entry.source_hash);
@@ -151,7 +151,7 @@ impl QueryEngine {
         }
 
         let parsed = self.parse(file)?;
-        let lowered = hir::lower(&parsed.file);
+        let lowered = parsed.file.clone();
 
         let entry = self.files.get_mut(file)?;
         entry.lowered_hir_at_hash = Some(entry.source_hash);
@@ -360,11 +360,11 @@ fn hash_text(text: &str) -> u64 {
     state
 }
 
-fn collect_use_paths(file: &crate::lst::File) -> Vec<Vec<String>> {
+fn collect_use_paths(file: &hir::File) -> Vec<Vec<String>> {
     file.items
         .iter()
         .filter_map(|item| {
-            if let lst::Item::Use(u) = item {
+            if let hir::Item::Use(u) = item {
                 Some(u.path.clone())
             } else {
                 None

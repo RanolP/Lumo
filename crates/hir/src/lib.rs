@@ -5,7 +5,6 @@ pub mod print;
 
 use lumo_span::Span;
 use lumo_lst as lst;
-use lumo_lst::parser;
 use lumo_types::{CapRef, ContentHash, Pattern, Spanned, TypeExpr};
 
 /// A generic parameter in a function declaration.
@@ -232,8 +231,7 @@ impl Expr {
 // ---------------------------------------------------------------------------
 
 pub fn lower_lossless(parsed: &crate::lst::lossless::ParseOutput) -> File {
-    let parsed = parser::parse_lossless(parsed);
-    lower(&parsed.file)
+    from_cst::lower_from_cst(parsed)
 }
 
 pub fn lower(file: &lst::File) -> File {
