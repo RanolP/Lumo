@@ -90,21 +90,22 @@ fn lexer_kind_to_syntax_kind(kind: &LexKind, text: &str) -> SyntaxKind {
         LexKind::Newline => SyntaxKind::NEWLINE,
         LexKind::Unknown => SyntaxKind::UNKNOWN,
         LexKind::Keyword(kw) => match kw {
-            Keyword::Data => SyntaxKind::DATA_KW,
-            Keyword::Fn => SyntaxKind::FN_KW,
-            Keyword::Extern => SyntaxKind::EXTERN_KW,
-            Keyword::Let => SyntaxKind::LET_KW,
-            Keyword::In => SyntaxKind::IN_KW,
-            Keyword::Thunk => SyntaxKind::THUNK_KW,
-            Keyword::Force => SyntaxKind::FORCE_KW,
-            Keyword::Match => SyntaxKind::MATCH_KW,
-            Keyword::Cap => SyntaxKind::CAP_KW,
-            Keyword::Handle => SyntaxKind::HANDLE_KW,
             Keyword::Bundle => SyntaxKind::BUNDLE_KW,
-            Keyword::Use => SyntaxKind::USE_KW,
-            Keyword::Impl => SyntaxKind::IMPL_KW,
-            Keyword::If => SyntaxKind::IF_KW,
+            Keyword::Cap => SyntaxKind::CAP_KW,
+            Keyword::Data => SyntaxKind::DATA_KW,
             Keyword::Else => SyntaxKind::ELSE_KW,
+            Keyword::Extern => SyntaxKind::EXTERN_KW,
+            Keyword::Fn => SyntaxKind::FN_KW,
+            Keyword::Force => SyntaxKind::FORCE_KW,
+            Keyword::Handle => SyntaxKind::HANDLE_KW,
+            Keyword::If => SyntaxKind::IF_KW,
+            Keyword::Impl => SyntaxKind::IMPL_KW,
+            Keyword::In => SyntaxKind::IN_KW,
+            Keyword::Let => SyntaxKind::LET_KW,
+            Keyword::Match => SyntaxKind::MATCH_KW,
+            Keyword::Thunk => SyntaxKind::THUNK_KW,
+            Keyword::Type => SyntaxKind::TYPE_KW,
+            Keyword::Use => SyntaxKind::USE_KW,
             _ => SyntaxKind::UNKNOWN,
         },
         LexKind::Symbol(_) => SyntaxKind::from_symbol(text).unwrap_or(SyntaxKind::UNKNOWN),
@@ -542,13 +543,10 @@ impl Parser {
         node_from_children(SyntaxKind::ERROR, Vec::new())
     }
 
-    fn can_parse_extern_type_tail(&self) -> bool { self.at_non_trivia_ident_text("type") }
+    fn can_parse_extern_type_tail(&self) -> bool { self.at_non_trivia_keyword(Keyword::Type) }
     fn parse_extern_type_tail(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        self.skip_trivia_into(&mut children);
-        if self.current().map(|t| matches!(t.kind, LexKind::Ident) && t.text.as_str() == "type").unwrap_or(false) {
-            children.push(SyntaxElement::Token(self.bump().unwrap()));
-        } else { self.error_here("expected 'type'"); }
+        self.expect_keyword(Keyword::Type, &mut children);
         self.skip_trivia_into(&mut children);
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
             children.push(SyntaxElement::Token(self.bump().unwrap()));

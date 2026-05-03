@@ -210,7 +210,7 @@ impl Parser {
 
     fn parse_extern_item(&mut self, inline: bool) -> Option<Item> {
         let start = self.expect_kw(Keyword::Extern).ok()?;
-        if self.eat_ident("type") {
+        if self.eat_kw(Keyword::Type) {
             let (name, name_span) = self.expect_ident().ok()?;
             let extern_name = self.try_parse_extern_as();
             Some(Item::ExternType(ExternTypeDecl {

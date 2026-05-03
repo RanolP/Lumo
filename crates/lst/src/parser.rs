@@ -601,7 +601,7 @@ impl<'a> Parser<'a> {
 
     fn parse_extern_item(&mut self, attrs: Vec<Attribute>) -> Vec<Item> {
         let start = self.expect_keyword(Keyword::Extern);
-        if self.at_ident_text("type") {
+        if self.at_keyword(Keyword::Type) {
             return vec![Item::ExternType(self.parse_extern_type_decl(attrs, start))];
         }
         if self.at_keyword(Keyword::Fn) {
@@ -646,7 +646,7 @@ impl<'a> Parser<'a> {
                     items.push(Item::ExternFn(self.parse_extern_fn_decl(merged, start)));
                     continue;
                 }
-                if self.at_ident_text("type") {
+                if self.at_keyword(Keyword::Type) {
                     let start = self.current_span();
                     items.push(Item::ExternType(self.parse_extern_type_decl(merged, start)));
                     continue;
@@ -656,7 +656,7 @@ impl<'a> Parser<'a> {
                 continue;
             }
             let start = self.expect_keyword(Keyword::Extern);
-            if self.at_ident_text("type") {
+            if self.at_keyword(Keyword::Type) {
                 items.push(Item::ExternType(self.parse_extern_type_decl(merged, start)));
             } else if self.at_keyword(Keyword::Fn) {
                 items.push(Item::ExternFn(self.parse_extern_fn_decl(merged, start)));
@@ -672,7 +672,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_extern_type_decl(&mut self, attrs: Vec<Attribute>, start: Span) -> ExternTypeDecl {
-        self.expect_ident_text("type");
+        self.expect_keyword(Keyword::Type);
         let name = self.expect_ident();
         let end = self.expect_symbol(Symbol::Semi);
         ExternTypeDecl {
@@ -2163,6 +2163,7 @@ fn token_text(token: &Token) -> String {
         TokenKind::Keyword(Keyword::Roll) => "roll".to_owned(),
         TokenKind::Keyword(Keyword::Unroll) => "unroll".to_owned(),
         TokenKind::Keyword(Keyword::Ctor) => "ctor".to_owned(),
+        TokenKind::Keyword(Keyword::Type) => "type".to_owned(),
         TokenKind::Ident(s) => s.clone(),
         TokenKind::StringLit(s) => s.clone(),
         TokenKind::Symbol(Symbol::Hash) => "#".to_owned(),
