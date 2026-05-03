@@ -35,6 +35,7 @@ pub enum Keyword {
     If,
     Else,
     Type,
+    For,
     // LIR-specific keywords
     Lambda,
     Roll,
@@ -97,6 +98,7 @@ impl Keyword {
             "if" => Some(Self::If),
             "else" => Some(Self::Else),
             "type" => Some(Self::Type),
+            "for" => Some(Self::For),
             "lambda" => Some(Self::Lambda),
             "roll" => Some(Self::Roll),
             "unroll" => Some(Self::Unroll),
@@ -297,6 +299,7 @@ pub fn lex_lossless(input: &str) -> LosslessLexOutput {
                 "unroll" => LosslessTokenKind::Keyword(Keyword::Unroll),
                 "ctor" => LosslessTokenKind::Keyword(Keyword::Ctor),
                 "type" => LosslessTokenKind::Keyword(Keyword::Type),
+                "for" => LosslessTokenKind::Keyword(Keyword::For),
                 _ => LosslessTokenKind::Ident,
             };
 

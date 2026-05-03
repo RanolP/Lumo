@@ -96,6 +96,7 @@ fn lexer_kind_to_syntax_kind(kind: &LexKind, text: &str) -> SyntaxKind {
             Keyword::Else => SyntaxKind::ELSE_KW,
             Keyword::Extern => SyntaxKind::EXTERN_KW,
             Keyword::Fn => SyntaxKind::FN_KW,
+            Keyword::For => SyntaxKind::FOR_KW,
             Keyword::Force => SyntaxKind::FORCE_KW,
             Keyword::Handle => SyntaxKind::HANDLE_KW,
             Keyword::If => SyntaxKind::IF_KW,
@@ -977,6 +978,10 @@ impl Parser {
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         } else { self.error_here("expected Ident"); }
+        if self.at_non_trivia_keyword(Keyword::For) {
+            self.expect_keyword(Keyword::For, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
         self.skip_trivia_into(&mut children);
         if self.current().map(|t| matches!(t.kind, LexKind::Ident) && t.text.as_str() == "with").unwrap_or(false) {
             children.push(SyntaxElement::Token(self.bump().unwrap()));

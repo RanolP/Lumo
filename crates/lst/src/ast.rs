@@ -1342,9 +1342,15 @@ impl<'a> AstNode<'a> for HandleExpr<'a> {
 }
 
 impl<'a> HandleExpr<'a> {
-    pub fn cap(&self) -> Option<&'a LosslessToken> {
+    pub fn cap_name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
+            _ => None,
+        })
+    }
+    pub fn cap_type(&self) -> Option<TypeExpr<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => TypeExpr::cast(n),
             _ => None,
         })
     }

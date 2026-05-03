@@ -2164,6 +2164,7 @@ fn token_text(token: &Token) -> String {
         TokenKind::Keyword(Keyword::Unroll) => "unroll".to_owned(),
         TokenKind::Keyword(Keyword::Ctor) => "ctor".to_owned(),
         TokenKind::Keyword(Keyword::Type) => "type".to_owned(),
+        TokenKind::Keyword(Keyword::For) => "for".to_owned(),
         TokenKind::Ident(s) => s.clone(),
         TokenKind::StringLit(s) => s.clone(),
         TokenKind::Symbol(Symbol::Hash) => "#".to_owned(),

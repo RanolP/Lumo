@@ -151,8 +151,7 @@ PerformExpr = 'perform' name:Ident
 MatchExpr = 'match' scrutinee:Expr '{' arms:MatchArm* '}'
 MatchArm = pattern:Pattern '=>' body:Expr ','?
 
-// Surface handle: cap is a raw signature string (e.g. "Add" or "Add for Number")
-HandleExpr = 'handle' cap:Ident 'with' handler:Expr 'in' body:Expr
+HandleExpr = 'handle' cap_name:Ident ('for' cap_type:TypeExpr)? 'with' handler:Expr 'in' body:Expr
 BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
 BundleEntry = 'fn' name:Ident param_list:ParamList body:FnBody
 

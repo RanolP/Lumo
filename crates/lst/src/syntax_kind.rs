@@ -21,6 +21,7 @@ pub enum SyntaxKind {
     ELSE_KW, // 'else'
     EXTERN_KW, // 'extern'
     FN_KW, // 'fn'
+    FOR_KW, // 'for'
     FORCE_KW, // 'force'
     HANDLE_KW, // 'handle'
     IF_KW, // 'if'
@@ -151,6 +152,7 @@ impl SyntaxKind {
             "else" => Some(Self::ELSE_KW),
             "extern" => Some(Self::EXTERN_KW),
             "fn" => Some(Self::FN_KW),
+            "for" => Some(Self::FOR_KW),
             "force" => Some(Self::FORCE_KW),
             "handle" => Some(Self::HANDLE_KW),
             "if" => Some(Self::IF_KW),

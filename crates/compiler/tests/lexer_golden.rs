@@ -258,6 +258,7 @@ fn render_token(token: &lumo_compiler::lexer::Token) -> String {
         TokenKind::Keyword(Keyword::Unroll) => "kw(unroll)".to_owned(),
         TokenKind::Keyword(Keyword::Ctor) => "kw(ctor)".to_owned(),
         TokenKind::Keyword(Keyword::Type) => "kw(type)".to_owned(),
+        TokenKind::Keyword(Keyword::For) => "kw(for)".to_owned(),
         TokenKind::Ident(s) => format!("ident({s})"),
         TokenKind::StringLit(s) => format!("string({s})"),
         TokenKind::Symbol(Symbol::Hash) => "sym(#)".to_owned(),

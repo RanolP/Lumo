@@ -93,17 +93,17 @@ fn attr_arg_str(attr: &ast::Attribute, key: &str) -> Option<String> {
     None
 }
 
+fn strip_string_quotes(text: &str) -> String {
+    if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
+        text[1..text.len() - 1].to_owned()
+    } else {
+        text.to_owned()
+    }
+}
+
 fn extract_string_expr(expr: &ast::Expr) -> Option<String> {
     match expr {
-        ast::Expr::StringExpr(s) => s.value().map(|t| {
-            let text = &t.text;
-            // Strip surrounding quotes
-            if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
-                text[1..text.len() - 1].to_owned()
-            } else {
-                text.clone()
-            }
-        }),
+        ast::Expr::StringExpr(s) => s.value().map(|t| strip_string_quotes(&t.text)),
         _ => None,
     }
 }
@@ -220,6 +220,7 @@ fn type_expr_repr(ty: &ast::TypeExpr) -> String {
     let name = ty.name().map(|t| t.text.clone()).unwrap_or_default();
     if let Some(generic_args) = ty.generic_args() {
         if let Some(arg_items) = generic_args.args() {
+            // tail() returns all items (head+tail) since both map over all children
             let args: Vec<String> = arg_items.tail().map(|a| type_expr_repr(&a)).collect();
             if !args.is_empty() {
                 return format!("{}[{}]", name, args.join(", "));
@@ -868,11 +869,7 @@ fn lower_expr(expr: &ast::Expr, ctx: &mut LowerCtx) -> Expr {
         }
         ast::Expr::StringExpr(e) => {
             let raw = e.value().map(|t| t.text.clone()).unwrap_or_default();
-            let value = if raw.starts_with('"') && raw.ends_with('"') && raw.len() >= 2 {
-                raw[1..raw.len() - 1].to_owned()
-            } else {
-                raw
-            };
+            let value = strip_string_quotes(&raw);
             Expr::String { value, span: e.syntax().span }
         }
         ast::Expr::NumberExpr(e) => {
@@ -939,11 +936,13 @@ fn lower_expr(expr: &ast::Expr, ctx: &mut LowerCtx) -> Expr {
         }
         ast::Expr::HandleExpr(e) => {
             let span = e.syntax().span;
-            let cap_text = e.cap().map(|t| t.text.clone()).unwrap_or_default();
-            let (cap_name, type_args) = parse_handle_cap(&cap_text);
+            let cap_name = e.cap_name().map(|t| t.text.clone()).unwrap_or_default();
+            let type_args: Vec<String> = e
+                .cap_type()
+                .map(|ty| vec![type_expr_repr(&ty)])
+                .unwrap_or_default();
 
-            // Bug: handler() and body() both return the same first Expr child.
-            // Walk children to collect Expr children in order.
+            // Walk children to collect Expr children in order (handler then body).
             let exprs = get_expr_children(e.syntax());
             let handler = exprs
                 .first()
@@ -1071,7 +1070,7 @@ fn lower_expr(expr: &ast::Expr, ctx: &mut LowerCtx) -> Expr {
                 .get(1)
                 .map(|ex| lower_expr(ex, ctx))
                 .unwrap_or(Expr::Error { span });
-            desugar_binary_op_str(span, &op_text, left, right)
+            desugar_binary_op_str(span, &op_text, left, right, ctx)
         }
         ast::Expr::AssignExpr(e) => {
             // The CST AssignExpr represents `name = value; body` (assign-then-bind).
@@ -1199,15 +1198,6 @@ fn pattern_to_str(pat: &ast::Pattern) -> String {
 // Operator desugaring
 // ---------------------------------------------------------------------------
 
-fn parse_handle_cap(cap: &str) -> (String, Vec<String>) {
-    let s = cap.trim();
-    if let Some((name, ty)) = s.split_once(" for ") {
-        (name.trim().to_owned(), vec![ty.trim().to_owned()])
-    } else {
-        (s.to_owned(), vec![])
-    }
-}
-
 fn bool_expr(span: Span, val: bool) -> Expr {
     let variant = if val { "true" } else { "false" };
     Expr::Member {
@@ -1272,7 +1262,7 @@ fn desugar_unary_call(span: Span, cap_name: &str, method_name: &str, operand: Ex
     Expr::Call { callee: Box::new(member), args: vec![operand], span }
 }
 
-fn desugar_binary_op_str(span: Span, op: &str, left: Expr, right: Expr) -> Expr {
+fn desugar_binary_op_str(span: Span, op: &str, left: Expr, right: Expr, ctx: &mut LowerCtx) -> Expr {
     match op {
         "+" => desugar_binary_call(span, "Add", "add", left, right),
         "-" => desugar_binary_call(span, "Sub", "sub", left, right),
@@ -1303,8 +1293,11 @@ fn desugar_binary_op_str(span: Span, op: &str, left: Expr, right: Expr) -> Expr 
             desugar_ordering_match(span, cmp, false, true, true)
         }
         _ => {
-            // Unknown op — return left
-            left
+            ctx.errors.push(crate::HirError {
+                span,
+                message: format!("unknown binary operator: `{op}`"),
+            });
+            Expr::Error { span }
         }
     }
 }

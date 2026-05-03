@@ -638,6 +638,7 @@ fn is_lexer_keyword(kw: String): Bool =
   else if kw == "roll" { Bool.true }
   else if kw == "unroll" { Bool.true }
   else if kw == "ctor" { Bool.true }
+  else if kw == "for" { Bool.true }
   else { Bool.false }
 
 fn keyword_variant_pascal(kw: String): String =
@@ -663,6 +664,7 @@ fn keyword_variant_pascal(kw: String): String =
   else if kw == "roll" { "Roll" }
   else if kw == "unroll" { "Unroll" }
   else if kw == "ctor" { "Ctor" }
+  else if kw == "for" { "For" }
   else { kw }
 
 fn list_concat_elem(xs: List[Element], ys: List[Element]): List[Element] =
