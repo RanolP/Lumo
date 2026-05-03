@@ -56,7 +56,9 @@ fn parser_fixtures_pipeline_consistency() {
             "HIR mismatch on fixture {}",
             case_name
         );
-        let lir_typed = lir::lower(&hir_typed);
+        // Direct lossless→HIR path (used by the query engine)
+        let hir_from_lossless = hir::lower_lossless(&lossless_parsed);
+        let lir_from_lossless = lir::lower(&hir_from_lossless);
 
         let mut query = QueryEngine::new();
         let virtual_path = format!("fixture-{file_name}-{index}.lumo");
@@ -69,22 +71,22 @@ fn parser_fixtures_pipeline_consistency() {
             .expect("query diagnostics result");
 
         assert_eq!(
-            typed_from_lossless.file, q_parsed.file,
+            hir_from_lossless, q_parsed.file,
             "query parse mismatch on fixture {}",
             case_name
         );
         assert_eq!(
-            hir_typed, q_lowered_hir,
+            hir_from_lossless, q_lowered_hir,
             "query HIR lower mismatch on fixture {}",
             case_name
         );
         assert_eq!(
-            lir_typed, q_lowered,
+            lir_from_lossless, q_lowered,
             "query lower mismatch on fixture {}",
             case_name
         );
 
-        assert_expected(expected, &q_parsed.file.items, &q_diags, &case_name);
+        assert_expected(expected, &typed_from_lossless.file.items, &q_diags, &case_name);
         total_cases += 1;
     }
     }

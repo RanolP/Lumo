@@ -1022,19 +1022,22 @@ impl Parser {
         let mut children = Vec::new();
         self.expect_symbol("(", &mut children);
         children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        // If the next non-trivia token is `:`, this is actually an annotation expr.
+        if self.at_non_trivia_symbol(":") {
+            self.expect_symbol(":", &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+            self.expect_symbol(")", &mut children);
+            return node_from_children(SyntaxKind::ANNOTATION_EXPR, children);
+        }
         self.expect_symbol(")", &mut children);
         node_from_children(SyntaxKind::PAREN_EXPR, children)
     }
 
-    fn can_parse_annotation_expr(&self) -> bool { self.at_non_trivia_symbol("(") }
+    fn can_parse_annotation_expr(&self) -> bool { false }
     fn parse_annotation_expr(&mut self) -> SyntaxNode {
-        let mut children = Vec::new();
-        self.expect_symbol("(", &mut children);
-        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
-        self.expect_symbol(":", &mut children);
-        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
-        self.expect_symbol(")", &mut children);
-        node_from_children(SyntaxKind::ANNOTATION_EXPR, children)
+        // Annotation expressions are handled by parse_paren_expr via lookahead.
+        // This branch is kept for compatibility but should never be reached.
+        self.parse_paren_expr()
     }
 
     fn can_parse_lambda_expr(&self) -> bool { self.at_non_trivia_keyword(Keyword::Fn) }
