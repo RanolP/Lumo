@@ -103,6 +103,7 @@ fn lexer_kind_to_syntax_kind(kind: &LexKind, text: &str) -> SyntaxKind {
             Keyword::In => SyntaxKind::IN_KW,
             Keyword::Let => SyntaxKind::LET_KW,
             Keyword::Match => SyntaxKind::MATCH_KW,
+            Keyword::Perform => SyntaxKind::PERFORM_KW,
             Keyword::Thunk => SyntaxKind::THUNK_KW,
             Keyword::Type => SyntaxKind::TYPE_KW,
             Keyword::Use => SyntaxKind::USE_KW,
@@ -535,10 +536,11 @@ impl Parser {
         node_from_children(SyntaxKind::EXTERN_DECL, children)
     }
 
-    fn can_parse_extern_rest(&self) -> bool { self.can_parse_extern_type_tail() || self.can_parse_extern_fn_tail() }
+    fn can_parse_extern_rest(&self) -> bool { self.can_parse_extern_type_tail() || self.can_parse_extern_fn_tail() || self.can_parse_extern_block_tail() }
     fn parse_extern_rest(&mut self) -> SyntaxNode {
         if self.can_parse_extern_type_tail() { return self.parse_extern_type_tail(); }
         if self.can_parse_extern_fn_tail() { return self.parse_extern_fn_tail(); }
+        if self.can_parse_extern_block_tail() { return self.parse_extern_block_tail(); }
         self.error_here("expected ExternRest");
         node_from_children(SyntaxKind::ERROR, Vec::new())
     }
@@ -577,6 +579,45 @@ impl Parser {
             self.expect_symbol(";", &mut children);
         }
         node_from_children(SyntaxKind::EXTERN_FN_TAIL, children)
+    }
+
+    fn can_parse_extern_block_tail(&self) -> bool { self.at_non_trivia_symbol("{") }
+    fn parse_extern_block_tail(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.expect_symbol("{", &mut children);
+        if self.can_parse_extern_block_items() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_extern_block_items())));
+        }
+        self.expect_symbol("}", &mut children);
+        node_from_children(SyntaxKind::EXTERN_BLOCK_TAIL, children)
+    }
+
+    fn can_parse_extern_block_items(&self) -> bool { self.can_parse_extern_block_item() }
+    fn parse_extern_block_items(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Node(Box::new(self.parse_extern_block_item())));
+        while self.can_parse_extern_block_item() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_extern_block_item())));
+        }
+        node_from_children(SyntaxKind::EXTERN_BLOCK_ITEMS, children)
+    }
+
+    fn can_parse_extern_block_item(&self) -> bool { self.at_non_trivia_symbol("#") || self.can_parse_extern_block_item_body() }
+    fn parse_extern_block_item(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        while self.can_parse_attribute() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_attribute())));
+        }
+        children.push(SyntaxElement::Node(Box::new(self.parse_extern_block_item_body())));
+        node_from_children(SyntaxKind::EXTERN_BLOCK_ITEM, children)
+    }
+
+    fn can_parse_extern_block_item_body(&self) -> bool { self.can_parse_extern_type_tail() || self.can_parse_extern_fn_tail() }
+    fn parse_extern_block_item_body(&mut self) -> SyntaxNode {
+        if self.can_parse_extern_type_tail() { return self.parse_extern_type_tail(); }
+        if self.can_parse_extern_fn_tail() { return self.parse_extern_fn_tail(); }
+        self.error_here("expected ExternBlockItemBody");
+        node_from_children(SyntaxKind::ERROR, Vec::new())
     }
 
     fn can_parse_use_decl(&self) -> bool { self.at_non_trivia_keyword(Keyword::Use) }
@@ -708,7 +749,7 @@ impl Parser {
         node_from_children(SyntaxKind::IMPL_METHOD, children)
     }
 
-    fn can_parse_expr(&self) -> bool { self.at_pratt_unary_expr() || self.can_parse_ident_expr() || self.can_parse_string_expr() || self.can_parse_number_expr() || self.can_parse_let_expr() || self.can_parse_thunk_expr() || self.can_parse_force_expr() || self.can_parse_match_expr() || self.can_parse_handle_expr() || self.can_parse_bundle_expr() || self.can_parse_if_else_expr() || self.can_parse_block_expr() || self.can_parse_paren_expr() || self.can_parse_annotation_expr() || self.can_parse_lambda_expr() }
+    fn can_parse_expr(&self) -> bool { self.at_pratt_unary_expr() || self.can_parse_ident_expr() || self.can_parse_string_expr() || self.can_parse_number_expr() || self.can_parse_let_expr() || self.can_parse_thunk_expr() || self.can_parse_force_expr() || self.can_parse_match_expr() || self.can_parse_handle_expr() || self.can_parse_bundle_expr() || self.can_parse_if_else_expr() || self.can_parse_block_expr() || self.can_parse_paren_expr() || self.can_parse_annotation_expr() || self.can_parse_lambda_expr() || self.can_parse_perform_expr() }
     fn parse_expr(&mut self) -> SyntaxNode {
         self.parse_expr_bp(0)
     }
@@ -815,6 +856,7 @@ impl Parser {
         if self.can_parse_paren_expr() { return self.parse_paren_expr(); }
         if self.can_parse_annotation_expr() { return self.parse_annotation_expr(); }
         if self.can_parse_lambda_expr() { return self.parse_lambda_expr(); }
+        if self.can_parse_perform_expr() { return self.parse_perform_expr(); }
         self.error_here("expected expression");
         node_from_children(SyntaxKind::ERROR, Vec::new())
     }
@@ -899,6 +941,17 @@ impl Parser {
         self.expect_keyword(Keyword::Force, &mut children);
         children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
         node_from_children(SyntaxKind::FORCE_EXPR, children)
+    }
+
+    fn can_parse_perform_expr(&self) -> bool { self.at_non_trivia_keyword(Keyword::Perform) }
+    fn parse_perform_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.expect_keyword(Keyword::Perform, &mut children);
+        self.skip_trivia_into(&mut children);
+        if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else { self.error_here("expected Ident"); }
+        node_from_children(SyntaxKind::PERFORM_EXPR, children)
     }
 
     fn can_parse_match_expr(&self) -> bool { self.at_non_trivia_keyword(Keyword::Match) }

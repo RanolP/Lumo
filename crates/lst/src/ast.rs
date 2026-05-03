@@ -596,6 +596,7 @@ impl<'a> ExternDecl<'a> {
 pub enum ExternRest<'a> {
     ExternTypeTail(ExternTypeTail<'a>),
     ExternFnTail(ExternFnTail<'a>),
+    ExternBlockTail(ExternBlockTail<'a>),
 }
 
 impl<'a> AstNode<'a> for ExternRest<'a> {
@@ -603,11 +604,13 @@ impl<'a> AstNode<'a> for ExternRest<'a> {
         None
             .or_else(|| ExternTypeTail::cast(node).map(Self::ExternTypeTail))
             .or_else(|| ExternFnTail::cast(node).map(Self::ExternFnTail))
+            .or_else(|| ExternBlockTail::cast(node).map(Self::ExternBlockTail))
     }
     fn syntax(&self) -> &'a SyntaxNode {
         match self {
             Self::ExternTypeTail(n) => n.syntax(),
             Self::ExternFnTail(n) => n.syntax(),
+            Self::ExternBlockTail(n) => n.syntax(),
         }
     }
 }
@@ -663,6 +666,76 @@ impl<'a> ExternFnTail<'a> {
             SyntaxElement::Node(n) => CapAnnotation::cast(n),
             _ => None,
         })
+    }
+}
+
+pub struct ExternBlockTail<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExternBlockTail<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXTERN_BLOCK_TAIL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> ExternBlockTail<'a> {
+    pub fn items(&self) -> Option<ExternBlockItems<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => ExternBlockItems::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct ExternBlockItems<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExternBlockItems<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXTERN_BLOCK_ITEMS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+pub struct ExternBlockItem<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExternBlockItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXTERN_BLOCK_ITEM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> ExternBlockItem<'a> {
+    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) => Attribute::cast(n),
+            _ => None,
+        })
+    }
+    pub fn body(&self) -> Option<ExternBlockItemBody<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => ExternBlockItemBody::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub enum ExternBlockItemBody<'a> {
+    ExternTypeTail(ExternTypeTail<'a>),
+    ExternFnTail(ExternFnTail<'a>),
+}
+
+impl<'a> AstNode<'a> for ExternBlockItemBody<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| ExternTypeTail::cast(node).map(Self::ExternTypeTail))
+            .or_else(|| ExternFnTail::cast(node).map(Self::ExternFnTail))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::ExternTypeTail(n) => n.syntax(),
+            Self::ExternFnTail(n) => n.syntax(),
+        }
     }
 }
 
@@ -1000,6 +1073,7 @@ pub enum Expr<'a> {
     ParenExpr(ParenExpr<'a>),
     AnnotationExpr(AnnotationExpr<'a>),
     LambdaExpr(LambdaExpr<'a>),
+    PerformExpr(PerformExpr<'a>),
     UnaryExpr(UnaryExpr<'a>),
     MemberExpr(MemberExpr<'a>),
     CallExpr(CallExpr<'a>),
@@ -1024,6 +1098,7 @@ impl<'a> AstNode<'a> for Expr<'a> {
             .or_else(|| ParenExpr::cast(node).map(Self::ParenExpr))
             .or_else(|| AnnotationExpr::cast(node).map(Self::AnnotationExpr))
             .or_else(|| LambdaExpr::cast(node).map(Self::LambdaExpr))
+            .or_else(|| PerformExpr::cast(node).map(Self::PerformExpr))
             .or_else(|| UnaryExpr::cast(node).map(Self::UnaryExpr))
             .or_else(|| MemberExpr::cast(node).map(Self::MemberExpr))
             .or_else(|| CallExpr::cast(node).map(Self::CallExpr))
@@ -1046,6 +1121,7 @@ impl<'a> AstNode<'a> for Expr<'a> {
             Self::ParenExpr(n) => n.syntax(),
             Self::AnnotationExpr(n) => n.syntax(),
             Self::LambdaExpr(n) => n.syntax(),
+            Self::PerformExpr(n) => n.syntax(),
             Self::UnaryExpr(n) => n.syntax(),
             Self::MemberExpr(n) => n.syntax(),
             Self::CallExpr(n) => n.syntax(),
@@ -1194,6 +1270,24 @@ impl<'a> ForceExpr<'a> {
     pub fn expr(&self) -> Option<Expr<'a>> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Node(n) => Expr::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct PerformExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for PerformExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::PERFORM_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> PerformExpr<'a> {
+    pub fn name(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
             _ => None,
         })
     }

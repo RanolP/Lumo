@@ -94,8 +94,15 @@ ExternDecl = 'extern' rest:ExternRest
 ExternRest =
   | ExternTypeTail
   | ExternFnTail
+  | ExternBlockTail
 ExternTypeTail = 'type' name:Ident ';'?
 ExternFnTail = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? ';'?
+ExternBlockTail = '{' items:ExternBlockItems? '}'
+ExternBlockItems = ExternBlockItem ExternBlockItem*
+ExternBlockItem = attrs:Attribute* body:ExternBlockItemBody
+ExternBlockItemBody =
+  | ExternTypeTail
+  | ExternFnTail
 
 // === Use declarations ===
 
@@ -118,7 +125,7 @@ ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? bo
 // === Expressions ===
 
 Expr = pratt {
-  atom: IdentExpr | StringExpr | NumberExpr | LetExpr | ThunkExpr | ForceExpr | MatchExpr | HandleExpr | BundleExpr | IfElseExpr | BlockExpr | ParenExpr | AnnotationExpr | LambdaExpr
+  atom: IdentExpr | StringExpr | NumberExpr | LetExpr | ThunkExpr | ForceExpr | MatchExpr | HandleExpr | BundleExpr | IfElseExpr | BlockExpr | ParenExpr | AnnotationExpr | LambdaExpr | PerformExpr
 
   UnaryExpr:  ('-' | '!') bp(50)
   MemberExpr: bp(90) '.' member:Ident
@@ -140,6 +147,7 @@ NumberExpr = value:NumberLit
 LetExpr = 'let' name:Ident (':' ty:TypeExpr)? '=' value:Expr
 ThunkExpr = 'thunk' body:Expr
 ForceExpr = 'force' expr:Expr
+PerformExpr = 'perform' name:Ident
 
 MatchExpr = 'match' scrutinee:Expr '{' arms:MatchArm* '}'
 MatchArm = pattern:Pattern '=>' body:Expr ','?

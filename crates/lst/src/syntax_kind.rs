@@ -28,6 +28,7 @@ pub enum SyntaxKind {
     IN_KW, // 'in'
     LET_KW, // 'let'
     MATCH_KW, // 'match'
+    PERFORM_KW, // 'perform'
     THUNK_KW, // 'thunk'
     TYPE_KW, // 'type'
     USE_KW, // 'use'
@@ -87,6 +88,9 @@ pub enum SyntaxKind {
     EXTERN_DECL, // ExternDecl
     EXTERN_TYPE_TAIL, // ExternTypeTail
     EXTERN_FN_TAIL, // ExternFnTail
+    EXTERN_BLOCK_TAIL, // ExternBlockTail
+    EXTERN_BLOCK_ITEMS, // ExternBlockItems
+    EXTERN_BLOCK_ITEM, // ExternBlockItem
     USE_DECL, // UseDecl
     USE_PATH, // UsePath
     USE_PATH_REST, // UsePathRest
@@ -108,6 +112,7 @@ pub enum SyntaxKind {
     LET_EXPR, // LetExpr
     THUNK_EXPR, // ThunkExpr
     FORCE_EXPR, // ForceExpr
+    PERFORM_EXPR, // PerformExpr
     MATCH_EXPR, // MatchExpr
     MATCH_ARM, // MatchArm
     HANDLE_EXPR, // HandleExpr
@@ -154,6 +159,7 @@ impl SyntaxKind {
             "in" => Some(Self::IN_KW),
             "let" => Some(Self::LET_KW),
             "match" => Some(Self::MATCH_KW),
+            "perform" => Some(Self::PERFORM_KW),
             "thunk" => Some(Self::THUNK_KW),
             "type" => Some(Self::TYPE_KW),
             "use" => Some(Self::USE_KW),
