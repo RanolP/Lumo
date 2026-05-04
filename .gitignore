@@ -56,3 +56,4 @@ Thumbs.db
 
 # Generated wasm bindgen output
 apps/playground/src/wasm
+.refs/
