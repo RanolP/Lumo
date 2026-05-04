@@ -1,6 +1,12 @@
-pub mod parse;
+pub mod lossless;
+pub mod syntax_kind;
+pub mod ast;
+pub mod from_lir_cst;
 pub mod print;
 pub mod validate;
+
+pub use syntax_kind::SyntaxKind;
+pub use lossless::{LosslessToken, SyntaxElement, SyntaxNode};
 
 use std::collections::HashSet;
 

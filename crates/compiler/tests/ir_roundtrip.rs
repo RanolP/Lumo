@@ -32,7 +32,7 @@ fn assert_hir_roundtrip(src: &str) {
 fn assert_lir_roundtrip(src: &str) {
     let lir_file = lower_lir(src);
     let printed1 = lir::print::print_file(&lir_file);
-    let reparsed = lir::parse::parse(&printed1)
+    let reparsed = lir::from_lir_cst::parse(&printed1)
         .unwrap_or_else(|errs| panic!("LIR parse failed on:\n{printed1}\nerrors: {errs:?}"));
     let printed2 = lir::print::print_file(&reparsed);
     assert_eq!(
