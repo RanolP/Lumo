@@ -145,6 +145,8 @@ struct LoweringContext {
     extern_fns: std::collections::HashSet<String>,
     /// Maps data type name -> set of (variant_index, field_index) for recursive fields
     recursive_fields: std::collections::HashMap<String, std::collections::HashSet<(usize, usize)>>,
+    /// Maps variant name -> data type name (for pattern emit without type prefix)
+    variant_owner: std::collections::HashMap<String, String>,
 }
 
 impl LoweringContext {
@@ -152,6 +154,7 @@ impl LoweringContext {
         let mut data_types = std::collections::HashMap::new();
         let mut extern_fns = std::collections::HashSet::new();
         let mut recursive_fields = std::collections::HashMap::new();
+        let mut variant_owner = std::collections::HashMap::new();
         for item in &file.items {
             match item {
                 lir::Item::Data(data) => {
@@ -165,6 +168,9 @@ impl LoweringContext {
                     if !rec.is_empty() {
                         recursive_fields.insert(data.name.clone(), rec);
                     }
+                    for v in &data.variants {
+                        variant_owner.insert(v.name.clone(), data.name.clone());
+                    }
                 }
                 lir::Item::ExternFn(func) => {
                     extern_fns.insert(func.name.clone());
@@ -176,6 +182,7 @@ impl LoweringContext {
             data_types,
             extern_fns,
             recursive_fields,
+            variant_owner,
         }
     }
 }
@@ -692,7 +699,7 @@ fn emit_match(
     out
 }
 
-fn emit_pattern(pattern: &Pattern, _ctx: &LoweringContext) -> String {
+fn emit_pattern(pattern: &Pattern, ctx: &LoweringContext) -> String {
     match pattern {
         Pattern::Wildcard => "_".to_string(),
         Pattern::Bind(name) => name.clone(),
@@ -700,6 +707,8 @@ fn emit_pattern(pattern: &Pattern, _ctx: &LoweringContext) -> String {
             // Name may be "Type.variant" or just "variant"
             let rust_path = if let Some((type_name, variant_name)) = name.split_once('.') {
                 format!("{}::{}", type_name, to_pascal_case(variant_name))
+            } else if let Some(owner) = ctx.variant_owner.get(name.as_str()) {
+                format!("{}::{}", owner, to_pascal_case(name))
             } else {
                 to_pascal_case(name)
             };
@@ -708,7 +717,7 @@ fn emit_pattern(pattern: &Pattern, _ctx: &LoweringContext) -> String {
             } else {
                 let inner: Vec<String> = args
                     .iter()
-                    .map(|p| emit_pattern(p, _ctx))
+                    .map(|p| emit_pattern(p, ctx))
                     .collect();
                 format!("{}({})", rust_path, inner.join(", "))
             }

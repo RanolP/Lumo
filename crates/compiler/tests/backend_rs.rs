@@ -109,7 +109,7 @@ fn rs_backend_emits_ctor_call() {
 #[test]
 fn rs_backend_emits_match_with_bindings() {
     let rs = emit_rust(
-        "data Box { .wrap(String) } fn unwrap(b: Box): String { match b { Box.wrap(x) => x } }",
+        "data Box { .wrap(String) } fn unwrap(b: Box): String { match b { .wrap(x) => x } }",
     );
     assert!(rs.contains("Box::Wrap(x)"), "{rs}");
 }

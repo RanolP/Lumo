@@ -39,6 +39,8 @@ pub enum SyntaxKind {
     HASH, // '#'
     L_PAREN, // '('
     R_PAREN, // ')'
+    PLUS, // '+'
+    COMMA, // ','
     DOT, // '.'
     SLASH, // '/'
     COLON, // ':'
@@ -60,25 +62,34 @@ pub enum SyntaxKind {
     EXTERN_AS, // ExternAs
     INLINE_HINT, // InlineHint
     DATA_DECL, // DataDecl
+    VARIANT_ITEMS, // VariantItems
     VARIANT, // Variant
     VARIANT_FIELDS, // VariantFields
+    VARIANT_FIELD_ITEMS, // VariantFieldItems
     CAP_DECL, // CapDecl
     OPERATION_DECL, // OperationDecl
     FN_DECL, // FnDecl
     USE_DECL, // UseDecl
-    USE_PATH, // UsePath
+    USE_SEGMENT, // UseSegment
     USE_TREE, // UseTree
+    USE_TREE_NAMES, // UseTreeNames
     IMPL_DECL, // ImplDecl
     IMPL_NAME, // ImplName
     IMPL_CAP, // ImplCap
     IMPL_METHOD, // ImplMethod
     GENERIC_PARAMS, // GenericParams
+    GENERIC_PARAM_ITEMS, // GenericParamItems
+    GENERIC_PARAM, // GenericParam
+    BOUND_LIST, // BoundList
     PARAM_LIST, // ParamList
+    PARAM_ITEMS, // ParamItems
     PARAM, // Param
     RETURN_ANN, // ReturnAnn
     CAP_ANNOTATION, // CapAnnotation
+    CAP_ITEMS, // CapItems
     TYPE_EXPR, // TypeExpr
     GENERIC_ARGS, // GenericArgs
+    GENERIC_ARG_ITEMS, // GenericArgItems
     IDENT_EXPR, // IdentExpr
     STRING_EXPR, // StringExpr
     NUMBER_EXPR, // NumberExpr
@@ -89,6 +100,7 @@ pub enum SyntaxKind {
     MATCH_EXPR, // MatchExpr
     MATCH_ARM, // MatchArm
     CALL_EXPR, // CallExpr
+    CALL_ARG_ITEMS, // CallArgItems
     MEMBER_EXPR, // MemberExpr
     PERFORM_EXPR, // PerformExpr
     HANDLE_EXPR, // HandleExpr
@@ -97,6 +109,7 @@ pub enum SyntaxKind {
     ANN_EXPR, // AnnExpr
     ERROR_EXPR, // ErrorExpr
     VARIANT_PATTERN, // VariantPattern
+    PATTERN_FIELD_ITEMS, // PatternFieldItems
     BIND_PATTERN, // BindPattern
     WILDCARD_PATTERN, // WildcardPattern
     // Sentinel
@@ -140,6 +153,8 @@ impl SyntaxKind {
             "#" => Some(Self::HASH),
             "(" => Some(Self::L_PAREN),
             ")" => Some(Self::R_PAREN),
+            "+" => Some(Self::PLUS),
+            "," => Some(Self::COMMA),
             "." => Some(Self::DOT),
             "/" => Some(Self::SLASH),
             ":" => Some(Self::COLON),

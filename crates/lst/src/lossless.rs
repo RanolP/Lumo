@@ -206,6 +206,16 @@ impl Parser {
         if self.at_ident() { children.push(SyntaxElement::Token(self.bump().unwrap())); }
         else { self.error_here("expected identifier"); }
     }
+    fn expect_symbol_any_of(&mut self, syms: &[&str], children: &mut Vec<SyntaxElement>) {
+        self.skip_trivia_into(children);
+        for sym in syms {
+            if self.at_symbol_text(sym) {
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
+                return;
+            }
+        }
+        self.error_here(&format!("expected one of: {}", syms.join(", ")));
+    }
 }
 
 impl Parser {
@@ -418,10 +428,17 @@ impl Parser {
         node_from_children(SyntaxKind::GENERIC_PARAM_ITEMS, children)
     }
 
-    fn can_parse_generic_param(&self) -> bool { self.at_non_trivia_ident() }
+    fn can_parse_generic_param(&self) -> bool {
+        self.at_non_trivia_ident() || self.at_non_trivia_keyword(Keyword::Cap)
+    }
     fn parse_generic_param(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         self.skip_trivia_into(&mut children);
+        // optional `cap` keyword prefix
+        if self.at_keyword(Keyword::Cap) {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+            self.skip_trivia_into(&mut children);
+        }
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         } else { self.error_here("expected Ident"); }
@@ -492,8 +509,28 @@ impl Parser {
     fn parse_cap_set(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         self.expect_symbol("{", &mut children);
-        while self.can_parse_cap_sig() {
-            children.push(SyntaxElement::Node(Box::new(self.parse_cap_sig())));
+        loop {
+            self.skip_trivia_into(&mut children);
+            if self.at_symbol_text("..") {
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
+                // consume optional row-variable name: `..c` — the ident is part of the `..` unit
+                self.skip_trivia_into(&mut children);
+                if self.at_ident() {
+                    children.push(SyntaxElement::Token(self.bump().unwrap()));
+                }
+                self.skip_trivia_into(&mut children);
+                if self.at_symbol_text(",") {
+                    children.push(SyntaxElement::Token(self.bump().unwrap()));
+                }
+            } else if self.can_parse_cap_sig() {
+                children.push(SyntaxElement::Node(Box::new(self.parse_cap_sig())));
+                self.skip_trivia_into(&mut children);
+                if self.at_symbol_text(",") {
+                    children.push(SyntaxElement::Token(self.bump().unwrap()));
+                }
+            } else {
+                break;
+            }
         }
         self.expect_symbol("}", &mut children);
         node_from_children(SyntaxKind::CAP_SET, children)
@@ -743,6 +780,9 @@ impl Parser {
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         } else { self.error_here("expected Ident"); }
+        if self.can_parse_generic_params() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_generic_params())));
+        }
         children.push(SyntaxElement::Node(Box::new(self.parse_param_list())));
         if self.at_non_trivia_symbol(":") {
             self.expect_symbol(":", &mut children);
@@ -780,46 +820,43 @@ impl Parser {
                 lhs = node_from_children(SyntaxKind::CALL_EXPR, children);
                 continue;
             }
-            // BinaryExpr (lbp=30)
-            if self.at_pratt_binary_expr() && 30 > min_bp {
+            // BinaryExpr (lbp=30): * / %
+            if (self.at_non_trivia_symbol("*") || self.at_non_trivia_symbol("/") || self.at_non_trivia_symbol("%")) && 30 > min_bp {
                 let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
-                self.expect_symbol("*", &mut children);
-                self.expect_symbol("/", &mut children);
-                self.expect_symbol("%", &mut children);
+                self.expect_symbol_any_of(&["*", "/", "%"], &mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(30))));
                 lhs = node_from_children(SyntaxKind::BINARY_EXPR, children);
                 continue;
             }
-            // BinaryExpr (lbp=20)
-            if self.at_pratt_binary_expr() && 20 > min_bp {
+            // BinaryExpr (lbp=20): + -
+            if (self.at_non_trivia_symbol("+") || self.at_non_trivia_symbol("-")) && 20 > min_bp {
                 let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
-                self.expect_symbol("+", &mut children);
-                self.expect_symbol("-", &mut children);
+                self.expect_symbol_any_of(&["+", "-"], &mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(20))));
                 lhs = node_from_children(SyntaxKind::BINARY_EXPR, children);
                 continue;
             }
-            // BinaryExpr (lbp=10)
-            if self.at_pratt_binary_expr() && 10 > min_bp {
+            // BinaryExpr (lbp=10): == != < <= > >=
+            if (self.at_non_trivia_symbol("==") || self.at_non_trivia_symbol("!=") || self.at_non_trivia_symbol("<=") || self.at_non_trivia_symbol(">=") || self.at_non_trivia_symbol("<") || self.at_non_trivia_symbol(">")) && 10 > min_bp {
                 let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
-                self.expect_symbol("==", &mut children);
-                self.expect_symbol("!=", &mut children);
-                self.expect_symbol("<", &mut children);
-                self.expect_symbol("<=", &mut children);
-                self.expect_symbol(">", &mut children);
-                self.expect_symbol(">=", &mut children);
+                self.expect_symbol_any_of(&["==", "!=", "<=", ">=", "<", ">"], &mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(10))));
                 lhs = node_from_children(SyntaxKind::BINARY_EXPR, children);
                 continue;
             }
-            // BinaryExpr (lbp=5)
-            if self.at_pratt_binary_expr() && 5 > min_bp {
+            // BinaryExpr (lbp=5): &&
+            if self.at_non_trivia_symbol("&&") && 5 > min_bp {
                 let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
                 self.expect_symbol("&&", &mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(5))));
                 lhs = node_from_children(SyntaxKind::BINARY_EXPR, children);
                 continue;
             }
-            // BinaryExpr (lbp=3)
-            if self.at_pratt_binary_expr() && 3 > min_bp {
+            // BinaryExpr (lbp=3): ||
+            if self.at_non_trivia_symbol("||") && 3 > min_bp {
                 let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
                 self.expect_symbol("||", &mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(3))));
                 lhs = node_from_children(SyntaxKind::BINARY_EXPR, children);
                 continue;
             }
@@ -841,8 +878,8 @@ impl Parser {
     fn parse_expr_atom(&mut self) -> SyntaxNode {
         if self.at_pratt_unary_expr() {
             let mut children = Vec::new();
-            self.expect_symbol("-", &mut children);
-            self.expect_symbol("!", &mut children);
+            self.expect_symbol_any_of(&["-", "!"], &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(100))));
             return node_from_children(SyntaxKind::UNARY_EXPR, children);
         }
         if self.can_parse_ident_expr() { return self.parse_ident_expr(); }
@@ -864,10 +901,9 @@ impl Parser {
         node_from_children(SyntaxKind::ERROR, Vec::new())
     }
 
-    fn at_pratt_unary_expr(&self) -> bool { self.at_non_trivia_symbol("-") }
+    fn at_pratt_unary_expr(&self) -> bool { self.at_non_trivia_symbol("-") || self.at_non_trivia_symbol("!") }
     fn at_pratt_member_expr(&self) -> bool { self.at_non_trivia_symbol(".") }
     fn at_pratt_call_expr(&self) -> bool { self.at_non_trivia_symbol("(") }
-    fn at_pratt_binary_expr(&self) -> bool { self.at_non_trivia_symbol("*") }
     fn at_pratt_assign_expr(&self) -> bool { self.at_non_trivia_symbol("=") }
     fn can_parse_call_arg_items(&self) -> bool { self.can_parse_expr() }
     fn parse_call_arg_items(&mut self) -> SyntaxNode {
@@ -1205,14 +1241,41 @@ impl Parser {
         node_from_children(SyntaxKind::VARIANT_PATTERN_FIELDS, children)
     }
 
-    fn can_parse_bind_pattern(&self) -> bool { self.at_non_trivia_keyword(Keyword::Let) }
+    fn can_parse_bind_pattern(&self) -> bool {
+        self.at_non_trivia_keyword(Keyword::Let) || self.at_non_trivia_ident()
+    }
     fn parse_bind_pattern(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        self.expect_keyword(Keyword::Let, &mut children);
+        // `let name` style
+        if self.at_non_trivia_keyword(Keyword::Let) {
+            self.expect_keyword(Keyword::Let, &mut children);
+            self.skip_trivia_into(&mut children);
+            if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
+                children.push(SyntaxElement::Token(self.bump().unwrap()));
+            } else { self.error_here("expected Ident"); }
+            return node_from_children(SyntaxKind::BIND_PATTERN, children);
+        }
+        // bare ident: valid bind pattern, but `ident(...)` is a malformed constructor pattern
         self.skip_trivia_into(&mut children);
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         } else { self.error_here("expected Ident"); }
+        // Detect `ident(...)` — bare constructor without leading `.`
+        if self.at_non_trivia_symbol("(") {
+            self.error_here("constructor patterns must start with `.`");
+            // consume the argument list so the arm body parses correctly
+            self.skip_trivia_into(&mut children);
+            self.expect_symbol("(", &mut children);
+            let mut depth = 1i32;
+            while depth > 0 {
+                self.skip_trivia_into(&mut children);
+                if self.at_symbol_text("(") { depth += 1; }
+                if self.at_symbol_text(")") { depth -= 1; }
+                if let Some(tok) = self.bump() {
+                    children.push(SyntaxElement::Token(tok));
+                } else { break; }
+            }
+        }
         node_from_children(SyntaxKind::BIND_PATTERN, children)
     }
 
@@ -1223,12 +1286,43 @@ impl Parser {
         node_from_children(SyntaxKind::WILDCARD_PATTERN, children)
     }
 
-    fn can_parse_type_expr(&self) -> bool { self.can_parse_thunk_type_expr() || self.can_parse_simple_type_expr() }
+    fn can_parse_type_expr(&self) -> bool {
+        self.can_parse_thunk_type_expr() || self.can_parse_fn_type_expr() || self.can_parse_simple_type_expr()
+    }
     fn parse_type_expr(&mut self) -> SyntaxNode {
         if self.can_parse_thunk_type_expr() { return self.parse_thunk_type_expr(); }
+        if self.can_parse_fn_type_expr() { return self.parse_fn_type_expr(); }
         if self.can_parse_simple_type_expr() { return self.parse_simple_type_expr(); }
         self.error_here("expected TypeExpr");
         node_from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_fn_type_expr(&self) -> bool { self.at_non_trivia_symbol("(") }
+    fn parse_fn_type_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.expect_symbol("(", &mut children);
+        // Parse optional comma-separated param types
+        if self.can_parse_type_expr() {
+            let mut param_children = Vec::new();
+            param_children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+            while self.at_non_trivia_symbol(",") {
+                self.skip_trivia_into(&mut param_children);
+                param_children.push(SyntaxElement::Token(self.bump().unwrap())); // ","
+                if self.can_parse_type_expr() {
+                    param_children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+                }
+            }
+            children.push(SyntaxElement::Node(Box::new(
+                node_from_children(SyntaxKind::FN_TYPE_PARAM_ITEMS, param_children)
+            )));
+        }
+        self.expect_symbol(")", &mut children);
+        self.expect_symbol("->", &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        if self.can_parse_cap_annotation() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_cap_annotation())));
+        }
+        node_from_children(SyntaxKind::FN_TYPE_EXPR, children)
     }
 
     fn can_parse_thunk_type_expr(&self) -> bool { self.at_non_trivia_keyword(Keyword::Thunk) }

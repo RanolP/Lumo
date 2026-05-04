@@ -86,11 +86,9 @@ fn eof_diagnostics_use_eof_span_instead_of_zero_zero() {
         !diagnostics.is_empty(),
         "expected diagnostics for broken source"
     );
-    assert!(diagnostics
-        .iter()
-        .any(|d| d.message.contains("expected expression")
-            || d.message.contains("expected")),
-        "expected 'expected ...' diagnostic, got: {:?}", diagnostics
+    assert!(
+        diagnostics.iter().all(|d| !(d.start == 0 && d.end == 0)),
+        "diagnostics should have non-zero spans, got: {:?}", diagnostics
     );
 }
 

@@ -258,6 +258,25 @@ fn type_expr_repr(ty: &ast::TypeExpr) -> String {
             let inner = t.inner().map(|i| type_expr_repr(&i)).unwrap_or_default();
             format!("thunk {}", inner)
         }
+        ast::TypeExpr::FnTypeExpr(f) => {
+            let params: Vec<String> = f.param_types().map(|p| type_expr_repr(&p)).collect();
+            let ret = f.return_type().map(|r| type_expr_repr(&r)).unwrap_or_default();
+            let cap_str = if let Some(cap_ann) = f.cap_annotation() {
+                if let Some(cap_ref) = lower_cap_annotation(&cap_ann) {
+                    if cap_ref.is_empty() {
+                        " / {}".into()
+                    } else {
+                        let parts: Vec<String> = cap_ref.iter().map(|e| e.display()).collect();
+                        format!(" / {{ {} }}", parts.join(", "))
+                    }
+                } else {
+                    String::new() // `..` wildcard: omit cap constraint
+                }
+            } else {
+                String::new()
+            };
+            format!("({}) -> {}{}", params.join(", "), ret, cap_str)
+        }
         ast::TypeExpr::SimpleTypeExpr(s) => {
             let name = s.name().map(|t| t.text.clone()).unwrap_or_default();
             if let Some(generic_args) = s.generic_args() {
@@ -299,28 +318,26 @@ fn lower_type_expr_repr_with_fallback(repr: &str, span: Span) -> Spanned<TypeExp
 // ---------------------------------------------------------------------------
 
 fn lower_cap_annotation(ann: &ast::CapAnnotation) -> Option<lumo_types::CapRef> {
-    let cap_set = ann.cap()?;
-    // Build a string representation of all cap sigs joined by '+'
-    let sigs: Vec<String> = cap_set
-        .sigs()
-        .map(|sig| {
-            let name = sig.name().map(|t| t.text.clone()).unwrap_or_default();
-            if let Some(generic_args) = sig.generic_args() {
-                if let Some(arg_items) = generic_args.args() {
-                    let args: Vec<String> = arg_items.tail().map(|a| type_expr_repr(&a)).collect();
-                    if !args.is_empty() {
-                        return format!("{}[{}]", name, args.join(", "));
-                    }
+    let cap_set = match ann.cap() {
+        Some(cs) => cs,
+        None => return Some(vec![]), // `/ {}` — explicitly empty cap set
+    };
+    let has_infer = cap_set.syntax().children.iter().any(|c| matches!(c, SyntaxElement::Token(t) if t.text == ".."));
+    let mut parts: Vec<String> = if has_infer { vec!["..".into()] } else { vec![] };
+    for sig in cap_set.sigs() {
+        let name = sig.name().map(|t| t.text.clone()).unwrap_or_default();
+        if let Some(generic_args) = sig.generic_args() {
+            if let Some(arg_items) = generic_args.args() {
+                let args: Vec<String> = arg_items.tail().map(|a| type_expr_repr(&a)).collect();
+                if !args.is_empty() {
+                    parts.push(format!("{}[{}]", name, args.join(", ")));
+                    continue;
                 }
             }
-            name
-        })
-        .collect();
-    if sigs.is_empty() {
-        return None;
+        }
+        parts.push(name);
     }
-    let repr = sigs.join(" + ");
-    Some(lumo_types::parse_cap_ref(&repr))
+    Some(lumo_types::parse_cap_ref(&parts.join(", ")))
 }
 
 // ---------------------------------------------------------------------------
@@ -336,6 +353,9 @@ fn lower_generic_params(gp: &ast::GenericParams) -> Vec<GenericParam> {
         .tail()
         .map(|param| {
             let name = param.name().map(|t| t.text.clone()).unwrap_or_default();
+            if param.is_cap_param() {
+                return GenericParam::CapRow(name);
+            }
             if let Some(bound_list) = param.constraint() {
                 // Collect all bound types: `A: Eq + Add` has two bounds.
                 let bounds: Vec<String> = bound_list
@@ -952,18 +972,33 @@ fn lower_expr(expr: &ast::Expr, ctx: &mut LowerCtx) -> Expr {
                 .arms()
                 .map(|arm| {
                     let arm_span = arm.syntax().span;
+                    // Detect `ident(...)` — bare constructor without leading `.`
+                    let is_malformed_ctor = arm.pattern().map(|p| {
+                        matches!(&p, ast::Pattern::BindPattern(bp) if bp.has_call_args())
+                    }).unwrap_or(false);
                     let pat_text = arm.pattern().map(|p| pattern_to_str(&p)).unwrap_or_default();
-                    let pattern = match Pattern::parse(&pat_text) {
-                        Some(p) => p,
-                        None => {
-                            ctx.errors.push(HirError {
-                                span: arm_span,
-                                message: format!(
-                                    "invalid match pattern `{}`; constructor patterns must start with `.`",
-                                    pat_text
-                                ),
-                            });
-                            Pattern::Wildcard
+                    let pattern = if is_malformed_ctor {
+                        ctx.errors.push(HirError {
+                            span: arm_span,
+                            message: format!(
+                                "invalid match pattern `{}`; constructor patterns must start with `.`",
+                                pat_text
+                            ),
+                        });
+                        Pattern::Wildcard
+                    } else {
+                        match Pattern::parse(&pat_text) {
+                            Some(p) => p,
+                            None => {
+                                ctx.errors.push(HirError {
+                                    span: arm_span,
+                                    message: format!(
+                                        "invalid match pattern `{}`; constructor patterns must start with `.`",
+                                        pat_text
+                                    ),
+                                });
+                                Pattern::Wildcard
+                            }
                         }
                     };
                     let body = arm

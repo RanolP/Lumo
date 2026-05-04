@@ -393,6 +393,9 @@ impl<'a> GenericParam<'a> {
             _ => None,
         })
     }
+    pub fn is_cap_param(&self) -> bool {
+        self.0.children.iter().any(|c| matches!(c, SyntaxElement::Token(t) if t.kind == SyntaxKind::CAP_KW))
+    }
     pub fn constraint(&self) -> Option<BoundList<'a>> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Node(n) => BoundList::cast(n),
@@ -972,6 +975,12 @@ impl<'a> ImplMethod<'a> {
     pub fn name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
+            _ => None,
+        })
+    }
+    pub fn generic_params(&self) -> Option<GenericParams<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => GenericParams::cast(n),
             _ => None,
         })
     }
@@ -1613,10 +1622,19 @@ impl<'a> IfElseExpr<'a> {
         })
     }
     pub fn else_clause(&self) -> Option<ElseClause<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => ElseClause::cast(n),
-            _ => None,
-        })
+        let mut past_else = false;
+        for c in &self.0.children {
+            match c {
+                SyntaxElement::Token(t) if t.text == "else" => { past_else = true; }
+                SyntaxElement::Node(n) if past_else => {
+                    if let Some(clause) = ElseClause::cast(n) {
+                        return Some(clause);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 }
 
@@ -1786,6 +1804,10 @@ impl<'a> BindPattern<'a> {
             _ => None,
         })
     }
+    /// True when the pattern was written as `ident(...)` — a constructor without leading `.`.
+    pub fn has_call_args(&self) -> bool {
+        self.0.children.iter().any(|c| matches!(c, SyntaxElement::Token(t) if t.text == "("))
+    }
 }
 
 pub struct WildcardPattern<'a>(pub(crate) &'a SyntaxNode);
@@ -1799,6 +1821,7 @@ impl<'a> AstNode<'a> for WildcardPattern<'a> {
 
 pub enum TypeExpr<'a> {
     ThunkTypeExpr(ThunkTypeExpr<'a>),
+    FnTypeExpr(FnTypeExpr<'a>),
     SimpleTypeExpr(SimpleTypeExpr<'a>),
 }
 
@@ -1806,11 +1829,13 @@ impl<'a> AstNode<'a> for TypeExpr<'a> {
     fn cast(node: &'a SyntaxNode) -> Option<Self> {
         None
             .or_else(|| ThunkTypeExpr::cast(node).map(Self::ThunkTypeExpr))
+            .or_else(|| FnTypeExpr::cast(node).map(Self::FnTypeExpr))
             .or_else(|| SimpleTypeExpr::cast(node).map(Self::SimpleTypeExpr))
     }
     fn syntax(&self) -> &'a SyntaxNode {
         match self {
             Self::ThunkTypeExpr(n) => n.syntax(),
+            Self::FnTypeExpr(n) => n.syntax(),
             Self::SimpleTypeExpr(n) => n.syntax(),
         }
     }
@@ -1829,6 +1854,41 @@ impl<'a> ThunkTypeExpr<'a> {
     pub fn inner(&self) -> Option<TypeExpr<'a>> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Node(n) => TypeExpr::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct FnTypeExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for FnTypeExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::FN_TYPE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> FnTypeExpr<'a> {
+    pub fn param_types(&self) -> impl Iterator<Item = TypeExpr<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) if n.kind == SyntaxKind::FN_TYPE_PARAM_ITEMS =>
+                Some(n.children.iter().filter_map(|cc| match cc {
+                    SyntaxElement::Node(nn) => TypeExpr::cast(nn),
+                    _ => None,
+                }).collect::<Vec<_>>()),
+            _ => None,
+        }).flat_map(|v| v.into_iter())
+    }
+    pub fn return_type(&self) -> Option<TypeExpr<'a>> {
+        // return_type is the last TypeExpr child that is NOT inside FN_TYPE_PARAM_ITEMS
+        self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) if n.kind != SyntaxKind::FN_TYPE_PARAM_ITEMS => TypeExpr::cast(n),
+            _ => None,
+        }).last()
+    }
+    pub fn cap_annotation(&self) -> Option<CapAnnotation<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => CapAnnotation::cast(n),
             _ => None,
         })
     }
