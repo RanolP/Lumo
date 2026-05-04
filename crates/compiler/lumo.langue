@@ -31,7 +31,7 @@ ItemBody =
 
 // === Attributes ===
 
-Attribute = '#' '[' name:AttrName AttributeArgs? ']'
+Attribute = '#' '[' name:AttrName ('=' direct_value:Expr)? AttributeArgs? ']'
 AttributeArgs = '(' items:AttributeArgItem* ')'
 AttributeArgItem = name:AttrName ('=' value:Expr)? ','?
 
@@ -56,7 +56,8 @@ ExprBody = '=' body:Expr
 
 GenericParams = '[' params:GenericParamItems? ']'
 GenericParamItems = head:GenericParam (',' tail:GenericParam)* ','?
-GenericParam = name:Ident (':' constraint:TypeExpr)?
+GenericParam = name:Ident (':' constraint:BoundList)?
+BoundList = head:TypeExpr ('+' tail:TypeExpr)*
 
 // === Parameters ===
 
@@ -70,7 +71,7 @@ CapAnnotation = '/' cap:CapSet
 CapSet = '{' sigs:CapSig* '}'
 CapSig = name:Ident generic_args:GenericArgs?
 CapDecl = 'cap' name:Ident '{' operations:OperationDecl* '}'
-OperationDecl = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)?
+OperationDecl = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? ';'?
 
 // === Extern declarations ===
 //
@@ -153,7 +154,7 @@ MatchArm = pattern:Pattern '=>' body:Expr ','?
 
 HandleExpr = 'handle' cap_name:Ident ('for' cap_type:TypeExpr)? 'with' handler:Expr 'in' body:Expr
 BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
-BundleEntry = 'fn' name:Ident param_list:ParamList body:FnBody
+BundleEntry = 'fn' name:Ident param_list:ParamList body:FnBody ';'?
 
 ParenExpr = '(' inner:Expr ')'
 AnnotationExpr = '(' expr:Expr ':' ty:TypeExpr ')'
@@ -189,6 +190,11 @@ WildcardPattern = '_'
 // === Types ===
 // Types are kept simple in the CST. The typechecker does deeper parsing.
 
-TypeExpr = name:Ident generic_args:GenericArgs?
+TypeExpr =
+  | ThunkTypeExpr
+  | SimpleTypeExpr
+
+ThunkTypeExpr = 'thunk' inner:TypeExpr
+SimpleTypeExpr = name:Ident generic_args:GenericArgs?
 GenericArgs = '[' args:GenericArgItems? ']'
 GenericArgItems = head:TypeExpr (',' tail:TypeExpr)* ','?

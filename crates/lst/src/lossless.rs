@@ -254,6 +254,10 @@ impl Parser {
         self.expect_symbol("#", &mut children);
         self.expect_symbol("[", &mut children);
         self.expect_name(&mut children);
+        if self.at_non_trivia_symbol("=") {
+            self.expect_symbol("=", &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        }
         if self.can_parse_attribute_args() {
             children.push(SyntaxElement::Node(Box::new(self.parse_attribute_args())));
         }
@@ -423,9 +427,20 @@ impl Parser {
         } else { self.error_here("expected Ident"); }
         if self.at_non_trivia_symbol(":") {
             self.expect_symbol(":", &mut children);
-            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+            children.push(SyntaxElement::Node(Box::new(self.parse_bound_list())));
         }
         node_from_children(SyntaxKind::GENERIC_PARAM, children)
+    }
+
+    fn can_parse_bound_list(&self) -> bool { self.can_parse_type_expr() }
+    fn parse_bound_list(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        while self.at_non_trivia_symbol("+") {
+            self.expect_symbol("+", &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        node_from_children(SyntaxKind::BOUND_LIST, children)
     }
 
     fn can_parse_param_list(&self) -> bool { self.at_non_trivia_symbol("(") }
@@ -525,6 +540,9 @@ impl Parser {
         if self.at_non_trivia_symbol(":") {
             self.expect_symbol(":", &mut children);
             children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        if self.at_non_trivia_symbol(";") {
+            self.expect_symbol(";", &mut children);
         }
         node_from_children(SyntaxKind::OPERATION_DECL, children)
     }
@@ -1008,6 +1026,9 @@ impl Parser {
         } else { self.error_here("expected Ident"); }
         children.push(SyntaxElement::Node(Box::new(self.parse_param_list())));
         children.push(SyntaxElement::Node(Box::new(self.parse_fn_body())));
+        if self.at_non_trivia_symbol(";") {
+            self.expect_symbol(";", &mut children);
+        }
         node_from_children(SyntaxKind::BUNDLE_ENTRY, children)
     }
 
@@ -1202,8 +1223,24 @@ impl Parser {
         node_from_children(SyntaxKind::WILDCARD_PATTERN, children)
     }
 
-    fn can_parse_type_expr(&self) -> bool { self.at_non_trivia_ident() }
+    fn can_parse_type_expr(&self) -> bool { self.can_parse_thunk_type_expr() || self.can_parse_simple_type_expr() }
     fn parse_type_expr(&mut self) -> SyntaxNode {
+        if self.can_parse_thunk_type_expr() { return self.parse_thunk_type_expr(); }
+        if self.can_parse_simple_type_expr() { return self.parse_simple_type_expr(); }
+        self.error_here("expected TypeExpr");
+        node_from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_thunk_type_expr(&self) -> bool { self.at_non_trivia_keyword(Keyword::Thunk) }
+    fn parse_thunk_type_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.expect_keyword(Keyword::Thunk, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        node_from_children(SyntaxKind::THUNK_TYPE_EXPR, children)
+    }
+
+    fn can_parse_simple_type_expr(&self) -> bool { self.at_non_trivia_ident() }
+    fn parse_simple_type_expr(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         self.skip_trivia_into(&mut children);
         if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
@@ -1212,7 +1249,7 @@ impl Parser {
         if self.can_parse_generic_args() {
             children.push(SyntaxElement::Node(Box::new(self.parse_generic_args())));
         }
-        node_from_children(SyntaxKind::TYPE_EXPR, children)
+        node_from_children(SyntaxKind::SIMPLE_TYPE_EXPR, children)
     }
 
     fn can_parse_generic_args(&self) -> bool { self.at_non_trivia_symbol("[") }

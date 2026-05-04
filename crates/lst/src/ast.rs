@@ -98,6 +98,12 @@ impl<'a> Attribute<'a> {
             _ => None,
         })
     }
+    pub fn direct_value(&self) -> Option<Expr<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => Expr::cast(n),
+            _ => None,
+        })
+    }
 }
 
 pub struct AttributeArgs<'a>(pub(crate) &'a SyntaxNode);
@@ -387,8 +393,32 @@ impl<'a> GenericParam<'a> {
             _ => None,
         })
     }
-    pub fn constraint(&self) -> Option<TypeExpr<'a>> {
+    pub fn constraint(&self) -> Option<BoundList<'a>> {
         self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => BoundList::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct BoundList<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for BoundList<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::BOUND_LIST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> BoundList<'a> {
+    pub fn head(&self) -> Option<TypeExpr<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => TypeExpr::cast(n),
+            _ => None,
+        })
+    }
+    pub fn tail(&self) -> impl Iterator<Item = TypeExpr<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
             SyntaxElement::Node(n) => TypeExpr::cast(n),
             _ => None,
         })
@@ -1767,16 +1797,53 @@ impl<'a> AstNode<'a> for WildcardPattern<'a> {
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
-pub struct TypeExpr<'a>(pub(crate) &'a SyntaxNode);
+pub enum TypeExpr<'a> {
+    ThunkTypeExpr(ThunkTypeExpr<'a>),
+    SimpleTypeExpr(SimpleTypeExpr<'a>),
+}
 
 impl<'a> AstNode<'a> for TypeExpr<'a> {
     fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::TYPE_EXPR).then(|| Self(node))
+        None
+            .or_else(|| ThunkTypeExpr::cast(node).map(Self::ThunkTypeExpr))
+            .or_else(|| SimpleTypeExpr::cast(node).map(Self::SimpleTypeExpr))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::ThunkTypeExpr(n) => n.syntax(),
+            Self::SimpleTypeExpr(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct ThunkTypeExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ThunkTypeExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::THUNK_TYPE_EXPR).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode { self.0 }
 }
 
-impl<'a> TypeExpr<'a> {
+impl<'a> ThunkTypeExpr<'a> {
+    pub fn inner(&self) -> Option<TypeExpr<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => TypeExpr::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub struct SimpleTypeExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for SimpleTypeExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::SIMPLE_TYPE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> SimpleTypeExpr<'a> {
     pub fn name(&self) -> Option<&'a LosslessToken> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),

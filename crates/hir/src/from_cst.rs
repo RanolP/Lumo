@@ -140,9 +140,10 @@ fn attrs_find_inline(attrs: &[ast::Attribute<'_>]) -> bool {
         if attr_name(attr).as_deref() != Some("inline") {
             return false;
         }
-        // Check for `always` flag-style arg or value
+        // Check for `always` flag-style arg or value.
+        // Use arg_item_key_text (not arg.name()) since the token is IDENT-kinded.
         for arg in attr_args(attr) {
-            let key = arg.name().map(|t| t.text.clone()).unwrap_or_default();
+            let key = arg_item_key_text(&arg).unwrap_or_default();
             if key == "always" {
                 return true;
             }
@@ -195,6 +196,12 @@ fn attrs_find_extern_name<'a>(
     }
 
     if let Some(attr) = extern_attr {
+        // Check for direct value: `#[extern = "string"]` form
+        if let Some(direct_val) = attr.direct_value() {
+            if let Some(s) = extract_string_expr(&direct_val) {
+                return Some(s);
+            }
+        }
         // Check for operator arg
         if let Some(op) = attr_arg_str(attr, "operator") {
             return Some(operator_attr_to_extern_name(&op));
@@ -226,9 +233,11 @@ fn attrs_find_as_raw(attrs: &[ast::Attribute<'_>]) -> Option<crate::AsRawValue> 
         if attr_name(attr).as_deref() != Some("as__raw") {
             return None;
         }
-        // Look for a flag-style arg (key without value, name == "true" or "false")
+        // Look for a flag-style arg (key without value, name == "true" or "false").
+        // Use arg_item_key_text rather than arg.name() because the key token is
+        // IDENT-kinded (not ATTR_NAME) in the lossless tree.
         for arg in attr_args(attr) {
-            let key = arg.name().map(|t| t.text.clone()).unwrap_or_default();
+            let key = arg_item_key_text(&arg).unwrap_or_default();
             if key == "true" {
                 return Some(crate::AsRawValue::True);
             } else if key == "false" {
@@ -244,17 +253,25 @@ fn attrs_find_as_raw(attrs: &[ast::Attribute<'_>]) -> Option<crate::AsRawValue> 
 // ---------------------------------------------------------------------------
 
 fn type_expr_repr(ty: &ast::TypeExpr) -> String {
-    let name = ty.name().map(|t| t.text.clone()).unwrap_or_default();
-    if let Some(generic_args) = ty.generic_args() {
-        if let Some(arg_items) = generic_args.args() {
-            // tail() returns all items (head+tail) since both map over all children
-            let args: Vec<String> = arg_items.tail().map(|a| type_expr_repr(&a)).collect();
-            if !args.is_empty() {
-                return format!("{}[{}]", name, args.join(", "));
+    match ty {
+        ast::TypeExpr::ThunkTypeExpr(t) => {
+            let inner = t.inner().map(|i| type_expr_repr(&i)).unwrap_or_default();
+            format!("thunk {}", inner)
+        }
+        ast::TypeExpr::SimpleTypeExpr(s) => {
+            let name = s.name().map(|t| t.text.clone()).unwrap_or_default();
+            if let Some(generic_args) = s.generic_args() {
+                if let Some(arg_items) = generic_args.args() {
+                    // tail() returns all items (head+tail) since both map over all children
+                    let args: Vec<String> = arg_items.tail().map(|a| type_expr_repr(&a)).collect();
+                    if !args.is_empty() {
+                        return format!("{}[{}]", name, args.join(", "));
+                    }
+                }
             }
+            name
         }
     }
-    name
 }
 
 fn lower_type_expr(ty: &ast::TypeExpr) -> Option<Spanned<TypeExpr>> {
@@ -319,17 +336,17 @@ fn lower_generic_params(gp: &ast::GenericParams) -> Vec<GenericParam> {
         .tail()
         .map(|param| {
             let name = param.name().map(|t| t.text.clone()).unwrap_or_default();
-            if let Some(constraint) = param.constraint() {
-                let repr = type_expr_repr(&constraint);
-                // Cap-row constraint starts with `{`
-                if repr.starts_with('{') {
+            if let Some(bound_list) = param.constraint() {
+                // Collect all bound types: `A: Eq + Add` has two bounds.
+                let bounds: Vec<String> = bound_list
+                    .tail()
+                    .map(|ty| type_expr_repr(&ty))
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                // Cap-row constraint has a single bound starting with `{`
+                if bounds.len() == 1 && bounds[0].starts_with('{') {
                     GenericParam::CapRow(name)
                 } else {
-                    let bounds: Vec<String> = repr
-                        .split('+')
-                        .map(|s| s.trim().to_owned())
-                        .filter(|s| !s.is_empty())
-                        .collect();
                     GenericParam::Type(name, bounds)
                 }
             } else {

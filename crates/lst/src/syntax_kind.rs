@@ -78,6 +78,7 @@ pub enum SyntaxKind {
     GENERIC_PARAMS, // GenericParams
     GENERIC_PARAM_ITEMS, // GenericParamItems
     GENERIC_PARAM, // GenericParam
+    BOUND_LIST, // BoundList
     PARAM_LIST, // ParamList
     PARAM_ITEMS, // ParamItems
     PARAM, // Param
@@ -132,7 +133,8 @@ pub enum SyntaxKind {
     VARIANT_PATTERN_FIELDS, // VariantPatternFields
     BIND_PATTERN, // BindPattern
     WILDCARD_PATTERN, // WildcardPattern
-    TYPE_EXPR, // TypeExpr
+    THUNK_TYPE_EXPR, // ThunkTypeExpr
+    SIMPLE_TYPE_EXPR, // SimpleTypeExpr
     GENERIC_ARGS, // GenericArgs
     GENERIC_ARG_ITEMS, // GenericArgItems
     // Sentinel
