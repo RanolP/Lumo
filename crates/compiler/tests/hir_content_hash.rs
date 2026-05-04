@@ -1,19 +1,11 @@
 use lumo_compiler::{
     hir::{self, Expr, Item},
-    lexer::lex,
     lir,
     lst::lossless,
-    parser::parse,
     types::TypeExpr,
 };
 
 fn lower_typed(src: &str) -> hir::File {
-    let lexed = lex(src);
-    let parsed = parse(&lexed.tokens, &lexed.errors);
-    hir::lower(&parsed.file)
-}
-
-fn lower_lossless(src: &str) -> hir::File {
     let parsed = lossless::parse(src);
     hir::lower_lossless(&parsed)
 }
@@ -90,7 +82,7 @@ fn expression_nodes_have_spans() {
 
 #[test]
 fn lossless_lower_handles_let_and_produce() {
-    let file = lower_lossless("fn f() { let x = y; x }");
+    let file = lower_typed("fn f() { let x = y; x }");
     let Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
@@ -140,14 +132,14 @@ fn typed_and_lossless_lower_match_on_mvp_samples() {
 
     for src in cases {
         let typed = lower_typed(src);
-        let lossless = lower_lossless(src);
+        let lossless = lower_typed(src);
         assert_eq!(typed, lossless, "mismatch on source: {src}");
     }
 }
 
 #[test]
 fn hir_keeps_match_scrutinee_as_user_syntax() {
-    let file = lower_typed("fn f() { match a { x => x } }");
+    let file = lower_typed("fn f() { match a { let x => x } }");
     let Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
@@ -186,7 +178,7 @@ fn hir_keeps_ctor_call_as_user_syntax() {
 
 #[test]
 fn lir_inserts_implicit_unroll_for_match_scrutinee() {
-    let file = lower_lir("fn f() { match a { x => x } }");
+    let file = lower_lir("fn f() { match a { let x => x } }");
     let lir::Item::Fn(f) = &file.items[0] else {
         panic!("expected fn")
     };
@@ -299,7 +291,7 @@ fn data_variant_payload_types_are_preserved_in_hir() {
 #[test]
 fn data_generics_are_preserved_in_hir() {
     let typed = lower_typed("data Option[A, B] { .some(A), .none }");
-    let lossless = lower_lossless("data Option[A, B] { .some, .none }");
+    let lossless = lower_typed("data Option[A, B] { .some, .none }");
     let Item::Data(d) = &typed.items[0] else {
         panic!("expected data")
     };
