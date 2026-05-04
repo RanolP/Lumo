@@ -3,12 +3,11 @@
 //! Verifies that the printer and parser for each IR are mutually consistent
 //! when fed real compiler output (not hand-crafted IR strings).
 
-use lumo_compiler::{hir, lexer::lex, lir, parser::parse};
+use lumo_compiler::{hir, lir};
 
 fn lower_hir(src: &str) -> hir::File {
-    let lexed = lex(src);
-    let parsed = parse(&lexed.tokens, &lexed.errors);
-    hir::lower(&parsed.file)
+    let lossless = lumo_compiler::lst::lossless::parse(src);
+    hir::lower_lossless(&lossless)
 }
 
 fn lower_lir(src: &str) -> lir::File {

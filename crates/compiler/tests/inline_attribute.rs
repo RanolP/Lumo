@@ -1,15 +1,12 @@
 use lumo_compiler::{
     hir,
-    lexer::lex,
     lir,
-    parser::parse,
     query::QueryEngine,
 };
 
 fn lower(src: &str) -> lir::File {
-    let lexed = lex(src);
-    let parsed = parse(&lexed.tokens, &lexed.errors);
-    let hir = hir::lower(&parsed.file);
+    let lossless = lumo_compiler::lst::lossless::parse(src);
+    let hir = hir::lower_lossless(&lossless);
     lir::lower(&hir)
 }
 

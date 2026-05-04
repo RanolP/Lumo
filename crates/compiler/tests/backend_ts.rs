@@ -1,15 +1,12 @@
 use lumo_compiler::{
     backend::{self, BackendError, CodegenTarget},
     hir,
-    lexer::lex,
     lir,
-    parser::parse,
 };
 
 fn lower_typed(src: &str) -> lir::File {
-    let lexed = lex(src);
-    let parsed = parse(&lexed.tokens, &lexed.errors);
-    let hir = hir::lower(&parsed.file);
+    let lossless = lumo_compiler::lst::lossless::parse(src);
+    let hir = hir::lower_lossless(&lossless);
     lir::lower(&hir)
 }
 

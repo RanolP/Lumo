@@ -3,9 +3,7 @@ use std::path::Path;
 
 use lumo_compiler::{
     hir,
-    lexer::lex,
     lir,
-    parser::parse,
     query::rewrite_value_method_calls,
     typecheck::{render_type, typecheck_and_bindings},
 };
@@ -34,9 +32,8 @@ fn typecheck_fixtures() {
         let case_name = format!("type/{file_name}#{}", idx + 1);
         let (source, expected) = split_source_expected(&raw_case, &case_name);
 
-        let lexed = lex(&source);
-        let parsed = parse(&lexed.tokens, &lexed.errors);
-        let hir = hir::lower(&parsed.file);
+        let lossless = lumo_compiler::lst::lossless::parse(&source);
+        let hir = hir::lower_lossless(&lossless);
         let mut lir = lir::lower(&hir);
         // Apply the value-method-call rewrite (e.g. xs.map(f) → List[T].map(xs, f))
         // so fixture cases can test method dispatch end-to-end.

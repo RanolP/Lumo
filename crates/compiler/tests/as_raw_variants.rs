@@ -13,23 +13,19 @@
 use lumo_compiler::{
     backend::{self, CodegenTarget},
     hir,
-    lexer::lex,
     lir,
-    parser::parse,
 };
 
 fn compile_js(src: &str) -> String {
-    let lexed = lex(src);
-    let parsed = parse(&lexed.tokens, &lexed.errors);
-    let h = hir::lower(&parsed.file);
+    let lossless = lumo_compiler::lst::lossless::parse(src);
+    let h = hir::lower_lossless(&lossless);
     let l = lir::lower(&h);
     backend::emit(&l, CodegenTarget::JavaScript).expect("js emit")
 }
 
 fn compile_ts(src: &str) -> String {
-    let lexed = lex(src);
-    let parsed = parse(&lexed.tokens, &lexed.errors);
-    let h = hir::lower(&parsed.file);
+    let lossless = lumo_compiler::lst::lossless::parse(src);
+    let h = hir::lower_lossless(&lossless);
     let l = lir::lower(&h);
     backend::emit(&l, CodegenTarget::TypeScript).expect("ts emit")
 }
@@ -142,9 +138,8 @@ fn duplicate_data_without_as_raw_still_errors() {
         data Foo { .a, .b }
         data Foo { .a, .b }
     "#;
-    let lexed = lex(src);
-    let parsed = parse(&lexed.tokens, &lexed.errors);
-    let h = hir::lower(&parsed.file);
+    let lossless = lumo_compiler::lst::lossless::parse(src);
+    let h = hir::lower_lossless(&lossless);
     let errs = hir::check::check_file(&h);
     assert!(
         errs.iter().any(|e| format!("{e:?}").contains("duplicate type `Foo`")),
