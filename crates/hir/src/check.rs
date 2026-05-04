@@ -561,10 +561,10 @@ impl CheckCtx {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse;
+    use crate::from_hir_cst;
 
     fn check(src: &str) -> Vec<CheckError> {
-        let file = parse::parse(src).expect("parse failed");
+        let file = from_hir_cst::parse(src).expect("parse failed");
         check_file(&file)
     }
 

@@ -1,7 +1,13 @@
 pub mod check;
 pub mod from_cst;
-pub mod parse;
+pub mod from_hir_cst;
+pub mod lossless;
+pub mod syntax_kind;
+pub mod ast;
 pub mod print;
+
+pub use syntax_kind::SyntaxKind;
+pub use lossless::{LosslessToken, SyntaxElement, SyntaxNode};
 
 use lumo_span::Span;
 use lumo_lst as lst;

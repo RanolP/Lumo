@@ -19,7 +19,7 @@ fn lower_lir(src: &str) -> lir::File {
 fn assert_hir_roundtrip(src: &str) {
     let hir_file = lower_hir(src);
     let printed1 = hir::print::print_file(&hir_file);
-    let reparsed = hir::parse::parse(&printed1)
+    let reparsed = hir::from_hir_cst::parse(&printed1)
         .unwrap_or_else(|errs| panic!("HIR parse failed on:\n{printed1}\nerrors: {errs:?}"));
     let printed2 = hir::print::print_file(&reparsed);
     assert_eq!(
