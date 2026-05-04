@@ -104,14 +104,12 @@ pub fn build_resolution_map(file: &lir::File) -> ResolutionMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{hir, lexer::lex, parser::parse};
+    use crate::{hir, lst};
     use lumo_lir as lir;
 
     fn lower(src: &str) -> lir::File {
-        let lexed = lex(src);
-        let parsed = parse(&lexed.tokens, &lexed.errors);
-        let h = hir::lower(&parsed.file);
-        lir::lower(&h)
+        let lossless = lst::lossless::parse(src);
+        lir::lower(&hir::lower_lossless(&lossless))
     }
 
     #[test]

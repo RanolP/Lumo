@@ -60,12 +60,11 @@ pub fn sweep(file: &mut lir::File) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{hir, lexer::lex, parser::parse};
+    use crate::{hir, lst};
 
     fn lower(src: &str) -> lir::File {
-        let lexed = lex(src);
-        let parsed = parse(&lexed.tokens, &lexed.errors);
-        lir::lower(&hir::lower(&parsed.file))
+        let lossless = lst::lossless::parse(src);
+        lir::lower(&hir::lower_lossless(&lossless))
     }
 
     #[test]

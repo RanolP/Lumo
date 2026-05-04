@@ -517,12 +517,11 @@ fn adj_of(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{hir, lexer::lex, lto, parser::parse};
+    use crate::{hir, lst, lto};
 
     fn lower(src: &str) -> lir::File {
-        let lexed = lex(src);
-        let parsed = parse(&lexed.tokens, &lexed.errors);
-        lir::lower(&hir::lower(&parsed.file))
+        let lossless = lst::lossless::parse(src);
+        lir::lower(&hir::lower_lossless(&lossless))
     }
 
     #[test]

@@ -13,7 +13,3 @@ pub mod lto;
 pub mod query;
 pub mod typecheck;
 
-// Re-export parser from lst for backward compatibility
-pub mod parser {
-    pub use lumo_lst::parser::*;
-}
