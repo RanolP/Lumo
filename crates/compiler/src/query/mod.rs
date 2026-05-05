@@ -209,6 +209,15 @@ impl QueryEngine {
         typecheck::apply_inferred_caps(&mut lowered, &inferred);
 
         // Phase 4: LTO — monomorphize cap-resolved fns
+        if std::env::var("LBS_DEBUG_LIR").is_ok() {
+            for item in &lowered.items {
+                if let lir::Item::Fn(f) = item {
+                    if f.name == "run" {
+                        eprintln!("=== PRE-LTO LIR fn {} ===\n{:#?}\n", f.name, f.value);
+                    }
+                }
+            }
+        }
         let lto_errors = crate::lto::optimize(&mut lowered);
         if !lto_errors.is_empty() {
             // Hard errors (e.g. #[inline(always)] on unresolvable fn) — abort.

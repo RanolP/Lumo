@@ -1936,7 +1936,7 @@ fn iife(name: &str, body: tsast::Expr, arg: tsast::Expr) -> tsast::Expr {
 
 fn lower_expr(expr: &lir::Expr, ctx: &LoweringContext) -> tsast::Expr {
     match expr {
-        lir::Expr::Ident { name, .. } if name == "Unit" => {
+        lir::Expr::Ident { name, .. } if name == "Unit" || name == "unit" => {
             tsast::Expr::Void(Box::new(tsast::Expr::Number(0.0)))
         }
         lir::Expr::Ident { name, .. } => tsast::Expr::Ident(name.clone()),
