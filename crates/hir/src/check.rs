@@ -374,6 +374,9 @@ impl CheckCtx {
                 inner_generics.insert(var.as_str());
                 self.check_type_expr_with_generics(body, span, &inner_generics);
             }
+            TypeExpr::Proj { base, .. } => {
+                self.check_type_expr_with_generics(base, span, generics);
+            }
             TypeExpr::Var(v) => {
                 if !generics.contains(v.as_str()) {
                     self.error(span, format!("unbound type variable `{v}`"));

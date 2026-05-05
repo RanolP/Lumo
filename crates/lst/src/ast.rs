@@ -1822,6 +1822,7 @@ impl<'a> AstNode<'a> for WildcardPattern<'a> {
 pub enum TypeExpr<'a> {
     ThunkTypeExpr(ThunkTypeExpr<'a>),
     FnTypeExpr(FnTypeExpr<'a>),
+    ProjTypeExpr(ProjTypeExpr<'a>),
     SimpleTypeExpr(SimpleTypeExpr<'a>),
 }
 
@@ -1830,12 +1831,14 @@ impl<'a> AstNode<'a> for TypeExpr<'a> {
         None
             .or_else(|| ThunkTypeExpr::cast(node).map(Self::ThunkTypeExpr))
             .or_else(|| FnTypeExpr::cast(node).map(Self::FnTypeExpr))
+            .or_else(|| ProjTypeExpr::cast(node).map(Self::ProjTypeExpr))
             .or_else(|| SimpleTypeExpr::cast(node).map(Self::SimpleTypeExpr))
     }
     fn syntax(&self) -> &'a SyntaxNode {
         match self {
             Self::ThunkTypeExpr(n) => n.syntax(),
             Self::FnTypeExpr(n) => n.syntax(),
+            Self::ProjTypeExpr(n) => n.syntax(),
             Self::SimpleTypeExpr(n) => n.syntax(),
         }
     }
@@ -1891,6 +1894,38 @@ impl<'a> FnTypeExpr<'a> {
             SyntaxElement::Node(n) => CapAnnotation::cast(n),
             _ => None,
         })
+    }
+}
+
+
+pub struct ProjTypeExpr<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ProjTypeExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::PROJ_TYPE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> ProjTypeExpr<'a> {
+    pub fn head(&self) -> Option<SimpleTypeExpr<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => SimpleTypeExpr::cast(n),
+            _ => None,
+        })
+    }
+    pub fn assoc(&self) -> Option<&'a LosslessToken> {
+        let mut found_dot = false;
+        for c in &self.0.children {
+            if !found_dot {
+                if let SyntaxElement::Token(t) = c {
+                    if t.text == "." { found_dot = true; }
+                }
+            } else if let SyntaxElement::Token(t) = c {
+                if matches!(t.kind, SyntaxKind::IDENT) { return Some(t); }
+            }
+        }
+        None
     }
 }
 

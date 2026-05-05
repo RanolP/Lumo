@@ -296,6 +296,13 @@ fn type_expr_repr(ty: &ast::TypeExpr) -> String {
             };
             format!("({}) -> {}{}", params.join(", "), ret, cap_str)
         }
+        ast::TypeExpr::ProjTypeExpr(p) => {
+            let base = p.head()
+                .map(|h| type_expr_repr(&ast::TypeExpr::SimpleTypeExpr(h)))
+                .unwrap_or_default();
+            let assoc = p.assoc().map(|t| t.text.clone()).unwrap_or_default();
+            format!("{base}.{assoc}")
+        }
         ast::TypeExpr::SimpleTypeExpr(s) => {
             let name = s.name().map(|t| t.text.clone()).unwrap_or_default();
             if let Some(generic_args) = s.generic_args() {

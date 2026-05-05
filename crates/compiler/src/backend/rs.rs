@@ -254,6 +254,7 @@ fn type_expr_to_rust(ty: &TypeExpr) -> String {
             let ps = params.iter().map(type_expr_to_rust).collect::<Vec<_>>().join(", ");
             format!("fn({ps}) -> {}", type_expr_to_rust(ret))
         }
+        TypeExpr::Proj { base, assoc } => format!("<{} as _>::{assoc}", type_expr_to_rust(base)),
         TypeExpr::Mu { body, .. } => type_expr_to_rust(body),
         TypeExpr::Var(v) => v.clone(),
     }

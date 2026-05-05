@@ -136,6 +136,7 @@ pub enum SyntaxKind {
     THUNK_TYPE_EXPR, // ThunkTypeExpr
     SIMPLE_TYPE_EXPR, // SimpleTypeExpr
     FN_TYPE_EXPR, // FnTypeExpr: (T, U) -> R / { cap }
+    PROJ_TYPE_EXPR, // ProjTypeExpr: Base.Assoc
     FN_TYPE_PARAM_ITEMS, // FnTypeParamItems
     GENERIC_ARGS, // GenericArgs
     GENERIC_ARG_ITEMS, // GenericArgItems

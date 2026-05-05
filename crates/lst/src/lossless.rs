@@ -1293,7 +1293,25 @@ impl Parser {
     fn parse_type_expr(&mut self) -> SyntaxNode {
         if self.can_parse_thunk_type_expr() { return self.parse_thunk_type_expr(); }
         if self.can_parse_fn_type_expr() { return self.parse_fn_type_expr(); }
-        if self.can_parse_simple_type_expr() { return self.parse_simple_type_expr(); }
+        if self.can_parse_simple_type_expr() {
+            let base = self.parse_simple_type_expr();
+            // Postfix projection: SimpleTypeExpr '.' Ident
+            let is_proj = self.at_non_trivia_symbol(".")
+                && matches!(
+                    self.peek_non_trivia_token(1).map(|t| &t.kind),
+                    Some(lumo_lexer::LosslessTokenKind::Ident)
+                );
+            if is_proj {
+                let mut children = Vec::new();
+                children.push(SyntaxElement::Node(Box::new(base)));
+                self.skip_trivia_into(&mut children);
+                children.push(SyntaxElement::Token(self.bump().unwrap())); // '.'
+                self.skip_trivia_into(&mut children);
+                children.push(SyntaxElement::Token(self.bump().unwrap())); // assoc ident
+                return node_from_children(SyntaxKind::PROJ_TYPE_EXPR, children);
+            }
+            return base;
+        }
         self.error_here("expected TypeExpr");
         node_from_children(SyntaxKind::ERROR, Vec::new())
     }

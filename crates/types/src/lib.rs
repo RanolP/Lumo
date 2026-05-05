@@ -44,6 +44,8 @@ pub enum TypeExpr {
     Cap { name: String, type_args: Vec<TypeExpr> },
     /// Function type in value position: `(T, U) -> R` or `(T) -> R / { IO }`
     Fn { params: Vec<TypeExpr>, ret: Box<TypeExpr>, cap: Vec<CapEntry> },
+    /// Associated type projection: `I.Item`, `List[T].Item`
+    Proj { base: Box<TypeExpr>, assoc: String },
     /// Iso-recursive type binder: `mu X. T`
     Mu { var: String, body: Box<TypeExpr> },
     /// Bound type variable inside a `mu` binder
@@ -88,6 +90,7 @@ impl TypeExpr {
                 };
                 format!("({ps}) -> {}{cap_str}", ret.display())
             }
+            TypeExpr::Proj { base, assoc } => format!("{}.{assoc}", base.display()),
             TypeExpr::Mu { var, body } => format!("mu {var}. {}", body.display()),
             TypeExpr::Var(v) => v.clone(),
         }
@@ -101,6 +104,7 @@ impl TypeExpr {
             TypeExpr::Produce(inner) | TypeExpr::Thunk(inner) => inner.head_name(),
             TypeExpr::Cap { name, .. } => name,
             TypeExpr::Fn { ret, .. } => ret.head_name(),
+            TypeExpr::Proj { .. } => "?proj",
             TypeExpr::Mu { body, .. } => body.head_name(),
         }
     }
@@ -119,6 +123,7 @@ impl TypeExpr {
             TypeExpr::Fn { params, ret, .. } => {
                 params.iter().any(|p| p.references_name(target)) || ret.references_name(target)
             }
+            TypeExpr::Proj { base, .. } => base.references_name(target),
             TypeExpr::Mu { var, body } => var == target || body.references_name(target),
             TypeExpr::Var(v) => v == target,
         }
@@ -273,6 +278,26 @@ fn find_close_paren(text: &str) -> Option<usize> {
 }
 
 fn parse_type_expr_compact(text: &str) -> TypeExpr {
+    // Check for postfix projection: Base.Assoc (dot outside brackets)
+    let mut depth = 0usize;
+    let mut last_dot: Option<usize> = None;
+    for (i, ch) in text.char_indices() {
+        match ch {
+            '[' => depth += 1,
+            ']' => depth = depth.saturating_sub(1),
+            '.' if depth == 0 => last_dot = Some(i),
+            _ => {}
+        }
+    }
+    if let Some(dot_pos) = last_dot {
+        let base_str = &text[..dot_pos];
+        let assoc = text[dot_pos + 1..].to_owned();
+        if !base_str.is_empty() && !assoc.is_empty() {
+            let base = parse_type_expr_compact(base_str);
+            return TypeExpr::Proj { base: Box::new(base), assoc };
+        }
+    }
+
     if let Some(bracket) = text.find('[') {
         let head = text[..bracket].to_owned();
         let inner = &text[bracket + 1..text.len().saturating_sub(1)];

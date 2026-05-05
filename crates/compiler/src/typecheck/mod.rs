@@ -3118,6 +3118,11 @@ fn v_type_from_type_expr(te: &TypeExpr) -> Option<ValueType> {
             let body_vt = v_type_from_type_expr(body)?;
             Some(ValueType::Rec { var: var.clone(), body: Box::new(body_vt) })
         }
+        TypeExpr::Proj { base, assoc } => {
+            // Resolved in Task 6 via obligation system; stub returns Named placeholder
+            let _ = (base, assoc);
+            None
+        }
         TypeExpr::Var(v) => Some(ValueType::Var(v.clone())),
     }
 }

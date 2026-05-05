@@ -192,9 +192,16 @@ WildcardPattern = '_'
 
 TypeExpr =
   | ThunkTypeExpr
+  | FnTypeExpr
+  | ProjTypeExpr
   | SimpleTypeExpr
 
 ThunkTypeExpr = 'thunk' inner:TypeExpr
+// FnTypeExpr: (T, U) -> R / { cap } — function type in value position
+FnTypeExpr = '(' items:FnTypeParamItems? ')' '->' return_type:TypeExpr cap_annotation:CapAnnotation?
+FnTypeParamItems = head:TypeExpr (',' tail:TypeExpr)* ','?
+// ProjTypeExpr: Base.Assoc — associated type projection (postfix, head is a SimpleTypeExpr)
+ProjTypeExpr = head:SimpleTypeExpr '.' assoc:Ident
 SimpleTypeExpr = name:Ident generic_args:GenericArgs?
 GenericArgs = '[' args:GenericArgItems? ']'
 GenericArgItems = head:TypeExpr (',' tail:TypeExpr)* ','?
