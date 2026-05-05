@@ -144,12 +144,17 @@ fn print_cap(p: &mut Printer, cap: &CapDecl) {
     p.push(&cap.name);
     p.push(" {");
     p.indent();
+    for assoc in &cap.assoc_types {
+        p.newline();
+        p.push("type ");
+        p.push(assoc);
+    }
     for op in &cap.operations {
         p.newline();
         print_operation(p, op);
     }
     p.dedent();
-    if !cap.operations.is_empty() {
+    if !cap.assoc_types.is_empty() || !cap.operations.is_empty() {
         p.newline();
     }
     p.push("}");
@@ -209,12 +214,19 @@ fn print_impl(p: &mut Printer, impl_decl: &ImplDecl) {
     }
     p.push(" {");
     p.indent();
+    for (aname, aty) in &impl_decl.assoc_types {
+        p.newline();
+        p.push("type ");
+        p.push(aname);
+        p.push(" = ");
+        p.push(&aty.value.display());
+    }
     for method in &impl_decl.methods {
         p.newline();
         print_impl_method(p, method);
     }
     p.dedent();
-    if !impl_decl.methods.is_empty() {
+    if !impl_decl.assoc_types.is_empty() || !impl_decl.methods.is_empty() {
         p.newline();
     }
     p.push("}");

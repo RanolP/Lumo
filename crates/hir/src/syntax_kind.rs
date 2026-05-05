@@ -67,6 +67,7 @@ pub enum SyntaxKind {
     VARIANT_FIELDS, // VariantFields
     VARIANT_FIELD_ITEMS, // VariantFieldItems
     CAP_DECL, // CapDecl
+    ASSOC_TYPE_DECL, // AssocTypeDecl
     OPERATION_DECL, // OperationDecl
     FN_DECL, // FnDecl
     USE_DECL, // UseDecl
@@ -76,6 +77,7 @@ pub enum SyntaxKind {
     IMPL_DECL, // ImplDecl
     IMPL_NAME, // ImplName
     IMPL_CAP, // ImplCap
+    ASSOC_TYPE_BINDING, // AssocTypeBinding
     IMPL_METHOD, // ImplMethod
     GENERIC_PARAMS, // GenericParams
     GENERIC_PARAM_ITEMS, // GenericParamItems

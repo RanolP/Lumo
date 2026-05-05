@@ -396,11 +396,31 @@ impl Parser {
             children.push(SyntaxElement::Token(self.bump().unwrap()));
         } else { self.error_here("expected Ident"); }
         self.expect_symbol("{", &mut children);
-        while self.can_parse_operation_decl() {
-            children.push(SyntaxElement::Node(Box::new(self.parse_operation_decl())));
+        while self.can_parse_cap_item() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_cap_item())));
         }
         self.expect_symbol("}", &mut children);
         node_from_children(SyntaxKind::CAP_DECL, children)
+    }
+
+    fn can_parse_cap_item(&self) -> bool {
+        self.at_non_trivia_keyword(Keyword::Type) || self.at_non_trivia_keyword(Keyword::Fn)
+    }
+    fn parse_cap_item(&mut self) -> SyntaxNode {
+        if self.at_non_trivia_keyword(Keyword::Type) {
+            self.parse_assoc_type_decl()
+        } else {
+            self.parse_operation_decl()
+        }
+    }
+    fn parse_assoc_type_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.expect_keyword(Keyword::Type, &mut children);
+        self.skip_trivia_into(&mut children);
+        if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else { self.error_here("expected Ident"); }
+        node_from_children(SyntaxKind::ASSOC_TYPE_DECL, children)
     }
 
     fn can_parse_operation_decl(&self) -> bool { self.at_non_trivia_keyword(Keyword::Fn) }
@@ -521,11 +541,33 @@ impl Parser {
             children.push(SyntaxElement::Node(Box::new(self.parse_impl_cap())));
         }
         self.expect_symbol("{", &mut children);
-        while self.can_parse_impl_method() {
-            children.push(SyntaxElement::Node(Box::new(self.parse_impl_method())));
+        while self.can_parse_impl_item() {
+            children.push(SyntaxElement::Node(Box::new(self.parse_impl_item())));
         }
         self.expect_symbol("}", &mut children);
         node_from_children(SyntaxKind::IMPL_DECL, children)
+    }
+
+    fn can_parse_impl_item(&self) -> bool {
+        self.at_non_trivia_keyword(Keyword::Type) || self.at_non_trivia_keyword(Keyword::Fn)
+    }
+    fn parse_impl_item(&mut self) -> SyntaxNode {
+        if self.at_non_trivia_keyword(Keyword::Type) {
+            self.parse_assoc_type_binding()
+        } else {
+            self.parse_impl_method()
+        }
+    }
+    fn parse_assoc_type_binding(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.expect_keyword(Keyword::Type, &mut children);
+        self.skip_trivia_into(&mut children);
+        if matches!(self.current().map(|t| &t.kind), Some(LexKind::Ident)) {
+            children.push(SyntaxElement::Token(self.bump().unwrap()));
+        } else { self.error_here("expected Ident"); }
+        self.expect_symbol("=", &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        node_from_children(SyntaxKind::ASSOC_TYPE_BINDING, children)
     }
 
     // Patched: ImplName requires Ident followed by '=' (plain, not ':=' or '=>').

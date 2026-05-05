@@ -41,7 +41,11 @@ VariantFieldItems = TypeExpr (',' TypeExpr)* ','?
 
 // === Capabilities ===
 
-CapDecl = 'cap' name:Ident '{' operations:OperationDecl* '}'
+CapDecl = 'cap' name:Ident '{' items:CapItem* '}'
+CapItem =
+  | AssocTypeDecl
+  | OperationDecl
+AssocTypeDecl = 'type' name:Ident
 OperationDecl = 'fn' name:Ident param_list:ParamList return_ann:ReturnAnn?
 
 // === Functions ===
@@ -57,9 +61,13 @@ UseTreeNames = Ident (',' Ident)* ','?
 
 // === Impl blocks ===
 
-ImplDecl = 'impl' generic_params:GenericParams? impl_name:ImplName? target:TypeExpr impl_cap:ImplCap? '{' methods:ImplMethod* '}'
+ImplDecl = 'impl' generic_params:GenericParams? impl_name:ImplName? target:TypeExpr impl_cap:ImplCap? '{' items:ImplItem* '}'
 ImplName = name:Ident '='
 ImplCap = ':' cap:TypeExpr
+ImplItem =
+  | AssocTypeBinding
+  | ImplMethod
+AssocTypeBinding = 'type' name:Ident '=' ty:TypeExpr
 ImplMethod = 'fn' name:Ident param_list:ParamList return_ann:ReturnAnn? ':=' body:Expr
 
 // === Shared ===

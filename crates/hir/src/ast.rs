@@ -257,9 +257,46 @@ impl<'a> CapDecl<'a> {
             _ => None,
         })
     }
-    pub fn operations(&self) -> impl Iterator<Item = OperationDecl<'a>> + 'a {
+    pub fn items(&self) -> impl Iterator<Item = CapItem<'a>> + 'a {
         self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => OperationDecl::cast(n),
+            SyntaxElement::Node(n) => CapItem::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub enum CapItem<'a> {
+    AssocTypeDecl(AssocTypeDecl<'a>),
+    OperationDecl(OperationDecl<'a>),
+}
+
+impl<'a> AstNode<'a> for CapItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| AssocTypeDecl::cast(node).map(Self::AssocTypeDecl))
+            .or_else(|| OperationDecl::cast(node).map(Self::OperationDecl))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::AssocTypeDecl(n) => n.syntax(),
+            Self::OperationDecl(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct AssocTypeDecl<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AssocTypeDecl<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ASSOC_TYPE_DECL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> AssocTypeDecl<'a> {
+    pub fn name(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
             _ => None,
         })
     }
@@ -429,10 +466,19 @@ impl<'a> AstNode<'a> for ImplDecl<'a> {
 
 impl<'a> ImplDecl<'a> {
     pub fn generic_params(&self) -> Option<GenericParams<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => GenericParams::cast(n),
-            _ => None,
-        })
+        let mut found_kw = false;
+        for c in &self.0.children {
+            if !found_kw {
+                if let SyntaxElement::Token(t) = c {
+                    if t.kind == SyntaxKind::IMPL_KW { found_kw = true; }
+                }
+            } else {
+                if let SyntaxElement::Node(n) = c {
+                    if let Some(result) = GenericParams::cast(n) { return Some(result); }
+                }
+            }
+        }
+        None
     }
     pub fn impl_name(&self) -> Option<ImplName<'a>> {
         self.0.children.iter().find_map(|c| match c {
@@ -452,9 +498,9 @@ impl<'a> ImplDecl<'a> {
             _ => None,
         })
     }
-    pub fn methods(&self) -> impl Iterator<Item = ImplMethod<'a>> + 'a {
+    pub fn items(&self) -> impl Iterator<Item = ImplItem<'a>> + 'a {
         self.0.children.iter().filter_map(|c| match c {
-            SyntaxElement::Node(n) => ImplMethod::cast(n),
+            SyntaxElement::Node(n) => ImplItem::cast(n),
             _ => None,
         })
     }
@@ -489,6 +535,49 @@ impl<'a> AstNode<'a> for ImplCap<'a> {
 
 impl<'a> ImplCap<'a> {
     pub fn cap(&self) -> Option<TypeExpr<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => TypeExpr::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub enum ImplItem<'a> {
+    AssocTypeBinding(AssocTypeBinding<'a>),
+    ImplMethod(ImplMethod<'a>),
+}
+
+impl<'a> AstNode<'a> for ImplItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| AssocTypeBinding::cast(node).map(Self::AssocTypeBinding))
+            .or_else(|| ImplMethod::cast(node).map(Self::ImplMethod))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::AssocTypeBinding(n) => n.syntax(),
+            Self::ImplMethod(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct AssocTypeBinding<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AssocTypeBinding<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ASSOC_TYPE_BINDING).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> AssocTypeBinding<'a> {
+    pub fn name(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
+            _ => None,
+        })
+    }
+    pub fn ty(&self) -> Option<TypeExpr<'a>> {
         self.0.children.iter().find_map(|c| match c {
             SyntaxElement::Node(n) => TypeExpr::cast(n),
             _ => None,
@@ -832,10 +921,19 @@ impl<'a> LetExpr<'a> {
         })
     }
     pub fn body(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
+        let mut found_kw = false;
+        for c in &self.0.children {
+            if !found_kw {
+                if let SyntaxElement::Token(t) = c {
+                    if t.kind == SyntaxKind::IN_KW { found_kw = true; }
+                }
+            } else {
+                if let SyntaxElement::Node(n) = c {
+                    if let Some(result) = Expr::cast(n) { return Some(result); }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -850,10 +948,19 @@ impl<'a> AstNode<'a> for ProduceExpr<'a> {
 
 impl<'a> ProduceExpr<'a> {
     pub fn value(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
+        let mut found_kw = false;
+        for c in &self.0.children {
+            if !found_kw {
+                if let SyntaxElement::Token(t) = c {
+                    if t.kind == SyntaxKind::PRODUCE_KW { found_kw = true; }
+                }
+            } else {
+                if let SyntaxElement::Node(n) = c {
+                    if let Some(result) = Expr::cast(n) { return Some(result); }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -868,10 +975,19 @@ impl<'a> AstNode<'a> for ThunkExpr<'a> {
 
 impl<'a> ThunkExpr<'a> {
     pub fn body(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
+        let mut found_kw = false;
+        for c in &self.0.children {
+            if !found_kw {
+                if let SyntaxElement::Token(t) = c {
+                    if t.kind == SyntaxKind::THUNK_KW { found_kw = true; }
+                }
+            } else {
+                if let SyntaxElement::Node(n) = c {
+                    if let Some(result) = Expr::cast(n) { return Some(result); }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -886,10 +1002,19 @@ impl<'a> AstNode<'a> for ForceExpr<'a> {
 
 impl<'a> ForceExpr<'a> {
     pub fn expr(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
+        let mut found_kw = false;
+        for c in &self.0.children {
+            if !found_kw {
+                if let SyntaxElement::Token(t) = c {
+                    if t.kind == SyntaxKind::FORCE_KW { found_kw = true; }
+                }
+            } else {
+                if let SyntaxElement::Node(n) = c {
+                    if let Some(result) = Expr::cast(n) { return Some(result); }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -904,10 +1029,19 @@ impl<'a> AstNode<'a> for MatchExpr<'a> {
 
 impl<'a> MatchExpr<'a> {
     pub fn scrutinee(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
+        let mut found_kw = false;
+        for c in &self.0.children {
+            if !found_kw {
+                if let SyntaxElement::Token(t) = c {
+                    if t.kind == SyntaxKind::MATCH_KW { found_kw = true; }
+                }
+            } else {
+                if let SyntaxElement::Node(n) = c {
+                    if let Some(result) = Expr::cast(n) { return Some(result); }
+                }
+            }
+        }
+        None
     }
     pub fn arms(&self) -> impl Iterator<Item = MatchArm<'a>> + 'a {
         self.0.children.iter().filter_map(|c| match c {
@@ -1033,16 +1167,34 @@ impl<'a> HandleExpr<'a> {
         })
     }
     pub fn handler(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
+        let mut found_kw = false;
+        for c in &self.0.children {
+            if !found_kw {
+                if let SyntaxElement::Token(t) = c {
+                    if t.kind == SyntaxKind::WITH_KW { found_kw = true; }
+                }
+            } else {
+                if let SyntaxElement::Node(n) = c {
+                    if let Some(result) = Expr::cast(n) { return Some(result); }
+                }
+            }
+        }
+        None
     }
     pub fn body(&self) -> Option<Expr<'a>> {
-        self.0.children.iter().find_map(|c| match c {
-            SyntaxElement::Node(n) => Expr::cast(n),
-            _ => None,
-        })
+        let mut found_kw = false;
+        for c in &self.0.children {
+            if !found_kw {
+                if let SyntaxElement::Token(t) = c {
+                    if t.kind == SyntaxKind::IN_KW { found_kw = true; }
+                }
+            } else {
+                if let SyntaxElement::Node(n) = c {
+                    if let Some(result) = Expr::cast(n) { return Some(result); }
+                }
+            }
+        }
+        None
     }
 }
 

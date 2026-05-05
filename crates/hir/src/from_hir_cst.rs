@@ -336,13 +336,21 @@ fn lower_cap_decl(node: &ast::CapDecl, errors: &mut Vec<ParseError>) -> Option<C
         None
     })?;
     let name = name_tok.text.clone();
-    let operations = node
-        .operations()
-        .filter_map(|op| lower_operation_decl(&op, errors))
-        .collect();
+    let mut assoc_types = Vec::new();
+    let mut operations = Vec::new();
+    for item in node.items() {
+        match item {
+            ast::CapItem::AssocTypeDecl(a) => {
+                if let Some(n) = a.name() { assoc_types.push(n.text.clone()); }
+            }
+            ast::CapItem::OperationDecl(op) => {
+                if let Some(o) = lower_operation_decl(&op, errors) { operations.push(o); }
+            }
+        }
+    }
     Some(CapDecl {
         name,
-        assoc_types: vec![],
+        assoc_types,
         operations,
         span,
     })
@@ -473,16 +481,27 @@ fn lower_impl_decl(node: &ast::ImplDecl, errors: &mut Vec<ParseError>) -> Option
         .impl_cap()
         .and_then(|ic| ic.cap())
         .and_then(|ty| lower_type_expr(&ty, errors));
-    let methods = node
-        .methods()
-        .filter_map(|m| lower_impl_method(&m, errors))
-        .collect();
+    let mut assoc_types: Vec<(String, Spanned<TypeExpr>)> = Vec::new();
+    let mut methods = Vec::new();
+    for item in node.items() {
+        match item {
+            ast::ImplItem::AssocTypeBinding(b) => {
+                let aname = b.name().map(|t| t.text.clone()).unwrap_or_default();
+                if let Some(ty) = b.ty().and_then(|ty| lower_type_expr(&ty, errors)) {
+                    assoc_types.push((aname, ty));
+                }
+            }
+            ast::ImplItem::ImplMethod(m) => {
+                if let Some(method) = lower_impl_method(&m, errors) { methods.push(method); }
+            }
+        }
+    }
     Some(HirImplDecl {
         name,
         generics,
         target_type,
         capability,
-        assoc_types: vec![],
+        assoc_types,
         methods,
         span,
     })
