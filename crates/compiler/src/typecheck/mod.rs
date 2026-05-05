@@ -257,6 +257,7 @@ pub fn typecheck_and_bindings(file: &lir::File) -> (Vec<CheckedBinding>, Vec<Typ
         fn_generics: HashMap::new(),
         current_generic_bounds: HashMap::new(),
         current_generic_names: HashSet::new(),
+        assoc_type_bindings: HashMap::new(),
     };
     tc.check_file(file);
     (tc.bindings, tc.errors)
@@ -283,6 +284,7 @@ pub fn infer_caps_for_file(
         fn_generics: HashMap::new(),
         current_generic_bounds: HashMap::new(),
         current_generic_names: HashSet::new(),
+        assoc_type_bindings: HashMap::new(),
     };
     tc.check_file(file);
     let mut result = HashMap::new();
@@ -404,6 +406,8 @@ struct TypeChecker {
     current_generic_bounds: HashMap<String, Vec<String>>,
     /// Current function's generic type variable names (for unification).
     current_generic_names: HashSet<String>,
+    /// (cap_name, target_base_name) → (impl_generic_param_names, {assoc_name → TypeExpr})
+    assoc_type_bindings: HashMap<(String, String), (Vec<String>, HashMap<String, TypeExpr>)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -419,6 +423,7 @@ struct DataDef {
 struct CapDef {
     operations: HashMap<String, CompType>,
     uses_self: bool,
+    assoc_types: Vec<String>,
 }
 
 enum BundleExprInferResult {
@@ -524,8 +529,11 @@ impl TypeChecker {
                     operations.insert(op.name.clone(), op_ty);
                 }
                 let uses_self = operations.values().any(|op_ty| c_type_references_self(op_ty));
-                self.cap_defs
-                    .insert(e.name.clone(), CapDef { operations, uses_self });
+                self.cap_defs.insert(e.name.clone(), CapDef {
+                    operations,
+                    uses_self,
+                    assoc_types: e.assoc_types.clone(),
+                });
             }
         }
 
@@ -578,9 +586,26 @@ impl TypeChecker {
                         self.register_impl_methods(impl_decl, &target_base);
                         // Track that `target_base` implements `cap`
                         self.impl_registry
-                            .entry(target_base)
+                            .entry(target_base.clone())
                             .or_default()
-                            .insert(cap);
+                            .insert(cap.clone());
+                        // Register associated type bindings
+                        if !impl_decl.assoc_types.is_empty() {
+                            let generic_param_names: Vec<String> = impl_decl.generics.iter()
+                                .filter_map(|g| match g {
+                                    lir::GenericParam::Type(n, _) => Some(n.clone()),
+                                    _ => None,
+                                })
+                                .collect();
+                            let mut bindings = HashMap::new();
+                            for (assoc_name, assoc_ty) in &impl_decl.assoc_types {
+                                bindings.insert(assoc_name.clone(), assoc_ty.value.clone());
+                            }
+                            self.assoc_type_bindings.insert(
+                                (cap, target_base),
+                                (generic_param_names, bindings),
+                            );
+                        }
                     }
                 }
             }
