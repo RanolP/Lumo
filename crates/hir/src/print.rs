@@ -274,7 +274,7 @@ fn print_expr(p: &mut Printer, expr: &Expr) {
         }
         Expr::Force { expr: inner, .. } => {
             p.push("force ");
-            print_expr_atom(p, inner);
+            print_expr(p, inner);
         }
         Expr::Let {
             name, value, body, ..

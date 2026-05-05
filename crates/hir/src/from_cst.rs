@@ -117,9 +117,31 @@ fn arg_item_key_text(arg: &ast::AttributeArgItem) -> Option<String> {
     None
 }
 
+fn unescape_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('r') => out.push('\r'),
+                Some('\\') => out.push('\\'),
+                Some('"') => out.push('"'),
+                Some('0') => out.push('\0'),
+                Some(c) => { out.push('\\'); out.push(c); }
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 fn strip_string_quotes(text: &str) -> String {
     if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
-        text[1..text.len() - 1].to_owned()
+        unescape_string(&text[1..text.len() - 1])
     } else {
         text.to_owned()
     }
