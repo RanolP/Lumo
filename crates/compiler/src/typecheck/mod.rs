@@ -258,6 +258,9 @@ pub fn typecheck_and_bindings(file: &lir::File) -> (Vec<CheckedBinding>, Vec<Typ
         current_generic_bounds: HashMap::new(),
         current_generic_names: HashSet::new(),
         assoc_type_bindings: HashMap::new(),
+        obligations: Vec::new(),
+        assoc_subst: HashMap::new(),
+        assoc_var_counter: 0,
     };
     tc.check_file(file);
     (tc.bindings, tc.errors)
@@ -285,6 +288,9 @@ pub fn infer_caps_for_file(
         current_generic_bounds: HashMap::new(),
         current_generic_names: HashSet::new(),
         assoc_type_bindings: HashMap::new(),
+        obligations: Vec::new(),
+        assoc_subst: HashMap::new(),
+        assoc_var_counter: 0,
     };
     tc.check_file(file);
     let mut result = HashMap::new();
@@ -376,6 +382,11 @@ fn render_c_type(ty: &CompType) -> String {
     }
 }
 
+#[derive(Clone, Debug)]
+enum Obligation {
+    Normalize { base: TypeExpr, assoc: String, var: String },
+}
+
 struct TypeChecker {
     errors: Vec<TypeError>,
     bindings: Vec<CheckedBinding>,
@@ -408,6 +419,9 @@ struct TypeChecker {
     current_generic_names: HashSet<String>,
     /// (cap_name, target_base_name) → (impl_generic_param_names, {assoc_name → TypeExpr})
     assoc_type_bindings: HashMap<(String, String), (Vec<String>, HashMap<String, TypeExpr>)>,
+    obligations: Vec<Obligation>,
+    assoc_subst: HashMap<String, ValueType>,
+    assoc_var_counter: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -770,7 +784,7 @@ impl TypeChecker {
         let mut env = HashMap::new();
         let mut param_types = Vec::new();
         for p in &f.params {
-            let Some(ty) = v_type_from_type_expr(&p.ty.value) else {
+            let Some(ty) = self.convert_value_type(&p.ty.value) else {
                 self.errors.push(TypeError::with_span(
                     0,
                     p.span,
@@ -862,6 +876,7 @@ impl TypeChecker {
 
         let err_before = self.errors.len();
         self.check_c_expr(body, &expected, &env);
+        self.drain_obligations();
         for e in &mut self.errors[err_before..] {
             e.fn_name = f.name.clone();
         }
@@ -2879,6 +2894,87 @@ impl TypeChecker {
             }
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Associated type projection helpers
+    // -------------------------------------------------------------------------
+
+    fn try_resolve_proj(&self, base: &TypeExpr, assoc: &str) -> Option<ValueType> {
+        let (base_name, base_args) = match base {
+            TypeExpr::Named(n) => (n.clone(), vec![]),
+            TypeExpr::App { head, args } => (head.clone(), args.clone()),
+            _ => return None,
+        };
+        for ((_, target_base), (generic_params, bindings)) in &self.assoc_type_bindings {
+            if *target_base == base_name {
+                if let Some(assoc_ty) = bindings.get(assoc) {
+                    let subst: HashMap<String, TypeExpr> = generic_params
+                        .iter()
+                        .zip(base_args.iter())
+                        .map(|(name, arg)| (name.clone(), arg.clone()))
+                        .collect();
+                    let resolved = substitute_type_expr(assoc_ty, &subst);
+                    return v_type_from_type_expr(&resolved);
+                }
+            }
+        }
+        None
+    }
+
+    fn apply_assoc_subst(&self, ty: ValueType) -> ValueType {
+        match ty {
+            ValueType::Named(ref n) if n.starts_with("?assoc_") => {
+                self.assoc_subst.get(n).cloned().unwrap_or(ty)
+            }
+            ValueType::Thunk(inner) => {
+                ValueType::Thunk(Box::new(self.apply_assoc_subst_comp(*inner)))
+            }
+            other => other,
+        }
+    }
+
+    fn apply_assoc_subst_comp(&self, ty: CompType) -> CompType {
+        match ty {
+            CompType::Produce(inner) => {
+                CompType::Produce(Box::new(self.apply_assoc_subst(*inner)))
+            }
+            CompType::Fn { params, ret, cap } => CompType::Fn {
+                params: params.into_iter().map(|p| self.apply_assoc_subst(p)).collect(),
+                ret: Box::new(self.apply_assoc_subst_comp(*ret)),
+                cap,
+            },
+        }
+    }
+
+    fn drain_obligations(&mut self) {
+        let obligations = std::mem::take(&mut self.obligations);
+        for ob in obligations {
+            match ob {
+                Obligation::Normalize { base, assoc, var } => {
+                    if let Some(resolved) = self.try_resolve_proj(&base, &assoc) {
+                        self.assoc_subst.insert(var, resolved);
+                    }
+                }
+            }
+        }
+    }
+
+    fn convert_value_type(&mut self, te: &TypeExpr) -> Option<ValueType> {
+        if let TypeExpr::Proj { base, assoc } = te {
+            if let Some(resolved) = self.try_resolve_proj(base, assoc) {
+                return Some(resolved);
+            }
+            let var = format!("?assoc_{}", self.assoc_var_counter);
+            self.assoc_var_counter += 1;
+            self.obligations.push(Obligation::Normalize {
+                base: *base.clone(),
+                assoc: assoc.clone(),
+                var: var.clone(),
+            });
+            return Some(ValueType::Named(var));
+        }
+        v_type_from_type_expr(te)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3109,6 +3205,26 @@ fn caps_equal(a: &[TypeExpr], b: &[TypeExpr]) -> bool {
                     == ac.cap_type_args().iter().map(|t| t.display()).collect::<Vec<_>>()
         })
     })
+}
+
+fn substitute_type_expr(ty: &TypeExpr, subst: &HashMap<String, TypeExpr>) -> TypeExpr {
+    match ty {
+        TypeExpr::Named(n) => subst.get(n).cloned().unwrap_or_else(|| ty.clone()),
+        TypeExpr::App { head, args } => TypeExpr::App {
+            head: head.clone(),
+            args: args.iter().map(|a| substitute_type_expr(a, subst)).collect(),
+        },
+        TypeExpr::Proj { base, assoc } => TypeExpr::Proj {
+            base: Box::new(substitute_type_expr(base, subst)),
+            assoc: assoc.clone(),
+        },
+        TypeExpr::Fn { params, ret, cap } => TypeExpr::Fn {
+            params: params.iter().map(|p| substitute_type_expr(p, subst)).collect(),
+            ret: Box::new(substitute_type_expr(ret, subst)),
+            cap: cap.clone(),
+        },
+        other => other.clone(),
+    }
 }
 
 /// Convert a `TypeExpr` to a `ValueType`.

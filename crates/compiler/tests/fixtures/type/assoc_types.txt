@@ -1,0 +1,8 @@
+cap declaration with associated type is valid
+cap Iterator {
+  type Item
+  fn next(self: Iterator): Option[Item]
+}
+fn use_it(it: Iterator): Option[Item] = it.next(it)
+---
+use_it : (Iterator) -> Option[Item]
