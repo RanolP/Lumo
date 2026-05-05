@@ -174,5 +174,4 @@ fn rs_backend_emits_unnamed_cap_impl() {
 
 // Note: `rs_backend_emits_named_cap_impl` is omitted here because the lossless
 // grammar does not yet support `impl Name = Type: Cap { ... }` (named impl).
-// The named-impl form is parsed by the old lst::parser but not by the CST path.
-// Re-add this test once the grammar is extended to cover named impls.
+// Re-add once the grammar and from_cst.rs are extended to cover named impls.

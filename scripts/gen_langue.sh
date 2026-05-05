@@ -26,6 +26,8 @@ gen() {
   local name="$1" input="$2" output_dir="$3"
   echo "generating $name..."
   node "$LANGUE" "$input" "$output_dir"
+  # Suppress dead_code warnings in generated lossless parser (many helper methods go unused)
+  sed -i 's|^// Regenerate: scripts/gen_langue.sh$|// Regenerate: scripts/gen_langue.sh\n#![allow(dead_code)]|' "$output_dir/lossless.rs"
 }
 
 targets="${1:-all}"

@@ -1,6 +1,6 @@
 use lumo_compiler::{
     lexer::{lex_lossless, LosslessTokenKind},
-    lst::{lossless::{node_text, parse, SyntaxElement}, SyntaxKind},
+    lst::{lossless::{node_text, parse}, SyntaxKind},
 };
 
 #[test]
@@ -50,15 +50,4 @@ fn lossless_lst_preserves_text_on_broken_source() {
 
     assert!(!parsed.errors.is_empty());
     assert_eq!(node_text(&parsed.root), src);
-}
-
-fn contains_error_node(node: &lumo_compiler::lst::lossless::SyntaxNode) -> bool {
-    if node.kind == SyntaxKind::ERROR {
-        return true;
-    }
-
-    node.children.iter().any(|c| match c {
-        SyntaxElement::Node(child) => contains_error_node(child),
-        SyntaxElement::Token(_) => false,
-    })
 }

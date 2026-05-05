@@ -4,7 +4,7 @@
 
 **Goal:** Add `type Item` to `cap` declarations, `type Item = T` to `impl` blocks, and `I.Item` projection in type position, resolved via a fulfillment-based obligation queue.
 
-**Architecture:** Eight sequential tasks: (1) `Keyword::Type` in lexer, (2) `TypeExpr::Proj` + postfix parse, (3) grammar + struct additions across LST/HIR/LIR, (4) HIR parser for assoc items, (5) typechecker registration, (6) obligation system, (7) call-site type variable substitution, (8) test fixtures + Iterator cap. Each task compiles and tests clean before the next starts.
+**Architecture:** Seven sequential tasks — Task 1 (`Keyword::Type`) is already done. Remaining: (2) `TypeExpr::Proj` + postfix parse, (3) grammar + struct additions across HIR/LIR + update `from_cst.rs`, (4) update `from_hir_cst.rs` for assoc items in HIR roundtrip, (5) typechecker registration, (6) obligation system, (7) call-site type variable substitution, (8) test fixtures + Iterator cap. Each task compiles and tests clean before the next starts.
 
 **Tech Stack:** Rust, Lumo compiler (crates/lexer, crates/lst, crates/hir, crates/lir, crates/types, crates/compiler), `cargo test --workspace`.
 
@@ -14,13 +14,13 @@
 
 | File | Change |
 |------|--------|
-| `crates/lexer/src/lib.rs` | Add `Keyword::Type`, add `"type"` mapping |
-| `crates/hir/src/parse.rs` | Fix `eat_ident("type")` → `eat_kw`; add projection postfix; parse assoc items in cap/impl |
+| ~~`crates/lexer/src/lib.rs`~~ | ✅ Done — `Keyword::Type` already exists |
 | `crates/types/src/lib.rs` | Add `TypeExpr::Proj` variant |
 | `crates/compiler/src/backend/ts.rs` | Handle `Proj` in all `TypeExpr` match arms |
 | `crates/compiler/lumo.langue` | Add `CapItem`, `AssocTypeDecl`, `ImplItem`, `AssocTypeBinding` |
-| `crates/lst/src/parser.rs` | Add `assoc_types` to `CapDecl` and `ImplDecl` |
-| `crates/hir/src/lib.rs` | Add `assoc_types` to `CapDecl`/`ImplDecl`; update `lower_cap`/`lower_impl` |
+| `crates/hir/src/from_cst.rs` | Handle `CapItem` / `ImplItem` grammar nodes, populate `assoc_types` |
+| `crates/hir/src/lib.rs` | Add `assoc_types` to `CapDecl`/`ImplDecl` structs |
+| `crates/hir/src/from_hir_cst.rs` | Parse assoc type items in HIR roundtrip (replaces old `parse.rs` task) |
 | `crates/lir/src/lib.rs` | Add `assoc_types` to `CapDecl`/`ImplDecl`; update lowering |
 | `crates/compiler/src/typecheck/mod.rs` | Add `assoc_types` to `CapDef`; add `assoc_type_bindings`, `Obligation` queue, drain, substitution |
 | `crates/compiler/tests/fixtures/type/assoc_types.txt` | New type-check fixtures |
@@ -29,75 +29,9 @@
 
 ---
 
-## Task 1 — Add `Keyword::Type` to lexer
+## ~~Task 1 — Add `Keyword::Type` to lexer~~ ✅ DONE
 
-**Files:**
-- Modify: `crates/lexer/src/lib.rs`
-- Modify: `crates/hir/src/parse.rs`
-
-- [ ] **Step 1: Add `Type` to the `Keyword` enum**
-
-In `crates/lexer/src/lib.rs`, find `pub enum Keyword {` (line ~19) and add:
-
-```rust
-Type,
-```
-
-alongside the other variants.
-
-- [ ] **Step 2: Add the `"type"` → `Keyword::Type` mapping**
-
-In `crates/lexer/src/lib.rs`, find the `match` that maps string slices to `LosslessTokenKind::Keyword(...)` (around line 276) and add:
-
-```rust
-"type" => LosslessTokenKind::Keyword(Keyword::Type),
-```
-
-- [ ] **Step 3: Fix `eat_ident("type")` → `eat_kw(Keyword::Type)` in HIR parser**
-
-In `crates/hir/src/parse.rs` line 267, change:
-
-```rust
-if self.eat_ident("type") {
-```
-
-to:
-
-```rust
-if self.eat_kw(Keyword::Type) {
-```
-
-- [ ] **Step 4: Handle `Keyword::Type` in exhaustive matches**
-
-Run:
-
-```bash
-source ~/.cargo/env && cargo check --workspace 2>&1 | grep "non-exhaustive\|Keyword::Type\|error\[" | head -30
-```
-
-For each non-exhaustive match on `Keyword` reported, add:
-
-```rust
-Keyword::Type => { /* handle as appropriate — typically as an identifier or unreachable */ }
-```
-
-In `crates/compiler/src/backend/ts.rs` and any highlight/token_text functions, add `Keyword::Type => "type".to_owned()` or equivalent.
-
-- [ ] **Step 5: Verify tests pass**
-
-```bash
-source ~/.cargo/env && cargo test --workspace 2>&1 | grep -E "FAILED|error\[" | head -10
-```
-
-Expected: no failures.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add crates/lexer/src/lib.rs crates/hir/src/parse.rs
-# also any other files touched by exhaustive match fixes
-git commit -m "feat(lexer): add Keyword::Type for 'type' keyword"
-```
+`Keyword::Type` already exists in `crates/lexer/src/lib.rs` and is handled in all exhaustive matches. Skip this task entirely.
 
 ---
 
@@ -105,20 +39,25 @@ git commit -m "feat(lexer): add Keyword::Type for 'type' keyword"
 
 **Files:**
 - Modify: `crates/types/src/lib.rs`
-- Modify: `crates/hir/src/parse.rs`
+- Modify: `crates/hir/src/from_cst.rs`
 - Modify: `crates/compiler/src/backend/ts.rs`
 - Modify: `crates/compiler/src/typecheck/mod.rs`
 
 - [ ] **Step 1: Write a failing parse test**
 
-In `crates/hir/src/parse.rs`, in the `#[cfg(test)]` block at the bottom, add:
+In `crates/hir/src/from_cst.rs`, add a `#[cfg(test)]` block:
 
 ```rust
-#[test]
-fn parse_type_projection() {
-    let file = parse("fn f(x: I.Item): I.Item { x }").unwrap();
-    // Should parse without error — exact AST shape verified in later tasks
-    assert_eq!(file.items.len(), 1);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn parse_type_projection() {
+        let lossless = lumo_lst::lossless::parse("fn f(x: I.Item): I.Item { x }");
+        let file = lower_file(&lossless);
+        assert_eq!(file.items.len(), 1);
+        assert!(file.errors.is_empty(), "parse errors: {:?}", file.errors);
+    }
 }
 ```
 
@@ -192,9 +131,9 @@ TypeExpr::Proj { base, assoc } => lower_type_expr_to_ts_type(base), // resolve t
 (and in `type_refs_self`: `TypeExpr::Proj { base, .. } => type_refs_self(base)`)
 (and in string-returning type functions: `TypeExpr::Proj { base, assoc } => format!("{}.{assoc}", /* base name */)`)
 
-- [ ] **Step 9: Add projection postfix parsing in `parse_type_expr`**
+- [ ] **Step 9: Add projection postfix parsing in `from_cst.rs`**
 
-In `crates/hir/src/parse.rs`, in `parse_type_expr`, replace the final two `Some(Spanned { ... })` returns with a block that first builds the base, then applies projection postfixes:
+In `crates/hir/src/from_cst.rs`, in the type expression lowering function (wherever `TypeExpr::Named`/`TypeExpr::App` are produced from CST `TypeExpr` nodes), add a postfix projection check after building the base type. In the lossless CST, `I.Item` will parse as a `MemberExpr`-style node or as `TypeExpr` with a dot child — check what the generated `ast.rs` produces for the `lumo.langue` grammar. If `.Item` is not yet in the grammar, add it to `TypeExpr` in `lumo.langue` first (as `TypeExpr = ... | ProjTypeExpr` and `ProjTypeExpr = base:TypeExpr '.' assoc:Ident`). Then lower it:
 
 ```rust
 let mut ty = if self.eat_sym(Symbol::LBracket) {
@@ -251,18 +190,18 @@ Expected: no failures.
 - [ ] **Step 11: Commit**
 
 ```bash
-git add crates/types/src/lib.rs crates/hir/src/parse.rs crates/compiler/src/typecheck/mod.rs crates/compiler/src/backend/ts.rs
+git add crates/types/src/lib.rs crates/hir/src/from_cst.rs crates/compiler/src/typecheck/mod.rs crates/compiler/src/backend/ts.rs
 git commit -m "feat(types): add TypeExpr::Proj for I.Item associated type projection"
 ```
 
 ---
 
-## Task 3 — Grammar + LST/HIR/LIR structs for `assoc_types`
+## Task 3 — Grammar + HIR/LIR structs for `assoc_types`
 
 **Files:**
 - Modify: `crates/compiler/lumo.langue`
-- Modify: `crates/lst/src/parser.rs`
 - Modify: `crates/hir/src/lib.rs`
+- Modify: `crates/hir/src/from_cst.rs`
 - Modify: `crates/lir/src/lib.rs`
 
 - [ ] **Step 1: Update `crates/compiler/lumo.langue`**
@@ -307,34 +246,7 @@ bash scripts/gen_langue.sh compiler
 
 Expected: `crates/lst/src/syntax_kind.rs`, `ast.rs`, `lossless.rs` updated.
 
-- [ ] **Step 3: Add `assoc_types` to LST `CapDecl`**
-
-In `crates/lst/src/parser.rs`, change `CapDecl`:
-
-```rust
-pub struct CapDecl {
-    pub name: String,
-    pub assoc_types: Vec<String>,   // NEW
-    pub operations: Vec<OperationDecl>,
-    pub span: Span,
-}
-```
-
-- [ ] **Step 4: Add `assoc_types` to LST `ImplDecl`**
-
-```rust
-pub struct ImplDecl {
-    pub name: Option<String>,
-    pub generics: Vec<GenericParam>,
-    pub target_type: TypeSig,
-    pub capability: Option<TypeSig>,
-    pub assoc_types: Vec<(String, TypeSig)>,   // NEW
-    pub methods: Vec<ImplMethod>,
-    pub span: Span,
-}
-```
-
-- [ ] **Step 5: Add `assoc_types` to HIR `CapDecl` and `ImplDecl`**
+- [ ] **Step 3: Add `assoc_types` to HIR `CapDecl` and `ImplDecl`**
 
 In `crates/hir/src/lib.rs`:
 
@@ -357,30 +269,43 @@ pub struct ImplDecl {
 }
 ```
 
-- [ ] **Step 6: Update `lower_cap` in `crates/hir/src/lib.rs`**
+Fix all `CapDecl { .. }` and `ImplDecl { .. }` construction sites to include `assoc_types: vec![]`.
+
+- [ ] **Step 4: Update `from_cst.rs` to populate `assoc_types` from grammar nodes**
+
+In `crates/hir/src/from_cst.rs`, update `lower_cap_decl` and `lower_impl_decl` (or whatever the CST walking functions are named) to iterate `CapItem` children for `AssocTypeDecl` nodes and `ImplItem` children for `AssocTypeBinding` nodes:
 
 ```rust
-fn lower_cap(cap: &lst::CapDecl) -> CapDecl {
-    CapDecl {
-        name: cap.name.clone(),
-        assoc_types: cap.assoc_types.clone(),           // NEW
-        operations: cap.operations.iter().map(lower_operation).collect(),
-        span: cap.span,
+// In lower_cap_decl:
+let mut assoc_types = Vec::new();
+let mut operations = Vec::new();
+for item in cap_node.items() {
+    match item {
+        CapItem::AssocTypeDecl(a) => {
+            if let Some(name) = a.name() { assoc_types.push(name.text().to_owned()); }
+        }
+        CapItem::OperationDecl(op) => {
+            operations.push(lower_operation_decl(&op));
+        }
+    }
+}
+
+// In lower_impl_decl:
+let mut assoc_types = Vec::new();
+let mut methods = Vec::new();
+for item in impl_node.items() {
+    match item {
+        ImplItem::AssocTypeBinding(b) => {
+            if let (Some(name), Some(ty)) = (b.name(), b.ty()) {
+                assoc_types.push((name.text().to_owned(), lower_type_expr(&ty)));
+            }
+        }
+        ImplItem::ImplMethod(m) => methods.push(lower_impl_method(&m)),
     }
 }
 ```
 
-- [ ] **Step 7: Update `lower_impl` in `crates/hir/src/lib.rs`**
-
-In the `ImplDecl { ... }` construction at the bottom of `lower_impl`, add:
-
-```rust
-assoc_types: impl_decl.assoc_types.iter()
-    .filter_map(|(name, sig)| {
-        lower_type_sig(sig).map(|ty| (name.clone(), ty.value))
-    })
-    .collect(),
-```
+Adjust accessor names to match the generated `ast.rs` exactly.
 
 - [ ] **Step 8: Add `assoc_types` to LIR `CapDecl` and `ImplDecl`**
 
@@ -415,148 +340,63 @@ Expected: no errors (struct literal mismatches will be caught here — fix any r
 - [ ] **Step 12: Commit**
 
 ```bash
-git add crates/compiler/lumo.langue crates/lst/src/ crates/hir/src/lib.rs crates/lir/src/lib.rs
-git commit -m "feat: add assoc_types fields to CapDecl and ImplDecl across LST/HIR/LIR"
+git add crates/compiler/lumo.langue crates/lst/src/ crates/hir/src/lib.rs crates/hir/src/from_cst.rs crates/lir/src/lib.rs
+git commit -m "feat: add assoc_types fields to CapDecl/ImplDecl in HIR/LIR and wire from_cst.rs"
 ```
 
 ---
 
-## Task 4 — HIR parser: parse assoc type items in cap and impl
+## Task 4 — Update `from_hir_cst.rs` for assoc type items in HIR roundtrip
+
+The HIR roundtrip tests use `from_hir_cst.rs` to re-parse HIR print form. Since `hir::print` will now emit `type Item` / `type Item = T` lines in cap/impl blocks, the HIR grammar and walker need updating.
 
 **Files:**
-- Modify: `crates/hir/src/parse.rs`
+- Modify: `crates/hir/hir.langue`
+- Modify: `crates/hir/src/from_hir_cst.rs`
 
-- [ ] **Step 1: Write failing test for cap with associated type**
+- [ ] **Step 1: Add `CapItem` and `ImplItem` to `crates/hir/hir.langue`**
 
-In the `#[cfg(test)]` block:
+In `hir.langue`, update `CapDecl` and `ImplDecl` grammar rules to use item lists (matching what `hir::print` will emit after Task 3):
 
-```rust
-#[test]
-fn parse_cap_with_assoc_type() {
-    let src = r#"cap Iterator {
-    type Item
-    fn next(self): Option[Item]
-}"#;
-    let file = parse(src).unwrap();
-    let lumo_lst::Item::Cap(cap) = &file.items[0] else { panic!() };
-    assert_eq!(cap.assoc_types, vec!["Item".to_owned()]);
-    assert_eq!(cap.operations.len(), 1);
-    assert_eq!(cap.operations[0].name, "next");
-}
+```
+CapDecl = 'cap' name:Ident '{' items:CapItem* '}'
+CapItem =
+  | AssocTypeDecl
+  | OperationDecl
+AssocTypeDecl = 'type' name:Ident
+
+ImplDecl = 'impl' generic_params:GenericParams? name:Ident? target:TypeExpr (':' cap:TypeExpr)? '{' items:ImplItem* '}'
+ImplItem =
+  | AssocTypeBinding
+  | ImplMethodDecl
+AssocTypeBinding = 'type' name:Ident '=' ty:TypeExpr
 ```
 
-- [ ] **Step 2: Run to confirm failure**
+- [ ] **Step 2: Regenerate HIR lossless**
 
 ```bash
-source ~/.cargo/env && cargo test -p lumo_hir parse_cap_with_assoc_type 2>&1 | tail -10
+bash scripts/gen_langue.sh hir
 ```
 
-Expected: test fails — `assoc_types` is empty.
+Expected: `crates/hir/src/syntax_kind.rs`, `ast.rs`, `lossless.rs` updated.
 
-- [ ] **Step 3: Update `parse_cap_decl`**
+- [ ] **Step 3: Update `from_hir_cst.rs` to handle new item nodes**
 
-In `crates/hir/src/parse.rs`, replace the `parse_cap_decl` body to loop on both `Keyword::Type` and `Keyword::Fn`:
+In `from_hir_cst.rs`, update the cap and impl walkers to iterate `CapItem` / `ImplItem` children (same pattern as Task 3's `from_cst.rs` update).
 
-```rust
-fn parse_cap_decl(&mut self) -> Option<CapDecl> {
-    let start = self.expect_kw(Keyword::Cap).ok()?;
-    let (name, _) = self.expect_ident().ok()?;
-    self.expect_sym(Symbol::LBrace).ok()?;
-    let mut assoc_types = Vec::new();
-    let mut operations = Vec::new();
-    loop {
-        if self.eat_kw(Keyword::Type) {
-            let (assoc_name, _) = self.expect_ident().ok()?;
-            assoc_types.push(assoc_name);
-        } else if self.peek() == Some(&TokenKind::Keyword(Keyword::Fn)) {
-            if let Some(op) = self.parse_operation_decl() {
-                operations.push(op);
-            }
-        } else {
-            break;
-        }
-    }
-    let end = self.expect_sym(Symbol::RBrace).ok()?;
-    Some(CapDecl {
-        name,
-        assoc_types,
-        operations,
-        span: Span::new(start.start, end.end),
-    })
-}
-```
+- [ ] **Step 4: Update `hir::print` to emit assoc type lines**
 
-- [ ] **Step 4: Run cap test**
+In `crates/hir/src/print.rs`, in the cap/impl printers, emit `type Name` for each assoc type in `cap.assoc_types` and `type Name = TypeExpr` for each binding in `impl.assoc_types`.
+
+- [ ] **Step 5: Run HIR roundtrip tests**
 
 ```bash
-source ~/.cargo/env && cargo test -p lumo_hir parse_cap_with_assoc_type 2>&1 | tail -5
+source ~/.cargo/env && cargo test -p lumo-compiler hir_roundtrip 2>&1 | tail -20
 ```
 
-Expected: PASS.
+Expected: all pass. Fix `from_hir_cst.rs` or `print.rs` if any fail.
 
-- [ ] **Step 5: Write failing test for impl with assoc type binding**
-
-```rust
-#[test]
-fn parse_impl_with_assoc_type() {
-    let src = r#"impl List[T]: Iterator {
-    type Item = T
-    fn next(self): Option[T] { Option.none }
-}"#;
-    let file = parse(src).unwrap();
-    let lumo_lst::Item::Impl(impl_decl) = &file.items[0] else { panic!() };
-    assert_eq!(impl_decl.assoc_types.len(), 1);
-    assert_eq!(impl_decl.assoc_types[0].0, "Item");
-    assert_eq!(impl_decl.assoc_types[0].1.repr, "T");
-    assert_eq!(impl_decl.methods.len(), 1);
-}
-```
-
-- [ ] **Step 6: Run to confirm failure**
-
-```bash
-source ~/.cargo/env && cargo test -p lumo_hir parse_impl_with_assoc_type 2>&1 | tail -10
-```
-
-Expected: fails — `assoc_types` is empty.
-
-- [ ] **Step 7: Update `parse_impl_decl`**
-
-In `crates/hir/src/parse.rs`, update `parse_impl_decl` to loop on both `Keyword::Type` and `Keyword::Fn`:
-
-```rust
-// Replace the methods-only loop:
-let mut assoc_types = Vec::new();
-let mut methods = Vec::new();
-loop {
-    if self.eat_kw(Keyword::Type) {
-        let (assoc_name, _) = self.expect_ident().ok()?;
-        self.expect_sym(Symbol::Eq).ok()?;
-        let ty = self.parse_type_sig()?;
-        assoc_types.push((assoc_name, ty));
-    } else if self.peek() == Some(&TokenKind::Keyword(Keyword::Fn)) {
-        if let Some(m) = self.parse_impl_method() {
-            methods.push(m);
-        }
-    } else {
-        break;
-    }
-}
-```
-
-And update the returned `ImplDecl` to include `assoc_types`.
-
-Note: verify the exact method name for parsing type signatures in impl context — it may be `parse_type_sig` or similar. Look for how `capability: Option<TypeSig>` is parsed (uses the same helper).
-
-- [ ] **Step 8: Run all HIR tests**
-
-```bash
-source ~/.cargo/env && cargo test -p lumo_hir 2>&1 | tail -10
-```
-
-Expected: all pass.
-
-- [ ] **Step 9: Run full test suite**
+- [ ] **Step 6: Run full suite**
 
 ```bash
 source ~/.cargo/env && cargo test --workspace 2>&1 | grep -E "FAILED|error\[" | head -10
@@ -564,11 +404,11 @@ source ~/.cargo/env && cargo test --workspace 2>&1 | grep -E "FAILED|error\[" | 
 
 Expected: no failures.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add crates/hir/src/parse.rs
-git commit -m "feat(hir): parse assoc type declarations in cap and impl blocks"
+git add crates/hir/hir.langue crates/hir/src/
+git commit -m "feat(hir): add assoc type items to HIR grammar, from_hir_cst, and print"
 ```
 
 ---

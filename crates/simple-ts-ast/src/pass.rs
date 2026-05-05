@@ -1678,10 +1678,6 @@ fn rewrite_returns_to_assign(stmts: &mut Vec<Stmt>, name: &str) -> bool {
     }
 }
 
-fn flatten_block(block: &mut Block) {
-    flatten_block_with_params(block, &[]);
-}
-
 fn flatten_block_with_params(block: &mut Block, enclosing_names: &[String]) {
     // Phase 1: inline IIFEs at statement level
     let mut i = 0;
@@ -1711,9 +1707,6 @@ fn flatten_block_with_params(block: &mut Block, enclosing_names: &[String]) {
 /// block (from Lumo `let s = … in let s = … in …` shadowing). JS forbids
 /// duplicate `const` in a single scope, so we rename later occurrences and
 /// rewrite all subsequent references.
-fn dedup_const_names(block: &mut Block) {
-    dedup_const_names_with_params(block, &[]);
-}
 
 fn dedup_const_names_with_params(block: &mut Block, param_names: &[String]) {
     use std::collections::{HashMap, HashSet};
@@ -1869,10 +1862,6 @@ fn flatten_stmt_with_enclosing(stmt: &mut Stmt, enclosing_names: &[String]) {
         Stmt::Expr(expr) | Stmt::Return(Some(expr)) => flatten_expr_arrows(expr),
         Stmt::Return(None) | Stmt::Let { .. } | Stmt::TypeAlias(_) | Stmt::Interface(_) => {}
     }
-}
-
-fn flatten_function_body(body: &mut FunctionBody) {
-    flatten_function_body_with_params(body, &[]);
 }
 
 fn flatten_function_body_with_params(body: &mut FunctionBody, param_names: &[String]) {

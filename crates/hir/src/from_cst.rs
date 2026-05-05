@@ -1,7 +1,4 @@
 /// Direct lowering from lossless surface CST (`lst::lossless::ParseOutput`) to `hir::File`.
-///
-/// This avoids the intermediate `lst::File` representation produced by the hand-written
-/// recursive descent parser (`lst::parser`).
 use lumo_lst::{
     ast::{self, AstNode},
     lossless::{ParseOutput, SyntaxElement, SyntaxNode},
