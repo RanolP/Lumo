@@ -160,13 +160,76 @@ fn emit_accessors_for_element(s: String, elem: Element, token_defs: List[String]
   }
 
 fn emit_accessors_for_elements(s: String, elems: List[Element], token_defs: List[String]): String =
+  emit_accessors_for_elements_ctx(s, elems, token_defs, "")
+
+fn emit_accessors_for_elements_ctx(s: String, elems: List[Element], token_defs: List[String], prev_kw: String): String =
   match elems {
     .nil => s,
-    .cons(elem, rest) => {
-      let s2 = emit_accessors_for_element(s, elem, token_defs);
-      emit_accessors_for_elements(s2, rest, token_defs)
+    .cons(elem, rest) =>
+      match elem {
+        .labeled(label, inner) => {
+          let s2 = emit_single_accessor_ctx(s, label, inner, token_defs, prev_kw);
+          emit_accessors_for_elements_ctx(s2, rest, token_defs, "")
+        },
+        .token(t) => {
+          let new_kw = match t { .keyword(kw) => kw, _ => "" };
+          emit_accessors_for_elements_ctx(s, rest, token_defs, new_kw)
+        },
+        .optional(inner) => {
+          let s2 = emit_accessors_for_element_ctx(s, inner, token_defs, prev_kw);
+          emit_accessors_for_elements_ctx(s2, rest, token_defs, "")
+        },
+        .group(inner_elems) => {
+          let s2 = emit_accessors_for_elements_ctx(s, inner_elems, token_defs, prev_kw);
+          emit_accessors_for_elements_ctx(s2, rest, token_defs, "")
+        },
+        .repeated(inner) => {
+          let s2 = emit_accessors_for_element_repeated(s, inner, token_defs);
+          emit_accessors_for_elements_ctx(s2, rest, token_defs, "")
+        },
+        _ => emit_accessors_for_elements_ctx(s, rest, token_defs, "")
+      }
+  }
+
+fn emit_accessors_for_element_ctx(s: String, elem: Element, token_defs: List[String], prev_kw: String): String =
+  match elem {
+    .labeled(label, inner) => emit_single_accessor_ctx(s, label, inner, token_defs, prev_kw),
+    .group(inner_elems) => emit_accessors_for_elements_ctx(s, inner_elems, token_defs, prev_kw),
+    .optional(inner) => emit_accessors_for_element_ctx(s, inner, token_defs, prev_kw),
+    .repeated(inner) => emit_accessors_for_element_repeated(s, inner, token_defs),
+    _ => s
+  }
+
+fn emit_single_accessor_ctx(s: String, label: String, elem: Element, token_defs: List[String], prev_kw: String): String =
+  if prev_kw == "" { emit_single_accessor(s, label, elem, token_defs) }
+  else {
+    match elem {
+      .node(n) =>
+        match n { .mk(name) =>
+          if list_contains_string(token_defs, name) { emit_single_accessor(s, label, elem, token_defs) }
+          else { emit_node_accessor_after_kw(s, label, name, keyword_variant(prev_kw)) }
+        },
+      .optional(inner) => emit_single_accessor_ctx(s, label, inner, token_defs, prev_kw),
+      _ => emit_single_accessor(s, label, elem, token_defs)
     }
   }
+
+fn emit_node_accessor_after_kw(s: String, label: String, node_name: String, kw_kind: String): String {
+  let s = s + "    pub fn " + label + "(&self) -> Option<" + node_name + "<'a>> {\n";
+  let s = s + "        let mut found_kw = false;\n";
+  let s = s + "        for c in &self.0.children {\n";
+  let s = s + "            if !found_kw {\n";
+  let s = s + "                if let SyntaxElement::Token(t) = c {\n";
+  let s = s + "                    if t.kind == SyntaxKind::" + kw_kind + " { found_kw = true; }\n";
+  let s = s + "                }\n";
+  let s = s + "            } else {\n";
+  let s = s + "                if let SyntaxElement::Node(n) = c {\n";
+  let s = s + "                    if let Some(result) = " + node_name + "::cast(n) { return Some(result); }\n";
+  let s = s + "                }\n";
+  let s = s + "            }\n";
+  let s = s + "        }\n";
+  s + "        None\n    }\n"
+}
 
 fn emit_accessors_for_element_repeated(s: String, elem: Element, token_defs: List[String]): String =
   match elem {
