@@ -351,6 +351,7 @@ fn lower_cap_decl(node: &ast::CapDecl, errors: &mut Vec<ParseError>) -> Option<C
         .collect();
     Some(CapDecl {
         name,
+        assoc_types: vec![],
         operations,
         span,
     })
@@ -498,6 +499,7 @@ fn lower_impl_decl(
         generics,
         target_type,
         capability,
+        assoc_types: vec![],
         methods,
         span,
     })

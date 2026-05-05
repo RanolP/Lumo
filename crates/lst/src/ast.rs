@@ -570,9 +570,56 @@ impl<'a> CapDecl<'a> {
             _ => None,
         })
     }
+    pub fn items(&self) -> impl Iterator<Item = CapItem<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) => CapItem::cast(n),
+            _ => None,
+        })
+    }
     pub fn operations(&self) -> impl Iterator<Item = OperationDecl<'a>> + 'a {
         self.0.children.iter().filter_map(|c| match c {
             SyntaxElement::Node(n) => OperationDecl::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub enum CapItem<'a> {
+    AssocTypeDecl(AssocTypeDecl<'a>),
+    OperationDecl(OperationDecl<'a>),
+}
+
+impl<'a> CapItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        if node.kind == SyntaxKind::CAP_ITEM {
+            // CAP_ITEM wrapper: find the inner node
+            node.children.iter().find_map(|c| match c {
+                SyntaxElement::Node(n) => {
+                    AssocTypeDecl::cast(n).map(CapItem::AssocTypeDecl)
+                        .or_else(|| OperationDecl::cast(n).map(CapItem::OperationDecl))
+                }
+                _ => None,
+            })
+        } else {
+            AssocTypeDecl::cast(node).map(CapItem::AssocTypeDecl)
+                .or_else(|| OperationDecl::cast(node).map(CapItem::OperationDecl))
+        }
+    }
+}
+
+pub struct AssocTypeDecl<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AssocTypeDecl<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ASSOC_TYPE_DECL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> AssocTypeDecl<'a> {
+    pub fn name(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
             _ => None,
         })
     }
@@ -954,9 +1001,61 @@ impl<'a> ImplDecl<'a> {
             _ => None,
         })
     }
+    pub fn items(&self) -> impl Iterator<Item = ImplItem<'a>> + 'a {
+        self.0.children.iter().filter_map(|c| match c {
+            SyntaxElement::Node(n) => ImplItem::cast(n),
+            _ => None,
+        })
+    }
     pub fn methods(&self) -> impl Iterator<Item = ImplMethod<'a>> + 'a {
         self.0.children.iter().filter_map(|c| match c {
             SyntaxElement::Node(n) => ImplMethod::cast(n),
+            _ => None,
+        })
+    }
+}
+
+pub enum ImplItem<'a> {
+    AssocTypeBinding(AssocTypeBinding<'a>),
+    ImplMethod(ImplMethod<'a>),
+}
+
+impl<'a> ImplItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        if node.kind == SyntaxKind::IMPL_ITEM {
+            node.children.iter().find_map(|c| match c {
+                SyntaxElement::Node(n) => {
+                    AssocTypeBinding::cast(n).map(ImplItem::AssocTypeBinding)
+                        .or_else(|| ImplMethod::cast(n).map(ImplItem::ImplMethod))
+                }
+                _ => None,
+            })
+        } else {
+            AssocTypeBinding::cast(node).map(ImplItem::AssocTypeBinding)
+                .or_else(|| ImplMethod::cast(node).map(ImplItem::ImplMethod))
+        }
+    }
+}
+
+pub struct AssocTypeBinding<'a>(pub(crate) &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AssocTypeBinding<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ASSOC_TYPE_BINDING).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode { self.0 }
+}
+
+impl<'a> AssocTypeBinding<'a> {
+    pub fn name(&self) -> Option<&'a LosslessToken> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Token(t) if t.kind == SyntaxKind::IDENT => Some(t),
+            _ => None,
+        })
+    }
+    pub fn ty(&self) -> Option<TypeExpr<'a>> {
+        self.0.children.iter().find_map(|c| match c {
+            SyntaxElement::Node(n) => TypeExpr::cast(n),
             _ => None,
         })
     }

@@ -70,7 +70,11 @@ Param = name:Ident ':' ty:TypeExpr
 CapAnnotation = '/' cap:CapSet
 CapSet = '{' sigs:CapSig* '}'
 CapSig = name:Ident generic_args:GenericArgs?
-CapDecl = 'cap' name:Ident '{' operations:OperationDecl* '}'
+CapDecl = 'cap' name:Ident '{' items:CapItem* '}'
+CapItem =
+  | AssocTypeDecl
+  | OperationDecl
+AssocTypeDecl = 'type' name:Ident
 OperationDecl = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? ';'?
 
 // === Extern declarations ===
@@ -119,7 +123,11 @@ UseNameItem = name:Ident
 
 // === Impl blocks ===
 
-ImplDecl = 'impl' generic_params:GenericParams? target:TypeExpr (':' cap:TypeExpr)? '{' methods:ImplMethod* '}'
+ImplDecl = 'impl' generic_params:GenericParams? target:TypeExpr (':' cap:TypeExpr)? '{' items:ImplItem* '}'
+ImplItem =
+  | AssocTypeBinding
+  | ImplMethod
+AssocTypeBinding = 'type' name:Ident '=' ty:TypeExpr
 ImplMethod = 'fn' name:Ident param_list:ParamList (':' return_type:TypeExpr)? body:FnBody
 
 // === Expressions ===

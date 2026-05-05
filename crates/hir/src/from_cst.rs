@@ -609,9 +609,19 @@ fn lower_variant(variant: &ast::Variant) -> VariantDecl {
 
 fn lower_cap_decl(cap: &ast::CapDecl) -> CapDecl {
     let name = cap.name().map(|t| t.text.clone()).unwrap_or_default();
-    let operations: Vec<OperationDecl> = cap.operations().map(|op| lower_operation(&op)).collect();
+    let mut assoc_types = Vec::new();
+    let mut operations = Vec::new();
+    for item in cap.items() {
+        match item {
+            ast::CapItem::AssocTypeDecl(a) => {
+                if let Some(n) = a.name() { assoc_types.push(n.text.clone()); }
+            }
+            ast::CapItem::OperationDecl(op) => operations.push(lower_operation(&op)),
+        }
+    }
     CapDecl {
         name,
+        assoc_types,
         operations,
         span: cap.syntax().span,
     }
@@ -766,16 +776,31 @@ fn lower_impl_decl(impl_decl: &ast::ImplDecl, ctx: &mut LowerCtx) -> ImplDecl {
     // Named impls (impl Name = ...) are not in the surface grammar; name is always None from CST.
     let name: Option<String> = None;
 
-    let methods: Vec<ImplMethodDecl> = impl_decl
-        .methods()
-        .map(|m| lower_impl_method(&m, &target_repr, ctx))
-        .collect();
+    let mut assoc_types: Vec<(String, Spanned<TypeExpr>)> = Vec::new();
+    let mut methods: Vec<ImplMethodDecl> = Vec::new();
+    for item in impl_decl.items() {
+        match item {
+            ast::ImplItem::AssocTypeBinding(b) => {
+                let aname = b.name().map(|t| t.text.clone()).unwrap_or_default();
+                if let Some(ty) = b.ty().and_then(|ty| {
+                    let repr = type_expr_repr(&ty).replace("Self", &target_repr);
+                    Some(lower_type_expr_repr_with_fallback(&repr, ty.syntax().span))
+                }) {
+                    assoc_types.push((aname, ty));
+                }
+            }
+            ast::ImplItem::ImplMethod(m) => {
+                methods.push(lower_impl_method(&m, &target_repr, ctx));
+            }
+        }
+    }
 
     ImplDecl {
         name,
         generics,
         target_type,
         capability,
+        assoc_types,
         methods,
         span,
     }

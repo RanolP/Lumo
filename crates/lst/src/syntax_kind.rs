@@ -87,6 +87,8 @@ pub enum SyntaxKind {
     CAP_SIG, // CapSig
     CAP_DECL, // CapDecl
     OPERATION_DECL, // OperationDecl
+    CAP_ITEM, // CapItem
+    ASSOC_TYPE_DECL, // AssocTypeDecl
     EXTERN_DECL, // ExternDecl
     EXTERN_TYPE_TAIL, // ExternTypeTail
     EXTERN_FN_TAIL, // ExternFnTail
@@ -101,6 +103,8 @@ pub enum SyntaxKind {
     USE_NAME_ITEM, // UseNameItem
     IMPL_DECL, // ImplDecl
     IMPL_METHOD, // ImplMethod
+    IMPL_ITEM, // ImplItem
+    ASSOC_TYPE_BINDING, // AssocTypeBinding
     UNARY_EXPR, // UnaryExpr
     MEMBER_EXPR, // MemberExpr
     CALL_EXPR, // CallExpr

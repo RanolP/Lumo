@@ -112,6 +112,7 @@ pub struct VariantDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapDecl {
     pub name: String,
+    pub assoc_types: Vec<String>,
     pub operations: Vec<OperationDecl>,
     pub span: Span,
 }
@@ -149,6 +150,7 @@ pub struct ImplDecl {
     pub generics: Vec<GenericParam>,
     pub target_type: Spanned<TypeExpr>,
     pub capability: Option<Spanned<TypeExpr>>,
+    pub assoc_types: Vec<(String, Spanned<TypeExpr>)>,
     pub methods: Vec<ImplMethodDecl>,
     pub span: Span,
 }

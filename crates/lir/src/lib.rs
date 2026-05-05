@@ -88,6 +88,7 @@ pub struct VariantDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapDecl {
     pub name: String,
+    pub assoc_types: Vec<String>,
     pub operations: Vec<OperationDecl>,
     pub span: Span,
 }
@@ -125,6 +126,7 @@ pub struct ImplDecl {
     pub generics: Vec<GenericParam>,
     pub target_type: Spanned<TypeExpr>,
     pub capability: Option<Spanned<TypeExpr>>,
+    pub assoc_types: Vec<(String, Spanned<TypeExpr>)>,
     pub methods: Vec<ImplMethodDecl>,
     pub span: Span,
 }
@@ -339,6 +341,7 @@ fn lower_item(ctx: &mut LoweringCtx, item: &hir::Item) -> Item {
         }),
         hir::Item::Cap(cap) => Item::Cap(CapDecl {
             name: cap.name.clone(),
+            assoc_types: cap.assoc_types.clone(),
             operations: cap
                 .operations
                 .iter()
@@ -408,6 +411,7 @@ fn lower_impl(ctx: &mut LoweringCtx, impl_decl: &hir::ImplDecl) -> ImplDecl {
         generics: impl_decl.generics.clone(),
         target_type: impl_decl.target_type.clone(),
         capability: impl_decl.capability.clone(),
+        assoc_types: impl_decl.assoc_types.clone(),
         methods,
         span: impl_decl.span,
     }
