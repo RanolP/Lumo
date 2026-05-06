@@ -1163,9 +1163,10 @@ fn unwrap_memaware_fn_value(
     }
 }
 
-/// Dispatch from `lir_memaware::Expr` to `lower_expr` / `lower_cps_expr`.
-/// `Pure(e)` delegates to `lower_expr(e, ...)`.
-/// `Dup`/`Drop`/`IsUnique` are no-ops today — emit the inner expression.
+// Entry point for the future FBIP RC-emission pass. Currently dead because
+// unwrap_memaware_fn_value handles all cases; this becomes live once Dup/Drop
+// need to emit actual RC operations.
+#[allow(dead_code)]
 fn lower_memaware_expr(
     expr: &lir_memaware::Expr,
     ctx: &LoweringContext,
