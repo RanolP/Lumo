@@ -1157,8 +1157,8 @@ fn unwrap_memaware_fn_value(
         lir_memaware::Expr::Pure(e) => unwrap_fn_value(e),
         lir_memaware::Expr::Dup { expr, .. } => unwrap_memaware_fn_value(expr),
         lir_memaware::Expr::Drop { body, .. } => unwrap_memaware_fn_value(body),
-        lir_memaware::Expr::IsUnique { shared_branch, .. } => {
-            unwrap_memaware_fn_value(shared_branch)
+        lir_memaware::Expr::IsUnique { .. } => {
+            unreachable!("IsUnique is not produced by elaborate() yet")
         }
     }
 }
@@ -1168,16 +1168,14 @@ fn unwrap_memaware_fn_value(
 /// `Dup`/`Drop`/`IsUnique` are no-ops today — emit the inner expression.
 fn lower_memaware_expr(
     expr: &lir_memaware::Expr,
-    env: &[&str],
-    handled: &std::collections::HashSet<String>,
     ctx: &LoweringContext,
 ) -> tsast::Expr {
     match expr {
         lir_memaware::Expr::Pure(e) => lower_expr(e, ctx),
-        lir_memaware::Expr::Dup { expr, .. } => lower_memaware_expr(expr, env, handled, ctx),
-        lir_memaware::Expr::Drop { body, .. } => lower_memaware_expr(body, env, handled, ctx),
-        lir_memaware::Expr::IsUnique { shared_branch, .. } => {
-            lower_memaware_expr(shared_branch, env, handled, ctx)
+        lir_memaware::Expr::Dup { expr, .. } => lower_memaware_expr(expr, ctx),
+        lir_memaware::Expr::Drop { body, .. } => lower_memaware_expr(body, ctx),
+        lir_memaware::Expr::IsUnique { .. } => {
+            unreachable!("IsUnique is not produced by elaborate() yet")
         }
     }
 }

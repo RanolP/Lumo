@@ -588,8 +588,8 @@ fn unwrap_memaware_fn_value(
         lir_memaware::Expr::Pure(e) => unwrap_fn_value(e),
         lir_memaware::Expr::Dup { expr, .. } => unwrap_memaware_fn_value(expr),
         lir_memaware::Expr::Drop { body, .. } => unwrap_memaware_fn_value(body),
-        lir_memaware::Expr::IsUnique { shared_branch, .. } => {
-            unwrap_memaware_fn_value(shared_branch)
+        lir_memaware::Expr::IsUnique { .. } => {
+            unreachable!("IsUnique is not produced by elaborate() yet")
         }
     }
 }
