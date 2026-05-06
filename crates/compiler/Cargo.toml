@@ -16,3 +16,4 @@ lumo-lexer = { path = "../lexer" }
 lumo-lst = { path = "../lst" }
 lumo-hir = { path = "../hir" }
 lumo-lir = { path = "../lir" }
+lumo-lir-memaware = { path = "../lir-memaware" }

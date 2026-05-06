@@ -5,9 +5,11 @@ pub use lumo_lexer as lexer;
 pub use lumo_lst as lst;
 pub use lumo_hir as hir;
 pub use lumo_lir as lir;
+pub use lumo_lir_memaware as lir_memaware;
 
 // Modules that remain in the compiler crate
 pub mod backend;
+pub mod elaborate;
 pub mod diagnostics;
 pub mod lto;
 pub mod query;
