@@ -6,3 +6,19 @@ cap Iterator {
 fn use_it(it: Iterator): Option[Item] = it.next(it)
 ---
 use_it : (Iterator) -> Option[Item]
+
+==========
+next() return type resolved at concrete call site
+data Option[A] { .some(A), .none }
+data List[A] { .nil, .cons(A, List[A]) }
+cap Iterator {
+  type Item
+  fn next(self: Iterator): Option[Item]
+}
+impl[T] List[T]: Iterator {
+  type Item = T
+  fn next(self: List[T]): Option[T] = Option.none
+}
+fn use_next(xs: List[Number]): Option[Number] = xs.next()
+---
+use_next : (List[Number]) -> Option[Number]

@@ -230,6 +230,79 @@ fn subst_self_c(ty: &CompType, concrete: &ValueType) -> CompType {
     }
 }
 
+/// Collect type variable substitutions by matching `expected` against `actual`.
+/// Handles single-uppercase type vars and string-encoded parameterized types
+/// (e.g. `Named("List[T]")` vs `Named("List[Number]")` → `{T → Number}`).
+fn collect_type_subst(
+    expected: &ValueType,
+    actual: &ValueType,
+    subst: &mut HashMap<String, ValueType>,
+) {
+    match (expected, actual) {
+        (ValueType::Named(n), actual) if is_type_var(n) => {
+            subst.entry(n.clone()).or_insert_with(|| actual.clone());
+        }
+        (ValueType::Named(a), ValueType::Named(b)) => {
+            let (ha, args_a) = split_named_type(a);
+            let (hb, args_b) = split_named_type(b);
+            if ha == hb && args_a.len() == args_b.len() {
+                for (ea, ab) in args_a.iter().zip(args_b.iter()) {
+                    collect_type_subst(
+                        &ValueType::Named(ea.to_string()),
+                        &ValueType::Named(ab.to_string()),
+                        subst,
+                    );
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn apply_type_subst_to_value(ty: ValueType, subst: &HashMap<String, ValueType>) -> ValueType {
+    if subst.is_empty() {
+        return ty;
+    }
+    match ty {
+        ValueType::Named(ref n) if subst.contains_key(n) => subst[n].clone(),
+        ValueType::Named(n) => {
+            let (head, args) = split_named_type(&n);
+            if args.is_empty() {
+                ValueType::Named(n)
+            } else {
+                let new_args: Vec<String> = args.iter().map(|a| {
+                    let inner = apply_type_subst_to_value(ValueType::Named(a.to_string()), subst);
+                    match inner {
+                        ValueType::Named(s) => s,
+                        other => render_v_type(&other),
+                    }
+                }).collect();
+                ValueType::Named(format!("{head}[{}]", new_args.join(", ")))
+            }
+        }
+        ValueType::Thunk(inner) => {
+            ValueType::Thunk(Box::new(apply_type_subst_to_comp(*inner, subst)))
+        }
+        other => other,
+    }
+}
+
+fn apply_type_subst_to_comp(ty: CompType, subst: &HashMap<String, ValueType>) -> CompType {
+    if subst.is_empty() {
+        return ty;
+    }
+    match ty {
+        CompType::Fn { params, ret, cap } => CompType::Fn {
+            params: params.into_iter().map(|p| apply_type_subst_to_value(p, subst)).collect(),
+            ret: Box::new(apply_type_subst_to_comp(*ret, subst)),
+            cap,
+        },
+        CompType::Produce(inner) => {
+            CompType::Produce(Box::new(apply_type_subst_to_value(*inner, subst)))
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckedBinding {
     pub name: String,
@@ -576,7 +649,7 @@ impl TypeChecker {
                     // Platform: inherent impl whose target = cap name
                     self.impl_consts
                         .insert(target_full.clone(), target_full.clone());
-                    self.register_impl_methods(impl_decl, &target_full);
+                    self.register_impl_methods(impl_decl, &target_full, &target_full);
                 } else if impl_decl.capability.is_none() {
                     // Non-cap inherent impl: register const and methods.
                     // Generic targets (e.g. List[T]) use __impl_{Base} to avoid clashing
@@ -587,7 +660,7 @@ impl TypeChecker {
                         target_full.clone()
                     };
                     self.impl_consts.insert(const_name, target_base.clone());
-                    self.register_impl_methods(impl_decl, &target_base);
+                    self.register_impl_methods(impl_decl, &target_base, &target_full);
                 } else if let Some(cap_ty) = &impl_decl.capability {
                     let cap = cap_ty.value.display();
                     if cap_name_set.contains(&cap) {
@@ -596,8 +669,8 @@ impl TypeChecker {
                         } else {
                             format!("__impl_{target_base}_{cap}")
                         };
-                        self.impl_consts.insert(const_name, cap.clone());
-                        self.register_impl_methods(impl_decl, &target_base);
+                        self.impl_consts.insert(const_name, target_base.clone());
+                        self.register_impl_methods(impl_decl, &target_base, &target_full);
                         // Track that `target_base` implements `cap`
                         self.impl_registry
                             .entry(target_base.clone())
@@ -742,15 +815,19 @@ impl TypeChecker {
     }
 
     /// Register impl methods in `value_type_methods` for value method dispatch.
-    fn register_impl_methods(&mut self, impl_decl: &lir::ImplDecl, target: &str) {
+    /// `target` is the base type name (key), `self_ty` is the full target type string used
+    /// to substitute `Self` placeholders (e.g. `"List[T]"` for `impl List[T]: Iterator`).
+    fn register_impl_methods(&mut self, impl_decl: &lir::ImplDecl, target: &str, self_ty: &str) {
+        let self_concrete = ValueType::Named(self_ty.to_owned());
         let methods = self.value_type_methods.entry(target.to_owned()).or_default();
         for m in &impl_decl.methods {
             let param_types = m
                 .params
                 .iter()
                 .map(|p| {
-                    v_type_from_type_expr(&p.ty.value)
-                        .unwrap_or_else(|| ValueType::Named("__invalid".to_owned()))
+                    let raw = v_type_from_type_expr(&p.ty.value)
+                        .unwrap_or_else(|| ValueType::Named("__invalid".to_owned()));
+                    subst_self_v(&raw, &self_concrete)
                 })
                 .collect::<Vec<_>>();
             let ret = match &m.return_type {
@@ -759,6 +836,7 @@ impl TypeChecker {
                 }),
                 None => CompType::Produce(Box::new(ValueType::Named("Unit".to_owned()))),
             };
+            let ret = subst_self_c(&ret, &self_concrete);
             methods.insert(
                 m.name.clone(),
                 CompType::Fn {
@@ -1814,6 +1892,19 @@ impl TypeChecker {
                         }
                     }
                 }
+                // Collect type-variable substitutions from value method dispatch
+                // (handles generic impls like `impl List[T]: Iterator` where `Named("List[T]")` must unify with `Named("List[Number]")`)
+                let mut type_subst: HashMap<String, ValueType> = HashMap::new();
+                for (param_ty, arg_ty) in params.iter().zip(arg_tys.iter()) {
+                    if let Some(at) = arg_ty {
+                        collect_type_subst(param_ty, at, &mut type_subst);
+                    }
+                }
+                let ret = if type_subst.is_empty() {
+                    ret
+                } else {
+                    Box::new(apply_type_subst_to_comp(*ret, &type_subst))
+                };
                 // Apply substitution to return type, then Self substitution
                 let subst_ret = Self::apply_subst_c(&ret, &subst);
                 let resolved_ret = if let Some(ref concrete) = self_concrete {
