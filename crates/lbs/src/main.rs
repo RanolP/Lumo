@@ -301,7 +301,8 @@ fn build_target(
 }
 
 fn build_js(manifest: &manifest::Manifest, lir: &lir::File) {
-    let js = match backend::emit(lir, CodegenTarget::JavaScript) {
+    let mem = lumo_compiler::elaborate::elaborate(lir);
+    let js = match backend::emit(&mem, CodegenTarget::JavaScript) {
         Ok(js) => js,
         Err(e) => {
             eprintln!("error: codegen failed: {e:?}");
@@ -333,7 +334,8 @@ fn build_js(manifest: &manifest::Manifest, lir: &lir::File) {
 }
 
 fn build_rust(manifest: &manifest::Manifest, lir: &lir::File) {
-    let rs_code = match backend::emit(lir, CodegenTarget::Rust) {
+    let mem = lumo_compiler::elaborate::elaborate(lir);
+    let rs_code = match backend::emit(&mem, CodegenTarget::Rust) {
         Ok(rs) => rs,
         Err(e) => {
             eprintln!("error: codegen failed: {e:?}");

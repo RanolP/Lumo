@@ -12,6 +12,7 @@
 
 use lumo_compiler::{
     backend::{self, CodegenTarget},
+    elaborate,
     hir,
     lir,
 };
@@ -20,14 +21,16 @@ fn compile_js(src: &str) -> String {
     let lossless = lumo_compiler::lst::lossless::parse(src);
     let h = hir::lower_lossless(&lossless);
     let l = lir::lower(&h);
-    backend::emit(&l, CodegenTarget::JavaScript).expect("js emit")
+    let mem = elaborate::elaborate(&l);
+    backend::emit(&mem, CodegenTarget::JavaScript).expect("js emit")
 }
 
 fn compile_ts(src: &str) -> String {
     let lossless = lumo_compiler::lst::lossless::parse(src);
     let h = hir::lower_lossless(&lossless);
     let l = lir::lower(&h);
-    backend::emit(&l, CodegenTarget::TypeScript).expect("ts emit")
+    let mem = elaborate::elaborate(&l);
+    backend::emit(&mem, CodegenTarget::TypeScript).expect("ts emit")
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use crate::lir;
+use crate::lir_memaware;
 
 pub mod rs;
 pub mod ts;
@@ -28,7 +28,7 @@ pub enum BackendError {
 pub trait Backend: Send + Sync {
     fn kind(&self) -> BackendKind;
     fn supports(&self, target: CodegenTarget) -> bool;
-    fn emit(&self, file: &lir::File, target: CodegenTarget) -> Result<String, BackendError>;
+    fn emit(&self, file: &lir_memaware::File, target: CodegenTarget) -> Result<String, BackendError>;
 }
 
 pub struct BackendRegistry {
@@ -52,7 +52,7 @@ impl BackendRegistry {
         self.backends.push(Box::new(backend));
     }
 
-    pub fn emit(&self, file: &lir::File, target: CodegenTarget) -> Result<String, BackendError> {
+    pub fn emit(&self, file: &lir_memaware::File, target: CodegenTarget) -> Result<String, BackendError> {
         let backend = self
             .backends
             .iter()
@@ -68,6 +68,6 @@ impl Default for BackendRegistry {
     }
 }
 
-pub fn emit(file: &lir::File, target: CodegenTarget) -> Result<String, BackendError> {
+pub fn emit(file: &lir_memaware::File, target: CodegenTarget) -> Result<String, BackendError> {
     BackendRegistry::with_defaults().emit(file, target)
 }

@@ -1,6 +1,7 @@
 use crate::{
     backend::{Backend, BackendError, BackendKind, CodegenTarget},
     lir::{self, AsRawValue},
+    lir_memaware,
     types::{CapEntry, CapRef, Pattern, TypeExpr, cap_ref_is_effectful, cap_ref_mangled_params},
 };
 use simple_ts_ast as tsast;
@@ -58,7 +59,7 @@ impl TypeScriptBackend {
         Self
     }
 
-    fn lower_file(&self, file: &lir::File) -> Result<tsast::Program, BackendError> {
+    fn lower_file(&self, file: &lir_memaware::File) -> Result<tsast::Program, BackendError> {
         let mut body = Vec::new();
         let mut extern_names = HashMap::new();
         let fn_caps = collect_fn_caps(file);
@@ -67,7 +68,7 @@ impl TypeScriptBackend {
             .items
             .iter()
             .filter_map(|item| match item {
-                lir::Item::Cap(c) => Some(c.name.clone()),
+                lir_memaware::Item::Cap(c) => Some(c.name.clone()),
                 _ => None,
             })
             .collect();
@@ -88,7 +89,7 @@ impl TypeScriptBackend {
         // Deduplicate extern types: prefer annotated over bare
         let mut deduped_extern_types: HashMap<String, &lir::ExternTypeDecl> = HashMap::new();
         for item in &file.items {
-            if let lir::Item::ExternType(ext) = item {
+            if let lir_memaware::Item::ExternType(ext) = item {
                 deduped_extern_types
                     .entry(ext.name.clone())
                     .and_modify(|existing| {
@@ -112,10 +113,10 @@ impl TypeScriptBackend {
 
         for item in &file.items {
             match item {
-                lir::Item::ExternType(_) => {
+                lir_memaware::Item::ExternType(_) => {
                     // Already emitted above (deduplicated)
                 }
-                lir::Item::ExternFn(func) => {
+                lir_memaware::Item::ExternFn(func) => {
                     let params = func
                         .params
                         .iter()
@@ -151,7 +152,7 @@ impl TypeScriptBackend {
                         inline_always: func.inline,
                     }));
                 }
-                lir::Item::Data(data) => {
+                lir_memaware::Item::Data(data) => {
                     body.push(tsast::Stmt::TypeAlias(tsast::TypeAlias {
                         export: true,
                         name: data.name.clone(),
@@ -160,16 +161,16 @@ impl TypeScriptBackend {
                     }));
                     body.push(tsast::Stmt::Const(lower_data_bundle_const(data)));
                 }
-                lir::Item::Cap(cap) => {
+                lir_memaware::Item::Cap(cap) => {
                     // Emit a per-cap bundle type alias so effectful fn
                     // signatures can reference `__Bundle_<CapName>` with
                     // precise op signatures (no `any` / `unknown`).
                     body.push(tsast::Stmt::TypeAlias(emit_cap_bundle_alias(cap)));
                 }
-                lir::Item::Use(_) => {
+                lir_memaware::Item::Use(_) => {
                     // Use items produce no TS output
                 }
-                lir::Item::Fn(func) => {
+                lir_memaware::Item::Fn(func) => {
                     body.push(tsast::Stmt::Function(lower_fn_decl(func, &ctx)?));
                     if func.name == "main" {
                         if let Some(wrapper) = emit_main_entry_wrapper(func, &ctx)? {
@@ -177,7 +178,7 @@ impl TypeScriptBackend {
                         }
                     }
                 }
-                lir::Item::Impl(impl_decl) => {
+                lir_memaware::Item::Impl(impl_decl) => {
                     body.push(tsast::Stmt::Const(lower_impl_const(impl_decl, &ctx)?));
                 }
             }
@@ -201,14 +202,14 @@ impl TypeScriptBackend {
     }
 }
 
-fn collect_direct_callable_arities(file: &lir::File) -> HashMap<String, usize> {
+fn collect_direct_callable_arities(file: &lir_memaware::File) -> HashMap<String, usize> {
     let mut out = HashMap::new();
     for item in &file.items {
         match item {
-            lir::Item::ExternFn(func) => {
+            lir_memaware::Item::ExternFn(func) => {
                 out.insert(func.name.clone(), func.params.len());
             }
-            lir::Item::Fn(func) => {
+            lir_memaware::Item::Fn(func) => {
                 // Exclude effectful functions — they need CPS handling at call sites
                 let is_effectful = func
                     .cap
@@ -224,10 +225,10 @@ fn collect_direct_callable_arities(file: &lir::File) -> HashMap<String, usize> {
     out
 }
 
-fn collect_impl_method_arities(file: &lir::File) -> HashMap<(String, String), usize> {
+fn collect_impl_method_arities(file: &lir_memaware::File) -> HashMap<(String, String), usize> {
     let mut out = HashMap::new();
     for item in &file.items {
-        if let lir::Item::Impl(impl_decl) = item {
+        if let lir_memaware::Item::Impl(impl_decl) = item {
             let const_name = impl_const_name(impl_decl);
             for method in &impl_decl.methods {
                 out.insert(
@@ -248,7 +249,7 @@ fn collect_impl_method_arities(file: &lir::File) -> HashMap<(String, String), us
 /// - `variant_as_raw` keyed by the bare `variant_name` — used at match
 ///   arms whose `Pattern::Ctor` carries only the short variant name.
 fn collect_as_raw_variants(
-    file: &lir::File,
+    file: &lir_memaware::File,
 ) -> (
     HashMap<(String, String), AsRawValue>,
     HashMap<String, AsRawValue>,
@@ -256,7 +257,7 @@ fn collect_as_raw_variants(
     let mut by_owner = HashMap::new();
     let mut by_variant = HashMap::new();
     for item in &file.items {
-        if let lir::Item::Data(data) = item {
+        if let lir_memaware::Item::Data(data) = item {
             for v in &data.variants {
                 if let Some(raw) = v.as_raw.clone() {
                     by_owner.insert((data.name.clone(), v.name.clone()), raw.clone());
@@ -277,19 +278,19 @@ fn raw_value_to_ts_expr(raw: &AsRawValue) -> tsast::Expr {
 
 /// - Platform default: `impl StrOps { ... }` where target matches a cap name → (cap, [cap]) → "StrOps"
 /// - Typeclass default: `impl Number: Add { ... }` → (cap, [target]) → impl_const_name
-fn collect_default_impls(file: &lir::File) -> HashMap<(String, Vec<String>), String> {
+fn collect_default_impls(file: &lir_memaware::File) -> HashMap<(String, Vec<String>), String> {
     let cap_names: std::collections::HashSet<String> = file
         .items
         .iter()
         .filter_map(|item| match item {
-            lir::Item::Cap(c) => Some(c.name.clone()),
+            lir_memaware::Item::Cap(c) => Some(c.name.clone()),
             _ => None,
         })
         .collect();
 
     let mut out = HashMap::new();
     for item in &file.items {
-        if let lir::Item::Impl(impl_decl) = item {
+        if let lir_memaware::Item::Impl(impl_decl) = item {
             let target = impl_decl.target_type.value.display();
             if impl_decl.capability.is_none() && cap_names.contains(&target) {
                 out.insert((target.clone(), vec![target.clone()]), target);
@@ -402,28 +403,28 @@ fn collect_expr_required_caps(
 /// The returned `Vec<String>` lists cap runtime names that should be treated
 /// as handled while CPS-lowering the body (empty for pure bodies).
 fn collect_impl_method_caps(
-    file: &lir::File,
+    file: &lir_memaware::File,
     fn_caps: &HashMap<String, Vec<String>>,
 ) -> HashMap<(String, String), Vec<String>> {
     let cap_names: std::collections::HashSet<String> = file
         .items
         .iter()
         .filter_map(|item| match item {
-            lir::Item::Cap(c) => Some(c.name.clone()),
+            lir_memaware::Item::Cap(c) => Some(c.name.clone()),
             _ => None,
         })
         .collect();
 
     let mut out = HashMap::new();
     for item in &file.items {
-        if let lir::Item::Impl(impl_decl) = item {
+        if let lir_memaware::Item::Impl(impl_decl) = item {
             let const_name = impl_const_name(impl_decl);
             let target = impl_decl.target_type.value.display();
             let is_cap_impl = impl_decl.capability.is_some()
                 || (impl_decl.capability.is_none() && cap_names.contains(&target));
             for method in &impl_decl.methods {
                 let mut caps = Vec::new();
-                collect_expr_required_caps(&method.value, fn_caps, &mut caps);
+                collect_memaware_expr_required_caps(&method.value, fn_caps, &mut caps);
                 if is_cap_impl || !caps.is_empty() {
                     out.insert((const_name.clone(), method.name.clone()), caps);
                 }
@@ -433,11 +434,11 @@ fn collect_impl_method_caps(
     out
 }
 
-fn collect_fn_caps(file: &lir::File) -> HashMap<String, Vec<String>> {
+fn collect_fn_caps(file: &lir_memaware::File) -> HashMap<String, Vec<String>> {
     let mut out = HashMap::new();
     for item in &file.items {
         match item {
-            lir::Item::ExternFn(func) => {
+            lir_memaware::Item::ExternFn(func) => {
                 let caps = func
                     .cap
                     .as_ref()
@@ -445,7 +446,7 @@ fn collect_fn_caps(file: &lir::File) -> HashMap<String, Vec<String>> {
                     .unwrap_or_default();
                 out.insert(func.name.clone(), caps);
             }
-            lir::Item::Fn(func) => {
+            lir_memaware::Item::Fn(func) => {
                 let caps = func
                     .cap
                     .as_ref()
@@ -457,6 +458,33 @@ fn collect_fn_caps(file: &lir::File) -> HashMap<String, Vec<String>> {
         }
     }
     out
+}
+
+/// Wrapper around `collect_expr_required_caps` for `lir_memaware::Expr`.
+/// `Pure(e)` delegates to the inner `lir::Expr`; Dup/Drop/IsUnique recurse
+/// into their relevant sub-expressions.
+fn collect_memaware_expr_required_caps(
+    expr: &lir_memaware::Expr,
+    fn_caps: &HashMap<String, Vec<String>>,
+    out: &mut Vec<String>,
+) {
+    match expr {
+        lir_memaware::Expr::Pure(e) => collect_expr_required_caps(e, fn_caps, out),
+        lir_memaware::Expr::Dup { expr, .. } => {
+            collect_memaware_expr_required_caps(expr, fn_caps, out)
+        }
+        lir_memaware::Expr::Drop { body, .. } => {
+            collect_memaware_expr_required_caps(body, fn_caps, out)
+        }
+        lir_memaware::Expr::IsUnique {
+            unique_branch,
+            shared_branch,
+            ..
+        } => {
+            collect_memaware_expr_required_caps(unique_branch, fn_caps, out);
+            collect_memaware_expr_required_caps(shared_branch, fn_caps, out);
+        }
+    }
 }
 
 /// Build the runtime JS variable name for a cap with optional type args.
@@ -721,10 +749,10 @@ fn emit_cap_bundle_alias(cap: &lir::CapDecl) -> tsast::TypeAlias {
 }
 
 fn lower_fn_decl(
-    func: &lir::FnDecl,
+    func: &lir_memaware::FnDecl,
     ctx: &LoweringContext,
 ) -> Result<tsast::FunctionDecl, BackendError> {
-    let (lowered_params, lowered_body) = unwrap_fn_value(&func.value)?;
+    let (lowered_params, lowered_body) = unwrap_memaware_fn_value(&func.value)?;
     if lowered_params.len() != func.params.len() {
         return Err(BackendError::EmitFailed(format!(
             "function `{}` lowered to {} lambda params but signature has {} params",
@@ -822,7 +850,7 @@ fn lower_fn_decl(
 /// continuation, then delegates to `__main_cps`. Returns `Ok(None)` if main is
 /// pure (no wrapper needed). Returns `Err` if any required cap has no default impl.
 fn emit_main_entry_wrapper(
-    func: &lir::FnDecl,
+    func: &lir_memaware::FnDecl,
     ctx: &LoweringContext,
 ) -> Result<Option<tsast::FunctionDecl>, BackendError> {
     let cap_ref = match &func.cap {
@@ -935,7 +963,7 @@ fn emit_main_entry_wrapper(
 }
 
 fn lower_impl_const(
-    impl_decl: &lir::ImplDecl,
+    impl_decl: &lir_memaware::ImplDecl,
     ctx: &LoweringContext,
 ) -> Result<tsast::ConstDecl, BackendError> {
     let const_name = impl_const_name(impl_decl);
@@ -965,13 +993,13 @@ fn lower_impl_const(
 /// factory: `(__k_handle) => { op: (__caps, args..., __k_perform) => ... }`.
 /// Semantics match user `handle Cap with <bundle> in body` — abort-by-default.
 fn lower_cap_impl_const(
-    impl_decl: &lir::ImplDecl,
+    impl_decl: &lir_memaware::ImplDecl,
     const_name: &str,
     ctx: &LoweringContext,
 ) -> Result<tsast::ConstDecl, BackendError> {
     let mut props: Vec<tsast::ObjectProp> = Vec::new();
     for method in &impl_decl.methods {
-        let (_, lowered_body) = unwrap_fn_value(&method.value)?;
+        let (_, lowered_body) = unwrap_memaware_fn_value(&method.value)?;
         let method_key = (const_name.to_owned(), method.name.clone());
         let empty: Vec<String> = Vec::new();
         let handled_caps = ctx
@@ -1000,13 +1028,13 @@ fn lower_cap_impl_const(
 /// handler. Effectful methods CPS-thread the tail value through `__k`
 /// (implicit resume, i.e. normal effectful-function return semantics).
 fn lower_inherent_impl_const(
-    impl_decl: &lir::ImplDecl,
+    impl_decl: &lir_memaware::ImplDecl,
     const_name: &str,
     ctx: &LoweringContext,
 ) -> Result<tsast::ConstDecl, BackendError> {
     let mut properties = Vec::new();
     for method in &impl_decl.methods {
-        let (lowered_params, lowered_body) = unwrap_fn_value(&method.value)?;
+        let (lowered_params, lowered_body) = unwrap_memaware_fn_value(&method.value)?;
         if lowered_params.len() != method.params.len() {
             return Err(BackendError::EmitFailed(format!(
                 "impl method `{}` lowered to {} lambda params but signature has {} params",
@@ -1080,7 +1108,7 @@ fn lower_inherent_impl_const(
 }
 
 /// Compute the JS/TS const name for an impl block.
-fn impl_const_name(impl_decl: &lir::ImplDecl) -> String {
+fn impl_const_name(impl_decl: &lir_memaware::ImplDecl) -> String {
     if let Some(name) = &impl_decl.name {
         // Named impl: use the given name
         name.clone()
@@ -1120,6 +1148,40 @@ fn unwrap_fn_value(value: &lir::Expr) -> Result<(Vec<String>, &lir::Expr), Backe
     Ok((params, cursor))
 }
 
+/// Like `unwrap_fn_value` but for `lir_memaware::Expr`.
+/// Peels the `Pure` wrapper then delegates to `unwrap_fn_value`.
+fn unwrap_memaware_fn_value(
+    value: &lir_memaware::Expr,
+) -> Result<(Vec<String>, &lir::Expr), BackendError> {
+    match value {
+        lir_memaware::Expr::Pure(e) => unwrap_fn_value(e),
+        lir_memaware::Expr::Dup { expr, .. } => unwrap_memaware_fn_value(expr),
+        lir_memaware::Expr::Drop { body, .. } => unwrap_memaware_fn_value(body),
+        lir_memaware::Expr::IsUnique { shared_branch, .. } => {
+            unwrap_memaware_fn_value(shared_branch)
+        }
+    }
+}
+
+/// Dispatch from `lir_memaware::Expr` to `lower_expr` / `lower_cps_expr`.
+/// `Pure(e)` delegates to `lower_expr(e, ...)`.
+/// `Dup`/`Drop`/`IsUnique` are no-ops today — emit the inner expression.
+fn lower_memaware_expr(
+    expr: &lir_memaware::Expr,
+    env: &[&str],
+    handled: &std::collections::HashSet<String>,
+    ctx: &LoweringContext,
+) -> tsast::Expr {
+    match expr {
+        lir_memaware::Expr::Pure(e) => lower_expr(e, ctx),
+        lir_memaware::Expr::Dup { expr, .. } => lower_memaware_expr(expr, env, handled, ctx),
+        lir_memaware::Expr::Drop { body, .. } => lower_memaware_expr(body, env, handled, ctx),
+        lir_memaware::Expr::IsUnique { shared_branch, .. } => {
+            lower_memaware_expr(shared_branch, env, handled, ctx)
+        }
+    }
+}
+
 impl Backend for TypeScriptBackend {
     fn kind(&self) -> BackendKind {
         BackendKind::TypeScript
@@ -1134,7 +1196,7 @@ impl Backend for TypeScriptBackend {
         )
     }
 
-    fn emit(&self, file: &lir::File, target: CodegenTarget) -> Result<String, BackendError> {
+    fn emit(&self, file: &lir_memaware::File, target: CodegenTarget) -> Result<String, BackendError> {
         let program = self.lower_file(file)?;
         let target = match target {
             CodegenTarget::TypeScript => tsast::EmitTarget::TypeScript,
@@ -1151,7 +1213,7 @@ impl Backend for TypeScriptBackend {
 }
 
 /// Collect `#[link(module = ...)]` extern fns and emit `import { ... } from "..."` statements.
-fn format_imports(file: &lir::File, target: tsast::EmitTarget) -> String {
+fn format_imports(file: &lir_memaware::File, target: tsast::EmitTarget) -> String {
     if matches!(target, tsast::EmitTarget::TypeScriptDefinition) {
         return String::new();
     }
@@ -1160,7 +1222,7 @@ fn format_imports(file: &lir::File, target: tsast::EmitTarget) -> String {
     let mut seen_per_module: HashMap<String, std::collections::HashSet<(String, String)>> =
         HashMap::new();
     for item in &file.items {
-        if let lir::Item::ExternFn(func) = item {
+        if let lir_memaware::Item::ExternFn(func) = item {
             if let Some((module, js_name)) = &func.link_module {
                 let alias = format!("__lumo_{}", func.name);
                 let entry = (js_name.clone(), alias);

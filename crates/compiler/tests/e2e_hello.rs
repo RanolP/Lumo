@@ -1,5 +1,6 @@
 use lumo_compiler::{
     backend::{self, CodegenTarget},
+    elaborate,
     query::QueryEngine,
 };
 
@@ -60,7 +61,7 @@ fn main() { IO.println("Hello, World!") }"#,
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
 
     assert!(
         js.contains("function main("),
@@ -90,7 +91,7 @@ fn main() { IO.println("Hello, World!") }"#,
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
     let js_with_entry = format!("{js}\nmain();\n");
 
     let output = std::process::Command::new("node")
@@ -129,7 +130,7 @@ fn main() {
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
 
     assert!(
         js.contains("function main("),
@@ -164,7 +165,7 @@ fn main() {
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
 
     assert!(
         js.contains("function main("),
@@ -188,7 +189,7 @@ fn greet_len(): Number = "Hello".len()
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
 
     // After rewrite, "Hello".len() → String.len("Hello") → StrOps.str_len("Hello")
     assert!(
@@ -219,7 +220,7 @@ fn sum(): Number = 1.add(2)
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
 
     assert!(
         js.contains("function sum("),
@@ -247,7 +248,7 @@ fn main(): Number = 1 + 2
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
     // After LTO in-place rewrite: main has zero callers, so LTO rewrites it in place,
     // clears cap=None, and the backend emits a plain `export function main()` with direct
     // arithmetic — no CPS wrapper, no __caps bundle.
@@ -294,7 +295,7 @@ fn main() {
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
     // Pure main (no caps) → no wrapper, just regular main()
     assert!(
         js.contains("function main()"),
@@ -319,7 +320,7 @@ fn main(): Unit / { MyCap } {
     let lir = q
         .lower_module(&["main.lumo"])
         .expect("lower_module should succeed (validation happens at backend)");
-    let result = backend::emit(&lir, CodegenTarget::JavaScript);
+    let result = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript);
     assert!(
         result.is_err(),
         "codegen should fail for main requiring cap with no default impl"
@@ -373,7 +374,7 @@ fn main() {
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
     let js_with_entry = format!("{js}\nmain();\n");
 
     let output = std::process::Command::new("node")
@@ -429,7 +430,7 @@ fn main(): Number = handle Count with bundle {
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
     assert!(
         js.contains("(__k_handle) =>"),
         "handler should be built by a factory closure over __k_handle: {js}"
@@ -463,7 +464,7 @@ fn main() = handle Greeter with bundle {
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
     let js_with_entry = format!("{js}\nmain();\n");
 
     let output = std::process::Command::new("node")
@@ -508,7 +509,7 @@ fn main() {
     let lir = q
         .lower_module(&["main.lumo"])
         .expect("compilation should succeed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("codegen should succeed");
+    let js = backend::emit(&elaborate::elaborate(&lir), CodegenTarget::JavaScript).expect("codegen should succeed");
 
     // The generated JS should contain the number literals
     assert!(

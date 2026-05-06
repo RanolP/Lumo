@@ -1,6 +1,7 @@
 use crate::{
     backend::{Backend, BackendError, BackendKind, CodegenTarget},
     lir,
+    lir_memaware,
     types::{Pattern, TypeExpr},
 };
 
@@ -22,7 +23,7 @@ impl Backend for RustBackend {
         matches!(target, CodegenTarget::Rust)
     }
 
-    fn emit(&self, file: &lir::File, _target: CodegenTarget) -> Result<String, BackendError> {
+    fn emit(&self, file: &lir_memaware::File, _target: CodegenTarget) -> Result<String, BackendError> {
         emit_file(file)
     }
 }
@@ -57,7 +58,7 @@ fn rename_ident(s: &str, from: &str, to: &str) -> String {
     result
 }
 
-fn emit_file(file: &lir::File) -> Result<String, BackendError> {
+fn emit_file(file: &lir_memaware::File) -> Result<String, BackendError> {
     let mut out = String::new();
 
     // Prelude
@@ -70,7 +71,7 @@ fn emit_file(file: &lir::File) -> Result<String, BackendError> {
     let mut deduped_extern_types: std::collections::HashMap<String, &lir::ExternTypeDecl> =
         std::collections::HashMap::new();
     for item in &file.items {
-        if let lir::Item::ExternType(ext) = item {
+        if let lir_memaware::Item::ExternType(ext) = item {
             deduped_extern_types
                 .entry(ext.name.clone())
                 .and_modify(|existing| {
@@ -90,7 +91,7 @@ fn emit_file(file: &lir::File) -> Result<String, BackendError> {
 
     // Data declarations
     for item in &file.items {
-        if let lir::Item::Data(data) = item {
+        if let lir_memaware::Item::Data(data) = item {
             out.push_str(&emit_data_decl(data));
             out.push('\n');
         }
@@ -98,7 +99,7 @@ fn emit_file(file: &lir::File) -> Result<String, BackendError> {
 
     // Extern functions
     for item in &file.items {
-        if let lir::Item::ExternFn(func) = item {
+        if let lir_memaware::Item::ExternFn(func) = item {
             out.push_str(&emit_extern_fn(func));
             out.push('\n');
         }
@@ -106,7 +107,7 @@ fn emit_file(file: &lir::File) -> Result<String, BackendError> {
 
     // User functions
     for item in &file.items {
-        if let lir::Item::Fn(func) = item {
+        if let lir_memaware::Item::Fn(func) = item {
             if func.name == "main" {
                 continue; // emit main() separately at the end
             }
@@ -117,7 +118,7 @@ fn emit_file(file: &lir::File) -> Result<String, BackendError> {
 
     // Impl methods (emitted as standalone functions)
     for item in &file.items {
-        if let lir::Item::Impl(impl_decl) = item {
+        if let lir_memaware::Item::Impl(impl_decl) = item {
             out.push_str(&emit_impl_decl(impl_decl, &ctx)?);
             out.push('\n');
         }
@@ -125,7 +126,7 @@ fn emit_file(file: &lir::File) -> Result<String, BackendError> {
 
     // Main function wrapper
     if let Some(main_fn) = file.items.iter().find_map(|item| match item {
-        lir::Item::Fn(f) if f.name == "main" => Some(f),
+        lir_memaware::Item::Fn(f) if f.name == "main" => Some(f),
         _ => None,
     }) {
         out.push_str(&emit_main_fn(main_fn, &ctx)?);
@@ -150,14 +151,14 @@ struct LoweringContext {
 }
 
 impl LoweringContext {
-    fn from_file(file: &lir::File) -> Self {
+    fn from_file(file: &lir_memaware::File) -> Self {
         let mut data_types = std::collections::HashMap::new();
         let mut extern_fns = std::collections::HashSet::new();
         let mut recursive_fields = std::collections::HashMap::new();
         let mut variant_owner = std::collections::HashMap::new();
         for item in &file.items {
             match item {
-                lir::Item::Data(data) => {
+                lir_memaware::Item::Data(data) => {
                     let variants = data
                         .variants
                         .iter()
@@ -172,7 +173,7 @@ impl LoweringContext {
                         variant_owner.insert(v.name.clone(), data.name.clone());
                     }
                 }
-                lir::Item::ExternFn(func) => {
+                lir_memaware::Item::ExternFn(func) => {
                     extern_fns.insert(func.name.clone());
                 }
                 _ => {}
@@ -429,8 +430,8 @@ fn emit_extern_fn(func: &lir::ExternFnDecl) -> String {
 // User functions
 // ---------------------------------------------------------------------------
 
-fn emit_fn_decl(func: &lir::FnDecl, ctx: &LoweringContext) -> Result<String, BackendError> {
-    let (param_names, body) = unwrap_fn_value(&func.value)?;
+fn emit_fn_decl(func: &lir_memaware::FnDecl, ctx: &LoweringContext) -> Result<String, BackendError> {
+    let (param_names, body) = unwrap_memaware_fn_value(&func.value)?;
 
     if param_names.len() != func.params.len() {
         return Err(BackendError::EmitFailed(format!(
@@ -478,14 +479,14 @@ fn emit_fn_decl(func: &lir::FnDecl, ctx: &LoweringContext) -> Result<String, Bac
 }
 
 fn emit_impl_decl(
-    impl_decl: &lir::ImplDecl,
+    impl_decl: &lir_memaware::ImplDecl,
     ctx: &LoweringContext,
 ) -> Result<String, BackendError> {
     let mut out = String::new();
     let target = impl_decl.target_type.value.display().replace(' ', "").to_lowercase();
 
     for method in &impl_decl.methods {
-        let (param_names, body) = unwrap_fn_value(&method.value)?;
+        let (param_names, body) = unwrap_memaware_fn_value(&method.value)?;
         if param_names.len() != method.params.len() {
             return Err(BackendError::EmitFailed(format!(
                 "impl method `{}` lowered to {} lambda params but signature has {} params",
@@ -556,8 +557,8 @@ fn emit_impl_decl(
     Ok(out)
 }
 
-fn emit_main_fn(func: &lir::FnDecl, ctx: &LoweringContext) -> Result<String, BackendError> {
-    let (_param_names, body) = unwrap_fn_value(&func.value)?;
+fn emit_main_fn(func: &lir_memaware::FnDecl, ctx: &LoweringContext) -> Result<String, BackendError> {
+    let (_param_names, body) = unwrap_memaware_fn_value(&func.value)?;
     let body_str = emit_expr(body, ctx);
     Ok(format!("fn main() {{\n    {};\n}}\n", body_str))
 }
@@ -576,6 +577,21 @@ fn unwrap_fn_value(value: &lir::Expr) -> Result<(Vec<String>, &lir::Expr), Backe
         cursor = body.as_ref();
     }
     Ok((params, cursor))
+}
+
+/// Like `unwrap_fn_value` but for `lir_memaware::Expr`.
+/// Peels the `Pure` wrapper then delegates to `unwrap_fn_value`.
+fn unwrap_memaware_fn_value(
+    value: &lir_memaware::Expr,
+) -> Result<(Vec<String>, &lir::Expr), BackendError> {
+    match value {
+        lir_memaware::Expr::Pure(e) => unwrap_fn_value(e),
+        lir_memaware::Expr::Dup { expr, .. } => unwrap_memaware_fn_value(expr),
+        lir_memaware::Expr::Drop { body, .. } => unwrap_memaware_fn_value(body),
+        lir_memaware::Expr::IsUnique { shared_branch, .. } => {
+            unwrap_memaware_fn_value(shared_branch)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

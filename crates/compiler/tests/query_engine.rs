@@ -1,5 +1,6 @@
 use lumo_compiler::{
     backend::{self, CodegenTarget},
+    elaborate,
     lst::{lossless::node_text, SyntaxKind},
     query::QueryEngine,
     typecheck,
@@ -160,7 +161,7 @@ fn multi_file_backend_emits_all_items() {
     let merged = q
         .lower_module(&["types.lumo", "fns.lumo"])
         .expect("merged module");
-    let output = backend::emit(&merged, CodegenTarget::TypeScript).expect("backend emit");
+    let output = backend::emit(&elaborate::elaborate(&merged), CodegenTarget::TypeScript).expect("backend emit");
     assert!(output.contains("Bool"), "output should contain Bool type");
     assert!(output.contains("not"), "output should contain not function");
 }

@@ -1,5 +1,6 @@
 use lumo_compiler::{
     backend::{self, CodegenTarget},
+    elaborate,
     query::QueryEngine,
 };
 
@@ -71,7 +72,8 @@ fn main(): Number = 1 + 2 + 3
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compile_with_deps failed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("js emit");
+    let mem = elaborate::elaborate(&lir);
+    let js = backend::emit(&mem, CodegenTarget::JavaScript).expect("js emit");
 
     // After in-place rewrite: cap=None means no CPS wrapper — backend emits a direct fn.
     assert!(
@@ -153,7 +155,8 @@ fn main(): Number = sum()
     let lir = q
         .compile_with_deps(&["main.lumo"], stdlib_resolver)
         .expect("compile_with_deps failed");
-    let js = backend::emit(&lir, CodegenTarget::JavaScript).expect("js emit");
+    let mem = elaborate::elaborate(&lir);
+    let js = backend::emit(&mem, CodegenTarget::JavaScript).expect("js emit");
 
     // Compilation must succeed.
     assert!(

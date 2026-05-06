@@ -1,13 +1,16 @@
 use lumo_compiler::{
     backend::{self, BackendError, CodegenTarget},
+    elaborate,
     hir,
     lir,
+    lir_memaware,
 };
 
-fn lower_typed(src: &str) -> lir::File {
+fn lower_typed(src: &str) -> lir_memaware::File {
     let lossless = lumo_compiler::lst::lossless::parse(src);
     let hir = hir::lower_lossless(&lossless);
-    lir::lower(&hir)
+    let lir = lir::lower(&hir);
+    elaborate::elaborate(&lir)
 }
 
 #[test]

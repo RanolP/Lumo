@@ -1,5 +1,6 @@
 use lumo_compiler::{
     backend::{self, CodegenTarget},
+    elaborate,
     query::QueryEngine,
 };
 
@@ -7,7 +8,8 @@ fn compile(src: &str) -> String {
     let mut q = QueryEngine::new();
     q.set_file("main.lumo", src.to_owned());
     let lir = q.lower_module(&["main.lumo"]).expect("lower_module failed");
-    backend::emit(&lir, CodegenTarget::JavaScript).expect("js emit")
+    let mem = elaborate::elaborate(&lir);
+    backend::emit(&mem, CodegenTarget::JavaScript).expect("js emit")
 }
 
 #[test]
