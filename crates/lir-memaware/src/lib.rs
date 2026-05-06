@@ -18,8 +18,9 @@ pub enum Expr {
     /// A pure sub-tree from the functional LIR — no RC operations inside.
     Pure(lir::Expr),
 
-    /// Increment the refcount before this use (all non-consuming uses of a
-    /// binding that is referenced N ≥ 2 times).
+    /// Increment the refcount for the binding introduced by the `Let` node
+    /// with this `id`. `expr` is the sub-tree that consumes the binding N ≥ 2
+    /// times; every non-last use gets a refcount increment.
     Dup { id: ExprId, expr: Box<Expr> },
 
     /// Release `name` before evaluating `body` (binding used 0 times).
@@ -87,4 +88,10 @@ pub struct File {
     pub items: Vec<Item>,
     pub content_hash: ContentHash,
     pub spans: Vec<Span>,
+}
+
+impl File {
+    pub fn span_of(&self, id: ExprId) -> Span {
+        self.spans[id.0 as usize]
+    }
 }
