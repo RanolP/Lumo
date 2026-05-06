@@ -16,7 +16,13 @@ fn count_uses(expr: &lir::Expr, name: &str) -> usize {
         }
         lir::Expr::Match { scrutinee, arms, .. } => {
             count_uses(scrutinee, name)
-                + arms.iter().map(|a| count_uses(&a.body, name)).sum::<usize>()
+                + arms.iter().map(|a| {
+                    if a.pattern.bindings().iter().any(|b| b == name) {
+                        0
+                    } else {
+                        count_uses(&a.body, name)
+                    }
+                }).sum::<usize>()
         }
         lir::Expr::Apply { callee, arg, .. } => count_uses(callee, name) + count_uses(arg, name),
         lir::Expr::Force { expr, .. }
