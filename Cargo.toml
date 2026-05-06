@@ -6,6 +6,7 @@ members = [
     "crates/lst",
     "crates/hir",
     "crates/lir",
+    "crates/lir-memaware",
     "crates/compiler",
     "crates/lbs",
     "crates/lsp",
