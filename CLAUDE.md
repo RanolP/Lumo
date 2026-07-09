@@ -1,23 +1,21 @@
 # Lumo Project — Claude Instructions
 
-## Syntax Changes: lumo.langue First
+## Repository layout (since 2026-07-09)
 
-When adding or modifying any Lumo language syntax (new expression forms, statement types, type syntax, patterns, etc.):
+- **`legacy/`** — the entire previous implementation (Rust compiler crates,
+  Lumo packages, langue 1, apps, docs, plans), archived intact. Read-only
+  reference; do not extend it.
+- **`design/`** — design documents for the fresh, DSL-driven rewrite.
+  Start with `design/langue.md` (Langue 2: full language-definition DSL).
+- New implementation code will live in a fresh Cargo workspace at the root
+  (not created yet).
 
-1. **Update `crates/compiler/lumo.langue` first** — this is the source of truth for the CST grammar
-2. **Run `bash scripts/gen_langue.sh compiler`** — regenerates `crates/lst/src/syntax_kind.rs`, `ast.rs`, `lossless.rs`
-3. **Then update `crates/lst/src/parser.rs`** — hand-written recursive descent parser
-4. **Then update HIR lowering** (`crates/hir/src/lib.rs`) if needed
+The old instructions about `crates/compiler/lumo.langue` and
+`scripts/gen_langue.sh` apply only inside `legacy/` (paths now prefixed with
+`legacy/`).
 
-Skipping step 1–2 leaves the generated files inconsistent with the actual language.
+## Working rules for the rewrite
 
-### Grammar correctness rules
-
-- Comma-separated lists **must use wrapper nodes** to preserve accessors:
-  ```
-  FooList = '(' items:FooItems? ')'
-  FooItems = Foo (',' Foo)* ','?
-  ```
-  Never use `Foo* ','?` (items without enforced separators) or inline `(Foo (',' Foo)*)?` (loses the label, no accessor generated).
-- Optional type annotations use `(':' ty:TypeExpr)?`
-- Reuse existing nodes where possible (`FnBody`, `ParamList`, `GenericParams`)
+- The language definition (`.langue` sections) is the source of truth; Rust
+  code is engines and generated output, never the definition.
+- Design decisions go in `design/` before implementation.
