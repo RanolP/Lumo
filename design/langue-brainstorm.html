@@ -298,12 +298,14 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 
 <a class="use" href="#why">01-why.langue</a>            <span class="cm">// 왜 다시 만드는가</span>
 <a class="use" href="#architecture">02-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: 네 개의 기둥</span>
-<a class="use" href="#project">03-project.langue</a>        <span class="cm">// 프로젝트 형식: cat + stdlib + DCE</span>
-<a class="use" href="#pipeline">04-pipeline.langue</a>       <span class="cm">// 임의의 트리 파이프라인</span>
-<a class="use" href="#kinds">05-kinds.langue</a>          <span class="cm">// 파일 종류: syn · elab · scope · type</span>
-<a class="use" href="#exec">06-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
-<a class="use" href="#decisions">07-decisions.langue</a>      <span class="cm">// 결정 · 미결 · 논의 후보</span>
-<a class="use" href="#milestones">08-milestones.langue</a>     <span class="cm">// M0 – M5</span>
+<a class="use" href="#project">03-project.langue</a>        <span class="cm">// ① 프로젝트 레이아웃: cat + stdlib + DCE</span>
+<a class="use" href="#syntax">04-syntax.langue</a>         <span class="cm">// ② 문법: 모든 트리가 자기 문법을 가진다</span>
+<a class="use" href="#scope">05-scope.langue</a>          <span class="cm">// ③ 스코프: 바인딩 사실 선언</span>
+<a class="use" href="#elab">06-elab.langue</a>           <span class="cm">// ④ 정제: 규칙 + 등식 포화</span>
+<a class="use" href="#type">07-type.langue</a>           <span class="cm">// ⑤ 타입: 추론 엔진 위의 판단</span>
+<a class="use" href="#exec">08-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
+<a class="use" href="#decisions">09-decisions.langue</a>      <span class="cm">// 결정 · 미결 · 논의 후보</span>
+<a class="use" href="#milestones">10-milestones.langue</a>     <span class="cm">// M0 – M5</span>
 
 <span class="cm">+ stdlib (foldr, map, 표준 토큰 …)   // 안 쓰이면 DCE로 제거</span></pre>
     </nav>
@@ -622,19 +624,48 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   </div>
 </section>
 
-<!-- ============ 03 PIPELINE ============ -->
-<section id="pipeline">
+<!-- ============ 04 SYNTAX ============ -->
+<section id="syntax">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--k-tree)"></span>04-pipeline.langue</span>
-    <h2>파이프라인 모양은 Langue가 정하지 않는다</h2>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--k-syn)"></span>04-syntax.langue</span>
+    <h2>문법 — 모양을 쓰면 파서와 프린터가 나온다</h2>
     <p class="sub">
-      결정 사항: 정의는 <b>임의 개수의 트리</b>를 선언하고 그 사이를 <code>elab</code>으로
-      잇는다. 표면이든 내부든 모든 트리는 <code>.syn.langue</code> 문법으로 선언되어
-      자기 표시 문법을 가진다. HIR/LIR이 몇 단계인지, CBPV를 두 트리로
-      쪼갤지는 Lumo 정의 <b>안에서</b> 내리는 결정이지 도구의 제약이 아니다.
+      표면 언어든 내부 트리든 전부 <code>.syn.langue</code>다. 문법이 노드의 모양과 표시
+      문법을 동시에 정하고, 파서·프리티 프린터가 트리마다 유도된다. 트리를 몇 단계 둘지,
+      CBPV를 두 트리로 쪼갤지는 Lumo 정의 <b>안에서</b> 내리는 결정이지 도구의 제약이
+      아니다.
     </p>
 
-    <figure class="figure">
+    <div class="kinds">
+      <article class="kind k-syn">
+        <header><span class="ext">*.syn.langue</span><span class="role">04a · 표면: 어휘 + CST 문법</span></header>
+        <div class="body">langue 1의 계승. 최대 함정이었던 래퍼 노드 관례는 <code>sep()</code> 내장으로,
+          손으로 짜던 Pratt 파서는 우선순위 주석으로 흡수한다.</div>
+        <pre><span class="k">token</span> Ident = /[a-zA-Z_][a-zA-Z0-9_]*/
+        keywords(<span class="s">'fn'</span> <span class="s">'data'</span> <span class="s">'cap'</span> …)
+
+FnDecl = <span class="s">'fn'</span> name:Ident params:<span class="k">sep</span>(Param, <span class="s">','</span>) …
+Expr   = <span class="k">infix</span> BinExpr {
+  <span class="s">'|>'</span> left, <span class="s">'+'</span> <span class="s">'-'</span> left @ 60, <span class="s">'*'</span> <span class="s">'/'</span> left @ 70
+}</pre>
+      </article>
+
+      <article class="kind k-tree">
+        <header><span class="ext">*.syn.langue</span><span class="role">04b · 내부 트리 — tree kind는 없다</span></header>
+        <div class="body">탈설탕 이후의 트리도 ADT가 아니라 <b>문법</b>으로 선언한다
+          (<code>tree Core</code>로 스코프). 파서와 프리티 프린터가 함께 유도되어 모든 단계가
+          텍스트로 왕복 — 레거시 hir.langue/lir.langue 방식의 공식화. 디버그 덤프,
+          <code>--emit core</code>, IR 문법으로 직접 쓰는 golden 픽스처가 공짜.</div>
+        <pre><span class="c">// core.syn.langue</span>
+<span class="k">tree</span> Core
+
+Expr = | Lam | App | Let | Perform
+Lam  = <span class="s">'fn'</span> param:Binder <span class="s">'->'</span> body:Expr
+App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span></pre>
+      </article>
+    </div>
+
+    <figure class="figure" style="margin-top:20px">
       <svg viewBox="0 0 880 200" role="img" aria-label="Surface에서 Core를 거쳐 백엔드 준비 트리로 가는 elaboration 파이프라인">
         <defs>
           <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
@@ -677,74 +708,68 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   </div>
 </section>
 
-<!-- ============ 04 FILE KINDS ============ -->
-<section id="kinds">
+<!-- ============ 05 SCOPE ============ -->
+<section id="scope">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>05-kinds.langue</span>
-    <h2>네 가지 파일 종류 — syn · elab · scope · type</h2>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--k-scope)"></span>05-scope.langue</span>
+    <h2>스코프 — 바인딩은 사실의 나열이다</h2>
     <p class="sub">
-      접미사가 곧 역할이다 (+ 접미사 없는 매니페스트). tree kind는 없다 — 내부 트리도
-      syn이다. 아래 코드는 전부 <code>design/langue.md</code>의 실제 스케치.
+      스코프 그래프식 사실 선언(Statix에서 영감, 훨씬 작게). 엔진이 CST 한 번 순회로
+      그래프를 만들고 해석 질의에 답한다. 결과는 타입 검사(07)와 LSP 양쪽에 먹인다 —
+      go-to-def가 공짜로 따라온다.
     </p>
-
     <div class="kinds">
-      <article class="kind k-syn">
-        <header><span class="ext">*.syn.langue</span><span class="role">어휘 + CST 문법</span></header>
-        <div class="body">langue 1의 계승. 최대 함정이었던 래퍼 노드 관례는 <code>sep()</code> 내장으로,
-          손으로 짜던 Pratt 파서는 우선순위 주석으로 흡수한다.</div>
-        <pre><span class="k">token</span> Ident = /[a-zA-Z_][a-zA-Z0-9_]*/
-        keywords(<span class="s">'fn'</span> <span class="s">'data'</span> <span class="s">'cap'</span> …)
-
-FnDecl = <span class="s">'fn'</span> name:Ident params:<span class="k">sep</span>(Param, <span class="s">','</span>) …
-Expr   = <span class="k">infix</span> BinExpr {
-  <span class="s">'|>'</span> left, <span class="s">'+'</span> <span class="s">'-'</span> left @ 60, <span class="s">'*'</span> <span class="s">'/'</span> left @ 70
-}</pre>
+      <article class="kind k-scope full">
+        <header><span class="ext">*.scope.langue</span><span class="role">선언 · 참조 · 가시성</span></header>
+        <pre>FnDecl  <span class="k">declares</span> name <span class="k">in</span> enclosing  <span class="c">// letrec — 모듈 전역 가시</span>
+Param   <span class="k">declares</span> name <span class="k">in</span> body
+LetExpr <span class="k">declares</span> binder <span class="k">in</span> body    <span class="c">// 순차적, 섀도잉</span>
+MatchArm <span class="k">declares</span> pattern_binders <span class="k">in</span> body
+Ident   <span class="k">resolves in</span> lexical scope</pre>
       </article>
+    </div>
+  </div>
+</section>
 
-      <article class="kind k-tree">
-        <header><span class="ext">*.syn.langue</span><span class="role">내부 트리 — tree kind는 없다</span></header>
-        <div class="body">탈설탕 이후의 트리도 ADT가 아니라 <b>문법</b>으로 선언한다
-          (<code>tree Core</code>로 스코프). 파서와 프리티 프린터가 함께 유도되어 모든 단계가
-          텍스트로 왕복 — 레거시 hir.langue/lir.langue 방식의 공식화. 디버그 덤프,
-          <code>--emit core</code>, IR 문법으로 직접 쓰는 golden 픽스처가 공짜.</div>
-        <pre><span class="c">// core.syn.langue</span>
-<span class="k">tree</span> Core
-
-Expr = | Lam | App | Let | Perform
-Lam  = <span class="s">'fn'</span> param:Binder <span class="s">'->'</span> body:Expr
-App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span></pre>
-      </article>
-
-      <article class="kind k-elab">
-        <header><span class="ext">*.elab.langue</span><span class="role">정제: 트리 → 트리 규칙</span></header>
-        <div class="body">소스 쪽은 준인용 패턴, 타깃 쪽은 생성자. 노드 종류당 하나의 규칙,
-          문법에 대해 망라성 검사. 재귀는 <code>elab(…)</code>으로 명시적.
-          같은 트리 규칙군은 e-graph 등식 포화로 돈다(02c).</div>
+<!-- ============ 06 ELABORATION ============ -->
+<section id="elab">
+  <div class="wrap">
+    <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>06-elab.langue</span>
+    <h2>정제 — 의미는 규칙으로, 최적화는 등식으로</h2>
+    <p class="sub">
+      소스 쪽은 준인용 패턴, 타깃 쪽은 생성자. 트리 간 로워링은 노드 종류당 규칙 하나에
+      망라성 검사, 재귀는 <code>elab(…)</code>으로 명시적. 같은 트리 규칙군은 e-graph 등식
+      포화로 돈다(02c). 도우미(<code>foldr</code>, <code>map</code>, 신선한 이름)는 stdlib에서.
+    </p>
+    <div class="kinds">
+      <article class="kind k-elab full">
+        <header><span class="ext">*.elab.langue</span><span class="role">트리 → 트리 · 트리 → 같은 트리</span></header>
         <pre><span class="k">elab</span> Surface -> Core {
   <span class="k">rule</span> FnDecl { name, params, body } =>
-    Let(name, foldr(params, elab(body),
-                    |p, acc| Lam(p, acc)))
+    Let(name, foldr(params, elab(body), |p, acc| Lam(p, acc)))
   <span class="k">rule</span> PipeExpr { lhs, rhs } =>   <span class="c">// a |> f ⇒ f(a)</span>
     App(elab(rhs), elab(lhs))
 }</pre>
       </article>
+    </div>
+  </div>
+</section>
 
-      <article class="kind k-scope">
-        <header><span class="ext">*.scope.langue</span><span class="role">바인딩 구조</span></header>
-        <div class="body">스코프 그래프식 사실 선언(Statix에서 영감, 훨씬 작게).
-          엔진이 CST 한 번 순회로 그래프를 만들고, LSP의 go-to-def가 공짜로 따라온다.</div>
-        <pre>FnDecl  <span class="k">declares</span> name <span class="k">in</span> enclosing  <span class="c">// letrec</span>
-Param   <span class="k">declares</span> name <span class="k">in</span> body
-LetExpr <span class="k">declares</span> binder <span class="k">in</span> body    <span class="c">// 섀도잉</span>
-Ident   <span class="k">resolves in</span> lexical scope</pre>
-      </article>
-
+<!-- ============ 07 TYPE ============ -->
+<section id="type">
+  <div class="wrap">
+    <span class="sec-eyebrow"><span class="k" style="background:var(--k-type)"></span>07-type.langue</span>
+    <h2>타입 — 가장 야심차고, 가장 절제된 부분</h2>
+    <p class="sub">
+      추론 엔진(02d)이 유도를 만들고, 플러그인(Lumo v1: Fω + spine-local 양방향 +
+      capability row)이 원시 연산을 제공한다 — DSL에선 정의할 수 없고 호출만 가능.
+      DSL이 소유하는 것: 어떤 노드에 어떤 규칙이 발화하는지, 전제가 무엇인지, 실패 시
+      어떤 진단을 내는지(템플릿은 규칙 옆에). 표현 불가능한 규칙은 <code>extern rule</code>로
+      이름만 남기고 Rust로.
+    </p>
+    <div class="kinds">
       <article class="kind k-type full">
-        <header><span class="ext">*.type.langue</span><span class="role">타입 판단 — 가장 야심차고, 가장 절제된 부분</span></header>
-        <div class="body">추론 엔진(02d)이 유도를 만들고, 플러그인(Lumo v1: Fω + spine-local 양방향 +
-          capability row)이 원시 연산을 제공한다 — DSL에선 정의할 수 없고 호출만 가능.
-          DSL이 소유하는 것: 어떤 노드에 어떤 규칙이 발화하는지, 전제가 무엇인지, 실패 시
-          어떤 진단을 내는지. 표현 불가능한 규칙은 <code>extern rule</code>로 이름만 남기고 Rust로.</div>
+        <header><span class="ext">*.type.langue</span><span class="role">판단 · 규칙 · 진단 템플릿</span></header>
         <pre><span class="k">rule</span> infer App(f, a):
   infer(f) ~> Fn(param, ret | caps)
     <span class="e">else error "cannot call a non-function of type {0}" at f</span>
@@ -760,7 +785,7 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
 <!-- ============ 05 EXECUTION MODEL ============ -->
 <section id="exec">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--ink)"></span>06-exec.langue</span>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--ink)"></span>08-exec.langue</span>
     <h2>실행 모델 — 생성과 해석의 하이브리드 <em style="font-style:normal;font-size:14px;color:var(--ink-soft);font-family:var(--mono)">(제안, 반론 환영)</em></h2>
     <p class="sub">
       <code>crates/langc</code> 하나가 라이브러리(컴파일러에 정의를 탑재) + CLI
@@ -798,7 +823,7 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
 <!-- ============ 07 DECISIONS ============ -->
 <section id="decisions">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-decisions.langue</span>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>09-decisions.langue</span>
     <h2>결정된 것 · 열려 있는 것</h2>
     <p class="sub">도장이 찍힌 카드는 확정. 점선 카드가 오늘의 브레인스토밍 대상이다.</p>
 
@@ -845,6 +870,12 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
         <h3>이름은 Langue (v2) · Rust 호스트</h3>
         <p>langue 1 문법 파일은 정신적으로 유효한 부분집합. 도구는 crates/langc.</p>
         <span class="date">2026-07-09 ~ 10</span>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>챕터 순서</h3>
+        <p>프로젝트 레이아웃 → 문법 → 스코프 → 정제 → 타입. 문서와 아티팩트 모두 이 순서.</p>
+        <span class="date">2026-07-10 · 사용자 확정</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -910,7 +941,7 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
 <!-- ============ 08 MILESTONES ============ -->
 <section id="milestones">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--cobalt)"></span>08-milestones.langue</span>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--cobalt)"></span>10-milestones.langue</span>
     <h2>마일스톤</h2>
     <p class="sub">각 단계에서 <code>langc check</code>와 golden 테스트를 초록으로 유지.
       레거시 <code>legacy/crates/compiler/tests/fixtures/</code>가 승계 계약이다.</p>
