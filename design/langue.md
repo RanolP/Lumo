@@ -1,6 +1,7 @@
 # Langue 2 — a full language-definition DSL
 
-Status: draft for discussion (2026-07-09, revised 2026-07-10, rev 7)
+Status: current snapshot of the design (as of 2026-07-10); no changelog —
+this document only states what is decided and what is open.
 One artifact defines all of Lumo — tokens, grammar, trees, elaboration,
 binding, typing. Rust code is engines that execute the definition plus
 explicitly-declared escape hatches, never the definition itself.
@@ -381,7 +382,7 @@ Each milestone keeps `langc check` + golden-file tests green.
 
 ## 11. Decisions and open questions
 
-Decided (2026-07-09 ~ 10):
+Decided:
 
 1. **Full-language-definition scope**; name stays **"Langue" (v2)**; tooling
    in **Rust** (`crates/langc`).

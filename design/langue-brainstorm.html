@@ -125,7 +125,7 @@ h2{
 @media(max-width:760px){.pillars{grid-template-columns:1fr 1fr}}
 
 /* ---------- minutes: changelog + awaiting replies ---------- */
-.minutes{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.minutes{margin-top:16px;display:grid;grid-template-columns:1fr;gap:14px}
 .minutes .box{border:1px solid var(--line);border-radius:10px;background:#fff;padding:16px 18px}
 .minutes .box.ask{border-color:var(--seal)}
 .minutes h3{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin-bottom:10px;font-weight:600;letter-spacing:.02em}
@@ -137,7 +137,6 @@ h2{
 .minutes b{color:var(--ink)}
 .minutes a{color:var(--cobalt);text-decoration:none}
 .minutes a:hover{text-decoration:underline}
-@media(max-width:760px){.minutes{grid-template-columns:1fr}}
 
 /* ---------- motivation ---------- */
 .legacy-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 26px}
@@ -254,7 +253,6 @@ svg text{font-family:'IBM Plex Mono',monospace}
 .decision.open{border-style:dashed;background:transparent}
 .decision.open .seal{color:#AEB8C6;border:2px dashed #AEB8C6}
 .decision.open h3{color:var(--ink)}
-.decision .date{font-family:var(--mono);font-size:11px;color:#9AA6B5;display:block;margin-top:10px}
 .prompts{margin-top:36px;border:1px solid var(--cobalt);border-radius:10px;
   background:var(--cobalt-soft);padding:26px 28px}
 .prompts h3{font-family:var(--disp);font-size:18px;font-weight:600;color:var(--cobalt);margin-bottom:14px}
@@ -296,9 +294,9 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 <header class="hero">
   <div class="wrap">
     <div class="eyebrow">
-      <span>design/langue.md 미러 · v2</span><span class="dot"></span>
-      <span>개정 2026-07-10 (rev 6)</span><span class="dot"></span>
-      <span>이 문서가 대화의 전부 — 모든 결정·미결·회신이 여기 반영된다</span>
+      <span>design/langue.md 미러</span><span class="dot"></span>
+      <span>기준 2026-07-10</span><span class="dot"></span>
+      <span>현재 설계의 스냅샷 — 결정된 것과 미결만 담는다</span>
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
@@ -325,13 +323,6 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     </nav>
 
     <div class="minutes">
-      <div class="box">
-        <h3>이번 개정에서 바뀐 것 (rev 8)</h3>
-        <ul>
-          <li><b>토큰 모델 확정</b> — <code>token keyword.fn = 'fn'</code>: 이름 = 리터럴/정규식뿐, <code>keywords()</code> 블록 폐지. 이름이 곧 디버그 표시. <a href="#syntax">02a</a>에 반영, <a href="#decisions">도장</a>.</li>
-          <li>직전 rev: 레거시 설명 전부 삭제(why 챕터 제거), 아키텍처를 06으로 이동, 전체 번호 재매김.</li>
-        </ul>
-      </div>
       <div class="box ask">
         <h3>회신 대기 — 다음 메시지에서 답해 주면 도장으로 바꾼다</h3>
         <ul>
@@ -831,44 +822,37 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <span class="seal" aria-label="결정됨">결</span>
         <h3>전체 언어 정의 DSL</h3>
         <p>문법만이 아니라 어휘·트리·정제·바인딩·타입까지. langue 1은 부분집합이 된다.</p>
-        <span class="date">2026-07-09</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>다중 파일 프로젝트 형식</h3>
         <p>종류 접미사로 역할만 정하고, 같은 종류는 가산 병합. 기능 단위 슬라이싱.</p>
-        <span class="date">2026-07-10 · 사용자 제안</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>import 없음 — cat + stdlib + DCE</h3>
         <p>모든 파일이 stdlib과 함께 하나의 전역 이름공간으로 연결된다.
         전방 선언 불필요, 안 쓰인 항목은 DCE. 배선 의식 제로.</p>
-        <span class="date">2026-07-10 · 사용자 제안</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>표면 파서는 생성</h3>
         <p>우선순위 주석 + extern 복구 훅. 복구 품질이 부족하면 M0 출구에서 수기 파서로 후퇴.</p>
-        <span class="date">2026-07-10</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>임의의 트리</h3>
         <p>파이프라인 모양은 도구가 아니라 정의가 정한다. CBPV 분리는 M1의 core.syn.langue에서.</p>
-        <span class="date">2026-07-10</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>진단 템플릿은 DSL에</h3>
         <p>전제마다 else error "…" at 노드. 메시지가 규칙 옆에 살아서 드리프트가 없다.</p>
-        <span class="date">2026-07-10</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>이름은 Langue (v2) · Rust 호스트</h3>
         <p>langue 1 문법 파일은 정신적으로 유효한 부분집합. 도구는 crates/langc.</p>
-        <span class="date">2026-07-09 ~ 10</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -876,38 +860,32 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <p>token keyword.fn = 'fn' — 이름이 디버그·진단·SyntaxKind의 표시 정체성.
         keywords() 등 특수 형태 없음. 최장 일치, 동률이면 리터럴 승. 점 이름은 하이라이트
         스코프 겸용.</p>
-        <span class="date">2026-07-10 · 사용자 확정</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>챕터 순서</h3>
         <p>프로젝트 레이아웃 → 문법 → 스코프 → 정제 → 타입. 문서와 아티팩트 모두 이 순서.</p>
-        <span class="date">2026-07-10 · 사용자 확정</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>tree kind 폐지 — 모든 트리는 자기 문법</h3>
         <p>내부 트리도 문법으로 선언(tree Core 스코프). 파서·프린터 유도, 전 단계 텍스트 왕복.</p>
-        <span class="date">2026-07-10 · 사용자 확정</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>salsa식 아키텍처, 첫날부터</h3>
         <p>정의 층(langc)과 컴파일 층 모두 메모이즈된 질의 위에. 이전의 미결 문항 종결.</p>
-        <span class="date">2026-07-10 · 사용자 확정</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>e-graph 정제</h3>
         <p>같은 트리 최적화는 등식 포화 + 비용 추출. 트리 간 로워링은 구문 지향 유지.</p>
-        <span class="date">2026-07-10 · 사용자 확정</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>플러그형 타입 시스템</h3>
         <p>범용 추론 엔진(유도 트리 생성) + 플러그인. Lumo v1은 Fω + spine-local 양방향 +
         capability row를 꽂는다.</p>
-        <span class="date">2026-07-10 · 사용자 확정</span>
       </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
