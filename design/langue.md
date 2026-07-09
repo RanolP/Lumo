@@ -144,23 +144,32 @@ regex tokens by name (`name:ident`).
 
 ### 2.3 Grammar
 
-- **Separated lists are a built-in**: `params:sep(Param, ',')` — the
-  generator emits a proper list accessor. No wrapper-node convention, no
-  unlabeled `head`/`tail` walking.
-- **Precedence/associativity annotations** for expression grammars, so the
-  generated parser handles binary expressions without hand-written Pratt
-  code:
+- Separated lists: `params:sep(Param, ',')` — generator emits list
+  accessors.
+- Expression grammars: `praat` blocks. `simple` lists the atoms; in
+  `operators`, `@n` is a *placeholder for an expression operand* with
+  binding power n between the surrounding tokens. Placement draws the
+  operator shape directly — prefix, infix, postfix, mixfix:
 
   ```
-  Expr = ...
-    | infix BinExpr  { '|>' left, '+' '-' left @ 60, '*' '/' left @ 70 }
+  Expr = praat {
+    simple = Lit | Ident | ParenExpr
+    operators {
+      '+' | '-' | '!' @100,
+      @89 '**' @90,
+      @80 '*' | '/' @79,
+      @70 '+' | '-' @69,
+    }
+  }
   ```
-- Grammar rules reference tokens and languages declared anywhere in the
-  project — no import, no forward declaration.
 
-Per language, the generator emits `syntax_kind.rs`, typed AST accessors, a
-rowan-style lossless tree, the parser (with `extern` recovery hooks if
-needed), and the pretty-printer.
+  `'+' @100` prefix; `@80 '*' @79` left-assoc infix; `@89 '**' @90`
+  right-assoc infix.
+- Rules reference tokens and languages declared anywhere — no import, no
+  forward declaration.
+
+Per language, the generator emits syntax kinds, typed AST accessors, a
+lossless tree, the parser (extern recovery hooks), and the pretty-printer.
 
 ## 3. Scope (`*.scope.langue`)
 
@@ -268,7 +277,7 @@ equivalent if salsa's model fights the reasoning engine.
 
 A `.langue` file describes the **shape of trees**, never a parsing
 algorithm. Labels become accessors, alternatives become node kinds, and the
-parser is *derived* from the shape (plus precedence annotations) rather than
+parser is *derived* from the shape (plus `praat` blocks) rather than
 written. Every pipeline language is declared this way and therefore carries
 its own display syntax (section 2.1). The philosophy extends further: elab
 rules, scope facts, and typing rules are likewise shape-first,
@@ -387,8 +396,8 @@ Decided:
 
 1. **Full-language-definition scope**; name stays **"Langue" (v2)**; tooling
    in **Rust** (`crates/langc`).
-2. **Parsers are generated** from the `.syn.langue` files, with precedence
-   annotations and extern recovery hooks. Fall back to hand-written only if
+2. **Parsers are generated** from the `.syn.langue` files, with `praat`
+   blocks and extern recovery hooks. Fall back to hand-written only if
    recovery quality proves insufficient at M0 exit.
 3. **Every stage is an individual language declared by file name**:
    `Mir.syn.langue` puts `Mir` in the global namespace, referenceable as a

@@ -443,42 +443,42 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-syn)"></span>02-syntax.langue</span>
     <h2>문법 — 모양을 쓰면 파서와 프린터가 나온다</h2>
     <p class="sub">
-      Lumo, Mir, Lir, Js — 파이프라인의 모든 단계가 각자 <code>.syn.langue</code>로 정의되는
-      <b>개별 언어</b>다. <code>Lumo.syn.langue</code>를 두면 이름 <b>Lumo</b>가 전역 스코프에
-      선언되어 언어로써 참조된다. 문법이 모양과 표시를 동시에 정하고, 언어마다
-      파서·프리티 프린터가 유도된다. 단계를 몇 개 둘지, CBPV를 두 언어로 쪼갤지는
-      정의 안의 결정이지 도구의 제약이 아니다.
+      Lumo, Mir, Lir, Js — 모든 단계가 각자 <code>.syn.langue</code>로 정의되는 <b>개별 언어</b>다.
+      파일 이름이 곧 선언이고, 문법이 모양과 표시를 동시에 정한다.
     </p>
 
     <div class="kinds">
       <article class="kind k-syn">
         <header><span class="ext">*.syn.langue</span><span class="role">02a · Lumo: 어휘 + 문법</span></header>
-        <div class="body">토큰은 <b>이름 = 리터럴 또는 정규식</b>, 그게 전부다 — <code>keywords()</code>
-          같은 특수 블록은 없다. 문법 속 <code>'fn'</code>은 <code>keyword.fn</code> 토큰으로
-          해석되고, 디버그·진단·SyntaxKind 어디서나 그 이름으로 표시된다. 최장 일치 우선,
-          같은 길이면 리터럴이 정규식을 이긴다. 점 이름 계층(<code>keyword.*</code>,
-          <code>lit.*</code>)은 하이라이트 스코프로 그대로 쓴다. 래퍼 노드 관례는
-          <code>sep()</code> 내장으로, Pratt 파서는 우선순위 주석으로 흡수.</div>
-        <pre><span class="k">token</span> keyword.fn = <span class="s">'fn'</span>          <span class="c">// 'fn' → 디버그에선 keyword.fn</span>
+        <div class="body">토큰은 <b>이름 = 리터럴/정규식</b>이 전부 — 이름이 곧 디버그 표시.
+          최장 일치, 동률은 리터럴 승, 점 이름은 하이라이트 스코프.
+          리스트는 <code>sep()</code>, 식은 <code>praat</code> 블록 —
+          <code>@n</code>은 그 자리에 오는 식(simple)의 <b>자리 표시자</b>, n은 토큰 사이의
+          결합력. 배치가 곧 전위/중위/후위: <code>'+' @100</code> 전위,
+          <code>@80 '*' @79</code> 좌결합, <code>@89 '**' @90</code> 우결합.</div>
+        <pre><span class="k">token</span> keyword.fn = <span class="s">'fn'</span>          <span class="c">// 디버그 표시 = keyword.fn</span>
 <span class="k">token</span> ident      = /[a-zA-Z_][a-zA-Z0-9_]*/
-<span class="k">token</span> lit.number = /[0-9]+(\.[0-9]+)?/
 
 FnDecl = <span class="s">'fn'</span> name:ident params:<span class="k">sep</span>(Param, <span class="s">','</span>) …
-Expr   = <span class="k">infix</span> BinExpr {
-  <span class="s">'|>'</span> left, <span class="s">'+'</span> <span class="s">'-'</span> left @ 60, <span class="s">'*'</span> <span class="s">'/'</span> left @ 70
+
+Expr = <span class="k">praat</span> {
+  simple = Lit | Ident | ParenExpr
+  <span class="k">operators</span> {
+    <span class="s">'+'</span> | <span class="s">'-'</span> | <span class="s">'!'</span> @100,
+    @89 <span class="s">'**'</span> @90,
+    @80 <span class="s">'*'</span> | <span class="s">'/'</span> @79,
+    @70 <span class="s">'+'</span> | <span class="s">'-'</span> @69,
+  }
 }</pre>
       </article>
 
       <article class="kind k-tree">
         <header><span class="ext">*.syn.langue</span><span class="role">02b · Mir · Lir · Js — 전부 대등한 언어</span></header>
-        <div class="body">중간 단계도, 산출 대상 Js도 각자 <code>.syn.langue</code>로 정의되는
-          <b>개별 언어 문법</b>이다. 특별한 형태는 없다 — <code>Mir.syn.langue</code> 파일이
-          존재하는 것 자체가 이름 <b>Mir</b>를 전역 스코프에 선언하고, 다른 규칙이 그 이름을
-          언어로써 참조한다(<code>elab Lumo -> Mir</code>). 여러 파일로 쪼갤 땐
-          <code>Lumo.expr.syn.langue</code>처럼 첫 조각이 언어. 언어마다 파서·프리티 프린터가
-          유도되어 모든 단계가 텍스트로 왕복 — 디버그 덤프, <code>--emit Mir</code>,
-          IR 문법으로 직접 쓰는 golden 픽스처가 공짜.</div>
-        <pre><span class="c">// Mir.syn.langue — 파일 이름이 언어 Mir를 스코프에 선언한다</span>
+        <div class="body"><code>Mir.syn.langue</code>가 존재하면 이름 <b>Mir</b>가 스코프에 선언되고
+          언어로써 참조된다(<code>elab Lumo -> Mir</code>). 여러 파일로 쪼갤 땐
+          <code>Lumo.expr.syn.langue</code>처럼 첫 조각이 언어. 언어마다 파서·프린터가 유도되어
+          전 단계 텍스트 왕복 — <code>--emit Mir</code>, IR 문법 golden 픽스처 공짜.</div>
+        <pre><span class="c">// Mir.syn.langue — 파일 이름이 언어 Mir를 선언</span>
 Expr = | Lam | App | Let | Perform
 Lam  = <span class="s">'fn'</span> param:Binder <span class="s">'->'</span> body:Expr
 App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span></pre>
@@ -790,7 +790,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <ul>
           <li>토큰 DFA, SyntaxKind, 무손실 트리</li>
           <li>타입이 붙은 AST 접근자</li>
-          <li>각 언어의 파서 (우선순위 주석 + extern 복구 훅)</li>
+          <li>각 언어의 파서 (praat 블록 + extern 복구 훅)</li>
           <li>각 언어의 프리티 프린터 — 텍스트 왕복</li>
         </ul>
         <p class="why"><b>이유:</b> 형태를 정하는 뜨거운 경로. 언제나 같은
@@ -839,7 +839,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>표면 파서는 생성</h3>
-        <p>우선순위 주석 + extern 복구 훅. 복구 품질이 부족하면 M0 출구에서 수기 파서로 후퇴.</p>
+        <p>praat 블록 + extern 복구 훅. 복구 품질이 부족하면 M0 출구에서 수기 파서로 후퇴.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
