@@ -310,7 +310,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <pre><span class="kw">language</span> <span class="lang">Lumo</span>                        <span class="cm">// lumo.langue — 매니페스트</span>
 
 <a class="use" href="#project">01-project.langue</a>        <span class="cm">// ① 프로젝트 레이아웃: cat + stdlib + DCE</span>
-<a class="use" href="#syntax">02-syntax.langue</a>         <span class="cm">// ② 문법: 모든 트리가 자기 문법을 가진다</span>
+<a class="use" href="#syntax">02-syntax.langue</a>         <span class="cm">// ② 문법: 모든 단계가 개별 언어다</span>
 <a class="use" href="#scope">03-scope.langue</a>          <span class="cm">// ③ 스코프: 바인딩 사실 선언</span>
 <a class="use" href="#elab">04-elab.langue</a>           <span class="cm">// ④ 정제: 규칙 + 등식 포화</span>
 <a class="use" href="#type">05-type.langue</a>           <span class="cm">// ⑤ 타입: 추론 엔진 위의 판단</span>
@@ -326,7 +326,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <div class="box ask">
         <h3>회신 대기 — 다음 메시지에서 답해 주면 도장으로 바꾼다</h3>
         <ul>
-          <li><b>내부 트리 무손실성</b> — 제안: 표면 트리만 무손실(trivia 보존), 내부 트리는 정규 프린트로 왕복. e-graph 노드가 trivia를 안 들고 다녀도 됨. <a href="#decisions">08</a></li>
+          <li><b>무손실성 범위</b> — 제안: Lumo(표면)만 무손실(trivia 보존), 나머지 언어는 정규 프린트로 왕복. e-graph 노드가 trivia를 안 들고 다녀도 됨. <a href="#decisions">08</a></li>
           <li><b>마일스톤 순서</b> — 챕터 순서는 읽기 순서로만 적용했다. 구현 순서도 scope(M2)를 elab(M1)보다 앞당길까? 현재는 로워링이 단독 테스트 가능해서 elab 먼저. <a href="#milestones">09</a></li>
           <li><b>e-graph 엔진</b> — 제안: egglog 스파이크 하나로 "스코프 엔진 겸용" 가설까지 검증 후 결정. <a href="#decisions">08</a></li>
           <li><b>타입 플러그인 경계 · 비용 모델 위치</b> — 열려 있음. <a href="#decisions">08</a></li>
@@ -361,9 +361,9 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 
         <!-- project files -->
         <rect x="24" y="22"  width="214" height="36" rx="7" fill="#fff" stroke="#2547D0" stroke-width="1.4"/>
-        <text x="40" y="45" fill="#2547D0" font-size="12.5" font-weight="600">surface/expr.syn.langue</text>
+        <text x="40" y="45" fill="#2547D0" font-size="12.5" font-weight="600">Lumo.expr.syn.langue</text>
         <rect x="24" y="70"  width="214" height="36" rx="7" fill="#fff" stroke="#0E8A6D" stroke-width="1.4"/>
-        <text x="40" y="93" fill="#0E8A6D" font-size="12.5" font-weight="600">core.syn.langue (tree Core)</text>
+        <text x="40" y="93" fill="#0E8A6D" font-size="12.5" font-weight="600">Mir.syn.langue</text>
         <rect x="24" y="118" width="214" height="36" rx="7" fill="#fff" stroke="#B96A00" stroke-width="1.4"/>
         <text x="40" y="141" fill="#B96A00" font-size="12.5" font-weight="600">elab/expr.elab.langue</text>
         <rect x="24" y="166" width="214" height="36" rx="7" fill="#fff" stroke="#7A3FB8" stroke-width="1.4"/>
@@ -443,15 +443,16 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-syn)"></span>02-syntax.langue</span>
     <h2>문법 — 모양을 쓰면 파서와 프린터가 나온다</h2>
     <p class="sub">
-      표면 언어든 내부 트리든 전부 <code>.syn.langue</code>다. 문법이 노드의 모양과 표시
-      문법을 동시에 정하고, 파서·프리티 프린터가 트리마다 유도된다. 트리를 몇 단계 둘지,
-      CBPV를 두 트리로 쪼갤지는 Lumo 정의 <b>안에서</b> 내리는 결정이지 도구의 제약이
-      아니다.
+      Lumo, Mir, Lir, Js — 파이프라인의 모든 단계가 각자 <code>.syn.langue</code>로 정의되는
+      <b>개별 언어</b>다. <code>Lumo.syn.langue</code>를 두면 이름 <b>Lumo</b>가 전역 스코프에
+      선언되어 언어로써 참조된다. 문법이 모양과 표시를 동시에 정하고, 언어마다
+      파서·프리티 프린터가 유도된다. 단계를 몇 개 둘지, CBPV를 두 언어로 쪼갤지는
+      정의 안의 결정이지 도구의 제약이 아니다.
     </p>
 
     <div class="kinds">
       <article class="kind k-syn">
-        <header><span class="ext">*.syn.langue</span><span class="role">02a · 표면: 어휘 + CST 문법</span></header>
+        <header><span class="ext">*.syn.langue</span><span class="role">02a · Lumo: 어휘 + 문법</span></header>
         <div class="body">토큰은 <b>이름 = 리터럴 또는 정규식</b>, 그게 전부다 — <code>keywords()</code>
           같은 특수 블록은 없다. 문법 속 <code>'fn'</code>은 <code>keyword.fn</code> 토큰으로
           해석되고, 디버그·진단·SyntaxKind 어디서나 그 이름으로 표시된다. 최장 일치 우선,
@@ -469,14 +470,15 @@ Expr   = <span class="k">infix</span> BinExpr {
       </article>
 
       <article class="kind k-tree">
-        <header><span class="ext">*.syn.langue</span><span class="role">02b · 내부 트리 — tree kind는 없다</span></header>
-        <div class="body">탈설탕 이후의 트리도 ADT가 아니라 <b>문법</b>으로 선언한다
-          (<code>tree Core</code>로 스코프). 파서와 프리티 프린터가 함께 유도되어 모든 단계가
-          텍스트로 왕복. 디버그 덤프,
-          <code>--emit core</code>, IR 문법으로 직접 쓰는 golden 픽스처가 공짜.</div>
-        <pre><span class="c">// core.syn.langue</span>
-<span class="k">tree</span> Core
-
+        <header><span class="ext">*.syn.langue</span><span class="role">02b · Mir · Lir · Js — 전부 대등한 언어</span></header>
+        <div class="body">중간 단계도, 산출 대상 Js도 각자 <code>.syn.langue</code>로 정의되는
+          <b>개별 언어 문법</b>이다. 특별한 형태는 없다 — <code>Mir.syn.langue</code> 파일이
+          존재하는 것 자체가 이름 <b>Mir</b>를 전역 스코프에 선언하고, 다른 규칙이 그 이름을
+          언어로써 참조한다(<code>elab Lumo -> Mir</code>). 여러 파일로 쪼갤 땐
+          <code>Lumo.expr.syn.langue</code>처럼 첫 조각이 언어. 언어마다 파서·프리티 프린터가
+          유도되어 모든 단계가 텍스트로 왕복 — 디버그 덤프, <code>--emit Mir</code>,
+          IR 문법으로 직접 쓰는 golden 픽스처가 공짜.</div>
+        <pre><span class="c">// Mir.syn.langue — 파일 이름이 언어 Mir를 스코프에 선언한다</span>
 Expr = | Lam | App | Let | Perform
 Lam  = <span class="s">'fn'</span> param:Binder <span class="s">'->'</span> body:Expr
 App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span></pre>
@@ -484,24 +486,24 @@ App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span
     </div>
 
     <figure class="figure" style="margin-top:20px">
-      <svg viewBox="0 0 880 200" role="img" aria-label="Surface에서 Core를 거쳐 백엔드 준비 트리로 가는 elaboration 파이프라인">
+      <svg viewBox="0 0 880 200" role="img" aria-label="Lumo에서 Mir를 거쳐 Js로 가는 elaboration 파이프라인">
         <defs>
           <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="#4E5A6B"/>
           </marker>
         </defs>
-        <!-- Surface -->
+        <!-- Lumo -->
         <rect x="24" y="64" width="168" height="72" rx="10" fill="#fff" stroke="#2547D0" stroke-width="1.6"/>
-        <text x="108" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">Surface</text>
-        <text x="108" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">*.syn.langue → CST</text>
+        <text x="108" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">Lumo</text>
+        <text x="108" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">Lumo.syn.langue</text>
         <!-- Core -->
         <rect x="300" y="64" width="168" height="72" rx="10" fill="#fff" stroke="#0E8A6D" stroke-width="1.6"/>
-        <text x="384" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">Core</text>
-        <text x="384" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">core.syn.langue · 자기 문법 보유</text>
+        <text x="384" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">Mir</text>
+        <text x="384" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">Mir.syn.langue</text>
         <!-- backend prep -->
         <rect x="576" y="64" width="168" height="72" rx="10" fill="#fff" stroke="#0E8A6D" stroke-width="1.6"/>
-        <text x="660" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">MemAware</text>
-        <text x="660" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">백엔드 준비 트리 (예시)</text>
+        <text x="660" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">Js</text>
+        <text x="660" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">Js.syn.langue · 방출 = 프린트</text>
         <!-- more -->
         <rect x="792" y="64" width="70" height="72" rx="10" fill="none" stroke="#B4BECB" stroke-width="1.6" stroke-dasharray="6 5"/>
         <text x="827" y="105" text-anchor="middle" fill="#9AA6B5" font-size="17">…</text>
@@ -515,13 +517,13 @@ App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span
 
         <!-- self-pass loop on Core -->
         <path d="M340,64 C340,18 428,18 428,64" fill="none" stroke="#B96A00" stroke-width="1.5" marker-end="url(#arr2)"/>
-        <text x="384" y="26" text-anchor="middle" fill="#B96A00" font-size="11.5">같은 트리 패스 (최적화 등)</text>
+        <text x="384" y="26" text-anchor="middle" fill="#B96A00" font-size="11.5">같은 언어 패스 (최적화 등)</text>
 
         <!-- CBPV note -->
         <path d="M384,136 L384,168" stroke="#B4BECB" stroke-width="1.3" stroke-dasharray="3 4"/>
-        <text x="384" y="188" text-anchor="middle" fill="#4E5A6B" font-size="11.5">CBPV 값/계산 분리 여부 → M1에서 core.syn.langue를 쓸 때 결정</text>
+        <text x="384" y="188" text-anchor="middle" fill="#4E5A6B" font-size="11.5">CBPV 값/계산 분리 여부 → M1에서 Mir.syn.langue를 쓸 때 결정</text>
       </svg>
-      <figcaption>트리 개수·이름·형태는 전부 정의의 몫. Langue는 트리 선언과 트리 사이의 규칙만 안다.</figcaption>
+      <figcaption>단계 수·이름은 정의의 몫 — Lumo → Mir → Lir → Js처럼. Js 방출은 Js 트리의 프리티 프린트다.</figcaption>
     </figure>
   </div>
 </section>
@@ -555,14 +557,14 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>04-elab.langue</span>
     <h2>정제 — 의미는 규칙으로, 최적화는 등식으로</h2>
     <p class="sub">
-      소스 쪽은 준인용 패턴, 타깃 쪽은 생성자. 트리 간 로워링은 노드 종류당 규칙 하나에
-      망라성 검사, 재귀는 <code>elab(…)</code>으로 명시적. 같은 트리 규칙군은 e-graph 등식
+      소스 쪽은 준인용 패턴, 타깃 쪽은 생성자. 언어 간 로워링은 노드 종류당 규칙 하나에
+      망라성 검사, 재귀는 <code>elab(…)</code>으로 명시적. 같은 언어 규칙군은 e-graph 등식
       포화로 돈다(06c). 도우미(<code>foldr</code>, <code>map</code>, 신선한 이름)는 stdlib에서.
     </p>
     <div class="kinds">
       <article class="kind k-elab full">
-        <header><span class="ext">*.elab.langue</span><span class="role">트리 → 트리 · 트리 → 같은 트리</span></header>
-        <pre><span class="k">elab</span> Surface -> Core {
+        <header><span class="ext">*.elab.langue</span><span class="role">언어 → 언어 · 같은 언어 패스</span></header>
+        <pre><span class="k">elab</span> Lumo -> Mir {
   <span class="k">rule</span> FnDecl { name, params, body } =>
     Let(name, foldr(params, elab(body), |p, acc| Lam(p, acc)))
   <span class="k">rule</span> PipeExpr { lhs, rhs } =>   <span class="c">// a |> f ⇒ f(a)</span>
@@ -645,7 +647,7 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
         <span class="ph" style="border-color:var(--cobalt);color:var(--cobalt)">컴파일 층 (생성된 컴파일러)</span>
         <span class="arr">·</span>
         <span class="ph">cst(file)</span><span class="arr">→</span>
-        <span class="ph">tree(file, "Core")</span><span class="arr">→</span>
+        <span class="ph">mir(file)</span><span class="arr">→</span>
         <span class="ph">resolve(node)</span><span class="arr">→</span>
         <span class="ph">infer(node)</span>
       </div>
@@ -660,9 +662,9 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
       <h3>ungrammar식 표기 — 모양을 쓰면, 알고리즘은 유도된다</h3>
       <p><code>.langue</code> 표기는 <b>트리의 모양</b>을 기술하지, 파싱 알고리즘을 기술하지
       않는다. 레이블은 접근자가 되고, 대안은 노드 종류가 되고, 파서는 모양(+ 우선순위
-      주석)에서 <b>유도</b>된다. 별도의 ADT 표기는 없다 — <b>모든 트리는 문법으로 선언되고,
-      따라서 자기 표시 문법을 가진다</b>. 표면이든 내부(Core 등)든 파서와 프리티 프린터가
-      함께 유도되어 모든 단계가 텍스트로 왕복한다. 이 철학이 문법 너머까지 간다: elab
+      주석)에서 <b>유도</b>된다. <b>파이프라인의 모든 단계(Lumo, Mir, Lir, Js)는 각자 문법으로 선언되는 개별 언어이고,
+      따라서 자기 표시 문법을 가진다</b>. 언어마다 파서와 프리티 프린터가 유도되어
+      모든 단계가 텍스트로 왕복한다. 이 철학이 문법 너머까지 간다: elab
       규칙·스코프 사실·타입 규칙 전부가 엔진이 해석하는 모양-우선·알고리즘-부재 선언이다.</p>
       <pre class="snippet"><span class="c">// 무엇을 쓰는가: 트리의 모양 = 곧 그 트리의 표시 문법</span>
 FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span>(Param, <span class="k">','</span>) …
@@ -676,13 +678,13 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <p>정제는 기계가 다른 두 모드로 갈린다.</p>
       <div class="minis">
         <div class="mini">
-          <h4>트리 → 다른 트리: 구문 지향</h4>
-          <p><code>elab Surface -> Core</code>는 결정적 단일 패스 번역.
+          <h4>언어 → 다른 언어: 구문 지향</h4>
+          <p><code>elab Lumo -> Mir</code>는 결정적 단일 패스 번역.
           노드 종류당 규칙 하나, 망라성 검사. 의미의 정의이므로 탐색할 것이 없다.</p>
         </div>
         <div class="mini">
-          <h4>같은 트리: 등식 포화</h4>
-          <p><code>elab Core -> Core</code> 규칙군은 e-graph 위의 비파괴 재작성.
+          <h4>같은 언어: 등식 포화</h4>
+          <p><code>elab Mir -> Mir</code> 규칙군은 e-graph 위의 비파괴 재작성.
           포화까지 돌리므로 <b>규칙 순서가 무의미</b> — 파일 순서가 무의미한
           cat과 같은 원리다. 인라이닝·CPS 제거·DCE가 손으로 배열한
           패스 대신 선언된 등식이 된다.</p>
@@ -784,12 +786,12 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
     <div class="exec">
       <div class="cell">
         <h3>생성되는 것</h3>
-        <span class="tag">syn → Rust 소스 코드 (선언된 트리마다)</span>
+        <span class="tag">syn → Rust 소스 코드 (선언된 언어마다)</span>
         <ul>
           <li>토큰 DFA, SyntaxKind, 무손실 트리</li>
           <li>타입이 붙은 AST 접근자</li>
-          <li>각 트리의 파서 (우선순위 주석 + extern 복구 훅)</li>
-          <li>각 트리의 프리티 프린터 — 텍스트 왕복</li>
+          <li>각 언어의 파서 (우선순위 주석 + extern 복구 훅)</li>
+          <li>각 언어의 프리티 프린터 — 텍스트 왕복</li>
         </ul>
         <p class="why"><b>이유:</b> 형태를 정하는 뜨거운 경로. 언제나 같은
         워크플로 — 수정, <code>langc gen</code>, 커밋.</p>
@@ -841,8 +843,9 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
-        <h3>임의의 트리</h3>
-        <p>파이프라인 모양은 도구가 아니라 정의가 정한다. CBPV 분리는 M1의 core.syn.langue에서.</p>
+        <h3>임의의 언어 사슬</h3>
+        <p>파이프라인 모양은 도구가 아니라 정의가 정한다 — 단계 수·이름 자유.
+        CBPV 분리는 M1의 Mir.syn.langue에서.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -868,8 +871,10 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
-        <h3>tree kind 폐지 — 모든 트리는 자기 문법</h3>
-        <p>내부 트리도 문법으로 선언(tree Core 스코프). 파서·프린터 유도, 전 단계 텍스트 왕복.</p>
+        <h3>파일 이름이 언어를 선언한다</h3>
+        <p>Lumo.syn.langue가 있으면 이름 Lumo가 전역 스코프에 선언되어 언어로써 참조된다.
+        Lumo, Mir, Lir, Js 전부 대등한 개별 언어 — 특별한 키워드 없음. 언어마다
+        파서·프린터 유도, 전 단계 텍스트 왕복. Js 방출은 프리티 프린트다.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -879,7 +884,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>e-graph 정제</h3>
-        <p>같은 트리 최적화는 등식 포화 + 비용 추출. 트리 간 로워링은 구문 지향 유지.</p>
+        <p>같은 언어 최적화는 등식 포화 + 비용 추출. 언어 간 로워링은 구문 지향 유지.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -895,9 +900,9 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
-        <h3>내부 트리의 무손실성</h3>
-        <p>trivia/공백 보존을 표면 트리에만 적용하나, 내부 트리에도 적용하나?
-        제안: 표면만 무손실, 내부는 정규 프린트 왕복 — e-graph가 trivia를 안 들고 다닌다.</p>
+        <h3>무손실성의 범위</h3>
+        <p>trivia/공백 보존을 Lumo(표면)에만 적용하나, 모든 언어에 적용하나?
+        제안: Lumo만 무손실, 나머지 언어는 정규 프린트 왕복 — e-graph가 trivia를 안 들고 다닌다.</p>
       </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
@@ -940,13 +945,13 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <span class="m">M0</span>
         <div><h3>langc 코어</h3>
         <p>.langue 파서, 프로젝트 cat/병합/DCE 모델, langc check, salsa 질의 런타임 뼈대.
-        Lumo의 .syn.langue 작성 — SyntaxKind·AST·무손실 트리에 더해 표면 파서까지 생성.</p></div>
+        Lumo.syn.langue 작성 — SyntaxKind·AST·무손실 트리·파서·프린터 생성.</p></div>
       </li>
       <li>
         <span class="m">M1</span>
-        <div><h3>내부 트리 + elab (로워링)</h3>
-        <p>core.syn.langue 작성(Core의 모양 + 표시 문법), Surface → Core 구문 지향 규칙 작성.
-        재작성 엔진이 로워링을 전담. CBPV 분리 여부를 여기서 결정.</p></div>
+        <div><h3>Mir + elab (로워링)</h3>
+        <p>Mir.syn.langue 작성, elab Lumo → Mir 구문 지향 규칙 작성. 재작성 엔진이 로워링을
+        전담. CBPV 분리 여부를 여기서 결정.</p></div>
       </li>
       <li>
         <span class="m">M2</span>
@@ -960,12 +965,13 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <li>
         <span class="m">M4</span>
         <div><h3>e-graph 최적화</h3>
-        <p>같은 트리 elab 규칙군을 등식 포화로. 최적화 golden 픽스처가 계약.</p></div>
+        <p>같은 언어 elab 규칙군을 등식 포화로. 최적화 golden 픽스처가 계약.</p></div>
       </li>
       <li>
         <span class="m">M5</span>
-        <div><h3>재연결</h3>
-        <p>백엔드를 Core 위에 새로 작성, 남은 golden 픽스처 정리.</p></div>
+        <div><h3>Js</h3>
+        <p>Js.syn.langue 작성, Mir/Lir → Js elab — 방출은 Js 트리의 프리티 프린트.
+        남은 golden 픽스처 정리.</p></div>
       </li>
     </ol>
   </div>

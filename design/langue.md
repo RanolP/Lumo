@@ -2,16 +2,18 @@
 
 Status: current snapshot of the design (as of 2026-07-10); no changelog —
 this document only states what is decided and what is open.
-One artifact defines all of Lumo — tokens, grammar, trees, elaboration,
-binding, typing. Rust code is engines that execute the definition plus
-explicitly-declared escape hatches, never the definition itself.
+One artifact defines all of Lumo — tokens, grammar, every pipeline language,
+elaboration, binding, typing. Rust code is engines that execute the
+definition plus explicitly-declared escape hatches, never the definition
+itself.
 
-Decided so far: full-language-definition scope, tooling in Rust, surface
-parser generated from the grammar, arbitrary user-defined trees, diagnostic
-templates in the DSL, name "Langue" (v2), multi-file project with no imports
-(cat + stdlib + DCE), the four architecture pillars (section 6), no tree
-kind (every tree carries its own display syntax), and chapter order
-project layout → syntax → scope → elaboration → type.
+Decided so far: full-language-definition scope, tooling in Rust, parsers
+generated from grammars, diagnostic templates in the DSL, name "Langue"
+(v2), multi-file project with no imports (cat + stdlib + DCE), the four
+architecture pillars (section 6), every pipeline stage is an individual
+language declared by its `.syn.langue` file name, tokens are named
+literals/regexes only, and chapter order project layout → syntax → scope →
+elaboration → type.
 
 ## 1. Project layout
 
@@ -21,24 +23,22 @@ A definition is a multi-file Langue project. The suffix declares the role:
 
 ```
 <name>.langue         project manifest: language name + options (no kind suffix)
-<name>.syn.langue     a tree: lexical structure + grammar = shape AND display syntax
+<Name>.syn.langue     a language: lexical structure + grammar = shape AND display syntax
 <name>.scope.langue   binding: scopes, declarations, references
-<name>.elab.langue    elaboration: rewrite rules between/within trees
+<name>.elab.langue    elaboration: rewrite rules between/within languages
 <name>.type.langue    kinds, type formers, bidirectional typing judgments
 ```
-
-There is deliberately no `tree` kind: internal trees are `.syn.langue` files
-too, scoped to a tree name (section 2.3).
 
 The Lumo definition slices by feature:
 
 ```
 lumo/
   lumo.langue
-  surface/tokens.syn.langue
-  surface/item.syn.langue
-  surface/expr.syn.langue
-  core.syn.langue
+  Lumo.tokens.syn.langue
+  Lumo.item.syn.langue
+  Lumo.expr.syn.langue
+  Mir.syn.langue
+  Js.syn.langue
   scope/lexical.scope.langue
   elab/item.elab.langue
   elab/expr.elab.langue
@@ -70,13 +70,50 @@ unreachable-file error. An optional lint can surface unused *project* items.
 
 Two same-named items in the global namespace are an error. The designed
 exception is additive merging: multiple files contributing rules to the same
-judgment or constructors to the same tree (`fn.type.langue` and
-`cap.type.langue` both feed `infer`/`check`), with exhaustiveness and overlap
-checked globally after the merge.
+judgment or grammar rules to the same language (`fn.type.langue` and
+`cap.type.langue` both feed `infer`/`check`; `Lumo.item.syn.langue` and
+`Lumo.expr.syn.langue` both feed language `Lumo`), with exhaustiveness and
+overlap checked globally after the merge.
 
 ## 2. Syntax (`*.syn.langue`)
 
-### 2.1 Tokens
+### 2.1 Languages are declared by file name
+
+**Decided: every pipeline stage — Lumo, Mir, Lir, Js, however many the
+definition wants — is an individual language, and each is defined by its own
+`.syn.langue` grammar. Nothing is special**: no marker keyword, no
+surface/internal distinction in the tool. The file `Mir.syn.langue` existing
+*is* the declaration: it puts the name `Mir` into the global namespace, and
+other rules reference it as a language (`elab Lumo -> Mir`, `--emit Mir`).
+A language split across files uses the first name segment:
+`Lumo.expr.syn.langue` contributes to language `Lumo`.
+
+```
+// Mir.syn.langue — the file name declares language Mir
+Expr =
+  | Lam | App | Let | Perform
+
+Lam     = 'fn' param:Binder '->' body:Expr
+App     = callee:Expr '(' arg:Expr ')'
+Let     = 'let' binder:Binder '=' value:Expr 'in' body:Expr
+Perform = 'perform' cap:CapRef '(' args:sep(Expr, ',') ')'
+```
+
+Consequences:
+
+- Parser **and** pretty-printer are derived for every language, so every
+  stage round-trips as text. Debug dumps, `--emit Mir`, and golden fixtures
+  written directly in IR syntax all fall out.
+- Code emission is not special either: `Js.syn.langue` defines the js
+  language, and emitting JavaScript is pretty-printing a Js tree.
+- Elab and type rules target the same generated pattern-matching surface for
+  every language.
+
+Whether Lumo keeps the CBPV value/computation distinction as two languages
+(or two sorts within one) is a choice made in its `.syn.langue` files, not
+by Langue — decided at M1.
+
+### 2.2 Tokens
 
 **Decided: a token is a name bound to a string literal or a regex — nothing
 else.** There is no `keywords(...)` block or any other special form:
@@ -105,7 +142,7 @@ trivia comment.line = /\/\/[^\n]*/
 In grammar rules, literal tokens are written as their literal (`'fn'`) and
 regex tokens by name (`name:ident`).
 
-### 2.2 Grammar
+### 2.3 Grammar
 
 - **Separated lists are a built-in**: `params:sep(Param, ',')` — the
   generator emits a proper list accessor. No wrapper-node convention, no
@@ -118,46 +155,12 @@ regex tokens by name (`name:ident`).
   Expr = ...
     | infix BinExpr  { '|>' left, '+' '-' left @ 60, '*' '/' left @ 70 }
   ```
-- `token` items live in any `.syn.langue` file; grammar rules reference
-  tokens declared anywhere in the project — no import, no forward
-  declaration.
+- Grammar rules reference tokens and languages declared anywhere in the
+  project — no import, no forward declaration.
 
-The generator emits `syntax_kind.rs`, typed AST accessors, a rowan-style
-lossless tree, and the parser itself (with `extern` recovery hooks if
-needed).
-
-### 2.3 Internal trees — every tree displays itself
-
-**Decided: there is no `tree` kind.** Langue fixes no pipeline shape — a
-definition declares any number of named trees — and every tree, surface or
-internal, is declared as a *grammar*, not as an ADT. A `.syn.langue` file is
-scoped to a tree name; grammar rules define the node shapes **and** their
-concrete syntax at once:
-
-```
-// core.syn.langue
-tree Core
-
-Expr =
-  | Lam | App | Let | Perform
-
-Lam     = 'fn' param:Binder '->' body:Expr
-App     = callee:Expr '(' arg:Expr ')'
-Let     = 'let' binder:Binder '=' value:Expr 'in' body:Expr
-Perform = 'perform' cap:CapRef '(' args:sep(Expr, ',') ')'
-```
-
-Consequences:
-
-- Parser **and** pretty-printer are derived for every tree, so every
-  intermediate tree round-trips as text. Debug dumps, `--emit core`, and
-  golden fixtures written directly in IR syntax all fall out.
-- Elab and type rules target the same generated pattern-matching surface;
-  nothing downstream cares that the declaration was a grammar.
-
-Whether Lumo keeps the CBPV value/computation distinction as two trees (or
-two sorts within one tree) is a choice made in its `.syn.langue` files, not
-by Langue — decided at M1.
+Per language, the generator emits `syntax_kind.rs`, typed AST accessors, a
+rowan-style lossless tree, the parser (with `extern` recovery hooks if
+needed), and the pretty-printer.
 
 ## 3. Scope (`*.scope.langue`)
 
@@ -181,12 +184,12 @@ LSP (go-to-def falls out for free).
 
 ## 4. Elaboration (`*.elab.langue`)
 
-Rewrite rules between any two declared trees (including tree-to-same-tree
-passes), with quasiquoted patterns on the source side and constructors on the
-target side:
+Rewrite rules between any two declared languages (including same-language
+passes), with quasiquoted patterns on the source side and constructors on
+the target side:
 
 ```
-elab Surface -> Core {
+elab Lumo -> Mir {
   rule FnDecl { name, params, body } =>
     Let(name, foldr(params, elab(body), |p, acc| Lam(p, acc)))
 
@@ -200,8 +203,8 @@ exhaustiveness against the grammar), recursion explicit via `elab(...)`.
 Helper combinators (`foldr`, `map`, fresh-name generation) come from the
 stdlib. A rule may call `extern fn` for genuinely procedural cases.
 
-Same-tree groups run as e-graph equality saturation (section 6.3); their
-rules are equalities, not directed passes.
+Same-language groups run as e-graph equality saturation (section 6.3);
+their rules are equalities, not directed passes.
 
 ## 5. Type (`*.type.langue`)
 
@@ -253,7 +256,7 @@ inputs, at both layers:
   → `rule_tables(kind)` → generated code. Editing one `.type.langue` file
   re-derives only the type tables.
 - **Compiled-language layer**: the compiler that Langue produces is itself
-  query-structured — `cst(file)`, `tree(file, "Core")`, `resolve(node)`,
+  query-structured — `cst(file)`, `mir(file)`, `resolve(node)`,
   `infer(node)`.
 
 Rule tables are pure values, which is exactly what memoization wants: the
@@ -266,35 +269,34 @@ equivalent if salsa's model fights the reasoning engine.
 A `.langue` file describes the **shape of trees**, never a parsing
 algorithm. Labels become accessors, alternatives become node kinds, and the
 parser is *derived* from the shape (plus precedence annotations) rather than
-written. There is no separate ADT notation — every tree is a grammar with a
-derived parser and pretty-printer (section 2.3) — and the philosophy extends
-further: elab rules, scope facts, and typing rules are likewise shape-first,
+written. Every pipeline language is declared this way and therefore carries
+its own display syntax (section 2.1). The philosophy extends further: elab
+rules, scope facts, and typing rules are likewise shape-first,
 algorithm-free declarations that engines interpret.
 
 ### 6.3 E-graph elaboration
 
-#### 6.3.1 Tree-to-tree: syntax-directed
+#### 6.3.1 Language-to-language: syntax-directed
 
-Lowering between two different trees (`elab Surface -> Core`) stays a
+Lowering between two different languages (`elab Lumo -> Mir`) stays a
 deterministic, syntax-directed, single-pass translation: one rule per source
 node kind, exhaustiveness checked, recursion explicit via `elab(...)`.
 Nothing to optimize here — it is a definition of meaning, not a search.
 
-#### 6.3.2 Same-tree optimization: equality saturation
+#### 6.3.2 Same-language optimization: equality saturation
 
-Same-tree rule groups (`elab Core -> Core`) run on an **e-graph**: rules are
-non-destructive rewrites applied to saturation, so rule *order carries no
-meaning* — the same principle the project format applies to files. Inlining,
-CPS elimination, and DCE become declared equalities instead of
+Same-language rule groups (`elab Mir -> Mir`) run on an **e-graph**: rules
+are non-destructive rewrites applied to saturation, so rule *order carries
+no meaning* — the same principle the project format applies to files.
+Inlining, CPS elimination, and DCE become declared equalities instead of
 hand-sequenced passes. Candidate engines: `egg` / `egglog`.
 
 #### 6.3.3 Cost and extraction
 
 After saturation, extraction picks the best representative per e-class using
-a cost model. Where the cost model is declared — annotations on tree
-constructors, per-rule weights, or a Rust-side extern — is open
-(section 11); proposal: constructor annotations by default, extern as the
-escape hatch.
+a cost model. Where the cost model is declared — annotations on grammar
+rules, per-rewrite weights, or a Rust-side extern — is open (section 11);
+proposal: grammar-rule annotations by default, extern as the escape hatch.
 
 ### 6.4 Pluggable type system
 
@@ -334,16 +336,16 @@ Hybrid, per kind:
 
 ### 8.1 Generated Rust
 
-For the hot, shape-defining parts: syn — per declared tree, the token DFA,
-syntax kinds, AST accessors, parser, and pretty-printer. Workflow: edit, run
-`langc gen`, commit generated code.
+For the hot, shape-defining parts: syn — per declared language, the token
+DFA, syntax kinds, AST accessors, parser, and pretty-printer. Workflow:
+edit, run `langc gen`, commit generated code.
 
 ### 8.2 Interpreted rule tables
 
 For scope/elab/type: `langc` compiles the rules to a compact checked IR that
 generic Rust engines execute — the scope-graph engine, the e-graph engine
-for same-tree elab, the reasoning engine. Rationale: changing a typing rule
-should not require recompiling generated Rust; these rules are dense in
+for same-language elab, the reasoning engine. Rationale: changing a typing
+rule should not require recompiling generated Rust; these rules are dense in
 semantics but not performance-critical enough to need codegen in v1. If
 profiling disagrees later, codegen them then.
 
@@ -363,20 +365,19 @@ generated. Langue-in-langue self-description is explicitly not a v1 goal.
 ## 10. Milestones
 
 - **M0 — langc core**: `.langue` parser, project cat/merge/DCE model,
-  `langc check`, salsa query runtime skeleton. Write Lumo's `.syn.langue`
-  files; generate SyntaxKind, AST, lossless tree, and the surface parser.
-- **M1 — internal trees + elab (lowering)**: write `core.syn.langue`
-  (Core's shape and display syntax) and the `Surface -> Core`
-  syntax-directed rules; the rewrite engine owns lowering. CBPV split
-  decided here.
+  `langc check`, salsa query runtime skeleton. Write `Lumo.syn.langue`;
+  generate SyntaxKind, AST, lossless tree, parser, and printer.
+- **M1 — Mir + elab (lowering)**: write `Mir.syn.langue` and the
+  `elab Lumo -> Mir` syntax-directed rules; the rewrite engine owns
+  lowering. CBPV split decided here.
 - **M2 — scope**: scope facts + resolution engine.
 - **M3 — type**: reasoning engine + Fω/caps plugin + judgment DSL; port the
   capability typing rules.
-- **M4 — e-graph optimization**: same-tree elab groups on equality
+- **M4 — e-graph optimization**: same-language elab groups on equality
   saturation; optimization golden fixtures are the contract.
-- **M5 — reconnect**: backends written fresh against Core; remaining golden
-  fixtures brought over (source material in
-  `legacy/crates/compiler/tests/fixtures/`).
+- **M5 — Js**: write `Js.syn.langue` and `elab Mir/Lir -> Js` — emission is
+  pretty-printing the Js tree; remaining golden fixtures brought over
+  (source material in `legacy/crates/compiler/tests/fixtures/`).
 
 Each milestone keeps `langc check` + golden-file tests green.
 
@@ -386,12 +387,14 @@ Decided:
 
 1. **Full-language-definition scope**; name stays **"Langue" (v2)**; tooling
    in **Rust** (`crates/langc`).
-2. **Parser is generated** from the `.syn.langue` files, with precedence
+2. **Parsers are generated** from the `.syn.langue` files, with precedence
    annotations and extern recovery hooks. Fall back to hand-written only if
    recovery quality proves insufficient at M0 exit.
-3. **Arbitrary trees**: Langue fixes no pipeline shape; definitions declare
-   any number of trees and elaborate between them. Lumo's CBPV split is a
-   `.syn.langue` choice deferred to M1.
+3. **Every stage is an individual language declared by file name**:
+   `Mir.syn.langue` puts `Mir` in the global namespace, referenceable as a
+   language; no marker keywords, no surface/internal distinction, arbitrary
+   chain length. Emission = pretty-printing the target language (Js).
+   Lumo's CBPV split is a `.syn.langue` choice deferred to M1.
 4. **Diagnostics live in the DSL** as message templates on rule premises.
 5. **Multi-file project format, no imports**: kind-suffixed files
    concatenated project-wide together with the Langue stdlib into one global
@@ -400,33 +403,30 @@ Decided:
    `<name>.langue` is a manifest (language name + options).
 6. **Salsa-like architecture from day one**, at both the definition layer
    and the compiled-language layer.
-7. **E-graph equality saturation** for same-tree elaboration (optimization);
-   tree-to-tree elaboration stays syntax-directed.
+7. **E-graph equality saturation** for same-language elaboration
+   (optimization); language-to-language elaboration stays syntax-directed.
 8. **Pluggable type system on a generic reasoning engine**; Lumo v1 plugs
    Fω + spine-local bidirectional inference + capability rows.
-9. **No `tree` kind — every tree displays itself**: internal trees are
-   grammars in `.syn.langue` files scoped by tree name; parser and printer
-   derived, text round-trip for every stage.
+9. **Tokens are named literals/regexes only**: `token keyword.fn = 'fn'` —
+   the name is the debug/display identity of the token; no special forms;
+   longest match wins, literal beats regex on ties; dotted names double as
+   highlight scopes.
 10. **Chapter order**: project layout → syntax → scope → elaboration → type;
-    architecture pillars relocated after them; no legacy exposition in the
-    documents.
-11. **Tokens are named literals/regexes only**: `token keyword.fn = 'fn'` —
-    the name is the debug/display identity of the token; no `keywords()` or
-    other special forms; longest match wins, literal beats regex on ties;
-    dotted names double as highlight scopes.
+    architecture pillars after them; documents are snapshots (no changelog,
+    no legacy exposition).
 
 Still open (mirrored in the artifact's 회신 대기 box):
 
-12. **Cost model declaration** for e-graph extraction — proposal:
-    constructor annotations by default, extern as escape hatch.
-13. **Type-plugin boundary** — how much of a type system lives in the Rust
+11. **Cost model declaration** for e-graph extraction — proposal: grammar
+    annotations by default, extern as escape hatch.
+12. **Type-plugin boundary** — how much of a type system lives in the Rust
     plugin trait vs the DSL rule set?
-14. **E-graph engine choice** — proposal: one egglog spike that also tests
+13. **E-graph engine choice** — proposal: one egglog spike that also tests
     the "datalog side doubles as the scope engine" hypothesis.
-15. **Hybrid execution boundary** (section 8) — confirm generated vs
+14. **Hybrid execution boundary** (section 8) — confirm generated vs
     interpreted split against the pillar engines.
-16. **Lossless internal trees** — proposal: surface tree only; internal
-    trees round-trip via canonical pretty-print (e-graph nodes carry no
-    trivia).
-17. **Milestone order** — chapter order is reading order; should the build
+15. **Losslessness scope** — proposal: only Lumo (the surface language) is
+    lossless; other languages round-trip via canonical pretty-print (e-graph
+    nodes carry no trivia).
+16. **Milestone order** — chapter order is reading order; should the build
     order also move scope (M2) ahead of elab (M1)?
