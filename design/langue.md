@@ -26,28 +26,67 @@ Lumo's tokens, grammar, core trees, lowerings, binding structure, and typing
 rules. The Rust code becomes *engines* that execute the definition, plus
 explicitly-declared escape hatches — never the definition itself.
 
-## 2. Scope
+## 2. Project format
 
-A language definition is a set of `.langue` files (one section each) under
-`lumo/` (the definition of Lumo itself, the first customer):
+**Decided (2026-07-10): a language definition is a multi-file Langue project.**
+Files are typed by a kind suffix and reference each other through explicit
+imports, so a definition can be sliced by *feature* (fn, pattern, cap, ...)
+instead of being forced into one monolith per stage.
+
+File kinds:
+
+```
+<name>.langue         project root: language name + imports (no kind suffix)
+<name>.syn.langue     lexical structure + CST grammar rules
+<name>.tree.langue    tree declarations (post-desugar trees)
+<name>.elab.langue    elaboration: rewrite rules between trees
+<name>.scope.langue   binding: scopes, declarations, references
+<name>.type.langue    kinds, type formers, bidirectional typing judgments
+```
+
+Imports:
+
+```
+use "./tokens.syn.langue"                        // all exported items
+use "./core.tree.langue" as core                 // qualified: core.Expr
+use "../surface/expr.syn.langue" (Expr, BinExpr) // selective
+```
+
+- Paths are relative to the importing file. The project root must transitively
+  reach every file of the definition; a `.langue` file in the project tree
+  that nothing imports is a `langc check` error, not silently ignored.
+- Importable items: tokens, grammar rules, trees and their constructors,
+  elab rule groups, scope facts, judgments. Imports are non-transitive;
+  import cycles are rejected in v1.
+- Multiple files of the same kind merge additively into one definition:
+  `fn.type.langue` and `cap.type.langue` both contribute rules to the same
+  `infer`/`check` judgments. Exhaustiveness and overlap are checked globally
+  after the merge, per judgment and per tree.
+
+The Lumo definition (first customer) is expected to slice by feature:
 
 ```
 lumo/
-  tokens.langue      lexical structure
-  grammar.langue     CST rules (langue 1, upgraded)
-  core.langue        post-desugar tree definitions (replaces hir/lir .langue)
-  lower.langue       CST -> Core and Core -> Core rewrite rules
-  scope.langue       binding: scopes, declarations, references
-  types.langue       kinds, type formers, bidirectional typing judgments
+  lumo.langue
+  surface/tokens.syn.langue
+  surface/item.syn.langue
+  surface/expr.syn.langue
+  core.tree.langue
+  elab/item.elab.langue
+  elab/expr.elab.langue
+  scope/lexical.scope.langue
+  types/fn.type.langue
+  types/cap.type.langue
+  types/data.type.langue
 ```
 
 Out of scope for v1 (stays hand-written Rust, consuming the generated/loaded
 definition): backends (TS/Rust emission), LTO, query/incremental engine,
 diagnostics rendering, LSP.
 
-## 3. Section designs
+## 3. File-kind designs
 
-### 3.1 tokens
+### 3.1 syn: tokens
 
 Lexer rules become declarative instead of the hand-written `crates/lexer`:
 
@@ -62,7 +101,7 @@ trivia LineComment = /\/\/[^\n]*/
 `keywords(...)` lists literals carved out of an ident-shaped token, so the
 grammar can use `'fn'` directly and the lexer stays a single DFA.
 
-### 3.2 grammar
+### 3.2 syn: grammar
 
 Langue 1 carried over, with the pain points fixed in the language rather than
 by convention:
@@ -78,20 +117,21 @@ by convention:
   Expr = ...
     | infix BinExpr  { '|>' left, '+' '-' left @ 60, '*' '/' left @ 70 }
   ```
-- `@token` declarations move to `tokens.langue`; `grammar.langue` only
-  references them.
+- `@token` declarations become `token` items in a `.syn.langue` file (e.g.
+  `tokens.syn.langue`); grammar files import the tokens they use.
 
 The generator still emits `syntax_kind.rs`, typed AST accessors, and a
 rowan-style lossless tree. New: it emits the parser itself (legacy had
 `#[parser(generate = true)]` for HIR/LIR already; the Lumo surface parser was
 hand-written — v1 aims to generate it, with `extern` recovery hooks if needed).
 
-### 3.3 core
+### 3.3 tree
 
 **Decided: Langue does not fix a pipeline shape — a definition declares any
-number of named trees.** The surface tree comes from `grammar.langue`; every
-other tree is declared here as plain ADTs and the definition chooses how many
-stages it wants (what HIR/LIR were, CBPV splits, backend-prep trees, ...):
+number of named trees.** The surface tree comes from the `.syn.langue` files;
+every other tree is declared in `.tree.langue` files as plain ADTs, and the
+definition chooses how many stages it wants (what HIR/LIR were, CBPV splits,
+backend-prep trees, ...):
 
 ```
 tree Core {
@@ -106,29 +146,29 @@ tree Core {
 ```
 
 Generates the Rust enums + pretty-printer + a stable pattern-matching surface
-for `lower` and `types` rules to target. Whether Lumo's own definition keeps
-the CBPV value/computation distinction as two trees (or two sorts within one
-tree) is a choice made *in* `core.langue`, not by Langue — deferred to when we
-port the Lumo definition (M1).
+for elab and type rules to target. Whether Lumo's own definition keeps the
+CBPV value/computation distinction as two trees (or two sorts within one tree)
+is a choice made *in* its `.tree.langue` files, not by Langue — deferred to
+when we port the Lumo definition (M1).
 
-### 3.4 lower
+### 3.4 elab
 
 Rewrite rules between any two declared trees (including tree-to-same-tree
 passes), with quasiquoted patterns on the source side and constructors on the
 target side:
 
 ```
-lower Surface -> Core {
+elab Surface -> Core {
   rule FnDecl { name, params, body } =>
-    Let(name, foldr(params, lower(body), |p, acc| Lam(p, acc)))
+    Let(name, foldr(params, elab(body), |p, acc| Lam(p, acc)))
 
   rule PipeExpr { lhs, rhs } =>          // a |> f  ==>  f(a)
-    App(lower(rhs), lower(lhs))
+    App(elab(rhs), elab(lhs))
 }
 ```
 
 Semantics: syntax-directed, one rule per source node kind (checked for
-exhaustiveness against the grammar), recursion explicit via `lower(...)`.
+exhaustiveness against the grammar), recursion explicit via `elab(...)`.
 Helper combinators (`foldr`, `map`, fresh-name generation) are built into the
 rewrite engine. A rule may call `extern fn` for genuinely procedural cases.
 
@@ -200,10 +240,10 @@ over the definition shows exactly where the declarative story has holes.
 
 Hybrid, per section:
 
-- **Generated Rust** for the hot, shape-defining parts: tokens (DFA), grammar
-  (syntax kinds, AST accessors, parser), core (enums, printers). Same workflow
-  as legacy langue: edit, run `langc gen`, commit generated code.
-- **Interpreted rule tables** for lower/scope/types: `langc` compiles the rules
+- **Generated Rust** for the hot, shape-defining parts: syn (token DFA,
+  syntax kinds, AST accessors, parser) and tree (enums, printers). Same
+  workflow as legacy langue: edit, run `langc gen`, commit generated code.
+- **Interpreted rule tables** for elab/scope/types: `langc` compiles the rules
   to a compact checked IR that generic Rust engines execute. Rationale:
   changing a typing rule should not require recompiling generated Rust, and
   these rules are dense in semantics but not performance-critical enough to
@@ -223,13 +263,13 @@ stays archived as prior art).
 
 ## 6. Milestones
 
-- **M0 — langc core**: `.langue` parser, section model, `langc check`.
-  Port `tokens` + `grammar` for Lumo; regenerate what legacy langue generated
+- **M0 — langc core**: `.langue` parser, project/import model, `langc check`.
+  Port Lumo's `.syn.langue` files; regenerate what legacy langue generated
   (syntax kinds, AST, lossless tree) and now also the surface parser.
-- **M1 — core + lower**: declare Core trees, write `Surface -> Core` rules,
+- **M1 — tree + elab**: declare Core trees, write `Surface -> Core` rules,
   rewrite engine replaces hand-written HIR lowering.
 - **M2 — scope**: scope facts + resolution engine.
-- **M3 — types**: judgment DSL + bidirectional engine with Fomega/caps
+- **M3 — type**: judgment DSL + bidirectional engine with Fomega/caps
   primitives; port the capability typing rules.
 - **M4 — reconnect**: backends (start from legacy `ts.rs`/`rs.rs` knowledge,
   written fresh against Core), test fixtures ported from
@@ -242,15 +282,19 @@ contract carried over from legacy.
 
 Decided (2026-07-10):
 
-1. **Parser is generated** from `grammar.langue`, with precedence annotations
-   and extern recovery hooks. Fall back to hand-written only if recovery
-   quality proves insufficient at M0 exit.
+1. **Parser is generated** from the `.syn.langue` files, with precedence
+   annotations and extern recovery hooks. Fall back to hand-written only if
+   recovery quality proves insufficient at M0 exit.
 2. **Arbitrary trees**: Langue fixes no pipeline shape; definitions declare
-   any number of trees and lower between them. Lumo's CBPV split is a
-   `core.langue` choice deferred to M1.
+   any number of trees and elaborate between them. Lumo's CBPV split is a
+   `.tree.langue` choice deferred to M1.
 3. **Diagnostics live in the DSL** as message templates on rule premises.
 4. **Name stays "Langue"** (v2); langue 1 grammar files remain a valid subset
    in spirit, modulo the `sep(...)`/precedence upgrades.
+5. **Multi-file project format**: kind-suffixed files (`*.syn.langue`,
+   `*.tree.langue`, `*.elab.langue`, `*.scope.langue`, `*.type.langue`) wired
+   by explicit `use` imports from a suffix-less root file; same-kind files
+   merge additively, checked globally.
 
 Still open:
 
