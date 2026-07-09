@@ -129,6 +129,7 @@ dependencies = [
  "lumo-hir",
  "lumo-lexer",
  "lumo-lir",
+ "lumo-lir-memaware",
  "lumo-lst",
  "lumo-span",
  "lumo-types",
@@ -158,6 +159,16 @@ version = "0.1.0"
 dependencies = [
  "lumo-hir",
  "lumo-lexer",
+ "lumo-span",
+ "lumo-types",
+]
+
+[[package]]
+name = "lumo-lir-memaware"
+version = "0.1.0"
+dependencies = [
+ "lumo-hir",
+ "lumo-lir",
  "lumo-span",
  "lumo-types",
 ]
