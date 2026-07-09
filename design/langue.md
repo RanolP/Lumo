@@ -28,15 +28,17 @@ explicitly-declared escape hatches — never the definition itself.
 
 ## 2. Project format
 
-**Decided (2026-07-10): a language definition is a multi-file Langue project.**
-Files are typed by a kind suffix and reference each other through explicit
-imports, so a definition can be sliced by *feature* (fn, pattern, cap, ...)
-instead of being forced into one monolith per stage.
+**Decided (2026-07-10): a language definition is a multi-file Langue project
+with no import system.** Every `.langue` file under the project root — plus
+the Langue stdlib — is concatenated into one global namespace (`cat`
+semantics). Files are typed by a kind suffix, so a definition can be sliced
+by *feature* (fn, pattern, cap, ...) instead of being forced into one
+monolith per stage, without any wiring ceremony.
 
 File kinds:
 
 ```
-<name>.langue         project root: language name + imports (no kind suffix)
+<name>.langue         project manifest: language name + options (no kind suffix)
 <name>.syn.langue     lexical structure + CST grammar rules
 <name>.tree.langue    tree declarations (post-desugar trees)
 <name>.elab.langue    elaboration: rewrite rules between trees
@@ -44,24 +46,23 @@ File kinds:
 <name>.type.langue    kinds, type formers, bidirectional typing judgments
 ```
 
-Imports:
+Resolution model:
 
-```
-use "./tokens.syn.langue"                        // all exported items
-use "./core.tree.langue" as core                 // qualified: core.Expr
-use "../surface/expr.syn.langue" (Expr, BinExpr) // selective
-```
-
-- Paths are relative to the importing file. The project root must transitively
-  reach every file of the definition; a `.langue` file in the project tree
-  that nothing imports is a `langc check` error, not silently ignored.
-- Importable items: tokens, grammar rules, trees and their constructors,
-  elab rule groups, scope facts, judgments. Imports are non-transitive;
-  import cycles are rejected in v1.
-- Multiple files of the same kind merge additively into one definition:
-  `fn.type.langue` and `cap.type.langue` both contribute rules to the same
-  `infer`/`check` judgments. Exhaustiveness and overlap are checked globally
-  after the merge, per judgment and per tree.
+- **Project-wide cat**: `langc` collects every kind-suffixed file under the
+  root and merges them into a single definition. Neither file order nor item
+  order carries meaning.
+- **No forward declarations**: every item sees every other item — letrec-style
+  global scope across all files and the stdlib.
+- **stdlib included**: Langue ships standard definitions (helper combinators
+  such as `foldr`/`map`, common token classes, builtin value shapes such as
+  `List`) that participate in the same namespace as project files.
+- **DCE instead of reachability errors**: unused items — stdlib or project —
+  are dead-code-eliminated when the definition is loaded; nothing has to be
+  "imported to count". An optional lint can surface unused *project* items.
+- **Collisions**: two same-named items in the global namespace are an error.
+  The designed exception is additive merging: multiple files contributing
+  rules to the same judgment or constructors to the same tree, with
+  exhaustiveness and overlap checked globally after the merge.
 
 The Lumo definition (first customer) is expected to slice by feature:
 
@@ -118,7 +119,8 @@ by convention:
     | infix BinExpr  { '|>' left, '+' '-' left @ 60, '*' '/' left @ 70 }
   ```
 - `@token` declarations become `token` items in a `.syn.langue` file (e.g.
-  `tokens.syn.langue`); grammar files import the tokens they use.
+  `tokens.syn.langue`); grammar rules reference tokens declared anywhere in
+  the project — no import, no forward declaration.
 
 The generator still emits `syntax_kind.rs`, typed AST accessors, and a
 rowan-style lossless tree. New: it emits the parser itself (legacy had
@@ -169,8 +171,9 @@ elab Surface -> Core {
 
 Semantics: syntax-directed, one rule per source node kind (checked for
 exhaustiveness against the grammar), recursion explicit via `elab(...)`.
-Helper combinators (`foldr`, `map`, fresh-name generation) are built into the
-rewrite engine. A rule may call `extern fn` for genuinely procedural cases.
+Helper combinators (`foldr`, `map`, fresh-name generation) come from the
+Langue stdlib, which shares the project's global namespace and is DCE-ed like
+everything else. A rule may call `extern fn` for genuinely procedural cases.
 
 ### 3.5 scope
 
@@ -263,7 +266,8 @@ stays archived as prior art).
 
 ## 6. Milestones
 
-- **M0 — langc core**: `.langue` parser, project/import model, `langc check`.
+- **M0 — langc core**: `.langue` parser, project cat/merge/DCE model,
+  `langc check`.
   Port Lumo's `.syn.langue` files; regenerate what legacy langue generated
   (syntax kinds, AST, lossless tree) and now also the surface parser.
 - **M1 — tree + elab**: declare Core trees, write `Surface -> Core` rules,
@@ -291,10 +295,12 @@ Decided (2026-07-10):
 3. **Diagnostics live in the DSL** as message templates on rule premises.
 4. **Name stays "Langue"** (v2); langue 1 grammar files remain a valid subset
    in spirit, modulo the `sep(...)`/precedence upgrades.
-5. **Multi-file project format**: kind-suffixed files (`*.syn.langue`,
-   `*.tree.langue`, `*.elab.langue`, `*.scope.langue`, `*.type.langue`) wired
-   by explicit `use` imports from a suffix-less root file; same-kind files
-   merge additively, checked globally.
+5. **Multi-file project format, no imports**: kind-suffixed files
+   (`*.syn.langue`, `*.tree.langue`, `*.elab.langue`, `*.scope.langue`,
+   `*.type.langue`) are concatenated project-wide together with the Langue
+   stdlib into one global namespace — no `use`, no forward declarations,
+   unused items DCE-ed. Same-kind files merge additively, checked globally;
+   the suffix-less `<name>.langue` is a manifest (language name + options).
 
 Still open:
 

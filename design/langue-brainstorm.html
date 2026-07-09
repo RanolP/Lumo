@@ -272,18 +272,20 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <code>.langue</code> 파일 안에 있다.
     </p>
 
-    <nav class="rootfile" aria-label="문서 목차 (lumo.langue 형식)">
-      <div class="bar"><b>lumo.langue</b><span>— 프로젝트 루트이자, 이 문서의 목차</span></div>
-      <pre><span class="kw">language</span> <span class="lang">Lumo</span>
+    <nav class="rootfile" aria-label="문서 목차 (프로젝트 파일 목록 형식)">
+      <div class="bar"><b>$ langc cat .</b><span>— import는 없다. 프로젝트의 모든 파일이 그대로 하나의 정의다</span></div>
+      <pre><span class="kw">language</span> <span class="lang">Lumo</span>                        <span class="cm">// lumo.langue — 매니페스트</span>
 
-<span class="kw">use</span> <a class="use" href="#why">"./01-why.langue"</a>          <span class="cm">// 왜 다시 만드는가</span>
-<span class="kw">use</span> <a class="use" href="#project">"./02-project.langue"</a>      <span class="cm">// 프로젝트 형식 · import</span>
-<span class="kw">use</span> <a class="use" href="#pipeline">"./03-pipeline.langue"</a>     <span class="cm">// 임의의 트리 파이프라인</span>
-<span class="kw">use</span> <a class="use" href="#kinds">"./04-kinds.langue"</a>        <span class="cm">// 다섯 가지 파일 종류</span>
-<span class="kw">use</span> <a class="use" href="#exec">"./05-exec.langue"</a>         <span class="cm">// 실행 모델: 생성 vs 해석</span>
-<span class="kw">use</span> <a class="use" href="#typing">"./06-typing.langue"</a>       <span class="cm">// 타입 규칙과 진단 템플릿</span>
-<span class="kw">use</span> <a class="use" href="#decisions">"./07-decisions.langue"</a>    <span class="cm">// 결정 · 미결 · 논의 후보</span>
-<span class="kw">use</span> <a class="use" href="#milestones">"./08-milestones.langue"</a>   <span class="cm">// M0 – M4</span></pre>
+<a class="use" href="#why">01-why.langue</a>          <span class="cm">// 왜 다시 만드는가</span>
+<a class="use" href="#project">02-project.langue</a>      <span class="cm">// 프로젝트 형식: cat + stdlib + DCE</span>
+<a class="use" href="#pipeline">03-pipeline.langue</a>     <span class="cm">// 임의의 트리 파이프라인</span>
+<a class="use" href="#kinds">04-kinds.langue</a>        <span class="cm">// 다섯 가지 파일 종류</span>
+<a class="use" href="#exec">05-exec.langue</a>         <span class="cm">// 실행 모델: 생성 vs 해석</span>
+<a class="use" href="#typing">06-typing.langue</a>       <span class="cm">// 타입 규칙과 진단 템플릿</span>
+<a class="use" href="#decisions">07-decisions.langue</a>    <span class="cm">// 결정 · 미결 · 논의 후보</span>
+<a class="use" href="#milestones">08-milestones.langue</a>   <span class="cm">// M0 – M4</span>
+
+<span class="cm">+ stdlib (foldr, map, 표준 토큰 …)   // 안 쓰이면 DCE로 제거</span></pre>
     </nav>
   </div>
 </header>
@@ -331,69 +333,81 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 <section id="project">
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--cobalt)"></span>02-project.langue</span>
-    <h2>프로젝트 형식 — 기능 단위로 썰어 담는다</h2>
+    <h2>프로젝트 형식 — import 없이, cat으로</h2>
     <p class="sub">
-      언어 정의는 <b>여러 파일로 이루어진 Langue 프로젝트</b>다. 파일은 종류 접미사로
-      역할이 정해지고, 명시적 <code>use</code> import로 연결된다. 덕분에 정의를 단계별
-      한 덩어리가 아니라 <b>기능(fn, cap, data, pattern…) 단위</b>로 썰 수 있다.
+      언어 정의는 <b>여러 파일로 이루어진 Langue 프로젝트</b>지만 import는 없다.
+      프로젝트의 모든 <code>.langue</code> 파일이 <b>stdlib과 함께 그대로 연결(cat)</b>되어
+      하나의 전역 이름공간이 된다. 파일은 종류 접미사로 역할만 정해지므로, 배선 의식
+      없이 정의를 <b>기능(fn, cap, data, pattern…) 단위</b>로 썰 수 있다.
     </p>
 
     <figure class="figure">
-      <svg viewBox="0 0 880 360" role="img" aria-label="lumo.langue 루트에서 각 파일로 향하는 import 그래프">
+      <svg viewBox="0 0 880 360" role="img" aria-label="프로젝트 파일들과 stdlib이 cat으로 하나의 전역 이름공간이 되고 DCE로 정리되는 그림">
         <defs>
           <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="#B4BECB"/>
           </marker>
+          <marker id="arrd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#4E5A6B"/>
+          </marker>
         </defs>
-        <!-- root node -->
-        <rect x="30" y="150" width="170" height="56" rx="9" fill="#16202E"/>
-        <text x="115" y="174" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">lumo.langue</text>
-        <text x="115" y="193" text-anchor="middle" fill="#9AA6B5" font-size="10.5">language Lumo · 루트</text>
 
-        <!-- edges -->
-        <path d="M200,166 C300,60 330,52 396,52"  fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
-        <path d="M200,172 C290,110 320,102 396,102" fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
-        <path d="M200,178 C300,178 330,178 396,178" fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
-        <path d="M200,184 C290,244 320,252 396,252" fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
-        <path d="M200,190 C300,300 330,308 396,308" fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
-        <!-- cross imports -->
-        <path d="M610,66 C680,66 690,88 690,112" fill="none" stroke="#DCE3EC" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#arr)"/>
-        <path d="M612,192 C700,192 710,230 706,238" fill="none" stroke="#DCE3EC" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#arr)"/>
-        <path d="M612,120 C740,130 760,270 726,294" fill="none" stroke="#DCE3EC" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#arr)"/>
+        <!-- project files -->
+        <rect x="24" y="22"  width="214" height="36" rx="7" fill="#fff" stroke="#2547D0" stroke-width="1.4"/>
+        <text x="40" y="45" fill="#2547D0" font-size="12.5" font-weight="600">surface/expr.syn.langue</text>
+        <rect x="24" y="70"  width="214" height="36" rx="7" fill="#fff" stroke="#0E8A6D" stroke-width="1.4"/>
+        <text x="40" y="93" fill="#0E8A6D" font-size="12.5" font-weight="600">core.tree.langue</text>
+        <rect x="24" y="118" width="214" height="36" rx="7" fill="#fff" stroke="#B96A00" stroke-width="1.4"/>
+        <text x="40" y="141" fill="#B96A00" font-size="12.5" font-weight="600">elab/expr.elab.langue</text>
+        <rect x="24" y="166" width="214" height="36" rx="7" fill="#fff" stroke="#7A3FB8" stroke-width="1.4"/>
+        <text x="40" y="189" fill="#7A3FB8" font-size="12.5" font-weight="600">scope/lexical.scope.langue</text>
+        <rect x="24" y="214" width="214" height="36" rx="7" fill="#fff" stroke="#C2366B" stroke-width="1.4"/>
+        <text x="40" y="237" fill="#C2366B" font-size="12.5" font-weight="600">types/cap.type.langue</text>
+        <!-- stdlib -->
+        <rect x="24" y="282" width="214" height="52" rx="7" fill="#F1F4F9" stroke="#16202E" stroke-width="1.4" stroke-dasharray="6 4"/>
+        <text x="40" y="304" fill="#16202E" font-size="12.5" font-weight="600">langue stdlib</text>
+        <text x="40" y="322" fill="#4E5A6B" font-size="10.5">foldr · map · 표준 토큰 · List …</text>
 
-        <!-- syn group -->
-        <rect x="398" y="34"  width="214" height="36" rx="7" fill="#fff" stroke="#2547D0" stroke-width="1.4"/>
-        <text x="414" y="57" fill="#2547D0" font-size="12.5" font-weight="600">surface/expr.syn.langue</text>
-        <rect x="398" y="84"  width="214" height="36" rx="7" fill="#fff" stroke="#2547D0" stroke-width="1.4"/>
-        <text x="414" y="107" fill="#2547D0" font-size="12.5" font-weight="600">surface/tokens.syn.langue</text>
-        <!-- tree -->
-        <rect x="398" y="160" width="214" height="36" rx="7" fill="#fff" stroke="#0E8A6D" stroke-width="1.4"/>
-        <text x="414" y="183" fill="#0E8A6D" font-size="12.5" font-weight="600">core.tree.langue</text>
-        <!-- elab -->
-        <rect x="398" y="234" width="214" height="36" rx="7" fill="#fff" stroke="#B96A00" stroke-width="1.4"/>
-        <text x="414" y="257" fill="#B96A00" font-size="12.5" font-weight="600">elab/expr.elab.langue</text>
-        <!-- type -->
-        <rect x="398" y="290" width="214" height="36" rx="7" fill="#fff" stroke="#C2366B" stroke-width="1.4"/>
-        <text x="414" y="313" fill="#C2366B" font-size="12.5" font-weight="600">types/fn.type.langue</text>
+        <!-- cat arrows -->
+        <path d="M238,40  C330,40 340,120 396,140" fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
+        <path d="M238,88  C320,88 340,135 396,152" fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
+        <path d="M238,136 C310,136 340,155 396,164" fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
+        <path d="M238,184 C310,184 340,182 396,178" fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
+        <path d="M238,232 C320,232 340,205 396,190" fill="none" stroke="#B4BECB" stroke-width="1.4" marker-end="url(#arr)"/>
+        <path d="M238,308 C330,308 340,225 396,202" fill="none" stroke="#B4BECB" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+        <text x="318" y="264" text-anchor="middle" fill="#4E5A6B" font-size="12.5" font-weight="600">cat</text>
 
-        <!-- merged judgment target -->
-        <rect x="662" y="110" width="196" height="36" rx="7" fill="#fff" stroke="#7A3FB8" stroke-width="1.4"/>
-        <text x="678" y="133" fill="#7A3FB8" font-size="12.5" font-weight="600">scope/lexical.scope.langue</text>
-        <rect x="662" y="236" width="196" height="76" rx="7" fill="#F1F4F9" stroke="#C2366B" stroke-width="1.4" stroke-dasharray="5 4"/>
-        <text x="678" y="262" fill="#C2366B" font-size="12.5" font-weight="600">types/cap.type.langue</text>
-        <text x="678" y="284" fill="#4E5A6B" font-size="10.5">같은 judgment(infer/check)에</text>
-        <text x="678" y="300" fill="#4E5A6B" font-size="10.5">규칙을 추가로 병합</text>
+        <!-- global namespace -->
+        <rect x="398" y="96" width="230" height="150" rx="12" fill="#fff" stroke="#16202E" stroke-width="1.8"/>
+        <text x="513" y="130" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">전역 이름공간</text>
+        <text x="513" y="156" text-anchor="middle" fill="#4E5A6B" font-size="11">파일·항목 순서 무의미</text>
+        <text x="513" y="174" text-anchor="middle" fill="#4E5A6B" font-size="11">전방 선언 불필요 (letrec)</text>
+        <text x="513" y="192" text-anchor="middle" fill="#4E5A6B" font-size="11">같은 judgment/tree엔 가산 병합</text>
+        <text x="513" y="210" text-anchor="middle" fill="#4E5A6B" font-size="11">이름 충돌만 에러</text>
+
+        <!-- DCE arrow -->
+        <line x1="628" y1="171" x2="704" y2="171" stroke="#4E5A6B" stroke-width="1.6" marker-end="url(#arrd)"/>
+        <text x="666" y="158" text-anchor="middle" fill="#C9372C" font-size="12.5" font-weight="600">DCE</text>
+
+        <!-- result -->
+        <rect x="708" y="112" width="150" height="72" rx="10" fill="#fff" stroke="#2547D0" stroke-width="1.6"/>
+        <text x="783" y="143" text-anchor="middle" fill="#16202E" font-size="13" font-weight="600">사용되는 정의만</text>
+        <text x="783" y="163" text-anchor="middle" fill="#4E5A6B" font-size="10.5">컴파일러에 탑재</text>
+        <rect x="708" y="200" width="150" height="46" rx="10" fill="none" stroke="#B4BECB" stroke-width="1.4" stroke-dasharray="5 4"/>
+        <text x="783" y="220" text-anchor="middle" fill="#9AA6B5" font-size="10.5">안 쓰인 항목은 제거</text>
+        <text x="783" y="236" text-anchor="middle" fill="#9AA6B5" font-size="10.5">(프로젝트 항목엔 선택적 린트)</text>
       </svg>
       <figcaption>
-        실선 = 루트에서의 도달(모든 파일은 루트에서 닿아야 함) · 점선 = 파일 간 use ·
-        색 = 종류 접미사
+        연결(cat) → 하나의 전역 이름공간 → DCE. 배선은 없고, 색 = 종류 접미사.
       </figcaption>
     </figure>
 
     <ul class="rules">
-      <li><b>도달성 검사</b> — 루트에서 import로 닿지 않는 <code>.langue</code> 파일은 조용히 무시되지 않고 <code>langc check</code> 에러다.</li>
-      <li><b>import 형태</b> — <code>use "./a.syn.langue"</code>(전부) · <code>as core</code>(한정) · <code>(Expr, BinExpr)</code>(선택). 상대 경로, 비전이적, v1에서 순환 금지.</li>
-      <li><b>가산적 병합</b> — 같은 종류의 파일들은 하나의 정의로 합쳐진다. <code>fn.type.langue</code>과 <code>cap.type.langue</code>이 같은 <code>infer</code>/<code>check</code>에 규칙을 보태고, 전체 병합 후 망라성·중복을 전역 검사.</li>
+      <li><b>project-wide cat</b> — langc가 루트 아래 모든 종류 접미사 파일을 모아 하나의 정의로 병합한다. 파일 순서도 항목 순서도 의미가 없다.</li>
+      <li><b>전방 선언 불필요</b> — 모든 항목이 서로를 본다. 파일과 stdlib을 가로지르는 letrec식 전역 스코프.</li>
+      <li><b>stdlib 포함</b> — <code>foldr</code>/<code>map</code> 같은 도우미, 표준 토큰 클래스, <code>List</code> 같은 기본 형태가 프로젝트 파일과 같은 이름공간에 참여한다.</li>
+      <li><b>도달성 에러 대신 DCE</b> — 안 쓰인 항목은 정의 로드 시 제거된다. "import해야 유효"라는 개념 자체가 없다. 프로젝트 항목의 미사용은 선택적 린트로만 노출.</li>
+      <li><b>충돌 규칙</b> — 같은 이름 두 개는 에러. 단, 설계된 예외로 <code>fn.type.langue</code>과 <code>cap.type.langue</code>이 같은 <code>infer</code>/<code>check</code>에 규칙을 보태는 가산 병합은 허용되고, 병합 후 망라성·중복을 전역 검사.</li>
     </ul>
   </div>
 </section>
@@ -617,7 +631,14 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>다중 파일 프로젝트 형식</h3>
-        <p>종류 접미사 + 명시적 use import + 같은 종류 가산 병합. 기능 단위 슬라이싱.</p>
+        <p>종류 접미사로 역할만 정하고, 같은 종류는 가산 병합. 기능 단위 슬라이싱.</p>
+        <span class="date">2026-07-10 · 사용자 제안</span>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>import 없음 — cat + stdlib + DCE</h3>
+        <p>모든 파일이 stdlib과 함께 하나의 전역 이름공간으로 연결된다.
+        전방 선언 불필요, 안 쓰인 항목은 DCE. 배선 의식 제로.</p>
         <span class="date">2026-07-10 · 사용자 제안</span>
       </article>
       <article class="decision done">
@@ -661,8 +682,9 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
     <div class="prompts">
       <h3>다음 논의 후보</h3>
       <ol>
-        <li>import의 <b>내보내기 제어</b> — 파일의 모든 항목이 기본 공개인가, <code>pub</code> 같은 표시가 필요한가?</li>
+        <li><b>stdlib 섀도잉</b> — 프로젝트가 stdlib과 같은 이름을 선언하면 에러인가, 프로젝트 쪽이 이기는가?</li>
         <li>같은 종류 병합에서 <b>규칙 우선순위/오버라이드</b> — 두 파일이 같은 노드에 규칙을 내면 에러인가, 명시적 override인가?</li>
+        <li><b>stdlib의 범위</b> — 도우미 콤비네이터·표준 토큰 외에 무엇까지? (공통 스코프 패턴, 진단 서식 도우미 등)</li>
         <li><code>.scope.langue</code>의 표현력 범위 — use/모듈 시스템, 캡 핸들러의 동적 스코프까지 담는가?</li>
         <li>진단 템플릿의 <b>다국어/수준</b>(note, help) 지원 여부.</li>
         <li>langue 프로젝트 자체의 테스트 형식 — 레거시 fixtures의 golden 파일을 어떤 모양으로 승계할지.</li>
@@ -682,7 +704,7 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
       <li>
         <span class="m">M0</span>
         <div><h3>langc 코어</h3>
-        <p>.langue 파서, 프로젝트/import 모델, langc check. Lumo의 .syn.langue 이식 —
+        <p>.langue 파서, 프로젝트 cat/병합/DCE 모델, langc check. Lumo의 .syn.langue 이식 —
         레거시 langue가 생성하던 것(SyntaxKind, AST, 무손실 트리)에 더해 표면 파서까지 생성.</p></div>
       </li>
       <li>
