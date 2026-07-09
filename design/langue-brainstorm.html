@@ -124,6 +124,21 @@ h2{
 .snippet .c{color:#9AA6B5}.snippet .k{color:var(--cobalt);font-weight:500}
 @media(max-width:760px){.pillars{grid-template-columns:1fr 1fr}}
 
+/* ---------- minutes: changelog + awaiting replies ---------- */
+.minutes{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.minutes .box{border:1px solid var(--line);border-radius:10px;background:#fff;padding:16px 18px}
+.minutes .box.ask{border-color:var(--seal)}
+.minutes h3{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin-bottom:10px;font-weight:600;letter-spacing:.02em}
+.minutes .box.ask h3{color:var(--seal)}
+.minutes ul{list-style:none;display:grid;gap:7px;font-size:13px;color:var(--ink-soft);line-height:1.6}
+.minutes li{display:flex;gap:9px}
+.minutes li::before{content:'·';color:var(--cobalt);font-weight:700;flex:none}
+.minutes .box.ask li::before{content:'?';color:var(--seal);font-family:var(--mono);font-weight:600}
+.minutes b{color:var(--ink)}
+.minutes a{color:var(--cobalt);text-decoration:none}
+.minutes a:hover{text-decoration:underline}
+@media(max-width:760px){.minutes{grid-template-columns:1fr}}
+
 /* ---------- motivation ---------- */
 .legacy-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 26px}
 .legacy-chain .ph{
@@ -281,9 +296,9 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 <header class="hero">
   <div class="wrap">
     <div class="eyebrow">
-      <span>design/langue.md · v2 초안</span><span class="dot"></span>
-      <span>2026-07-10</span><span class="dot"></span>
-      <span>브레인스토밍용 아티팩트</span>
+      <span>design/langue.md 미러 · v2</span><span class="dot"></span>
+      <span>개정 2026-07-10 (rev 6)</span><span class="dot"></span>
+      <span>이 문서가 대화의 전부 — 모든 결정·미결·회신이 여기 반영된다</span>
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
@@ -309,6 +324,26 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 
 <span class="cm">+ stdlib (foldr, map, 표준 토큰 …)   // 안 쓰이면 DCE로 제거</span></pre>
     </nav>
+
+    <div class="minutes">
+      <div class="box">
+        <h3>이번 개정에서 바뀐 것 (rev 6)</h3>
+        <ul>
+          <li><b>챕터 순서 확정</b> — 레이아웃 → 문법 → 스코프 → 정제 → 타입. 문서 전체 재배열, <a href="#decisions">도장 찍음</a>.</li>
+          <li>파이프라인 그림은 <a href="#syntax">04-syntax</a>로 흡수, 파일 종류 카탈로그는 챕터별(05·06·07)로 해체.</li>
+          <li>직전 rev: tree kind 폐지(모든 트리 자기 문법), 아키텍처 4기둥, import 폐지(cat+stdlib+DCE).</li>
+        </ul>
+      </div>
+      <div class="box ask">
+        <h3>회신 대기 — 다음 메시지에서 답해 주면 도장으로 바꾼다</h3>
+        <ul>
+          <li><b>내부 트리 무손실성</b> — 제안: 표면 트리만 무손실(trivia 보존), 내부 트리는 정규 프린트로 왕복. e-graph 노드가 trivia를 안 들고 다녀도 됨. <a href="#decisions">09</a></li>
+          <li><b>마일스톤 순서</b> — 챕터 순서는 읽기 순서로만 적용했다. 구현 순서도 scope(M2)를 elab(M1)보다 앞당길까? 현재는 로워링이 단독 테스트 가능해서 elab 먼저. <a href="#milestones">10</a></li>
+          <li><b>e-graph 엔진</b> — 제안: egglog 스파이크 하나로 "스코프 엔진 겸용" 가설까지 검증 후 결정. <a href="#decisions">09</a></li>
+          <li><b>타입 플러그인 경계 · 비용 모델 위치</b> — 열려 있음. <a href="#decisions">09</a></li>
+        </ul>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -907,7 +942,14 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
         <h3>비용 모델의 선언 위치</h3>
-        <p>e-graph 추출의 비용을 어디에 쓰나 — 트리 생성자 주석, 규칙별 가중치, extern?</p>
+        <p>e-graph 추출의 비용을 어디에 쓰나 — 트리 생성자 주석, 규칙별 가중치, extern?
+        제안: 생성자 주석을 기본으로, extern은 탈출구.</p>
+      </article>
+      <article class="decision open">
+        <span class="seal" aria-label="미결">?</span>
+        <h3>내부 트리의 무손실성</h3>
+        <p>trivia/공백 보존을 표면 트리에만 적용하나, 내부 트리에도 적용하나?
+        제안: 표면만 무손실, 내부는 정규 프린트 왕복 — e-graph가 trivia를 안 들고 다닌다.</p>
       </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
@@ -929,7 +971,7 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
         <li>같은 종류 병합에서 <b>규칙 우선순위/오버라이드</b> — 두 파일이 같은 노드에 규칙을 내면 에러인가, 명시적 override인가?</li>
         <li><b>stdlib의 범위</b> — 도우미 콤비네이터·표준 토큰 외에 무엇까지? (공통 스코프 패턴, 진단 서식 도우미 등)</li>
         <li><b>e-graph 엔진 선택</b> — egg, egglog, 목적 제작? egglog의 datalog 면이 스코프 엔진을 겸할 수 있는지 검증.</li>
-        <li><b>내부 트리의 무손실성</b> — trivia/공백 보존은 표면 트리에만 적용하나, 내부 트리에도 적용하나? (안 하면 더 저렴)</li>
+        <li><b>마일스톤 순서</b> — 챕터 순서(레이아웃→문법→스코프→정제→타입)를 구현 순서에도 적용해 scope를 elab보다 앞당길까? 현재 M1 elab → M2 scope.</li>
         <li><code>.scope.langue</code>의 표현력 범위 — use/모듈 시스템, 캡 핸들러의 동적 스코프까지 담는가?</li>
         <li>진단 템플릿의 <b>다국어/수준</b>(note, help) 지원 여부.</li>
         <li>langue 프로젝트 자체의 테스트 형식 — 레거시 fixtures의 golden 파일을 어떤 모양으로 승계할지.</li>
