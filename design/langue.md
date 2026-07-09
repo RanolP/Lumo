@@ -37,8 +37,8 @@ lumo/
   Lumo.tokens.syn.langue
   Lumo.item.syn.langue
   Lumo.expr.syn.langue
-  Mir.syn.langue
-  Js.syn.langue
+  MIR.syn.langue
+  JS.syn.langue
   scope/lexical.scope.langue
   elab/item.elab.langue
   elab/expr.elab.langue
@@ -77,96 +77,57 @@ overlap checked globally after the merge.
 
 ## 2. Syntax (`*.syn.langue`)
 
-### 2.1 Languages are declared by file name
+### 2.1 A `.syn.langue` file declares a language
 
-**Decided: every pipeline stage — Lumo, Mir, Lir, Js, however many the
-definition wants — is an individual language, and each is defined by its own
-`.syn.langue` grammar. Nothing is special**: no marker keyword, no
-surface/internal distinction in the tool. The file `Mir.syn.langue` existing
-*is* the declaration: it puts the name `Mir` into the global namespace, and
-other rules reference it as a language (`elab Lumo -> Mir`, `--emit Mir`).
-A language split across files uses the first name segment:
-`Lumo.expr.syn.langue` contributes to language `Lumo`.
+**`*.syn.langue` declares a language.** A definition declares as many as it
+wants — Lumo, MIR, LIR, JS — and a language consists of **tokens** and
+**grammar**. The file name is the declaration: `MIR.syn.langue` existing
+puts `MIR` into the global namespace, referenceable as a language. A
+language split across files uses the first name segment
+(`Lumo.expr.syn.langue`).
 
-```
-// Mir.syn.langue — the file name declares language Mir
-Expr =
-  | Lam | App | Let | Perform
-
-Lam     = 'fn' param:Binder '->' body:Expr
-App     = callee:Expr '(' arg:Expr ')'
-Let     = 'let' binder:Binder '=' value:Expr 'in' body:Expr
-Perform = 'perform' cap:CapRef '(' args:sep(Expr, ',') ')'
-```
-
-Consequences:
-
-- Parser **and** pretty-printer are derived for every language, so every
-  stage round-trips as text. Debug dumps, `--emit Mir`, and golden fixtures
-  written directly in IR syntax all fall out.
-- Code emission is not special either: `Js.syn.langue` defines the js
-  language, and emitting JavaScript is pretty-printing a Js tree.
-- Elab and type rules target the same generated pattern-matching surface for
-  every language.
-
-Whether Lumo keeps the CBPV value/computation distinction as two languages
-(or two sorts within one) is a choice made in its `.syn.langue` files, not
-by Langue — decided at M1.
+Per language, parser and pretty-printer are derived — every stage
+round-trips as text, and emitting JavaScript is pretty-printing a JS tree.
 
 ### 2.2 Tokens
 
-**Decided: a token is a name bound to a string literal or a regex — nothing
-else.** There is no `keywords(...)` block or any other special form:
+A token is a name bound to a string literal or a regex — nothing else. The
+name is the token's display identity (debug dumps, syntax kinds,
+diagnostics). Longest match wins; on ties a literal beats a regex. Dotted
+names double as highlight scopes.
 
 ```
-token keyword.fn   = 'fn'
-token keyword.data = 'data'
-token ident        = /[a-zA-Z_][a-zA-Z0-9_]*/
-token lit.number   = /[0-9]+(\.[0-9]+)?/
-token lit.string   = /"([^"\\]|\\.)*"/
-trivia whitespace   = /[ \t\r\n]+/
+token keyword.fn = 'fn'            // 'fn' displays as keyword.fn
+token ident      = /[a-zA-Z_][a-zA-Z0-9_]*/
+token lit.number = /[0-9]+(\.[0-9]+)?/
 trivia comment.line = /\/\/[^\n]*/
 ```
-
-- `token keyword.fn = 'fn'` means: the literal `'fn'` in any grammar rule
-  resolves to this token, and everywhere the token is *displayed* — debug
-  dumps, syntax kinds, diagnostics — it appears as `keyword.fn`. Regex
-  tokens display by their name the same way.
-- Disambiguation is the standard pair: longest match wins; on equal length a
-  string literal beats a regex (`fn` lexes as `keyword.fn`, `fnord` as
-  `ident`).
-- Dotted names form a hierarchy (`keyword.*`, `lit.*`, `comment.*`) that
-  maps directly onto highlight scopes — LSP semantic tokens fall out of the
-  lexer table.
 
 In grammar rules, literal tokens are written as their literal (`'fn'`) and
 regex tokens by name (`name:ident`).
 
 ### 2.3 Grammar
 
-- Separated lists: `params:sep(Param, ',')` — generator emits list
-  accessors.
-- Expression grammars: `praat` blocks. `simple` lists the atoms; in
-  `operators`, `@n` is a *placeholder for an expression operand* with
-  binding power n between the surrounding tokens. Placement draws the
-  operator shape directly — prefix, infix, postfix, mixfix:
+Rules are shape and display syntax at once; labels become accessors. Lists:
+`sep(Param, ',')`. Expressions: `praat` blocks — `simple` lists the atoms;
+in `operators`, `@` is a placeholder for an expression operand and the
+number is the binding power between tokens. Placement draws the operator
+shape (prefix, infix, postfix, mixfix).
 
-  ```
-  Expr = praat {
-    simple = Lit | Ident | ParenExpr
-    operators {
-      '+' | '-' | '!' @100,
-      @89 '**' @90,
-      @80 '*' | '/' @79,
-      @70 '+' | '-' @69,
-    }
+```
+FnDecl = 'fn' name:ident params:sep(Param, ',') …
+
+Expr = praat {
+  simple = Lit | Ident | ParenExpr
+  operators {
+    '+' | '-' | '!' @100,
+    @89 '**' @90,
+    @80 '*' | '/' @79,
+    @70 '+' | '-' @69,
+    @40 '?' @0 ':' @39,     // a ? b : c
   }
-  ```
-
-  `'+' @100` prefix; `@80 '*' @79` left-assoc infix; `@89 '**' @90`
-  right-assoc infix.
-- Rules reference tokens and languages declared anywhere — no import, no
-  forward declaration.
+}
+```
 
 Per language, the generator emits syntax kinds, typed AST accessors, a
 lossless tree, the parser (extern recovery hooks), and the pretty-printer.
@@ -193,27 +154,10 @@ LSP (go-to-def falls out for free).
 
 ## 4. Elaboration (`*.elab.langue`)
 
-Rewrite rules between any two declared languages (including same-language
-passes), with quasiquoted patterns on the source side and constructors on
-the target side:
-
-```
-elab Lumo -> Mir {
-  rule FnDecl { name, params, body } =>
-    Let(name, foldr(params, elab(body), |p, acc| Lam(p, acc)))
-
-  rule PipeExpr { lhs, rhs } =>          // a |> f  ==>  f(a)
-    App(elab(rhs), elab(lhs))
-}
-```
-
-Semantics: syntax-directed, one rule per source node kind (checked for
-exhaustiveness against the grammar), recursion explicit via `elab(...)`.
-Helper combinators (`foldr`, `map`, fresh-name generation) come from the
-stdlib. A rule may call `extern fn` for genuinely procedural cases.
-
-Same-language groups run as e-graph equality saturation (section 6.3);
-their rules are equalities, not directed passes.
+Not designed yet — taken up after scope (chapter 3) is settled. Decided at
+the architecture level only: language-to-language elaboration is
+syntax-directed; same-language optimization is e-graph equality saturation
+(section 6.3).
 
 ## 5. Type (`*.type.langue`)
 
@@ -285,27 +229,11 @@ algorithm-free declarations that engines interpret.
 
 ### 6.3 E-graph elaboration
 
-#### 6.3.1 Language-to-language: syntax-directed
-
-Lowering between two different languages (`elab Lumo -> Mir`) stays a
-deterministic, syntax-directed, single-pass translation: one rule per source
-node kind, exhaustiveness checked, recursion explicit via `elab(...)`.
-Nothing to optimize here — it is a definition of meaning, not a search.
-
-#### 6.3.2 Same-language optimization: equality saturation
-
-Same-language rule groups (`elab Mir -> Mir`) run on an **e-graph**: rules
-are non-destructive rewrites applied to saturation, so rule *order carries
-no meaning* — the same principle the project format applies to files.
-Inlining, CPS elimination, and DCE become declared equalities instead of
-hand-sequenced passes. Candidate engines: `egg` / `egglog`.
-
-#### 6.3.3 Cost and extraction
-
-After saturation, extraction picks the best representative per e-class using
-a cost model. Where the cost model is declared — annotations on grammar
-rules, per-rewrite weights, or a Rust-side extern — is open (section 11);
-proposal: grammar-rule annotations by default, extern as the escape hatch.
+Language-to-language elaboration is syntax-directed; same-language
+optimization runs as e-graph equality saturation with cost-based extraction,
+so rule order carries no meaning. Candidate engines: `egg` / `egglog`.
+Details are filled in when chapter 4 is designed; the cost-model declaration
+site is open (section 11).
 
 ### 6.4 Pluggable type system
 
@@ -376,16 +304,16 @@ generated. Langue-in-langue self-description is explicitly not a v1 goal.
 - **M0 — langc core**: `.langue` parser, project cat/merge/DCE model,
   `langc check`, salsa query runtime skeleton. Write `Lumo.syn.langue`;
   generate SyntaxKind, AST, lossless tree, parser, and printer.
-- **M1 — Mir + elab (lowering)**: write `Mir.syn.langue` and the
-  `elab Lumo -> Mir` syntax-directed rules; the rewrite engine owns
+- **M1 — MIR + elab (lowering)**: write `MIR.syn.langue` and the
+  `elab Lumo -> MIR` syntax-directed rules; the rewrite engine owns
   lowering. CBPV split decided here.
 - **M2 — scope**: scope facts + resolution engine.
 - **M3 — type**: reasoning engine + Fω/caps plugin + judgment DSL; port the
   capability typing rules.
 - **M4 — e-graph optimization**: same-language elab groups on equality
   saturation; optimization golden fixtures are the contract.
-- **M5 — Js**: write `Js.syn.langue` and `elab Mir/Lir -> Js` — emission is
-  pretty-printing the Js tree; remaining golden fixtures brought over
+- **M5 — JS**: write `JS.syn.langue` and `elab MIR/LIR -> JS` — emission is
+  pretty-printing the JS tree; remaining golden fixtures brought over
   (source material in `legacy/crates/compiler/tests/fixtures/`).
 
 Each milestone keeps `langc check` + golden-file tests green.
@@ -400,9 +328,9 @@ Decided:
    blocks and extern recovery hooks. Fall back to hand-written only if
    recovery quality proves insufficient at M0 exit.
 3. **Every stage is an individual language declared by file name**:
-   `Mir.syn.langue` puts `Mir` in the global namespace, referenceable as a
+   `MIR.syn.langue` puts `MIR` in the global namespace, referenceable as a
    language; no marker keywords, no surface/internal distinction, arbitrary
-   chain length. Emission = pretty-printing the target language (Js).
+   chain length. Emission = pretty-printing the target language (JS).
    Lumo's CBPV split is a `.syn.langue` choice deferred to M1.
 4. **Diagnostics live in the DSL** as message templates on rule premises.
 5. **Multi-file project format, no imports**: kind-suffixed files

@@ -312,7 +312,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 <a class="use" href="#project">01-project.langue</a>        <span class="cm">// ① 프로젝트 레이아웃: cat + stdlib + DCE</span>
 <a class="use" href="#syntax">02-syntax.langue</a>         <span class="cm">// ② 문법: 모든 단계가 개별 언어다</span>
 <a class="use" href="#scope">03-scope.langue</a>          <span class="cm">// ③ 스코프: 바인딩 사실 선언</span>
-<a class="use" href="#elab">04-elab.langue</a>           <span class="cm">// ④ 정제: 규칙 + 등식 포화</span>
+<a class="use" href="#elab">04-elab.langue</a>           <span class="cm">// ④ 정제: 미설계 — 스코프 다음</span>
 <a class="use" href="#type">05-type.langue</a>           <span class="cm">// ⑤ 타입: 추론 엔진 위의 판단</span>
 <a class="use" href="#architecture">06-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: salsa · ungrammar · e-graph · 추론 엔진</span>
 <a class="use" href="#exec">07-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
@@ -363,7 +363,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
         <rect x="24" y="22"  width="214" height="36" rx="7" fill="#fff" stroke="#2547D0" stroke-width="1.4"/>
         <text x="40" y="45" fill="#2547D0" font-size="12.5" font-weight="600">Lumo.expr.syn.langue</text>
         <rect x="24" y="70"  width="214" height="36" rx="7" fill="#fff" stroke="#0E8A6D" stroke-width="1.4"/>
-        <text x="40" y="93" fill="#0E8A6D" font-size="12.5" font-weight="600">Mir.syn.langue</text>
+        <text x="40" y="93" fill="#0E8A6D" font-size="12.5" font-weight="600">MIR.syn.langue</text>
         <rect x="24" y="118" width="214" height="36" rx="7" fill="#fff" stroke="#B96A00" stroke-width="1.4"/>
         <text x="40" y="141" fill="#B96A00" font-size="12.5" font-weight="600">elab/expr.elab.langue</text>
         <rect x="24" y="166" width="214" height="36" rx="7" fill="#fff" stroke="#7A3FB8" stroke-width="1.4"/>
@@ -441,25 +441,29 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 <section id="syntax">
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-syn)"></span>02-syntax.langue</span>
-    <h2>문법 — 모양을 쓰면 파서와 프린터가 나온다</h2>
+    <h2>*.syn.langue는 언어를 선언한다</h2>
     <p class="sub">
-      Lumo, Mir, Lir, Js — 모든 단계가 각자 <code>.syn.langue</code>로 정의되는 <b>개별 언어</b>다.
-      파일 이름이 곧 선언이고, 문법이 모양과 표시를 동시에 정한다.
+      Lumo, MIR, LIR, JS 등 다양한 언어를 선언할 수 있으며, 구성 요소로는 <b>토큰</b>과
+      <b>문법</b>이 있다. 파일 이름이 곧 선언 — <code>MIR.syn.langue</code>가 있으면 이름
+      <b>MIR</b>가 스코프에 올라 언어로써 참조된다.
+      여러 파일로 쪼갤 땐 <code>Lumo.expr.syn.langue</code>처럼 첫 조각이 언어.
     </p>
 
     <div class="kinds">
       <article class="kind k-syn">
-        <header><span class="ext">*.syn.langue</span><span class="role">02a · Lumo: 어휘 + 문법</span></header>
-        <div class="body">토큰은 <b>이름 = 리터럴/정규식</b>이 전부 — 이름이 곧 디버그 표시.
-          최장 일치, 동률은 리터럴 승, 점 이름은 하이라이트 스코프.
-          리스트는 <code>sep()</code>, 식은 <code>praat</code> 블록 —
-          <code>@n</code>은 그 자리에 오는 식(simple)의 <b>자리 표시자</b>, n은 토큰 사이의
-          결합력. 배치가 곧 전위/중위/후위: <code>'+' @100</code> 전위,
-          <code>@80 '*' @79</code> 좌결합, <code>@89 '**' @90</code> 우결합.</div>
-        <pre><span class="k">token</span> keyword.fn = <span class="s">'fn'</span>          <span class="c">// 디버그 표시 = keyword.fn</span>
+        <header><span class="ext">토큰</span><span class="role">02a · 이름 = 리터럴 또는 정규식</span></header>
+        <div class="body">이름이 곧 디버그·진단 표시. 점 이름은 하이라이트 스코프 겸용.</div>
+        <pre><span class="k">token</span> keyword.fn = <span class="s">'fn'</span>   <span class="c">// 'fn' → keyword.fn</span>
 <span class="k">token</span> ident      = /[a-zA-Z_][a-zA-Z0-9_]*/
+<span class="k">token</span> lit.number = /[0-9]+(\.[0-9]+)?/</pre>
+      </article>
 
-FnDecl = <span class="s">'fn'</span> name:ident params:<span class="k">sep</span>(Param, <span class="s">','</span>) …
+      <article class="kind k-syn">
+        <header><span class="ext">문법</span><span class="role">02b · 규칙 = 모양이자 표시 문법</span></header>
+        <div class="body">레이블은 접근자, 리스트는 <code>sep()</code>. 식은 <code>praat</code> —
+          <code>@</code>는 식(simple) 자리 표시자, 숫자는 토큰 사이 결합력.
+          배치가 연산자 모양(전위·중위·후위·혼합)을 그린다.</div>
+        <pre>FnDecl = <span class="s">'fn'</span> name:ident params:<span class="k">sep</span>(Param, <span class="s">','</span>) …
 
 Expr = <span class="k">praat</span> {
   simple = Lit | Ident | ParenExpr
@@ -468,25 +472,14 @@ Expr = <span class="k">praat</span> {
     @89 <span class="s">'**'</span> @90,
     @80 <span class="s">'*'</span> | <span class="s">'/'</span> @79,
     @70 <span class="s">'+'</span> | <span class="s">'-'</span> @69,
+    @40 <span class="s">'?'</span> @0 <span class="s">':'</span> @39,   <span class="c">// a ? b : c</span>
   }
 }</pre>
-      </article>
-
-      <article class="kind k-tree">
-        <header><span class="ext">*.syn.langue</span><span class="role">02b · Mir · Lir · Js — 전부 대등한 언어</span></header>
-        <div class="body"><code>Mir.syn.langue</code>가 존재하면 이름 <b>Mir</b>가 스코프에 선언되고
-          언어로써 참조된다(<code>elab Lumo -> Mir</code>). 여러 파일로 쪼갤 땐
-          <code>Lumo.expr.syn.langue</code>처럼 첫 조각이 언어. 언어마다 파서·프린터가 유도되어
-          전 단계 텍스트 왕복 — <code>--emit Mir</code>, IR 문법 golden 픽스처 공짜.</div>
-        <pre><span class="c">// Mir.syn.langue — 파일 이름이 언어 Mir를 선언</span>
-Expr = | Lam | App | Let | Perform
-Lam  = <span class="s">'fn'</span> param:Binder <span class="s">'->'</span> body:Expr
-App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span></pre>
       </article>
     </div>
 
     <figure class="figure" style="margin-top:20px">
-      <svg viewBox="0 0 880 200" role="img" aria-label="Lumo에서 Mir를 거쳐 Js로 가는 elaboration 파이프라인">
+      <svg viewBox="0 0 880 200" role="img" aria-label="Lumo에서 MIR를 거쳐 JS로 가는 elaboration 파이프라인">
         <defs>
           <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="#4E5A6B"/>
@@ -498,12 +491,12 @@ App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span
         <text x="108" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">Lumo.syn.langue</text>
         <!-- Core -->
         <rect x="300" y="64" width="168" height="72" rx="10" fill="#fff" stroke="#0E8A6D" stroke-width="1.6"/>
-        <text x="384" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">Mir</text>
-        <text x="384" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">Mir.syn.langue</text>
+        <text x="384" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">MIR</text>
+        <text x="384" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">MIR.syn.langue</text>
         <!-- backend prep -->
         <rect x="576" y="64" width="168" height="72" rx="10" fill="#fff" stroke="#0E8A6D" stroke-width="1.6"/>
-        <text x="660" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">Js</text>
-        <text x="660" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">Js.syn.langue · 방출 = 프린트</text>
+        <text x="660" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">JS</text>
+        <text x="660" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">JS.syn.langue · 방출 = 프린트</text>
         <!-- more -->
         <rect x="792" y="64" width="70" height="72" rx="10" fill="none" stroke="#B4BECB" stroke-width="1.6" stroke-dasharray="6 5"/>
         <text x="827" y="105" text-anchor="middle" fill="#9AA6B5" font-size="17">…</text>
@@ -521,9 +514,9 @@ App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span
 
         <!-- CBPV note -->
         <path d="M384,136 L384,168" stroke="#B4BECB" stroke-width="1.3" stroke-dasharray="3 4"/>
-        <text x="384" y="188" text-anchor="middle" fill="#4E5A6B" font-size="11.5">CBPV 값/계산 분리 여부 → M1에서 Mir.syn.langue를 쓸 때 결정</text>
+        <text x="384" y="188" text-anchor="middle" fill="#4E5A6B" font-size="11.5">CBPV 값/계산 분리 여부 → M1에서 MIR.syn.langue를 쓸 때 결정</text>
       </svg>
-      <figcaption>단계 수·이름은 정의의 몫 — Lumo → Mir → Lir → Js처럼. Js 방출은 Js 트리의 프리티 프린트다.</figcaption>
+      <figcaption>단계 수·이름은 정의의 몫 — Lumo → MIR → LIR → JS처럼. JS 방출은 JS 트리의 프리티 프린트다.</figcaption>
     </figure>
   </div>
 </section>
@@ -555,23 +548,11 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
 <section id="elab">
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>04-elab.langue</span>
-    <h2>정제 — 의미는 규칙으로, 최적화는 등식으로</h2>
+    <h2>정제 — 아직 설계하지 않았다</h2>
     <p class="sub">
-      소스 쪽은 준인용 패턴, 타깃 쪽은 생성자. 언어 간 로워링은 노드 종류당 규칙 하나에
-      망라성 검사, 재귀는 <code>elab(…)</code>으로 명시적. 같은 언어 규칙군은 e-graph 등식
-      포화로 돈다(06c). 도우미(<code>foldr</code>, <code>map</code>, 신선한 이름)는 stdlib에서.
+      스코프(03) 확정 후 다룬다. 지금 결정된 것은 아키텍처 수준뿐 —
+      언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화(<a href="#p-egraph">06c</a>).
     </p>
-    <div class="kinds">
-      <article class="kind k-elab full">
-        <header><span class="ext">*.elab.langue</span><span class="role">언어 → 언어 · 같은 언어 패스</span></header>
-        <pre><span class="k">elab</span> Lumo -> Mir {
-  <span class="k">rule</span> FnDecl { name, params, body } =>
-    Let(name, foldr(params, elab(body), |p, acc| Lam(p, acc)))
-  <span class="k">rule</span> PipeExpr { lhs, rhs } =>   <span class="c">// a |> f ⇒ f(a)</span>
-    App(elab(rhs), elab(lhs))
-}</pre>
-      </article>
-    </div>
   </div>
 </section>
 
@@ -662,7 +643,7 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
       <h3>ungrammar식 표기 — 모양을 쓰면, 알고리즘은 유도된다</h3>
       <p><code>.langue</code> 표기는 <b>트리의 모양</b>을 기술하지, 파싱 알고리즘을 기술하지
       않는다. 레이블은 접근자가 되고, 대안은 노드 종류가 되고, 파서는 모양(+ 우선순위
-      주석)에서 <b>유도</b>된다. <b>파이프라인의 모든 단계(Lumo, Mir, Lir, Js)는 각자 문법으로 선언되는 개별 언어이고,
+      주석)에서 <b>유도</b>된다. <b>파이프라인의 모든 단계(Lumo, MIR, LIR, JS)는 각자 문법으로 선언되는 개별 언어이고,
       따라서 자기 표시 문법을 가진다</b>. 언어마다 파서와 프리티 프린터가 유도되어
       모든 단계가 텍스트로 왕복한다. 이 철학이 문법 너머까지 간다: elab
       규칙·스코프 사실·타입 규칙 전부가 엔진이 해석하는 모양-우선·알고리즘-부재 선언이다.</p>
@@ -671,69 +652,16 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
 <span class="c">// 무엇을 쓰지 않는가: peek() / expect() / 재귀 하강의 순서 / print 함수</span></pre>
     </div>
 
-    <!-- 02c e-graph -->
+    <!-- 06c e-graph -->
     <div class="subsec" id="p-egraph">
       <span class="slabel">06c · 결정됨</span>
       <h3>e-graph 정제 — 최적화는 등식 포화로</h3>
-      <p>정제는 기계가 다른 두 모드로 갈린다.</p>
-      <div class="minis">
-        <div class="mini">
-          <h4>언어 → 다른 언어: 구문 지향</h4>
-          <p><code>elab Lumo -> Mir</code>는 결정적 단일 패스 번역.
-          노드 종류당 규칙 하나, 망라성 검사. 의미의 정의이므로 탐색할 것이 없다.</p>
-        </div>
-        <div class="mini">
-          <h4>같은 언어: 등식 포화</h4>
-          <p><code>elab Mir -> Mir</code> 규칙군은 e-graph 위의 비파괴 재작성.
-          포화까지 돌리므로 <b>규칙 순서가 무의미</b> — 파일 순서가 무의미한
-          cat과 같은 원리다. 인라이닝·CPS 제거·DCE가 손으로 배열한
-          패스 대신 선언된 등식이 된다.</p>
-        </div>
-        <div class="mini">
-          <h4>비용과 추출</h4>
-          <p>포화 후 e-class마다 비용 모델로 최적 대표를 추출.
-          비용을 어디에 선언하나(생성자 주석 / 규칙 가중치 / extern)는 미결.</p>
-        </div>
-      </div>
-      <figure class="figure" style="margin-top:20px">
-        <svg viewBox="0 0 880 210" role="img" aria-label="등식 포화: 규칙이 e-graph를 키우고 추출이 최적 항을 고른다">
-          <defs>
-            <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-              <path d="M0,0 L10,5 L0,10 z" fill="#4E5A6B"/>
-            </marker>
-          </defs>
-          <!-- rules -->
-          <rect x="20" y="46" width="196" height="118" rx="9" fill="#F1F4F9" stroke="#B96A00" stroke-width="1.4"/>
-          <text x="36" y="74" fill="#B96A00" font-size="12.5" font-weight="600">규칙 = 등식</text>
-          <text x="36" y="100" fill="#16202E" font-size="11.5">x * 2 ≡ x &lt;&lt; 1</text>
-          <text x="36" y="122" fill="#16202E" font-size="11.5">inline(f) ≡ body[f]</text>
-          <text x="36" y="144" fill="#16202E" font-size="11.5">perform(c) ≡ impl_c  …</text>
-          <line x1="216" y1="105" x2="288" y2="105" stroke="#4E5A6B" stroke-width="1.6" marker-end="url(#arr3)"/>
-          <text x="252" y="92" text-anchor="middle" fill="#4E5A6B" font-size="12" font-weight="600">포화</text>
-          <!-- egraph -->
-          <rect x="292" y="20" width="330" height="170" rx="12" fill="#fff" stroke="#16202E" stroke-width="1.8"/>
-          <text x="457" y="46" text-anchor="middle" fill="#16202E" font-size="13.5" font-weight="600">e-graph</text>
-          <rect x="312" y="62" width="136" height="52" rx="7" fill="#F1F4F9" stroke="#B4BECB" stroke-width="1.2"/>
-          <text x="322" y="84" fill="#16202E" font-size="11">e-class: { x*2,</text>
-          <text x="322" y="102" fill="#2547D0" font-size="11" font-weight="600">  x&lt;&lt;1 }</text>
-          <rect x="466" y="62" width="136" height="52" rx="7" fill="#F1F4F9" stroke="#B4BECB" stroke-width="1.2"/>
-          <text x="476" y="84" fill="#16202E" font-size="11">e-class: { f(a),</text>
-          <text x="476" y="102" fill="#2547D0" font-size="11" font-weight="600">  body[a] }</text>
-          <rect x="312" y="126" width="290" height="44" rx="7" fill="#F1F4F9" stroke="#B4BECB" stroke-width="1.2"/>
-          <text x="322" y="145" fill="#16202E" font-size="11">동치인 항들이 한 클래스에 쌓인다 —</text>
-          <text x="322" y="161" fill="#4E5A6B" font-size="11">어떤 규칙도 다른 규칙의 기회를 파괴하지 않는다</text>
-          <line x1="622" y1="105" x2="694" y2="105" stroke="#4E5A6B" stroke-width="1.6" marker-end="url(#arr3)"/>
-          <text x="658" y="92" text-anchor="middle" fill="#C9372C" font-size="12" font-weight="600">추출</text>
-          <!-- extraction -->
-          <rect x="698" y="66" width="162" height="78" rx="9" fill="#fff" stroke="#2547D0" stroke-width="1.6"/>
-          <text x="779" y="97" text-anchor="middle" fill="#16202E" font-size="12.5" font-weight="600">비용 최소 항</text>
-          <text x="779" y="118" text-anchor="middle" fill="#4E5A6B" font-size="10.5">e-class당 최적 대표 선택</text>
-        </svg>
-        <figcaption>후보 엔진: egg / egglog — egglog의 datalog 면은 스코프 엔진도 겸할 수 있다.</figcaption>
-      </figure>
+      <p>언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화 + 비용 추출 —
+      규칙 순서가 무의미하다. 후보 엔진: egg / egglog.
+      상세는 정제 챕터(04)를 설계할 때 채운다.</p>
     </div>
 
-    <!-- 02d pluggable types -->
+    <!-- 06d pluggable types -->
     <div class="subsec" id="p-types">
       <span class="slabel">06d · 결정됨</span>
       <h3>플러그형 타입 시스템 — 제대로 된 추론 엔진 위에서</h3>
@@ -845,7 +773,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <span class="seal" aria-label="결정됨">결</span>
         <h3>임의의 언어 사슬</h3>
         <p>파이프라인 모양은 도구가 아니라 정의가 정한다 — 단계 수·이름 자유.
-        CBPV 분리는 M1의 Mir.syn.langue에서.</p>
+        CBPV 분리는 M1의 MIR.syn.langue에서.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -873,8 +801,8 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <span class="seal" aria-label="결정됨">결</span>
         <h3>파일 이름이 언어를 선언한다</h3>
         <p>Lumo.syn.langue가 있으면 이름 Lumo가 전역 스코프에 선언되어 언어로써 참조된다.
-        Lumo, Mir, Lir, Js 전부 대등한 개별 언어 — 특별한 키워드 없음. 언어마다
-        파서·프린터 유도, 전 단계 텍스트 왕복. Js 방출은 프리티 프린트다.</p>
+        Lumo, MIR, LIR, JS 전부 대등한 개별 언어 — 특별한 키워드 없음. 언어마다
+        파서·프린터 유도, 전 단계 텍스트 왕복. JS 방출은 프리티 프린트다.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -949,8 +877,8 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </li>
       <li>
         <span class="m">M1</span>
-        <div><h3>Mir + elab (로워링)</h3>
-        <p>Mir.syn.langue 작성, elab Lumo → Mir 구문 지향 규칙 작성. 재작성 엔진이 로워링을
+        <div><h3>MIR + elab (로워링)</h3>
+        <p>MIR.syn.langue 작성, elab Lumo → MIR 구문 지향 규칙 작성. 재작성 엔진이 로워링을
         전담. CBPV 분리 여부를 여기서 결정.</p></div>
       </li>
       <li>
@@ -969,8 +897,8 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </li>
       <li>
         <span class="m">M5</span>
-        <div><h3>Js</h3>
-        <p>Js.syn.langue 작성, Mir/Lir → Js elab — 방출은 Js 트리의 프리티 프린트.
+        <div><h3>JS</h3>
+        <p>JS.syn.langue 작성, MIR/LIR → JS elab — 방출은 JS 트리의 프리티 프린트.
         남은 golden 픽스처 정리.</p></div>
       </li>
     </ol>
