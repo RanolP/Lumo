@@ -77,16 +77,32 @@ checked globally after the merge.
 
 ### 2.1 Tokens
 
+**Decided: a token is a name bound to a string literal or a regex — nothing
+else.** There is no `keywords(...)` block or any other special form:
+
 ```
-token Ident      = /[a-zA-Z_][a-zA-Z0-9_]*/ keywords('fn' 'data' 'cap' 'impl' ...)
-token NumberLit  = /[0-9]+(\.[0-9]+)?/
-token StringLit  = /"([^"\\]|\\.)*"/
-trivia Whitespace = /[ \t\r\n]+/
-trivia LineComment = /\/\/[^\n]*/
+token keyword.fn   = 'fn'
+token keyword.data = 'data'
+token ident        = /[a-zA-Z_][a-zA-Z0-9_]*/
+token lit.number   = /[0-9]+(\.[0-9]+)?/
+token lit.string   = /"([^"\\]|\\.)*"/
+trivia whitespace   = /[ \t\r\n]+/
+trivia comment.line = /\/\/[^\n]*/
 ```
 
-`keywords(...)` lists literals carved out of an ident-shaped token, so the
-grammar can use `'fn'` directly and the lexer stays a single DFA.
+- `token keyword.fn = 'fn'` means: the literal `'fn'` in any grammar rule
+  resolves to this token, and everywhere the token is *displayed* — debug
+  dumps, syntax kinds, diagnostics — it appears as `keyword.fn`. Regex
+  tokens display by their name the same way.
+- Disambiguation is the standard pair: longest match wins; on equal length a
+  string literal beats a regex (`fn` lexes as `keyword.fn`, `fnord` as
+  `ident`).
+- Dotted names form a hierarchy (`keyword.*`, `lit.*`, `comment.*`) that
+  maps directly onto highlight scopes — LSP semantic tokens fall out of the
+  lexer table.
+
+In grammar rules, literal tokens are written as their literal (`'fn'`) and
+regex tokens by name (`name:ident`).
 
 ### 2.2 Grammar
 
@@ -393,19 +409,23 @@ Decided (2026-07-09 ~ 10):
 10. **Chapter order**: project layout → syntax → scope → elaboration → type;
     architecture pillars relocated after them; no legacy exposition in the
     documents.
+11. **Tokens are named literals/regexes only**: `token keyword.fn = 'fn'` —
+    the name is the debug/display identity of the token; no `keywords()` or
+    other special forms; longest match wins, literal beats regex on ties;
+    dotted names double as highlight scopes.
 
 Still open (mirrored in the artifact's 회신 대기 box):
 
-11. **Cost model declaration** for e-graph extraction — proposal:
+12. **Cost model declaration** for e-graph extraction — proposal:
     constructor annotations by default, extern as escape hatch.
-12. **Type-plugin boundary** — how much of a type system lives in the Rust
+13. **Type-plugin boundary** — how much of a type system lives in the Rust
     plugin trait vs the DSL rule set?
-13. **E-graph engine choice** — proposal: one egglog spike that also tests
+14. **E-graph engine choice** — proposal: one egglog spike that also tests
     the "datalog side doubles as the scope engine" hypothesis.
-14. **Hybrid execution boundary** (section 8) — confirm generated vs
+15. **Hybrid execution boundary** (section 8) — confirm generated vs
     interpreted split against the pillar engines.
-15. **Lossless internal trees** — proposal: surface tree only; internal
+16. **Lossless internal trees** — proposal: surface tree only; internal
     trees round-trip via canonical pretty-print (e-graph nodes carry no
     trivia).
-16. **Milestone order** — chapter order is reading order; should the build
+17. **Milestone order** — chapter order is reading order; should the build
     order also move scope (M2) ahead of elab (M1)?

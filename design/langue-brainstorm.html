@@ -326,11 +326,10 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 
     <div class="minutes">
       <div class="box">
-        <h3>이번 개정에서 바뀐 것 (rev 7)</h3>
+        <h3>이번 개정에서 바뀐 것 (rev 8)</h3>
         <ul>
-          <li><b>레거시 설명 전부 삭제</b> — why 챕터 제거, 본문·마일스톤·도장 카드의 레거시 언급 정리.</li>
-          <li><b>아키텍처 챕터를 06으로 이동</b> — 본문은 요청 순서 그대로: 01 레이아웃 → 02 문법 → 03 스코프 → 04 정제 → 05 타입.</li>
-          <li>전체 번호 재매김 (섹션 · 상호참조 · 목차).</li>
+          <li><b>토큰 모델 확정</b> — <code>token keyword.fn = 'fn'</code>: 이름 = 리터럴/정규식뿐, <code>keywords()</code> 블록 폐지. 이름이 곧 디버그 표시. <a href="#syntax">02a</a>에 반영, <a href="#decisions">도장</a>.</li>
+          <li>직전 rev: 레거시 설명 전부 삭제(why 챕터 제거), 아키텍처를 06으로 이동, 전체 번호 재매김.</li>
         </ul>
       </div>
       <div class="box ask">
@@ -462,12 +461,17 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <div class="kinds">
       <article class="kind k-syn">
         <header><span class="ext">*.syn.langue</span><span class="role">02a · 표면: 어휘 + CST 문법</span></header>
-        <div class="body">langue 1의 계승. 최대 함정이었던 래퍼 노드 관례는 <code>sep()</code> 내장으로,
-          손으로 짜던 Pratt 파서는 우선순위 주석으로 흡수한다.</div>
-        <pre><span class="k">token</span> Ident = /[a-zA-Z_][a-zA-Z0-9_]*/
-        keywords(<span class="s">'fn'</span> <span class="s">'data'</span> <span class="s">'cap'</span> …)
+        <div class="body">토큰은 <b>이름 = 리터럴 또는 정규식</b>, 그게 전부다 — <code>keywords()</code>
+          같은 특수 블록은 없다. 문법 속 <code>'fn'</code>은 <code>keyword.fn</code> 토큰으로
+          해석되고, 디버그·진단·SyntaxKind 어디서나 그 이름으로 표시된다. 최장 일치 우선,
+          같은 길이면 리터럴이 정규식을 이긴다. 점 이름 계층(<code>keyword.*</code>,
+          <code>lit.*</code>)은 하이라이트 스코프로 그대로 쓴다. 래퍼 노드 관례는
+          <code>sep()</code> 내장으로, Pratt 파서는 우선순위 주석으로 흡수.</div>
+        <pre><span class="k">token</span> keyword.fn = <span class="s">'fn'</span>          <span class="c">// 'fn' → 디버그에선 keyword.fn</span>
+<span class="k">token</span> ident      = /[a-zA-Z_][a-zA-Z0-9_]*/
+<span class="k">token</span> lit.number = /[0-9]+(\.[0-9]+)?/
 
-FnDecl = <span class="s">'fn'</span> name:Ident params:<span class="k">sep</span>(Param, <span class="s">','</span>) …
+FnDecl = <span class="s">'fn'</span> name:ident params:<span class="k">sep</span>(Param, <span class="s">','</span>) …
 Expr   = <span class="k">infix</span> BinExpr {
   <span class="s">'|>'</span> left, <span class="s">'+'</span> <span class="s">'-'</span> left @ 60, <span class="s">'*'</span> <span class="s">'/'</span> left @ 70
 }</pre>
@@ -865,6 +869,14 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <h3>이름은 Langue (v2) · Rust 호스트</h3>
         <p>langue 1 문법 파일은 정신적으로 유효한 부분집합. 도구는 crates/langc.</p>
         <span class="date">2026-07-09 ~ 10</span>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>토큰 = 이름 붙은 리터럴/정규식</h3>
+        <p>token keyword.fn = 'fn' — 이름이 디버그·진단·SyntaxKind의 표시 정체성.
+        keywords() 등 특수 형태 없음. 최장 일치, 동률이면 리터럴 승. 점 이름은 하이라이트
+        스코프 겸용.</p>
+        <span class="date">2026-07-10 · 사용자 확정</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
