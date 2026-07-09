@@ -300,7 +300,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 <a class="use" href="#architecture">02-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: 네 개의 기둥</span>
 <a class="use" href="#project">03-project.langue</a>        <span class="cm">// 프로젝트 형식: cat + stdlib + DCE</span>
 <a class="use" href="#pipeline">04-pipeline.langue</a>       <span class="cm">// 임의의 트리 파이프라인</span>
-<a class="use" href="#kinds">05-kinds.langue</a>          <span class="cm">// 다섯 가지 파일 종류</span>
+<a class="use" href="#kinds">05-kinds.langue</a>          <span class="cm">// 파일 종류: syn · elab · scope · type</span>
 <a class="use" href="#exec">06-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
 <a class="use" href="#decisions">07-decisions.langue</a>      <span class="cm">// 결정 · 미결 · 논의 후보</span>
 <a class="use" href="#milestones">08-milestones.langue</a>     <span class="cm">// M0 – M5</span>
@@ -409,11 +409,13 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <h3>ungrammar식 표기 — 모양을 쓰면, 알고리즘은 유도된다</h3>
       <p><code>.langue</code> 표기는 <b>트리의 모양</b>을 기술하지, 파싱 알고리즘을 기술하지
       않는다. 레이블은 접근자가 되고, 대안은 노드 종류가 되고, 파서는 모양(+ 우선순위
-      주석)에서 <b>유도</b>된다. 이 철학이 문법 너머까지 간다: 트리 선언·elab 규칙·스코프
-      사실·타입 규칙 전부가 엔진이 해석하는 모양-우선·알고리즘-부재 선언이다.</p>
-      <pre class="snippet"><span class="c">// 무엇을 쓰는가: CST의 모양</span>
+      주석)에서 <b>유도</b>된다. 별도의 ADT 표기는 없다 — <b>모든 트리는 문법으로 선언되고,
+      따라서 자기 표시 문법을 가진다</b>. 표면이든 내부(Core 등)든 파서와 프리티 프린터가
+      함께 유도되어 모든 단계가 텍스트로 왕복한다. 이 철학이 문법 너머까지 간다: elab
+      규칙·스코프 사실·타입 규칙 전부가 엔진이 해석하는 모양-우선·알고리즘-부재 선언이다.</p>
+      <pre class="snippet"><span class="c">// 무엇을 쓰는가: 트리의 모양 = 곧 그 트리의 표시 문법</span>
 FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span>(Param, <span class="k">','</span>) …
-<span class="c">// 무엇을 쓰지 않는가: peek() / expect() / 재귀 하강의 순서</span></pre>
+<span class="c">// 무엇을 쓰지 않는가: peek() / expect() / 재귀 하강의 순서 / print 함수</span></pre>
     </div>
 
     <!-- 02c e-graph -->
@@ -546,7 +548,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <rect x="24" y="22"  width="214" height="36" rx="7" fill="#fff" stroke="#2547D0" stroke-width="1.4"/>
         <text x="40" y="45" fill="#2547D0" font-size="12.5" font-weight="600">surface/expr.syn.langue</text>
         <rect x="24" y="70"  width="214" height="36" rx="7" fill="#fff" stroke="#0E8A6D" stroke-width="1.4"/>
-        <text x="40" y="93" fill="#0E8A6D" font-size="12.5" font-weight="600">core.tree.langue</text>
+        <text x="40" y="93" fill="#0E8A6D" font-size="12.5" font-weight="600">core.syn.langue (tree Core)</text>
         <rect x="24" y="118" width="214" height="36" rx="7" fill="#fff" stroke="#B96A00" stroke-width="1.4"/>
         <text x="40" y="141" fill="#B96A00" font-size="12.5" font-weight="600">elab/expr.elab.langue</text>
         <rect x="24" y="166" width="214" height="36" rx="7" fill="#fff" stroke="#7A3FB8" stroke-width="1.4"/>
@@ -627,8 +629,8 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
     <h2>파이프라인 모양은 Langue가 정하지 않는다</h2>
     <p class="sub">
       결정 사항: 정의는 <b>임의 개수의 트리</b>를 선언하고 그 사이를 <code>elab</code>으로
-      잇는다. 표면 트리는 <code>.syn.langue</code>에서 나오고, 나머지는 전부
-      <code>.tree.langue</code>의 선택이다. HIR/LIR이 몇 단계인지, CBPV를 두 트리로
+      잇는다. 표면이든 내부든 모든 트리는 <code>.syn.langue</code> 문법으로 선언되어
+      자기 표시 문법을 가진다. HIR/LIR이 몇 단계인지, CBPV를 두 트리로
       쪼갤지는 Lumo 정의 <b>안에서</b> 내리는 결정이지 도구의 제약이 아니다.
     </p>
 
@@ -646,7 +648,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <!-- Core -->
         <rect x="300" y="64" width="168" height="72" rx="10" fill="#fff" stroke="#0E8A6D" stroke-width="1.6"/>
         <text x="384" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">Core</text>
-        <text x="384" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">core.tree.langue</text>
+        <text x="384" y="117" text-anchor="middle" fill="#4E5A6B" font-size="11">core.syn.langue · 자기 문법 보유</text>
         <!-- backend prep -->
         <rect x="576" y="64" width="168" height="72" rx="10" fill="#fff" stroke="#0E8A6D" stroke-width="1.6"/>
         <text x="660" y="95" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">MemAware</text>
@@ -668,7 +670,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
 
         <!-- CBPV note -->
         <path d="M384,136 L384,168" stroke="#B4BECB" stroke-width="1.3" stroke-dasharray="3 4"/>
-        <text x="384" y="188" text-anchor="middle" fill="#4E5A6B" font-size="11.5">CBPV 값/계산 분리 여부 → M1에서 core.tree.langue를 쓸 때 결정</text>
+        <text x="384" y="188" text-anchor="middle" fill="#4E5A6B" font-size="11.5">CBPV 값/계산 분리 여부 → M1에서 core.syn.langue를 쓸 때 결정</text>
       </svg>
       <figcaption>트리 개수·이름·형태는 전부 정의의 몫. Langue는 트리 선언과 트리 사이의 규칙만 안다.</figcaption>
     </figure>
@@ -679,9 +681,10 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
 <section id="kinds">
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>05-kinds.langue</span>
-    <h2>다섯 가지 파일 종류</h2>
+    <h2>네 가지 파일 종류 — syn · elab · scope · type</h2>
     <p class="sub">
-      접미사가 곧 역할이다. 아래 코드는 전부 <code>design/langue.md</code>의 실제 스케치.
+      접미사가 곧 역할이다 (+ 접미사 없는 매니페스트). tree kind는 없다 — 내부 트리도
+      syn이다. 아래 코드는 전부 <code>design/langue.md</code>의 실제 스케치.
     </p>
 
     <div class="kinds">
@@ -699,16 +702,17 @@ Expr   = <span class="k">infix</span> BinExpr {
       </article>
 
       <article class="kind k-tree">
-        <header><span class="ext">*.tree.langue</span><span class="role">트리 선언</span></header>
-        <div class="body">탈설탕 이후의 트리들을 평범한 ADT로 선언. Rust enum·프리티 프린터·
-          패턴 매칭 표면이 생성된다.</div>
-        <pre><span class="k">tree</span> Core {
-  Expr {
-    Lam(param: Binder, body: Expr)
-    App(callee: Expr, arg: Expr)
-    Perform(cap: CapRef, args: List(Expr))
-  }
-}</pre>
+        <header><span class="ext">*.syn.langue</span><span class="role">내부 트리 — tree kind는 없다</span></header>
+        <div class="body">탈설탕 이후의 트리도 ADT가 아니라 <b>문법</b>으로 선언한다
+          (<code>tree Core</code>로 스코프). 파서와 프리티 프린터가 함께 유도되어 모든 단계가
+          텍스트로 왕복 — 레거시 hir.langue/lir.langue 방식의 공식화. 디버그 덤프,
+          <code>--emit core</code>, IR 문법으로 직접 쓰는 golden 픽스처가 공짜.</div>
+        <pre><span class="c">// core.syn.langue</span>
+<span class="k">tree</span> Core
+
+Expr = | Lam | App | Let | Perform
+Lam  = <span class="s">'fn'</span> param:Binder <span class="s">'->'</span> body:Expr
+App  = callee:Expr <span class="s">'('</span> arg:Expr <span class="s">')'</span></pre>
       </article>
 
       <article class="kind k-elab">
@@ -765,12 +769,12 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
     <div class="exec">
       <div class="cell">
         <h3>생성되는 것</h3>
-        <span class="tag">syn · tree → Rust 소스 코드</span>
+        <span class="tag">syn → Rust 소스 코드 (선언된 트리마다)</span>
         <ul>
           <li>토큰 DFA, SyntaxKind, 무손실 트리</li>
           <li>타입이 붙은 AST 접근자</li>
-          <li>표면 파서 (우선순위 주석 + extern 복구 훅)</li>
-          <li>트리 enum과 프리티 프린터</li>
+          <li>각 트리의 파서 (우선순위 주석 + extern 복구 훅)</li>
+          <li>각 트리의 프리티 프린터 — 텍스트 왕복</li>
         </ul>
         <p class="why"><b>이유:</b> 형태를 정하는 뜨거운 경로. 레거시 langue와 같은
         워크플로 — 수정, <code>langc gen</code>, 커밋.</p>
@@ -827,7 +831,7 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>임의의 트리</h3>
-        <p>파이프라인 모양은 도구가 아니라 정의가 정한다. CBPV 분리는 M1의 core.tree.langue에서.</p>
+        <p>파이프라인 모양은 도구가 아니라 정의가 정한다. CBPV 분리는 M1의 core.syn.langue에서.</p>
         <span class="date">2026-07-10</span>
       </article>
       <article class="decision done">
@@ -841,6 +845,13 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
         <h3>이름은 Langue (v2) · Rust 호스트</h3>
         <p>langue 1 문법 파일은 정신적으로 유효한 부분집합. 도구는 crates/langc.</p>
         <span class="date">2026-07-09 ~ 10</span>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>tree kind 폐지 — 모든 트리는 자기 문법</h3>
+        <p>내부 트리도 문법으로 선언(tree Core 스코프). 파서·프린터 유도, 전 단계 텍스트 왕복.
+        레거시 hir/lir.langue 방식의 공식화.</p>
+        <span class="date">2026-07-10 · 사용자 확정</span>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -887,6 +898,7 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
         <li>같은 종류 병합에서 <b>규칙 우선순위/오버라이드</b> — 두 파일이 같은 노드에 규칙을 내면 에러인가, 명시적 override인가?</li>
         <li><b>stdlib의 범위</b> — 도우미 콤비네이터·표준 토큰 외에 무엇까지? (공통 스코프 패턴, 진단 서식 도우미 등)</li>
         <li><b>e-graph 엔진 선택</b> — egg, egglog, 목적 제작? egglog의 datalog 면이 스코프 엔진을 겸할 수 있는지 검증.</li>
+        <li><b>내부 트리의 무손실성</b> — trivia/공백 보존은 표면 트리에만 적용하나, 내부 트리에도 적용하나? (안 하면 더 저렴)</li>
         <li><code>.scope.langue</code>의 표현력 범위 — use/모듈 시스템, 캡 핸들러의 동적 스코프까지 담는가?</li>
         <li>진단 템플릿의 <b>다국어/수준</b>(note, help) 지원 여부.</li>
         <li>langue 프로젝트 자체의 테스트 형식 — 레거시 fixtures의 golden 파일을 어떤 모양으로 승계할지.</li>
@@ -912,9 +924,9 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
       </li>
       <li>
         <span class="m">M1</span>
-        <div><h3>tree + elab (로워링)</h3>
-        <p>Core 트리 선언, Surface → Core 구문 지향 규칙 작성. 재작성 엔진이 수기 HIR
-        로워링을 대체. CBPV 분리 여부를 여기서 결정.</p></div>
+        <div><h3>내부 트리 + elab (로워링)</h3>
+        <p>core.syn.langue 작성(Core의 모양 + 표시 문법), Surface → Core 구문 지향 규칙 작성.
+        재작성 엔진이 수기 HIR 로워링을 대체. CBPV 분리 여부를 여기서 결정.</p></div>
       </li>
       <li>
         <span class="m">M2</span>
