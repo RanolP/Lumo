@@ -47,6 +47,18 @@ pretty-printer.
       (blocks own `let`); praat AssignExpr row (`x = e; body`) not
       migrated — no fixture uses it; add with M4 parity if needed.
       Verification loop: `scripts/verify.sh`.
+- [x] Legacy source migration, parse level (2026-07-11): two standing
+      gates in `crates/lumo-syntax/tests/legacy_sources.rs` — all 34
+      `legacy/packages/**/*.lumo` files parse cleanly, print losslessly,
+      and survive the canonical round-trip; all 139 case sources from
+      `legacy/crates/compiler/tests/fixtures/{syntax,type,lto}` parse
+      cleanly. Grammar additions this uncovered: generic params on impl
+      methods/cap operations, cap annotations on impl methods,
+      row-polymorphic cap sets (`/ { ..c, E1 }` — CapEntry/CapRest),
+      `cap c` generic params, ident patterns with fields. Excluded:
+      `legacy/apps/lumoc/main.lumo` (a ∑/μ/∀ sketch the legacy compiler
+      never parsed). The type/lto fixture *expectations* migrate with
+      M2/M3; JS golden parity with M4.
 - [x] `langc check`: exhaustiveness (LL(1) `|`-arm overlap), unknown
       refs/labels, regex validity, praat sanity, kind-name collisions,
       extern coverage (every extern must be named in the definition,
