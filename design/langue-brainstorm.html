@@ -524,13 +524,16 @@ Expr = <span class="k">praat</span> {
 <section id="elab">
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>03-elab.langue</span>
-    <h2>정제 — from A to B 재작성 블록</h2>
+    <h2>정제 — from A to B 재작성 · between A 관계</h2>
     <p class="sub">
       <b>*.elab.langue는 <code>from A to B</code> 블록으로 재작성 규칙을 선언한다.</b>
       규칙은 패턴 <code>==&gt;</code> 구성이고, 구성 안의 <code>… to MIR</code>가 하위
       트리의 재귀 정제다. 같은 from/to 블록은 여러 정의·여러 파일에 걸쳐 병합된다.
       <b>엄격히 감소하는 재귀만 허용</b>(종료 보장), <b>충돌하는 규칙은 불허</b>(에러 —
       규칙 순서·우선순위 없음).
+      같은 언어 위에서는 <b><code>between A</code> 블록으로 관계를 정의한다</b> —
+      <code>===</code> 등식이 e-graph 등식 포화(<a href="#p-egraph">05c</a>)로 돈다.
+      <code>$x</code>는 메타변수, <b>subst 택틱은 내장</b>: <code>$e[$b := $a]</code>.
     </p>
     <div class="kinds">
       <article class="kind k-elab full">
@@ -543,9 +546,20 @@ Expr = <span class="k">praat</span> {
 <span class="c">// 여러 정의·여러 파일에 걸쳐 병합</span>
 <span class="k">from</span> Lumo <span class="k">to</span> MIR { ... }</pre>
       </article>
+      <article class="kind k-elab full">
+        <header><span class="ext">between A</span><span class="role">같은 언어 · === · e-graph</span></header>
+        <pre><span class="k">between</span> A {
+  <span class="c">// 항등 함수 적용은 인자와 같다</span>
+  Apply { fn: Lambda { param: $f, body: $f }, arg: $e } <span class="k">===</span> $e
+}
+
+<span class="k">between</span> A {
+  <span class="c">// subst 택틱 내장 — 베타 축약</span>
+  Apply { fn: Lambda { param: $b, body: $e }, arg: $a } <span class="k">===</span> $e[$b := $a]
+}</pre>
+      </article>
     </div>
     <p class="sub" style="margin-top:18px">
-      같은 언어 최적화는 e-graph 등식 포화(<a href="#p-egraph">05c</a>) — 선언 형태는 미설계.
       <b>스코프는 1급 개념이 아니다</b>: <code>.scope.langue</code> 종류도, 별도 스코프
       엔진도 없다 — 정제가 스코프를 시뮬레이트한다.
       그리고 <b>재귀는 <code>fix</code>로만 실현한다</b>: letrec 코어 형식은 없다.
@@ -657,7 +671,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <h3>e-graph 정제 — 최적화는 등식 포화로</h3>
       <p>언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화 + 비용 추출 —
       규칙 순서가 무의미하다. 후보 엔진: egg / egglog.
-      같은 언어 최적화의 선언 형태는 미설계 — 비용 모델 위치도 미결.</p>
+      같은 언어 규칙은 between 블록으로 선언(03) — 비용 모델 위치는 미결.</p>
     </div>
 
     <!-- 05d pluggable types -->
@@ -829,6 +843,12 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <h3>정제 = from A to B 재작성 블록</h3>
         <p>패턴 ==&gt; 구성, 구성 안의 to가 재귀 정제. 같은 from/to는 파일 간 병합.
         엄격 감소만 허용, 충돌 불허.</p>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>같은 언어 관계 = between 블록</h3>
+        <p>between A { lhs === rhs } 등식이 e-graph 등식 포화로 돈다.
+        $x 메타변수, subst 택틱 내장 ($e[$b := $a]).</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>

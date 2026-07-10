@@ -13,7 +13,8 @@ architecture pillars (section 5), every pipeline stage is an individual
 language declared by its `.syn.langue` file name, tokens are named
 literals/regexes only, scope is not a first-party concept (elaboration
 simulates it), elab rules are `from A to B` rewrite blocks (strictly
-decreasing, no conflicts), and chapter order project layout → syntax →
+decreasing, no conflicts) plus same-language `between A` relations run as
+e-graph equalities, and chapter order project layout → syntax →
 elaboration → type.
 
 ## 1. Project layout
@@ -158,10 +159,26 @@ Two checked constraints:
 - **Conflicting disallowed** — two rules that can fire on the same input
   are an error; there is no rule ordering or priority.
 
-### 3.2 Decided semantics
+### 3.2 `between A` blocks
 
-- Language-to-language elaboration is syntax-directed; same-language
-  optimization is e-graph equality saturation (section 5.3).
+On the same language, rules define **relations**: `lhs === rhs` equalities,
+run as e-graph equality saturation (section 5.3). `$x` binds a metavariable.
+The `subst` tactic is built-in — `$e[$b := $a]`.
+
+```
+between A {
+  Apply { fn: Lambda { param: $f, body: $f }, arg: $e } === $e
+}
+
+between A {
+  Apply { fn: Lambda { param: $b, body: $e }, arg: $a } === $e[$b := $a]
+}
+```
+
+### 3.3 Decided semantics
+
+- Language-to-language elaboration is syntax-directed (`from`/`to`);
+  same-language optimization is e-graph equality saturation (`between`).
 - **Scope is not a first-party concept.** There is no `.scope.langue` kind
   and no separate scope engine — elaboration simulates scope.
 - **Recursion is realized with `fix` only.** There is no `letrec` core form.
@@ -242,8 +259,8 @@ that engines interpret.
 Language-to-language elaboration is syntax-directed; same-language
 optimization runs as e-graph equality saturation with cost-based extraction,
 so rule order carries no meaning. Candidate engines: `egg` / `egglog`.
-How same-language optimization groups are declared is not designed yet; the
-cost-model declaration site is open (section 10).
+Same-language rules are declared as `between A` relation blocks
+(section 3.2); the cost-model declaration site is open (section 10).
 
 ### 5.4 Pluggable type system
 
@@ -368,19 +385,22 @@ Decided:
     `<subtree> to <Lang>` inside a construction is recursive elaboration;
     same from/to blocks merge across files. Only strictly decreasing
     recursion allowed; conflicting rules disallowed.
+14. **Same-language relations = `between A` blocks**: `lhs === rhs`
+    equalities run as e-graph equality saturation; `$x` metavariables;
+    `subst` tactic built-in (`$e[$b := $a]`).
 
 Still open (mirrored in the artifact's 회신 대기 box):
 
-13. **Cost model declaration** for e-graph extraction — proposal: grammar
+15. **Cost model declaration** for e-graph extraction — proposal: grammar
     annotations by default, extern as escape hatch.
-14. **Type-plugin boundary** — how much of a type system lives in the Rust
+16. **Type-plugin boundary** — how much of a type system lives in the Rust
     plugin trait vs the DSL rule set?
-15. **E-graph engine choice** — proposal: one egglog spike, then decide.
-16. **Hybrid execution boundary** (section 7) — confirm generated vs
+17. **E-graph engine choice** — proposal: one egglog spike, then decide.
+18. **Hybrid execution boundary** (section 7) — confirm generated vs
     interpreted split against the pillar engines.
-17. **Losslessness scope** — proposal: only Lumo (the surface language) is
+19. **Losslessness scope** — proposal: only Lumo (the surface language) is
     lossless; other languages round-trip via canonical pretty-print (e-graph
     nodes carry no trivia).
-18. **Strictly-decreasing measure** — interpreted as: a recursive `to` call
+20. **Strictly-decreasing measure** — interpreted as: a recursive `to` call
     may only take a strict subtree of the matched pattern. Confirm. (Also
     interpreted the dictated `*.elab.lumo` header as `*.elab.langue`.)
