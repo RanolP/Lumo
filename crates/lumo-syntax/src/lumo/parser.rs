@@ -111,15 +111,7 @@ impl Parser {
         if self.can_parse_paren_expr() {
             return self.parse_paren_expr();
         }
-        self.c.error_here("expected Expr".to_owned());
-        // Consume one token so enclosing loops make progress.
-        if self.c.eof() {
-            SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
-        } else {
-            let mut children = Vec::new();
-            self.c.bump_into(&mut children);
-            SyntaxNode::from_children(SyntaxKind::ERROR, children)
-        }
+        self.recover_expr()
     }
 
     fn can_parse_file(&self) -> bool {
@@ -127,8 +119,21 @@ impl Parser {
     }
     fn parse_file(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        while self.c.at(SyntaxKind::KEYWORD_FN) {
-            children.push(SyntaxElement::Node(Box::new(self.parse_fn_decl())));
+        loop {
+            if self.c.at(SyntaxKind::KEYWORD_FN) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_fn_decl())));
+                continue;
+            }
+            if !self.c.eof() && !false {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !false && !self.c.at(SyntaxKind::KEYWORD_FN) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
         }
         SyntaxNode::from_children(SyntaxKind::FILE, children)
     }
@@ -218,5 +223,15 @@ impl Parser {
         let mut children = Vec::new();
         self.c.expect_into(SyntaxKind::LIT_STRING, &mut children);
         SyntaxNode::from_children(SyntaxKind::STRING_EXPR, children)
+    }
+
+    /// Default recovery for `extern recover Expr`.
+    fn recover_expr(&mut self) -> SyntaxNode {
+        self.c.error_here("expected Expr".to_owned());
+        let mut children = Vec::new();
+        while !self.c.eof() && !self.c.at_any(&[SyntaxKind::COMMA, SyntaxKind::IDENT, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_IN, SyntaxKind::KEYWORD_LET, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::OP_PLUS, SyntaxKind::OP_POW, SyntaxKind::OP_SLASH, SyntaxKind::OP_STAR, SyntaxKind::PAREN_CLOSE, SyntaxKind::PAREN_OPEN]) {
+            self.c.bump_into(&mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::ERROR, children)
     }
 }

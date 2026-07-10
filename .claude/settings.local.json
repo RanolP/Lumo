@@ -1,0 +1,62 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check)",
+      "Bash(source ~/.cargo/env)",
+      "Bash(cargo build -p lumo-compiler)",
+      "Bash(cargo build -p lbs)",
+      "Bash(cargo test -p lumo-compiler)",
+      "Bash(cargo test -p lumo_compiler)",
+      "Bash(cargo test)",
+      "Bash(cargo test -p lumo-compiler --test backend_rs)",
+      "Bash(cargo check -p lumo-compiler --tests)",
+      "Bash(cargo check -p lbs)",
+      "Bash(cargo test --quiet)",
+      "Bash(cargo build -p langue)",
+      "Bash(cargo test -p langue)",
+      "Bash(cargo run -p lbs -- build --target js packages/langue)",
+      "Bash(cargo check --workspace)",
+      "Bash(cargo test --workspace)",
+      "Bash(cargo test -p lumo-compiler --test typecheck_fixtures)",
+      "Bash(cargo run -p lbs -- build)",
+      "Bash(cargo test typecheck_fixtures -- --nocapture)",
+      "Bash(mise exec *)",
+      "Bash(git stash *)",
+      "Bash(awk '{s+=$4; f+=$6} END {print \"passed:\", s, \"failed:\", f}')",
+      "Bash(node packages/langue/dist/langue.js crates/compiler/lumo.langue /tmp/langue_out)",
+      "Bash(cargo run *)",
+      "Bash(cargo build *)",
+      "Bash(gpg --batch --no-tty --pinentry-mode error -s)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(cargo test *)",
+      "WebSearch",
+      "Bash(gh issue *)",
+      "Bash(gh pr *)",
+      "Skill(gen-langue)",
+      "Bash(bash scripts/gen_langue.sh compiler)",
+      "Bash(cargo check *)",
+      "Bash(/home/ranolp/Projects/RanolP/lumo/target/debug/lbs build *)",
+      "Bash(echo \"exit code: $?\")",
+      "WebFetch(domain:github.com)",
+      "Bash(~/.local/share/mise/installs/github-bglgwyng-zat/0.5.3/zat /home/ranolp/Projects/RanolP/lumo/crates/compiler/src/typecheck/mod.rs)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(grep -v \"typecheck\\\\|^warning: unused import\\\\|^$\")"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/guard_generated.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

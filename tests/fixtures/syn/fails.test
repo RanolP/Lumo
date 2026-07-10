@@ -1,0 +1,27 @@
+=== missing closing paren ===
+:fails(Lumo)
+
+fn broken(a = a
+
+=== missing fn name ===
+:fails(Lumo)
+
+fn (x) = x
+
+=== stray bytes are unknown tokens ===
+:fails(Lumo)
+
+fn t() = 1 @@ 2
+
+=== bad argument list recovers to next decl ===
+:fails(Lumo)
+
+fn a() = f(, 3)
+fn b() = 1
+
+=== garbage between decls ===
+:fails(Lumo)
+
+fn a() = 1
+]]]]
+fn b() = 2

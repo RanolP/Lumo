@@ -113,6 +113,128 @@ fn add_literal(lang: &Language, text: &str, tokens: &mut BTreeSet<String>) {
     }
 }
 
+/// FOLLOW sets (token names that may come right after each rule) — the
+/// sync targets for default `extern recover` hooks (D-02). Praat rules
+/// are approximated: every row token may follow an operand or atom.
+pub fn follow_sets(lang: &Language, firsts: &FirstSets) -> BTreeMap<String, BTreeSet<String>> {
+    let mut follow: BTreeMap<String, BTreeSet<String>> =
+        lang.rules.keys().map(|n| (n.clone(), BTreeSet::new())).collect();
+    loop {
+        let mut changed = false;
+        for (name, rule) in &lang.rules {
+            let cur = follow.get(name).cloned().unwrap_or_default();
+            match &rule.body {
+                RuleBody::Plain(shape) => {
+                    visit_follow(lang, firsts, shape, &cur, &mut follow, &mut changed);
+                }
+                RuleBody::Praat(praat) => {
+                    let mut after = cur.clone();
+                    for row in &praat.rows {
+                        for (i, elem) in row.elems.iter().enumerate() {
+                            match elem {
+                                OpElem::Toks(toks) => {
+                                    for t in toks {
+                                        add_literal(lang, t, &mut after);
+                                    }
+                                }
+                                // A node payload is followed by the next
+                                // token group in its row (`CallArgs` by `)`).
+                                OpElem::Node(payload) => {
+                                    let mut payload_after = BTreeSet::new();
+                                    if let Some(OpElem::Toks(next)) = row.elems.get(i + 1) {
+                                        for t in next {
+                                            add_literal(lang, t, &mut payload_after);
+                                        }
+                                    } else {
+                                        payload_after.extend(cur.iter().cloned());
+                                    }
+                                    extend(&mut follow, payload, &payload_after, &mut changed);
+                                }
+                                OpElem::Operand(_) => {}
+                            }
+                        }
+                    }
+                    // Operands are this rule again; atoms inherit too.
+                    extend(&mut follow, name, &after, &mut changed);
+                    for (atom, _) in &praat.simple {
+                        extend(&mut follow, atom, &after, &mut changed);
+                    }
+                }
+            }
+        }
+        if !changed {
+            return follow;
+        }
+    }
+}
+
+fn extend(
+    follow: &mut BTreeMap<String, BTreeSet<String>>,
+    rule: &str,
+    tokens: &BTreeSet<String>,
+    changed: &mut bool,
+) {
+    if let Some(set) = follow.get_mut(rule) {
+        for t in tokens {
+            *changed |= set.insert(t.clone());
+        }
+    }
+}
+
+/// Walk `shape` given the tokens that may follow the whole shape.
+fn visit_follow(
+    lang: &Language,
+    firsts: &FirstSets,
+    shape: &Shape,
+    after: &BTreeSet<String>,
+    follow: &mut BTreeMap<String, BTreeSet<String>>,
+    changed: &mut bool,
+) {
+    match &shape.kind {
+        ShapeKind::Seq(parts) => {
+            for (i, part) in parts.iter().enumerate() {
+                let mut part_after = BTreeSet::new();
+                let mut nullable_rest = true;
+                for rest in &parts[i + 1..] {
+                    let f = shape_first(lang, firsts, rest);
+                    part_after.extend(f.tokens);
+                    if !f.nullable {
+                        nullable_rest = false;
+                        break;
+                    }
+                }
+                if nullable_rest {
+                    part_after.extend(after.iter().cloned());
+                }
+                visit_follow(lang, firsts, part, &part_after, follow, changed);
+            }
+        }
+        ShapeKind::Alt(arms) => {
+            for arm in arms {
+                visit_follow(lang, firsts, arm, after, follow, changed);
+            }
+        }
+        ShapeKind::Opt(inner) => visit_follow(lang, firsts, inner, after, follow, changed),
+        ShapeKind::Rep(inner) => {
+            let mut rep_after = shape_first(lang, firsts, inner).tokens;
+            rep_after.extend(after.iter().cloned());
+            visit_follow(lang, firsts, inner, &rep_after, follow, changed);
+        }
+        ShapeKind::Label { shape: inner, .. } => {
+            visit_follow(lang, firsts, inner, after, follow, changed);
+        }
+        ShapeKind::NodeRef(name) => extend(follow, name, after, changed),
+        ShapeKind::Sep { item, sep } => {
+            let mut item_after = after.clone();
+            if let Some(t) = lang.literal_token(sep) {
+                item_after.insert(t.name.clone());
+            }
+            visit_follow(lang, firsts, item, &item_after, follow, changed);
+        }
+        ShapeKind::Lit(_) | ShapeKind::TokenRef(_) => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -177,7 +177,7 @@ pub fn run_dir(
         let mut changed = false;
         for case in &mut cases {
             total += 1;
-            let mut fail =
+            let fail =
                 |msg: String, failures: &mut Vec<String>| {
                     failures.push(format!(
                         "{}:{}: `{}`: {msg}",

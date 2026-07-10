@@ -10,37 +10,46 @@ suite green.
 Goal: `langc gen` turns `Lumo.syn.langue` into a working parser and
 pretty-printer.
 
-- [ ] Cargo workspace at repo root; `crates/langc` = library + CLI
+- [x] Cargo workspace at repo root; `crates/langc` = library + CLI
       (`langc gen`, `langc check`) (D-01).
-- [ ] Hand-written parser for the `.langue` format itself — the only
+- [x] Hand-written parser for the `.langue` format itself — the only
       hand-written parser in the system (bootstrapping note; D-01).
-- [ ] Project model: glob kind-suffixed files + stdlib into one global
+- [x] Project model: glob kind-suffixed files + stdlib into one global
       namespace (cat, D-05); strict name-collision errors, stdlib
       included (D-22); additive merge for same judgment / same language /
       same from-to and between blocks (D-05, D-13, D-14); DCE of unused
       items (D-05); manifest parsing — the pipe that glues syn/elab/type
-      files, the entry point (D-27).
-- [ ] salsa query layer from day one: `parse(file)` →
-      `merged_definition(project)` → `rule_tables(kind)` → generated code
-      (D-06).
-- [ ] syn codegen (D-21): token DFA with longest-match, literal-beats-
+      files, the entry point (D-27, concrete form in D-33).
+- [x] salsa query layer from day one: `parse(file)` →
+      `merged_definition(project)` → `generated_files(project)` (D-06;
+      salsa 0.27, thin `db.rs` façade).
+- [x] syn codegen (D-21): token DFA with longest-match, literal-beats-
       regex, dotted names as highlight scopes (D-09); SyntaxKind; typed
       AST accessors; tree with per-language losslessness (D-18); parser
       from shapes + `praat` blocks with extern recovery hooks (D-02,
-      D-03); pretty-printer (text round-trip, D-03).
-- [ ] Fixture harness (D-32): corpus format at
+      D-03; postfix rows may carry node payloads, D-34); pretty-printer
+      (text round-trip, D-03).
+- [x] Fixture harness (D-32): corpus format at
       `tests/fixtures/{syn,elab,type}/**/*.test`; `:parse(L)` with
-      automatic parse → print → re-parse round-trip; `:fails`;
-      `--update` bless mode.
-- [ ] Write `Lumo.tokens.syn.langue` / `Lumo.item.syn.langue` /
-      `Lumo.expr.syn.langue`; seed fixtures from tree-sitter style and
-      `legacy/crates/compiler/tests/fixtures/` (D-32).
-- [ ] `langc check`: exhaustiveness, unknown labels, extern coverage
-      (every extern must be named in the definition, D-01/extern rule),
-      collisions.
+      automatic parse → print → re-parse round-trip; `:fails(L)`;
+      `LANGC_UPDATE=1` bless mode.
+- [x] Write `Lumo.tokens.syn.langue` / `Lumo.expr.syn.langue`; seed
+      fixtures from tree-sitter style and the legacy fixtures' intent
+      (D-32). (`Lumo.item.syn.langue` arrives when the slice grows
+      beyond fn decls.)
+- [x] `langc check`: exhaustiveness (LL(1) `|`-arm overlap), unknown
+      refs/labels, regex validity, praat sanity, kind-name collisions,
+      extern coverage (every extern must be named in the definition,
+      D-01/extern rule), collisions.
 
 Exit gate: parser recovery quality is acceptable — otherwise fall back to
-hand-written per D-02.
+hand-written per D-02. **Reviewed 2026-07-11: acceptable.** Repetitions
+resync (garbage between decls yields an ERROR node and the next decl
+parses; broken argument lists don't eat the following decl), `extern
+recover` rules get default FOLLOW∪FIRST sync hooks, and losslessness
+survives every error path. Known M0 limits: recovery inside a nested
+construct can skip tokens up to (not past) its own follow set only, and
+`sep()` interiors don't resync — revisit if real grammars hit it.
 
 ## M1 — MIR + elaboration
 

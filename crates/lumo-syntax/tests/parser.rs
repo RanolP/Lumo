@@ -112,3 +112,25 @@ fn broken_input_still_round_trips() {
     assert!(!out.errors.is_empty());
     assert_eq!(out.root.text(), src, "losslessness survives errors");
 }
+
+#[test]
+fn recovery_resyncs_to_next_decl() {
+    use lumo_syntax::lumo::printer::sexpr;
+
+    // Garbage between decls: both decls survive, garbage becomes ERROR.
+    let src = "fn a() = 1\n]]]]\nfn b() = 2";
+    let out = parse(src);
+    assert!(!out.errors.is_empty());
+    assert_eq!(out.root.text(), src);
+    let tree = sexpr(&out.root);
+    assert_eq!(tree.matches("(FN_DECL").count(), 2, "{tree}");
+    assert!(tree.contains("(ERROR"), "{tree}");
+
+    // Broken argument list: the next decl still parses.
+    let src = "fn a() = f(, 3)\nfn b() = 1";
+    let out = parse(src);
+    assert!(!out.errors.is_empty());
+    assert_eq!(out.root.text(), src);
+    let tree = sexpr(&out.root);
+    assert_eq!(tree.matches("(FN_DECL").count(), 2, "{tree}");
+}
