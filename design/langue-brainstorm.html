@@ -581,10 +581,27 @@ Expr = <span class="k">praat</span> {
       TypeV·TypeC(CBPV 값/계산 타입)를 문법 통합 AST로 자연스럽게 지원한다.
       그리고 <b>context는 이름 붙은 멀티맵이다</b> — 이론적으로는 튜플 집합.
     </p>
+    <p class="sub" style="margin-top:14px">
+      <b>infer와 check는 정의 가능한 판단이다</b> — λProlog식 관계 언어.
+      선언이 관계의 두 매개변수를 모드 화살표로 인코딩한다:
+      <code>-&gt;</code>는 산출(추론), <code>&lt;-</code>는 입력(검사),
+      <code>with Γ</code>가 문맥. 규칙은 <code>head := body</code>이고,
+      <code>=</code>는 단일화, 괄호친 판단 호출이 골(goal)이다.
+      _V/_C 접미사가 TypeV/TypeC와 짝을 이룬다.
+    </p>
     <div class="kinds">
       <article class="kind k-type full">
         <header><span class="ext">context</span><span class="role">멀티맵 · 튜플 집합</span></header>
         <pre><span class="k">context</span> Γ = [Ident: TypeV]</pre>
+      </article>
+      <article class="kind k-type full">
+        <header><span class="ext">judgment</span><span class="role">λProlog식 관계 · -&gt; 산출 · &lt;- 검사</span></header>
+        <pre><span class="k">infer_C</span> LIR <span class="k">-&gt;</span> TypeC <span class="k">with</span> Γ
+<span class="k">check_C</span> LIR <span class="k">&lt;-</span> TypeC <span class="k">with</span> Γ
+
+<span class="c">// 규칙: head := body</span>
+<span class="k">infer_V</span> TypeAssignment { expr: $e, ty: $t } <span class="k">-&gt;</span> $inferred
+  <span class="k">:=</span> $inferred = (<span class="k">check_V</span> $e <span class="k">&lt;-</span> $t)</pre>
       </article>
     </div>
     <p class="sub" style="margin-top:14px">
@@ -859,6 +876,12 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <span class="seal" aria-label="결정됨">결</span>
         <h3>context = 멀티맵</h3>
         <p>context Γ = [Ident: TypeV] — 이름 붙은 멀티맵, 이론적으로는 튜플 집합.</p>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>판단은 정의 가능 — λProlog식</h3>
+        <p>infer_C LIR -&gt; TypeC with Γ / check_C LIR &lt;- TypeC with Γ.
+        모드 화살표가 두 매개변수를 인코딩, 규칙은 head := body.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>

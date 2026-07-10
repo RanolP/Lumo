@@ -206,7 +206,28 @@ A **context** is a named multimap — theoretically a set of tuples:
 context Γ = [Ident: TypeV]
 ```
 
-### 4.3 Decided at the architecture level
+### 4.3 Judgments: `infer` and `check` are definable
+
+Judgments form a **λProlog-style relational language**. A declaration
+encodes the relation's two parameters with a mode arrow — `->` synthesizes
+(output), `<-` checks (input) — and `with Γ` names the context:
+
+```
+infer_C LIR -> TypeC with Γ
+check_C LIR <- TypeC with Γ
+```
+
+Rules are `head := body`; `=` unifies, and a parenthesized judgment call is
+a goal:
+
+```
+infer_V TypeAssignment { expr: $e, ty: $t } -> $inferred
+  := $inferred = (check_V $e <- $t)
+```
+
+The `_V`/`_C` suffixes pair the judgments with `TypeV`/`TypeC`.
+
+### 4.4 Decided at the architecture level
 
 - Pluggable type system on a generic reasoning engine (section 5.4); Lumo
   v1 plugs Fω + spine-local bidirectional inference + capability rows.
@@ -381,6 +402,9 @@ Decided:
     naturally with a syntax-integrated AST.
 16. **Contexts**: `context Γ = [Ident: TypeV]` — a named multimap
     (theoretically a set of tuples).
+17. **Definable judgments, λProlog style**: `infer_C LIR -> TypeC with Γ`,
+    `check_C LIR <- TypeC with Γ` — mode arrows encode the two parameters
+    (`->` output, `<-` input); rules are `head := body`.
 
 Still open (mirrored in the artifact's 회신 대기 box):
 
