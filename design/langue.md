@@ -25,7 +25,7 @@ project layout → syntax → elaboration → type.
 A definition is a multi-file Langue project. The suffix declares the role:
 
 ```
-<name>.langue         project manifest: language name + options (no kind suffix)
+<name>.langue         project manifest — glues the kind files by piping (no kind suffix)
 <Name>.syn.langue     a language: lexical structure + grammar = shape AND display syntax
 <name>.elab.langue    elaboration: rewrite rules between/within languages
 <name>.type.langue    kinds, type formers, bidirectional typing judgments
@@ -47,6 +47,10 @@ lumo/
   types/cap.type.langue
   types/data.type.langue
 ```
+
+The manifest is the glue and the entry point: `Lumo.langue` glues
+`Lumo.syn.langue`, `Lumo.elab.langue`, and `LIR.type.langue` together **by
+piping**.
 
 ### 1.2 Cat: one global namespace
 
@@ -255,35 +259,33 @@ Two constraints, and an implementation pointer:
   succeed; more than one succeeding is an error.
 - Implementation reference: **λProlog**.
 
-### 4.4 Decided at the architecture level
+### 4.4 Built-in tactics: minimal, expand later
 
-- **There is no "type plugin".** A type system is the judgments a
-  definition declares — nothing else. Judgments run on a generic
-  relational engine that builds real derivation trees (section 5.4); Lumo
-  v1's judgments implement Fω + spine-local bidirectional inference +
-  capability rows.
-- Diagnostic message templates live in the DSL, attached to rule premises.
+Start with a **minimal set of internal tactics** and expand later.
+Built-ins so far: `subst` (elab), `hash` (below).
 
-### 4.5 To close this chapter (open)
+### 4.5 Capability rows: a map is a set when the key is a hash
 
-1. **Diagnostic attachment point** — templates live in the DSL (decided),
-   but a `head := body` body is a chain of goals. When `$return = Γ.$name`
-   fails (unbound name), where does the "unbound variable {name}" template
-   sit: per goal, per rule, or per judgment with a default?
-2. **Built-in tactics for the type side** — elab got `subst` as a built-in
-   tactic. Same question here for: fresh metavariables,
-   ∀ instantiation/generalization, kind checking, type-level β. Which are
-   built-in tactics, which are definable judgments? (A possible line:
-   what must appear in the derivation tree is a judgment; purely
-   mechanical operations are tactics.)
-3. **Entry point** — a definition declares many judgments (`infer_V`,
-   `infer_C`, `check_C`, …). When langc is asked to typecheck a Lumo
-   file, which judgment is the root, and how is that declared? Also: the
-   API that exposes derivation trees to the LSP (hover, "why this type").
-4. **Capability rows** — Lumo function types carry `ret | ε`. Rows unify
-   set-like (order-free, duplicate-free, row variables), unlike plain
-   structural unification. How are rows written in the type sub-language,
-   and does the engine get a built-in row-unification tactic?
+Rows need no datatype of their own — **a map is a set if its key is a
+hash**, so rows ride on the existing multimap machinery. `hash` is a
+built-in.
+
+### 4.6 Diagnostics: deferred
+
+Not designed now — a failure **bails with a generic message**. The
+template design resumes later.
+
+### 4.7 Entry point: the manifest pipes
+
+`Lumo.langue` glues `Lumo.syn.langue`, `Lumo.elab.langue`, and
+`LIR.type.langue` by piping (section 1.1) — that pipe is the entry point.
+
+### 4.8 Architecture note
+
+**There is no "type plugin".** A type system is the judgments a definition
+declares — nothing else. Judgments run on a generic relational engine that
+builds real derivation trees (section 5.4); Lumo v1's judgments implement
+Fω + spine-local bidirectional inference + capability rows.
 
 ## 5. Core architecture
 
@@ -423,9 +425,12 @@ Locked decisions live one per file in `design/decisions/`:
 21. [All three kinds are code-generated](decisions/21-full-codegen.md)
 22. [Name conflicts are strict errors — stdlib included](decisions/22-strict-name-conflicts.md)
 23. [Context write, strict decreasing, exactly one success](decisions/23-context-write-one-success.md)
+24. [Built-in tactics: start minimal, expand later](decisions/24-minimal-tactics.md)
+25. [Capability rows: a map is a set when the key is a hash](decisions/25-rows-are-hash-keyed-maps.md)
+26. [Diagnostics: deferred — bail with some message](decisions/26-diagnostics-deferred.md)
+27. [The manifest glues the kind files by piping](decisions/27-manifest-pipes.md)
 
-Open questions, in detail (the six type-chapter questions live in
-section 4.5; all are mirrored in the artifact):
+Open questions, in detail (mirrored in the artifact):
 
 ### 10.1 Strictly-decreasing measure (confirm interpretation)
 
@@ -433,7 +438,8 @@ section 4.5; all are mirrored in the artifact):
 call inside a construction may only take a **strict subtree of the
 matched pattern**, which guarantees elaboration terminates. Confirm, or
 state the intended measure. (Also: the dictated `*.elab.lumo` header was
-interpreted as a typo for `*.elab.langue`.)
+interpreted as a typo for `*.elab.langue`, and `LIR.ty.langue` as the
+`*.type.langue` kind.)
 
 ### 10.2 Cost-model research (action item)
 

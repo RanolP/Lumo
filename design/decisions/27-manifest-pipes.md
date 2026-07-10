@@ -1,0 +1,6 @@
+# The manifest glues the kind files by piping
+
+The suffix-less manifest is the glue and the entry point: `Lumo.langue`
+glues `Lumo.syn.langue`, `Lumo.elab.langue`, and `LIR.type.langue`
+together **by piping**. (Dictated as `LIR.ty.langue` — interpreted as the
+`*.type.langue` kind.)

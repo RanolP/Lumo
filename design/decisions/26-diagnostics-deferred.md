@@ -1,0 +1,5 @@
+# Diagnostics: deferred — bail with some message
+
+Do not design diagnostics now. For the time being a failure just **bails
+with a generic message**. The diagnostic-template design (messages next to
+rules in the DSL) resumes later.

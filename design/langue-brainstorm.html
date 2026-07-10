@@ -296,7 +296,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <div class="eyebrow">
       <span>design/langue.md 미러</span><span class="dot"></span>
       <span>기준 2026-07-10</span><span class="dot"></span>
-      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 23개)</span>
+      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 27개)</span>
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
@@ -307,7 +307,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 
     <nav class="rootfile" aria-label="문서 목차 (프로젝트 파일 목록 형식)">
       <div class="bar"><b>$ langc cat .</b><span>— import는 없다. 프로젝트의 모든 파일이 그대로 하나의 정의다</span></div>
-      <pre><span class="kw">language</span> <span class="lang">Lumo</span>                        <span class="cm">// lumo.langue — 매니페스트</span>
+      <pre><span class="kw">language</span> <span class="lang">Lumo</span>                        <span class="cm">// lumo.langue — 매니페스트: 종류 파일들을 파이프로 잇는 진입점</span>
 
 <a class="use" href="#project">01-project.langue</a>        <span class="cm">// ① 프로젝트 레이아웃: cat + stdlib + DCE</span>
 <a class="use" href="#syntax">02-syntax.langue</a>         <span class="cm">// ② 문법: 모든 단계가 개별 언어다</span>
@@ -325,8 +325,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <div class="box ask">
         <h3>회신 대기 — 답하면 design/decisions/로 잠근다</h3>
         <ul>
-          <li><b>정제 해석 확인</b> — "엄격 감소"를 재귀 <code>to</code> 호출은 매칭된 패턴의 진부분트리만 받는다는 뜻으로 해석했다. 그리고 <code>*.elab.lumo</code>는 <code>*.elab.langue</code>의 오타로 해석했다. 맞나? <a href="#elab">03</a></li>
-          <li><b>타입 챕터를 닫으려면 4문항</b> — 진단 부착점 · 내장 택틱 · 진입점 · capability row. <a href="#type">04</a></li>
+          <li><b>정제 해석 확인</b> — "엄격 감소"를 재귀 <code>to</code> 호출은 매칭된 패턴의 진부분트리만 받는다는 뜻으로 해석했다. 그리고 <code>*.elab.lumo</code>는 <code>*.elab.langue</code>로, <code>LIR.ty.langue</code>는 <code>*.type.langue</code>로 해석했다. 맞나? <a href="#elab">03</a></li>
         </ul>
       </div>
     </div>
@@ -595,6 +594,15 @@ Expr = <span class="k">praat</span> {
       <b>정확히 하나의 규칙만 성공</b>해야 한다(둘 이상 성공 = 에러).
       구현은 <b>λProlog</b>를 참조한다.
     </p>
+    <p class="sub" style="margin-top:14px">
+      <b>내장 택틱은 최소로 시작</b>해 나중에 확장한다 — 지금은 <code>subst</code>와
+      <code>hash</code>. <b>capability row는 전용 자료형이 없다</b>: 키가 해시면 맵이
+      곧 집합이라, row는 기존 멀티맵 기계 위에 탄다 (<code>hash</code>가 내장).
+      <b>진단은 지금 설계하지 않는다</b> — 실패하면 일반 메시지로 bail.
+      <b>진입점은 매니페스트</b>: <code>Lumo.langue</code>가
+      <code>Lumo.syn.langue</code>·<code>Lumo.elab.langue</code>·<code>LIR.type.langue</code>를
+      <b>파이프로 잇는다</b>.
+    </p>
     <div class="kinds">
       <article class="kind k-type full">
         <header><span class="ext">context</span><span class="role">멀티맵 · 튜플 집합</span></header>
@@ -617,27 +625,6 @@ Expr = <span class="k">praat</span> {
       </article>
     </div>
 
-    <div class="prompts" style="margin-top:26px">
-      <h3>타입 챕터를 닫으려면 — 회신 대기</h3>
-      <ol>
-        <li><b>진단 부착점</b> — 템플릿이 DSL에 사는 건 결정됐지만, <code>head := body</code>의
-        body는 골의 연쇄다. <code>$return = Γ.$name</code>이 실패(미정의 이름)하면
-        "unbound variable {name}" 템플릿을 어디에 쓰나 — 골마다, 규칙마다,
-        아니면 판단마다 기본값 하나?</li>
-        <li><b>타입 쪽 내장 택틱</b> — elab은 subst를 내장 택틱으로 받았다. 타입 쪽도
-        같은 질문: 신선한 메타변수 생성, ∀ 인스턴스화/일반화, 카인드 검사,
-        타입 수준 β — 어디까지 내장 택틱이고 어디부터 판단으로 정의 가능한가?
-        (기준 제안: 유도 트리에 남아야 하는 것은 판단, 순수 기계적 연산은 택틱.)</li>
-        <li><b>진입점</b> — 정의엔 판단이 여럿이다(infer_V, infer_C, check_C …).
-        langc가 "Lumo 파일을 타입검사하라"를 받으면 어떤 판단을 루트로 실행하나,
-        그걸 어떻게 선언하나? 그리고 유도 트리를 LSP(호버, "왜 이 타입인가")에
-        노출하는 API.</li>
-        <li><b>capability row</b> — Lumo 함수 타입은 <code>ret | ε</code>를 든다. row는
-        집합처럼 단일화된다(순서 무관·중복 없음·row 변수) — 일반 구조 단일화와
-        다르다. row를 타입 하위 언어에서 어떻게 쓰고, 엔진이 row 단일화를
-        내장 택틱으로 주나?</li>
-      </ol>
-    </div>
     <p class="sub" style="margin-top:14px">
       단계별 딕테이션으로 정의 중 — 이어지는 결정을 따라간다.
       <b>타입 플러그인 같은 건 없다</b> — 타입 시스템은 정의가 선언한 판단 그 자체다.
@@ -812,7 +799,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-open.langue</span>
     <h2>열려 있는 것 — 다음 설계 대상</h2>
-    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(23개).
+    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(27개).
     여기는 아직 열려 있는 것과 다음 논의 후보만.</p>
 
     <div class="prompts">
