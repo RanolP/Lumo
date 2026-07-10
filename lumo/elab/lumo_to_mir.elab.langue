@@ -58,3 +58,11 @@ from Lumo to MIR {
   ExprPostfix { expr: $f, call_args: CallArgs { args: [$a*] } }
     ==> CompPostfix { expr: ForceC { value: $f to MIR }, value_args: ValueArgs { args: [$a* to MIR] } }
 }
+
+// Same-language MIR relations (D-14): compiled to egglog text in M1,
+// saturated/extracted in M3 (D-37). U-beta cancels force-of-thunk; F-beta
+// is the let-ret rule via the built-in subst tactic (D-24).
+between MIR {
+  ForceC { value: ThunkV { body: $c } } === $c
+  LetC { name: $b, value: RetC { value: $a }, body: $e } === $e[$b := $a]
+}

@@ -2,6 +2,7 @@
 //! collections, so `langc gen` is byte-stable for a given definition.
 
 pub mod ast;
+pub mod between;
 pub mod builder;
 pub mod elab;
 pub mod lexer;
@@ -23,7 +24,14 @@ pub fn generate(def: &Definition) -> Vec<(String, String)> {
     let mut files = Vec::new();
     for (lang_name, lang) in &def.languages {
         let module = naming::module_name(lang_name);
-        files.push((format!("{module}/mod.rs"), language_mod(lang_name)));
+        let between_def = def.betweens.get(lang_name);
+        files.push((format!("{module}/mod.rs"), language_mod(lang_name, between_def.is_some())));
+        if let Some(between_def) = between_def {
+            files.push((
+                format!("{module}/between.rs"),
+                between::generate(lang_name, lang, between_def),
+            ));
+        }
         files.push((
             format!("{module}/syntax_kind.rs"),
             syntax_kind::generate(lang_name, lang),
@@ -48,11 +56,14 @@ pub fn generate(def: &Definition) -> Vec<(String, String)> {
     files
 }
 
-fn language_mod(lang_name: &str) -> String {
+fn language_mod(lang_name: &str, has_between: bool) -> String {
     let mut buf = Buf::new();
     buf.line(&format!("//! Generated modules for language `{lang_name}`."));
     buf.blank();
     buf.line("pub mod ast;");
+    if has_between {
+        buf.line("pub mod between;");
+    }
     buf.line("pub mod builder;");
     buf.line("pub mod lexer;");
     buf.line("pub mod lossless;");

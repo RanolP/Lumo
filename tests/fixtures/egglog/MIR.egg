@@ -1,0 +1,72 @@
+; between MIR — compiled by langc (D-14/D-19). Costs default to 1
+; per constructor (D-31). M1 modeling notes: optional fields are
+; required; list fields are Vec sorts; execution lands in M3 (D-37).
+(datatype*
+  (Comp
+    (CaseC Value CaseArmVec :cost 1)
+    (CompPostfix String Comp ValueArgs :cost 1)
+    (FixC String Comp :cost 1)
+    (ForceC Value :cost 1)
+    (HandleC String Value Comp :cost 1)
+    (LamC String Comp :cost 1)
+    (LetC String Comp Comp :cost 1)
+    (ParenC Comp :cost 1)
+    (PerformC String :cost 1)
+    (RetC Value :cost 1)
+    (SelC Value String :cost 1)
+  )
+  (TypeC
+    (FTypeC TypeV :cost 1)
+    (FnTypeC TypeVVec TypeC :cost 1)
+  )
+  (TypeV
+    (NamedTypeV String TypeArgs :cost 1)
+    (UTypeV TypeC :cost 1)
+  )
+  (Value
+    (BundleV BundleClauseVec :cost 1)
+    (CtorV String CtorArgs :cost 1)
+    (NumV String :cost 1)
+    (ParenV Value TypeV :cost 1)
+    (RollV Value :cost 1)
+    (StrV String :cost 1)
+    (ThunkV Comp :cost 1)
+    (UnrollV Value :cost 1)
+    (VarV String :cost 1)
+  )
+  (BundleClause
+    (MkBundleClause String StringVec Comp :cost 1)
+  )
+  (CaseArm
+    (MkCaseArm String CaseBinders Comp :cost 1)
+  )
+  (CaseBinders
+    (MkCaseBinders StringVec :cost 1)
+  )
+  (CtorArgs
+    (MkCtorArgs ValueVec :cost 1)
+  )
+  (Def
+    (MkDef String Value :cost 1)
+  )
+  (File
+    (MkFile DefVec :cost 1)
+  )
+  (TypeArgs
+    (MkTypeArgs TypeVVec :cost 1)
+  )
+  (ValueArgs
+    (MkValueArgs ValueVec :cost 1)
+  )
+  (sort BundleClauseVec (Vec BundleClause))
+  (sort CaseArmVec (Vec CaseArm))
+  (sort DefVec (Vec Def))
+  (sort StringVec (Vec String))
+  (sort TypeVVec (Vec TypeV))
+  (sort ValueVec (Vec Value))
+)
+; built-in tactic (D-24): capture-avoiding substitution
+(function subst (Comp String Value) Comp)
+(rewrite (ForceC (ThunkV c)) c)
+(rewrite (LetC b (RetC a) e) (subst e b a))
+
