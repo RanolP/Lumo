@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+langue-rt = { path = "crates/langue-rt" }
+langc = { path = "crates/langc" }
+regex-automata = "0.4"
+salsa = "0.19"
