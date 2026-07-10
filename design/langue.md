@@ -64,6 +64,7 @@ declarations are needed — order-free visibility across all files.
 The Langue stdlib (helper combinators such as `foldr`/`map`, common token
 classes, builtin value shapes such as `List`) participates in the same
 namespace as project files, exactly as if its files were part of the cat.
+It starts small and extends later.
 
 ### 1.4 DCE instead of reachability
 
@@ -429,21 +430,20 @@ Locked decisions live one per file in `design/decisions/`:
 25. [Capability rows: a map is a set when the key is a hash](decisions/25-rows-are-hash-keyed-maps.md)
 26. [Diagnostics: deferred — bail with some message](decisions/26-diagnostics-deferred.md)
 27. [The manifest glues the kind files by piping](decisions/27-manifest-pipes.md)
+28. [Strictly decreasing = strict subtree of the matched pattern](decisions/28-strict-subtree-measure.md)
+29. [stdlib starts small, extends later](decisions/29-stdlib-starts-small.md)
 
 Open questions, in detail (mirrored in the artifact):
 
-### 10.1 Strictly-decreasing measure (confirm interpretation)
-
-"only strictly decreasing allowed" was interpreted as: a recursive `to`
-call inside a construction may only take a **strict subtree of the
-matched pattern**, which guarantees elaboration terminates. Confirm, or
-state the intended measure. (Also: the dictated `*.elab.lumo` header was
-interpreted as a typo for `*.elab.langue`, and `LIR.ty.langue` as the
-`*.type.langue` kind.)
-
-### 10.2 Cost-model research (action item)
+### 10.1 Cost-model research (running)
 
 Decided to adopt a widely-used cost model; a research pass picks the
-concrete one. Candidates to survey: egg / egglog per-constructor costs
-with minimal-total-cost extraction (`:cost` annotations), and the
+concrete one. Candidates: egg / egglog per-constructor costs with
+minimal-total-cost extraction (`:cost` annotations), and the
 extraction-gym line of work (greedy vs DAG-aware/ILP extractors).
+
+### 10.2 Test/fixture format (design task)
+
+Fixture sources: tree-sitter and the legacy project
+(`legacy/crates/compiler/tests/fixtures/`). The concrete golden-fixture
+format is being designed (research running).
