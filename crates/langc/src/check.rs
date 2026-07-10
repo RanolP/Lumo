@@ -136,6 +136,27 @@ fn check_kind_names(lang_name: &str, lang: &Language, diags: &mut Vec<Diagnostic
 }
 
 fn check_tokens(lang_name: &str, lang: &Language, diags: &mut Vec<Diagnostic>) {
+    // The generated lexer builds ONE dense DFA over the whole escaped
+    // pattern table — validate exactly that construction here, not just
+    // each pattern in isolation.
+    let order = crate::codegen::token_order(lang);
+    if !order.is_empty() {
+        let patterns: Vec<String> = order
+            .iter()
+            .map(|t| match &t.pattern {
+                TokenPattern::Literal(text) => langue_rt::regex_escape(text),
+                TokenPattern::Regex(pattern) => pattern.clone(),
+            })
+            .collect();
+        let refs: Vec<&str> = patterns.iter().map(String::as_str).collect();
+        if let Err(e) = langue_rt::LexDfa::try_build(&refs) {
+            diags.push(Diagnostic::error(
+                &order[0].origin.file,
+                langue_rt::Span::default(),
+                format!("cannot build the lexer DFA for language `{lang_name}`: {e}"),
+            ));
+        }
+    }
     // Two tokens with the same literal pattern make `'x'` in grammar (and
     // the lexer tie-break) ambiguous.
     let mut by_literal: BTreeMap<&str, &str> = BTreeMap::new();

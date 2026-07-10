@@ -24,9 +24,13 @@ pub struct LexDfa {
 }
 
 impl LexDfa {
-    /// Panics on invalid patterns — `langc check` validates every pattern
-    /// with the same backend before code is ever generated.
+    /// Panics on invalid patterns — `langc check` validates the whole
+    /// pattern table with the same backend before code is ever generated.
     pub fn build(patterns: &[&str]) -> LexDfa {
+        Self::try_build(patterns).expect("token patterns were validated by `langc check`")
+    }
+
+    pub fn try_build(patterns: &[&str]) -> Result<LexDfa, String> {
         let dfa = dense::Builder::new()
             .configure(
                 dense::Config::new()
@@ -34,8 +38,8 @@ impl LexDfa {
                     .start_kind(regex_automata::dfa::StartKind::Anchored),
             )
             .build_many(patterns)
-            .expect("token patterns were validated by `langc check`");
-        LexDfa { dfa }
+            .map_err(|e| e.to_string())?;
+        Ok(LexDfa { dfa })
     }
 
     /// Tokenize the whole text. Every byte lands in exactly one token;
@@ -103,11 +107,14 @@ impl LexDfa {
 }
 
 /// Escape a token literal into a regex that matches it verbatim, so
-/// literals and regexes share one DFA.
+/// literals and regexes share one DFA. Only true metacharacters are
+/// escaped — a backslash before other punctuation can change meaning
+/// instead of quoting it (`\<` is a word-boundary assertion).
 pub fn regex_escape(literal: &str) -> String {
+    const META: &[char] = &['\\', '.', '+', '*', '?', '(', ')', '|', '[', ']', '{', '}', '^', '$'];
     let mut out = String::with_capacity(literal.len() * 2);
     for c in literal.chars() {
-        if !c.is_alphanumeric() && c != '_' {
+        if META.contains(&c) {
             out.push('\\');
         }
         out.push(c);
