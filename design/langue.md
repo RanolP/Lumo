@@ -241,6 +241,20 @@ The context is accessed as `Γ.$name`:
 infer_V Ident { name: $name } -> $return := $return = Γ.$name
 ```
 
+Writing is a locally extended context passed on the goal:
+
+```
+check_C a b with Γ+{a: b}
+```
+
+Two constraints, and an implementation pointer:
+
+- **Strictly decreasing only** — judgment recursion follows the same
+  discipline as elab.
+- **Only one succeeding** — for a given goal, exactly one rule may
+  succeed; more than one succeeding is an error.
+- Implementation reference: **λProlog**.
+
 ### 4.4 Decided at the architecture level
 
 - **There is no "type plugin".** A type system is the judgments a
@@ -252,33 +266,21 @@ infer_V Ident { name: $name } -> $return := $return = Γ.$name
 
 ### 4.5 To close this chapter (open)
 
-1. **Context extension** — reading is `Γ.$name`, but there is no writing
-   yet. A λ rule must check its body with the parameter added: for
-   `check_C Lambda { param: $x, body: $b } <- ...` the `$b` goal has to
-   run under Γ extended with `[$x: $t1]`. Options: a local extension form
-   on a goal (something like `Γ + [$x: $t1]`), or λProlog-style
-   hypothetical assumptions (add the fact for the duration of the goal).
-   Which notation?
-2. **Rule overlap and search** — when two rules match the same head, is it
-   an error (elab's "conflicting disallowed") or does the relational
-   language backtrack, trying the next rule on failure? Backtracking makes
-   diagnostics harder (which failure gets reported?) and needs its own
-   termination story (elab's was "strictly decreasing").
-3. **Diagnostic attachment point** — templates live in the DSL (decided),
+1. **Diagnostic attachment point** — templates live in the DSL (decided),
    but a `head := body` body is a chain of goals. When `$return = Γ.$name`
    fails (unbound name), where does the "unbound variable {name}" template
    sit: per goal, per rule, or per judgment with a default?
-4. **Built-in tactics for the type side** — elab got `subst` as a built-in
+2. **Built-in tactics for the type side** — elab got `subst` as a built-in
    tactic. Same question here for: fresh metavariables,
    ∀ instantiation/generalization, kind checking, type-level β. Which are
    built-in tactics, which are definable judgments? (A possible line:
    what must appear in the derivation tree is a judgment; purely
    mechanical operations are tactics.)
-5. **Entry point** — a definition declares many judgments (`infer_V`,
+3. **Entry point** — a definition declares many judgments (`infer_V`,
    `infer_C`, `check_C`, …). When langc is asked to typecheck a Lumo
    file, which judgment is the root, and how is that declared? Also: the
    API that exposes derivation trees to the LSP (hover, "why this type").
-6. **Capability rows** — Lumo function types carry `ret | ε`. Rows unify
+4. **Capability rows** — Lumo function types carry `ret | ε`. Rows unify
    set-like (order-free, duplicate-free, row variables), unlike plain
    structural unification. How are rows written in the type sub-language,
    and does the engine get a built-in row-unification tactic?
@@ -420,6 +422,7 @@ Locked decisions live one per file in `design/decisions/`:
 20. [Cost model: adopt a widely-used model](decisions/20-cost-model.md)
 21. [All three kinds are code-generated](decisions/21-full-codegen.md)
 22. [Name conflicts are strict errors — stdlib included](decisions/22-strict-name-conflicts.md)
+23. [Context write, strict decreasing, exactly one success](decisions/23-context-write-one-success.md)
 
 Open questions, in detail (the six type-chapter questions live in
 section 4.5; all are mirrored in the artifact):

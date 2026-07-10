@@ -296,7 +296,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <div class="eyebrow">
       <span>design/langue.md 미러</span><span class="dot"></span>
       <span>기준 2026-07-10</span><span class="dot"></span>
-      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 22개)</span>
+      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 23개)</span>
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
@@ -326,7 +326,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
         <h3>회신 대기 — 답하면 design/decisions/로 잠근다</h3>
         <ul>
           <li><b>정제 해석 확인</b> — "엄격 감소"를 재귀 <code>to</code> 호출은 매칭된 패턴의 진부분트리만 받는다는 뜻으로 해석했다. 그리고 <code>*.elab.lumo</code>는 <code>*.elab.langue</code>의 오타로 해석했다. 맞나? <a href="#elab">03</a></li>
-          <li><b>타입 챕터를 닫으려면 6문항</b> — 문맥 확장 · 규칙 중첩/탐색 · 진단 부착점 · Fω 원시 · 진입점 · capability row. <a href="#type">04</a></li>
+          <li><b>타입 챕터를 닫으려면 4문항</b> — 진단 부착점 · 내장 택틱 · 진입점 · capability row. <a href="#type">04</a></li>
         </ul>
       </div>
     </div>
@@ -590,6 +590,10 @@ Expr = <span class="k">praat</span> {
       <code>=</code>는 단일화, 괄호친 판단 호출이 골(goal)이다.
       _V/_C 같은 접미사는 엔진에 아무 의미가 없다 — 판단 이름은 그냥 이름,
       함수 명명 규칙 같은 것 (<code>infer_ε</code>, <code>infer_wtf</code> 전부 유효).
+      문맥 쓰기는 골에 지역 확장 문맥을 넘기는 것: <code>with Γ+{a: b}</code>.
+      판단 재귀도 elab과 같은 규율로 <b>엄격 감소만 허용</b>, 한 골에는
+      <b>정확히 하나의 규칙만 성공</b>해야 한다(둘 이상 성공 = 에러).
+      구현은 <b>λProlog</b>를 참조한다.
     </p>
     <div class="kinds">
       <article class="kind k-type full">
@@ -606,23 +610,16 @@ Expr = <span class="k">praat</span> {
   <span class="k">:=</span> $inferred = (<span class="k">check_V</span> $e <span class="k">&lt;-</span> $t)
 
 <span class="c">// 문맥 접근: Γ.$name</span>
-<span class="k">infer_V</span> Ident { name: $name } <span class="k">-&gt;</span> $return <span class="k">:=</span> $return = Γ.$name</pre>
+<span class="k">infer_V</span> Ident { name: $name } <span class="k">-&gt;</span> $return <span class="k">:=</span> $return = Γ.$name
+
+<span class="c">// 문맥 쓰기: 골에 확장 문맥을 넘긴다</span>
+<span class="k">check_C</span> a b <span class="k">with</span> Γ+{a: b}</pre>
       </article>
     </div>
 
     <div class="prompts" style="margin-top:26px">
       <h3>타입 챕터를 닫으려면 — 회신 대기</h3>
       <ol>
-        <li><b>문맥 확장</b> — 지금은 읽기(<code>Γ.$name</code>)만 있고 쓰기가 없다.
-        λ 규칙은 "매개변수를 Γ에 넣은 채로 body를 검사"해야 한다:
-        <code>check_C Lambda { param: $x, body: $b } &lt;- …</code>에서 <code>$b</code> 골은
-        Γ에 <code>[$x: $t1]</code>이 추가된 상태로 돌아야 하는데, 그 표기가 아직 없다.
-        선택지: 골에 지역 확장을 붙이는 표기(<code>Γ + [$x: $t1]</code> 꼴),
-        혹은 λProlog식 가정 추가(골이 도는 동안만 사실을 추가). 어느 쪽?</li>
-        <li><b>규칙 중첩과 탐색</b> — 같은 head에 규칙 둘이 맞으면 에러인가(elab의
-        "충돌 불허"와 같은 규율), 아니면 관계 언어답게 실패하면 다음 규칙을
-        시도(백트래킹)하나? 백트래킹이면 진단이 어려워지고(여러 실패 중 무엇을
-        보고하나) 종결성 이야기도 따로 필요하다(elab은 "엄격 감소"였다).</li>
         <li><b>진단 부착점</b> — 템플릿이 DSL에 사는 건 결정됐지만, <code>head := body</code>의
         body는 골의 연쇄다. <code>$return = Γ.$name</code>이 실패(미정의 이름)하면
         "unbound variable {name}" 템플릿을 어디에 쓰나 — 골마다, 규칙마다,
@@ -815,7 +812,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-open.langue</span>
     <h2>열려 있는 것 — 다음 설계 대상</h2>
-    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(22개).
+    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(23개).
     여기는 아직 열려 있는 것과 다음 논의 후보만.</p>
 
     <div class="prompts">
