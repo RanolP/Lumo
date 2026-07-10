@@ -2,6 +2,7 @@
 //! collections, so `langc gen` is byte-stable for a given definition.
 
 pub mod ast;
+pub mod builder;
 pub mod lexer;
 pub mod lossless;
 pub mod naming;
@@ -27,6 +28,7 @@ pub fn generate(def: &Definition) -> Vec<(String, String)> {
             syntax_kind::generate(lang_name, lang),
         ));
         files.push((format!("{module}/ast.rs"), ast::generate(lang)));
+        files.push((format!("{module}/builder.rs"), builder::generate(lang)));
         files.push((format!("{module}/lexer.rs"), lexer::generate(lang)));
         files.push((format!("{module}/lossless.rs"), lossless::generate()));
         files.push((format!("{module}/parser.rs"), parser::generate(lang)));
@@ -41,6 +43,7 @@ fn language_mod(lang_name: &str) -> String {
     buf.line(&format!("//! Generated modules for language `{lang_name}`."));
     buf.blank();
     buf.line("pub mod ast;");
+    buf.line("pub mod builder;");
     buf.line("pub mod lexer;");
     buf.line("pub mod lossless;");
     buf.line("pub mod parser;");

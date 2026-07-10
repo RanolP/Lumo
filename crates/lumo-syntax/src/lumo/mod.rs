@@ -3,6 +3,7 @@
 //! Generated modules for language `Lumo`.
 
 pub mod ast;
+pub mod builder;
 pub mod lexer;
 pub mod lossless;
 pub mod parser;
