@@ -69,8 +69,9 @@ unreachable-file error. An optional lint can surface unused *project* items.
 
 ### 1.5 Collisions and additive merge
 
-Two same-named items in the global namespace are an error. The designed
-exception is additive merging: multiple files contributing rules to the same
+Two same-named items in the global namespace are a **strict error** — both
+in-project and between project and stdlib; there is no shadowing. The
+designed exception is additive merging: multiple files contributing rules to the same
 judgment or grammar rules to the same language (`fn.type.langue` and
 `cap.type.langue` both feed `infer`/`check`; `Lumo.item.syn.langue` and
 `Lumo.expr.syn.langue` both feed language `Lumo`), with exhaustiveness and
@@ -390,6 +391,9 @@ generated. Langue-in-langue self-description is explicitly not a v1 goal.
 
 Each milestone keeps `langc check` + golden-file tests green.
 
+Fixture idea (not locked): source fixtures from **tree-sitter** and from
+the **legacy project** (`legacy/crates/compiler/tests/fixtures/`).
+
 ## 10. Decisions and open questions
 
 Locked decisions live one per file in `design/decisions/`:
@@ -415,6 +419,7 @@ Locked decisions live one per file in `design/decisions/`:
 19. [E-graph engine: egglog](decisions/19-egglog.md)
 20. [Cost model: adopt a widely-used model](decisions/20-cost-model.md)
 21. [All three kinds are code-generated](decisions/21-full-codegen.md)
+22. [Name conflicts are strict errors — stdlib included](decisions/22-strict-name-conflicts.md)
 
 Open questions, in detail (the six type-chapter questions live in
 section 4.5; all are mirrored in the artifact):

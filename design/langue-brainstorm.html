@@ -296,7 +296,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <div class="eyebrow">
       <span>design/langue.md 미러</span><span class="dot"></span>
       <span>기준 2026-07-10</span><span class="dot"></span>
-      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 21개)</span>
+      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 22개)</span>
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
@@ -815,19 +815,18 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-open.langue</span>
     <h2>열려 있는 것 — 다음 설계 대상</h2>
-    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(21개).
+    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(22개).
     여기는 아직 열려 있는 것과 다음 논의 후보만.</p>
 
     <div class="prompts">
       <h3>다음 논의 후보</h3>
       <ol>
         <li><b>비용 모델 리서치(액션)</b> — 널리 쓰이는 모델을 조사해 채택안을 보고: egg/egglog의 생성자별 비용 + 최소 총비용 추출(:cost 주석), extraction-gym 계열(greedy vs DAG-aware/ILP).</li>
-        <li><b>stdlib 섀도잉</b> — 프로젝트가 stdlib과 같은 이름을 선언하면 에러인가, 프로젝트 쪽이 이기는가?</li>
         <li>같은 종류 병합에서 <b>규칙 우선순위/오버라이드</b> — 두 파일이 같은 노드에 규칙을 내면 에러인가, 명시적 override인가?</li>
         <li><b>stdlib의 범위</b> — 도우미 콤비네이터·표준 토큰 외에 무엇까지? (진단 서식 도우미 등)</li>
         <li>정제의 스코프 시뮬레이션 방식 — 이름 해소·use/모듈·캡 핸들러의 동적 스코프를 어떤 재작성으로 담는가?</li>
         <li>진단 템플릿의 <b>다국어/수준</b>(note, help) 지원 여부.</li>
-        <li>langue 프로젝트 자체의 테스트 형식 — golden 픽스처를 어떤 모양으로 쓸지.</li>
+        <li>langue 프로젝트 자체의 테스트 형식 — golden 픽스처를 어떤 모양으로 쓸지. 픽스처 소스 아이디어: <b>tree-sitter</b>와 <b>legacy 프로젝트</b>(legacy/crates/compiler/tests/fixtures).</li>
       </ol>
     </div>
   </div>
