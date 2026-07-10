@@ -474,11 +474,7 @@ impl Externs for LumoToMir {
                 defs.push(crate::mir::printer::canonical(def.syntax()));
                 continue;
             };
-            let self_recursive = value
-                .syntax()
-                .descendant_tokens()
-                .iter()
-                .any(|t| t.kind == MirKind::IDENT && t.text == name.text);
+            let self_recursive = mentions_var(value.syntax(), &name.text);
             match (&value, self_recursive) {
                 (m::Value::ThunkV(thunk), true) => {
                     let body = crate::mir::printer::canonical(thunk.body()?.syntax());
@@ -510,15 +506,8 @@ impl Externs for LumoToMir {
         let mut requires: Vec<String> = Vec::new();
         let mut others: Vec<String> = Vec::new();
         for def in file.defs() {
-            let uses_require = def
-                .value()
-                .map(|v| {
-                    v.syntax()
-                        .descendant_tokens()
-                        .iter()
-                        .any(|t| t.kind == MirKind::IDENT && t.text == "require")
-                })
-                .unwrap_or(false);
+            let uses_require =
+                def.value().map(|v| mentions_var(v.syntax(), "require")).unwrap_or(false);
             let text = crate::mir::printer::canonical(def.syntax());
             if uses_require {
                 requires.push(text);
@@ -533,6 +522,18 @@ impl Externs for LumoToMir {
             requires.iter().chain(others.iter()).map(String::as_str).collect();
         Some(builder::file(&ordered))
     }
+}
+
+/// Does any `VarV` in this subtree reference `name`? Ctor tags, sel
+/// fields, and binder positions are not references. (M1 approximation:
+/// shadowing binders are not tracked.)
+fn mentions_var(node: &crate::mir::lossless::SyntaxNode, name: &str) -> bool {
+    if node.kind == MirKind::VAR_V {
+        if node.child_tokens().any(|t| t.kind == MirKind::IDENT && t.text == name) {
+            return true;
+        }
+    }
+    node.child_nodes().any(|n| mentions_var(n, name))
 }
 
 type FromNodeAlias = LumoNode;

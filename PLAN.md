@@ -73,27 +73,50 @@ survives every error path. Known M0 limits: recovery inside a nested
 construct can skip tokens up to (not past) its own follow set only, and
 `sep()` interiors don't resync — revisit if real grammars hit it.
 
-## M1 — MIR + elaboration
+## M1 — MIR + elaboration (landed 2026-07-11)
 
 Goal: `elab Lumo -> MIR` runs end to end as generated Rust.
 
-- [ ] Write `MIR.syn.langue`; decide the CBPV value/computation split
-      here; the type AST (TypeV/TypeC) is part of syn (D-15).
-- [ ] elab codegen (D-21): `from A to B { pattern ==> construction }`
-      blocks → Rust; `<subtree> to <Lang>` recursion restricted to strict
-      subtrees of the matched pattern (D-13, D-28); conflicting rules are
-      compile-time errors (D-13); cross-file block merging (D-05).
-- [ ] Recursion lowering: SCC detection, `fix` primitive for cyclic
-      groups, plain `let` otherwise — no letrec core form (D-12).
-- [ ] Scope simulation (D-11, D-30): name resolution through Γ contexts;
-      `use` statements hoisted first in tree and lowered as
-      `λrequire. let x = require('x') in ...`; capability handlers
-      lexically scoped, Effekt-like — no dynamic scope.
-- [ ] `between A { lhs === rhs }` → egglog programs (D-14, D-19);
-      built-in `subst` tactic (`$e[$b := $a]`, D-14, D-24); per-
-      constructor costs default 1 compiled to egglog `:cost`, built-in
-      min-tree-cost `extract` (D-31).
-- [ ] `:elab(A -> B)` fixtures with canonicalize-then-compare (D-32).
+- [x] `MIR.syn.langue`: strict CBPV, two syntactic sorts (decision 36);
+      TypeV/TypeC sub-language live via `(v : T)` annotations (D-15);
+      `:parse(MIR)` fixtures; manifest stage `elab Lumo to MIR` live.
+- [x] Elab surface locked as decision 35 (derived form: syn-label
+      fields, omitted-is-wildcard, `$x`, `[$x*]`, `$x to Lang`,
+      `$e[$b := $a]`); lexer/parser/AST for `from`/`between`/`extern
+      rule`/`extern pass` items.
+- [x] elab codegen (D-21): merged blocks by (from,to)/language (D-05,
+      D-13, D-14) → generated Rust per pair (dispatch by root kind,
+      accessor-scheme matchers, builder-rendered constructions reparsed
+      with the target parser); strict-subtree `to` recursion (D-28);
+      conflict detection (same root, not literal/ctor-disjoint → error,
+      D-13); checks for nodes/fields/metavars/list shapes/required
+      fields. Sort coercion + extern rules/passes = decision 38
+      (auto-let `__tN` for comp-in-value, `ret` for value-in-comp;
+      externs are trait methods without defaults — missing Rust impls
+      fail the build, D-01). Extern rules grew beyond the planned
+      `member_classify`: `module`, `fn_curry`, `block`, `match_arm`,
+      `use_decl` host the fold/optional-field lowerings the derived rule
+      form cannot express.
+- [x] Recursion lowering (D-12), M1 slice: `extern pass scc_fix` wraps
+      self-recursive defs in `fix`; mutually recursive groups are left
+      for M2's typechecker to reject (tuple/projection encoding deferred).
+- [x] Scope simulation (D-30), M1 slice: `use foo.bar;` →
+      `def bar = thunk { let m = force require("foo") in sel m.bar }`,
+      hoisted first by `extern pass use_require`; handlers lexically
+      scoped via `handle … with … in`. Γ-context name resolution waits
+      for M2's judgment machinery. Known M1 semantics note: a chained
+      call `f(x)(y)` elaborates through an auto-let of the inner call
+      (legacy folded applies without rebinding) — revisit at M4 parity.
+- [x] `between A { lhs === rhs }` → egglog program text (D-14, D-19):
+      grammar as `datatype*` with `:cost 1` (D-31), `subst` declared
+      from lhs binding sorts (D-24), one rewrite per relation; golden
+      fixture `tests/fixtures/egglog/MIR.egg`. Execution (saturation +
+      extraction) parked for M3 = decision 37.
+- [x] `:elab(A -> B)` corpus attribute with canonicalize-then-compare
+      (D-32); 15 fixtures covering the legacy lowering behaviors
+      (curried thunk spines, force-then-apply, roll'd ctors, case
+      unroll, cap ops via `sel (perform C)`, blocks, handle/bundle,
+      use/require, fix).
 
 ## M2 — type
 

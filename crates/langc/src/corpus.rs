@@ -18,14 +18,18 @@
 
 use std::path::{Path, PathBuf};
 
-use langue_rt::ParseReport;
+use langue_rt::{ElabReport, ParseReport};
 
 pub type ReportFn = fn(&str) -> ParseReport;
+pub type ElabFn = fn(&str) -> ElabReport;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Attr {
     Parse(String),
     Fails(String),
+    /// `:elab(Lumo -> MIR)` — source is A-text, expected is B-text;
+    /// comparison canonicalizes both sides with B's printer (D-32).
+    Elab { from: String, to: String },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -111,6 +115,10 @@ fn parse_attr(line: &str) -> Option<Attr> {
     if let Some(lang) = inner(":fails(") {
         return Some(Attr::Fails(lang));
     }
+    if let Some(pair) = inner(":elab(") {
+        let (from, to) = pair.split_once("->")?;
+        return Some(Attr::Elab { from: from.trim().to_owned(), to: to.trim().to_owned() });
+    }
     None
 }
 
@@ -127,6 +135,7 @@ fn render_corpus(cases: &[Case]) -> String {
         match &case.attr {
             Attr::Parse(l) => out.push_str(&format!(":parse({l})\n")),
             Attr::Fails(l) => out.push_str(&format!(":fails({l})\n")),
+            Attr::Elab { from, to } => out.push_str(&format!(":elab({from} -> {to})\n")),
         }
         out.push('\n');
         out.push_str(&case.source);
@@ -146,11 +155,13 @@ fn normalize(sexpr: &str) -> String {
 }
 
 /// Run every `**/*.test` under `root`. `lookup` resolves a language name
-/// to its generated parse-report fn (the registry). Bless with
+/// to its generated parse-report fn and `elab_lookup` an elab pair to
+/// its generated elab-report fn (both from the registry). Bless with
 /// `LANGC_UPDATE=1`. Returns a summary or the combined failures.
 pub fn run_dir(
     root: &Path,
     lookup: impl Fn(&str) -> Option<ReportFn>,
+    elab_lookup: impl Fn(&str, &str) -> Option<ElabFn>,
 ) -> Result<String, String> {
     let update = std::env::var("LANGC_UPDATE").is_ok_and(|v| v == "1");
     let mut files = Vec::new();
@@ -186,8 +197,60 @@ pub fn run_dir(
                         case.title
                     ));
                 };
+            if let Attr::Elab { from, to } = &case.attr {
+                let Some(elab_fn) = elab_lookup(from, to) else {
+                    fail(format!("no elab from `{from}` to `{to}`"), &mut failures);
+                    continue;
+                };
+                let Some(to_report_fn) = lookup(to) else {
+                    fail(format!("unknown language `{to}`"), &mut failures);
+                    continue;
+                };
+                let report = elab_fn(&case.source);
+                if !report.errors.is_empty() {
+                    fail(format!("elab errors: {:?}", report.errors), &mut failures);
+                    continue;
+                }
+                match (&case.expected, update) {
+                    (Some(expected), _) => {
+                        // Canonicalize-then-compare: the expected block
+                        // doubles as a B-language round-trip test (D-32).
+                        let exp = to_report_fn(expected);
+                        if !exp.errors.is_empty() {
+                            fail(
+                                format!(
+                                    "expected block does not parse as {to}: {:?}",
+                                    exp.errors
+                                ),
+                                &mut failures,
+                            );
+                        } else if exp.canonical != report.output {
+                            fail(
+                                format!(
+                                    "elab output mismatch:\n  expected: {}\n  actual:   {}",
+                                    exp.canonical, report.output
+                                ),
+                                &mut failures,
+                            );
+                        }
+                    }
+                    (None, true) => {
+                        case.expected = Some(report.output.clone());
+                        changed = true;
+                        blessed += 1;
+                    }
+                    (None, false) => {
+                        fail(
+                            "missing expected block — bless with LANGC_UPDATE=1".to_owned(),
+                            &mut failures,
+                        );
+                    }
+                }
+                continue;
+            }
             let lang = match &case.attr {
                 Attr::Parse(l) | Attr::Fails(l) => l.clone(),
+                Attr::Elab { .. } => unreachable!("handled above"),
             };
             let Some(report_fn) = lookup(&lang) else {
                 fail(format!("unknown language `{lang}`"), &mut failures);
@@ -195,6 +258,7 @@ pub fn run_dir(
             };
             let report = report_fn(&case.source);
             match &case.attr {
+                Attr::Elab { .. } => unreachable!("handled above"),
                 Attr::Fails(_) => {
                     if report.errors.is_empty() {
                         fail("expected parse errors, got a clean parse".to_owned(), &mut failures);

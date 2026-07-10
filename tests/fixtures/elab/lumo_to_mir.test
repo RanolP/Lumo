@@ -1,0 +1,169 @@
+=== identity fn becomes a thunked lambda (the M1 gate) ===
+:elab(Lumo -> MIR)
+
+fn id(x) = x
+
+---
+
+def id = thunk { fn(x) => ret x }
+
+=== multi-param fns curry right to left ===
+:elab(Lumo -> MIR)
+
+fn konst(a, b) = a
+
+---
+
+def konst = thunk { fn(a) => fn(b) => ret a }
+
+=== calls force the callee then apply ===
+:elab(Lumo -> MIR)
+
+fn ap(f, x) = f(x)
+
+---
+
+def ap = thunk { fn(f) => fn(x) => force f(x) }
+
+=== computation args bind through auto-let (D-38) ===
+:elab(Lumo -> MIR)
+
+fn go(g, h, x) = g(h(x))
+
+---
+
+def go = thunk { fn(g) => fn(h) => fn(x) =>
+  let __t1 = force h(x) in force g(__t1) }
+
+=== data constructors wrap in roll ===
+:elab(Lumo -> MIR)
+
+data Nat {
+  .zero
+  .succ(Nat)
+}
+fn zero() = Nat.zero
+fn one() = Nat.succ(Nat.zero)
+
+---
+
+def zero = thunk { ret roll .zero }
+def one = thunk { ret roll .succ(roll .zero) }
+
+=== match unrolls its scrutinee and binds case arms ===
+:elab(Lumo -> MIR)
+
+data Nat {
+  .zero
+  .succ(Nat)
+}
+fn pred(n) = match n {
+  .zero => Nat.zero,
+  .succ(m) => m,
+}
+
+---
+
+def pred = thunk { fn(n) =>
+  case unroll n {
+    .zero => ret roll .zero
+    .succ(m) => ret m
+  }
+}
+
+=== cap operations select from a bound perform ===
+:elab(Lumo -> MIR)
+
+cap Console {
+  fn log(msg)
+}
+fn main() = Console.log("hi")
+
+---
+
+def main = thunk { let __t1 = perform Console in sel __t1.log("hi") }
+
+=== value methods select from the object ===
+:elab(Lumo -> MIR)
+
+fn m(s) = s.len()
+
+---
+
+def m = thunk { fn(s) => sel s.len() }
+
+=== explicit thunk and force ===
+:elab(Lumo -> MIR)
+
+fn t() = thunk 1
+fn f(x) = force x
+
+---
+
+def t = thunk { ret thunk { ret 1 } }
+def f = thunk { fn(x) => force x }
+
+=== blocks fold let statements ===
+:elab(Lumo -> MIR)
+
+fn b(x) = {
+  let y = x;
+  y
+}
+
+---
+
+def b = thunk { fn(x) => let y = ret x in ret y }
+
+=== handle with a bundle handler ===
+:elab(Lumo -> MIR)
+
+cap Console {
+  fn log(msg)
+}
+fn main() = handle Console with bundle { fn log(m) = m } in Console.log("x")
+
+---
+
+def main = thunk {
+  handle Console with bundle { fn log(m) => ret m } in
+  let __t1 = perform Console in sel __t1.log("x")
+}
+
+=== lambdas become thunked spines too ===
+:elab(Lumo -> MIR)
+
+fn mk() = fn(x) = x
+
+---
+
+def mk = thunk { ret thunk { fn(x) => ret x } }
+
+=== self-recursion goes through fix (D-12) ===
+:elab(Lumo -> MIR)
+
+fn spin(x) = spin(x)
+
+---
+
+def spin = thunk { fix spin => fn(x) => force spin(x) }
+
+=== use decls become require defs, hoisted first (D-30) ===
+:elab(Lumo -> MIR)
+
+fn f(x) = g(x)
+use foo.g;
+
+---
+
+def g = thunk { let m = force require("foo") in sel m.g }
+def f = thunk { fn(x) => force g(x) }
+
+=== annotated parens elaborate transparently ===
+:elab(Lumo -> MIR)
+
+fn a(x) = (x : Number)
+
+---
+
+def a = thunk { fn(x) => ret x }
