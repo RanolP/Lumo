@@ -328,6 +328,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
           <li><b>무손실성 범위</b> — 제안: Lumo(표면)만 무손실(trivia 보존), 나머지 언어는 정규 프린트로 왕복. e-graph 노드가 trivia를 안 들고 다녀도 됨. <a href="#decisions">07</a></li>
           <li><b>e-graph 엔진</b> — 제안: egglog 스파이크 하나 후 결정. <a href="#decisions">07</a></li>
           <li><b>정제 해석 확인</b> — "엄격 감소"를 재귀 <code>to</code> 호출은 매칭된 패턴의 진부분트리만 받는다는 뜻으로 해석했다. 그리고 <code>*.elab.lumo</code>는 <code>*.elab.langue</code>의 오타로 해석했다. 맞나? <a href="#elab">03</a></li>
+          <li><b>타입 챕터를 닫으려면 6문항</b> — 문맥 확장 · 규칙 중첩/탐색 · 진단 부착점 · Fω 원시 · 진입점 · capability row. <a href="#type">04</a></li>
           <li><b>타입 플러그인 경계 · 비용 모델 위치</b> — 열려 있음. <a href="#decisions">07</a></li>
         </ul>
       </div>
@@ -609,6 +610,18 @@ Expr = <span class="k">praat</span> {
 <span class="c">// 문맥 접근: Γ.$name</span>
 <span class="k">infer_V</span> Ident { name: $name } <span class="k">-&gt;</span> $return <span class="k">:=</span> $return = Γ.$name</pre>
       </article>
+    </div>
+
+    <div class="prompts" style="margin-top:26px">
+      <h3>타입 챕터를 닫으려면 — 회신 대기</h3>
+      <ol>
+        <li><b>문맥 확장</b> — 읽기는 <code>Γ.$name</code>. 바인더 규칙(λ, let)이 하위 골에서 Γ를 어떻게 늘리나? (<code>Γ + [$x: $t]</code> 같은 표기, 혹은 λProlog식 가정 추가.)</li>
+        <li><b>규칙 중첩과 탐색</b> — 같은 head에 여러 규칙이 맞으면: elab처럼 충돌 불허인가, 관계 언어답게 백트래킹인가? 탐색의 종결 규율은? (elab은 엄격 감소였다.)</li>
+        <li><b>진단 부착점</b> — 템플릿이 DSL에 사는 건 결정됨. <code>head := body</code>에서 <code>else error "…" at 노드</code>는 골 단위인가 규칙 단위인가?</li>
+        <li><b>Fω 원시</b> — 신선한 메타변수, 일반화/인스턴스화, 카인드 검사, 타입 수준 β — 어디까지 엔진 서비스이고 어디부터 정의 가능인가? (타입 플러그인 경계 미결과 연결.)</li>
+        <li><b>진입점</b> — 어떤 판단이 그 언어의 타입검사기인지 선언하는 방법, 유도 트리를 LSP·정제에 노출하는 방법.</li>
+        <li><b>capability row</b> — ε를 타입 하위 언어와 판단에서 어떻게 표현하나.</li>
+      </ol>
     </div>
     <p class="sub" style="margin-top:14px">
       단계별 딕테이션으로 정의 중 — 이어지는 결정을 따라간다.

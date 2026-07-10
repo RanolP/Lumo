@@ -244,6 +244,27 @@ infer_V Ident { name: $name } -> $return := $return = Γ.$name
   v1 plugs Fω + spine-local bidirectional inference + capability rows.
 - Diagnostic message templates live in the DSL, attached to rule premises.
 
+### 4.5 To close this chapter (open)
+
+1. **Context extension** — reading is `Γ.$name`; how does a binder rule
+   (λ, let) extend Γ for a sub-goal? (e.g. a `Γ + [$x: $t]` form, or
+   λProlog-style hypothetical assumptions.)
+2. **Rule overlap and search** — several rules matching the same head:
+   conflicting disallowed like elab, or relational backtracking? And what
+   termination discipline does the search have (elab had strictly
+   decreasing)?
+3. **Diagnostic attachment point** — templates live in the DSL (decided);
+   in `head := body`, does `else error "..." at node` attach per goal or
+   per rule?
+4. **Fω primitives** — fresh metavariables, instantiation/generalization,
+   kind checking, type-level β: which are engine services vs definable?
+   (Connects to the open type-plugin boundary.)
+5. **Entry point** — how a definition declares which judgment is the
+   typechecker of a language, and how derivations are exposed (LSP,
+   elaboration).
+6. **Capability rows** — how ε is represented in the type sub-language and
+   in judgments.
+
 ## 5. Core architecture
 
 Four pillars underneath chapters 1–4.
