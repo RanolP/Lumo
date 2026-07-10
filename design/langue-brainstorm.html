@@ -296,7 +296,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <div class="eyebrow">
       <span>design/langue.md 미러</span><span class="dot"></span>
       <span>기준 2026-07-10</span><span class="dot"></span>
-      <span>현재 설계의 스냅샷 — 결정된 것과 미결만 담는다</span>
+      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 18개)</span>
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
@@ -315,7 +315,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 <a class="use" href="#type">04-type.langue</a>           <span class="cm">// ④ 타입: 관계 엔진 위의 판단</span>
 <a class="use" href="#architecture">05-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: salsa · ungrammar · e-graph · 관계 엔진</span>
 <a class="use" href="#exec">06-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
-<a class="use" href="#decisions">07-decisions.langue</a>      <span class="cm">// 결정 · 미결 · 논의 후보</span>
+<a class="use" href="#decisions">07-open.langue</a>           <span class="cm">// 미결 · 논의 후보 — 결정 전문은 design/decisions/</span>
 <a class="use" href="#milestones">08-milestones.langue</a>     <span class="cm">// M0 – M4</span>
 
 <span class="cm">+ stdlib (foldr, map, 표준 토큰 …)   // 안 쓰이면 DCE로 제거</span></pre>
@@ -323,7 +323,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 
     <div class="minutes">
       <div class="box ask">
-        <h3>회신 대기 — 다음 메시지에서 답해 주면 도장으로 바꾼다</h3>
+        <h3>회신 대기 — 답하면 design/decisions/로 잠근다</h3>
         <ul>
           <li><b>e-graph 엔진</b> — 제안: egglog 스파이크 하나 후 결정. <a href="#decisions">07</a></li>
           <li><b>정제 해석 확인</b> — "엄격 감소"를 재귀 <code>to</code> 호출은 매칭된 패턴의 진부분트리만 받는다는 뜻으로 해석했다. 그리고 <code>*.elab.lumo</code>는 <code>*.elab.langue</code>의 오타로 해석했다. 맞나? <a href="#elab">03</a></li>
@@ -681,7 +681,7 @@ Expr = <span class="k">praat</span> {
 
     <!-- 02a salsa -->
     <div class="subsec" id="p-salsa">
-      <span class="slabel">05a · 결정됨 — 이전의 미결 문항을 닫는다</span>
+      <span class="slabel">05a</span>
       <h3>salsa식 증분 질의, 첫날부터</h3>
       <p>모든 파생 산출물은 입력에 대한 <b>메모이즈된 질의</b>다. 편집이 더럽힌 것만
       다시 계산한다. cat/병합/DCE가 만드는 정의는 리비전당 하나의 불변 값 —
@@ -723,7 +723,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
 
     <!-- 05c e-graph -->
     <div class="subsec" id="p-egraph">
-      <span class="slabel">05c · 결정됨</span>
+      <span class="slabel">05c</span>
       <h3>e-graph 정제 — 최적화는 등식 포화로</h3>
       <p>언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화 + 비용 추출 —
       규칙 순서가 무의미하다. 후보 엔진: egg / egglog.
@@ -732,7 +732,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
 
     <!-- 05d pluggable types -->
     <div class="subsec" id="p-types">
-      <span class="slabel">05d · 결정됨</span>
+      <span class="slabel">05d</span>
       <h3>관계형 타입 엔진 — 판단이 곧 타입 시스템</h3>
       <div class="minis">
         <div class="mini">
@@ -764,7 +764,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
           <div class="err" id="e2"><b>else error</b> "expected {param}, found {0}" <b>at</b> a</div>
         </div>
         <p class="rulehint">전제 위에 마우스를 올리면 그 전제가 실패했을 때의 진단이 표시됩니다 —
-        진단 템플릿은 규칙 옆, DSL 안에 산다 (결정됨)</p>
+        진단 템플릿은 규칙 옆, DSL 안에 산다</p>
       </div>
     </div>
   </div>
@@ -810,126 +810,12 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
 <!-- ============ 07 DECISIONS ============ -->
 <section id="decisions">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-decisions.langue</span>
-    <h2>결정된 것 · 열려 있는 것</h2>
-    <p class="sub">도장이 찍힌 카드는 확정 — 전문은 <code>design/decisions/</code>에 결정당 파일 하나(18개).
-    점선 카드가 브레인스토밍 대상이다.</p>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-open.langue</span>
+    <h2>열려 있는 것 — 다음 설계 대상</h2>
+    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(18개).
+    여기는 아직 열려 있는 것과 다음 논의 후보만.</p>
 
     <div class="board">
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>전체 언어 정의 DSL</h3>
-        <p>문법만이 아니라 어휘·트리·정제·바인딩·타입까지. langue 1은 부분집합이 된다.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>다중 파일 프로젝트 형식</h3>
-        <p>종류 접미사로 역할만 정하고, 같은 종류는 가산 병합. 기능 단위 슬라이싱.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>import 없음 — cat + stdlib + DCE</h3>
-        <p>모든 파일이 stdlib과 함께 하나의 전역 이름공간으로 연결된다.
-        전방 선언 불필요, 안 쓰인 항목은 DCE. 배선 의식 제로.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>표면 파서는 생성</h3>
-        <p>praat 블록 + extern 복구 훅. 복구 품질이 부족하면 M0 출구에서 수기 파서로 후퇴.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>임의의 언어 사슬</h3>
-        <p>파이프라인 모양은 도구가 아니라 정의가 정한다 — 단계 수·이름 자유.
-        CBPV 분리는 M1의 MIR.syn.langue에서.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>진단 템플릿은 DSL에</h3>
-        <p>전제마다 else error "…" at 노드. 메시지가 규칙 옆에 살아서 드리프트가 없다.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>이름은 Langue (v2) · Rust 호스트</h3>
-        <p>langue 1 문법 파일은 정신적으로 유효한 부분집합. 도구는 crates/langc.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>토큰 = 이름 붙은 리터럴/정규식</h3>
-        <p>token keyword.fn = 'fn' — 이름이 디버그·진단·SyntaxKind의 표시 정체성.
-        keywords() 등 특수 형태 없음. 최장 일치, 동률이면 리터럴 승. 점 이름은 하이라이트
-        스코프 겸용.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>챕터 순서</h3>
-        <p>프로젝트 레이아웃 → 문법 → 정제 → 타입. 문서와 아티팩트 모두 이 순서.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>파일 이름이 언어를 선언한다</h3>
-        <p>Lumo.syn.langue가 있으면 이름 Lumo가 전역 스코프에 선언되어 언어로써 참조된다.
-        Lumo, MIR, LIR, JS 전부 대등한 개별 언어 — 특별한 키워드 없음. 언어마다
-        파서·프린터 유도, 전 단계 텍스트 왕복. JS 방출은 프리티 프린트다.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>salsa식 아키텍처, 첫날부터</h3>
-        <p>정의 층(langc)과 컴파일 층 모두 메모이즈된 질의 위에. 이전의 미결 문항 종결.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>e-graph 정제</h3>
-        <p>같은 언어 최적화는 등식 포화 + 비용 추출. 언어 간 로워링은 구문 지향 유지.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>타입 시스템 = 판단 그 자체</h3>
-        <p>타입 플러그인은 없다. 판단은 유도 트리를 만드는 범용 관계 엔진 위에서 돌고,
-        Lumo v1의 판단이 Fω + spine-local 양방향 + capability row를 구현한다.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>스코프는 1급 개념이 아니다</h3>
-        <p>.scope.langue 종류도, 별도 스코프 엔진도 없다.
-        정제가 스코프를 시뮬레이트한다.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>정제 = from A to B 재작성 블록</h3>
-        <p>패턴 ==&gt; 구성, 구성 안의 to가 재귀 정제. 같은 from/to는 파일 간 병합.
-        엄격 감소만 허용, 충돌 불허.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>같은 언어 관계 = between 블록</h3>
-        <p>between A { lhs === rhs } 등식이 e-graph 등식 포화로 돈다.
-        $x 메타변수, subst 택틱 내장 ($e[$b := $a]).</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>타입 AST는 syn의 하위 언어</h3>
-        <p>타입은 표시 문법을 가지므로 타입 AST 자체를 *.syn.langue로 정의한다.
-        TypeV·TypeC를 문법 통합 AST로 자연스럽게 지원.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>context = 멀티맵</h3>
-        <p>context Γ = [Ident: TypeV] — 이름 붙은 멀티맵, 이론적으로는 튜플 집합.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>판단은 정의 가능 — λProlog식</h3>
-        <p>infer_C LIR -&gt; TypeC with Γ / check_C LIR &lt;- TypeC with Γ.
-        화살표는 구분자 표기일 뿐, 타입은 사실상 inout. with 문맥은 여러 개 가능.
-        규칙은 head := body.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>재귀는 fix로만</h3>
-        <p>정제가 상호 재귀 SCC를 fix 원시로 로워링하고, 순환 없는 정의는 let.
-        letrec 코어 형식 없음.</p>
-      </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
         <h3>비용 모델의 선언 위치</h3>
@@ -940,11 +826,6 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         이 비용을 어디에 쓰나: (a) syn.langue의 노드 선언에 주석,
         (b) between 블록 옆, (c) Rust extern 비용 함수.
         제안: (a) 기본 + (c) 탈출구.</p>
-      </article>
-      <article class="decision done">
-        <span class="seal" aria-label="결정됨">결</span>
-        <h3>무손실성은 언어별로 정의</h3>
-        <p>trivia 보존 여부는 각 언어의 정의가 정한다.</p>
       </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
