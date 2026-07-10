@@ -1,0 +1,111 @@
+// MIR: strict call-by-push-value core (D-36). Two syntactic sorts —
+// Value and Comp — with curried application as a praat postfix
+// node-payload row (D-34). The TypeV/TypeC sub-language (D-15) stays
+// live through `(v : TypeV)` annotations.
+
+token keyword.def     = 'def'
+token keyword.thunk   = 'thunk'
+token keyword.roll    = 'roll'
+token keyword.unroll  = 'unroll'
+token keyword.bundle  = 'bundle'
+token keyword.ret     = 'ret'
+token keyword.let     = 'let'
+token keyword.in      = 'in'
+token keyword.fn      = 'fn'
+token keyword.force   = 'force'
+token keyword.case    = 'case'
+token keyword.fix     = 'fix'
+token keyword.perform = 'perform'
+token keyword.handle  = 'handle'
+token keyword.with    = 'with'
+token keyword.sel     = 'sel'
+token type.u          = 'U'
+token type.f          = 'F'
+
+token ident      = /[a-zA-Z_][a-zA-Z0-9_]*/
+token lit.number = /[0-9]+(\.[0-9]+)?/
+token lit.string = /"([^"\\]|\\.)*"/
+
+token paren.open    = '('
+token paren.close   = ')'
+token brace.open    = '{'
+token brace.close   = '}'
+token bracket.open  = '['
+token bracket.close = ']'
+token comma         = ','
+token semi          = ';'
+token colon         = ':'
+token dot           = '.'
+token arrow.fat     = '=>'
+token arrow.thin    = '->'
+token op.eq         = '='
+
+trivia whitespace   = /[ \t\r\n]+/
+trivia comment.line = /\/\/[^\n]*/
+
+File = defs:Def*
+Def = 'def' name:ident '=' value:Value
+
+// === Values ===
+
+Value =
+  | VarV
+  | NumV
+  | StrV
+  | ThunkV
+  | CtorV
+  | RollV
+  | UnrollV
+  | BundleV
+  | ParenV
+
+VarV = name:ident
+NumV = value:lit.number
+StrV = value:lit.string
+ThunkV = 'thunk' '{' body:Comp '}'
+CtorV = '.' tag:ident args:CtorArgs?
+CtorArgs = '(' args:sep(Value, ',')? ')'
+RollV = 'roll' value:Value
+UnrollV = 'unroll' value:Value
+BundleV = 'bundle' '{' clauses:BundleClause* '}'
+BundleClause = 'fn' name:ident '(' params:sep(ident, ',')? ')' '=>' body:Comp ';'?
+ParenV = '(' inner:Value (':' ty:TypeV)? ')'
+
+// === Computations ===
+
+RetC = 'ret' value:Value
+LetC = 'let' name:ident '=' value:Comp 'in' body:Comp
+LamC = 'fn' '(' param:ident ')' '=>' body:Comp
+ForceC = 'force' value:Value
+CaseC = 'case' scrutinee:Value '{' arms:CaseArm* '}'
+CaseArm = '.' tag:ident binders:CaseBinders? '=>' body:Comp ','?
+CaseBinders = '(' names:sep(ident, ',')? ')'
+FixC = 'fix' name:ident '=>' body:Comp
+PerformC = 'perform' cap:ident
+HandleC = 'handle' cap:ident 'with' handler:Value 'in' body:Comp
+SelC = 'sel' value:Value '.' field:ident
+ParenC = '(' inner:Comp ')'
+
+ValueArgs = args:sep(Value, ',')?
+
+Comp = praat {
+  simple = RetC | LetC | LamC | ForceC | CaseC | FixC | PerformC | HandleC | SelC | ParenC
+  operators {
+    @110 '(' ValueArgs ')',
+  }
+}
+
+// === Types (D-15 sub-language) ===
+
+TypeV =
+  | UTypeV
+  | NamedTypeV
+UTypeV = 'U' '(' inner:TypeC ')'
+NamedTypeV = name:ident args:TypeArgs?
+TypeArgs = '[' args:sep(TypeV, ',')? ']'
+
+TypeC =
+  | FTypeC
+  | FnTypeC
+FTypeC = 'F' '(' inner:TypeV ')'
+FnTypeC = '(' params:sep(TypeV, ',')? ')' '->' ret:TypeC

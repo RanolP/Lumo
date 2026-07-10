@@ -1,0 +1,21 @@
+# MIR is strict CBPV: two syntactic sorts
+
+Settled 2026-07-11 (resolves the "decide here" left open by D-15 and
+PLAN M1). MIR — the target of `elab Lumo to MIR` — is call-by-push-value
+with the value/computation split enforced *syntactically*: `Value` and
+`Comp` are separate grammar sorts in `lumo/MIR.syn.langue`, not one
+expression sort policed by the typechecker.
+
+- Values: `VarV NumV StrV ThunkV CtorV RollV UnrollV BundleV ParenV`.
+- Computations: `RetC LetC LamC ForceC CaseC FixC PerformC HandleC SelC
+  ParenC`, plus curried application as a praat postfix node-payload row
+  (`@110 '(' ValueArgs ')'`, D-34).
+- The type sub-language (D-15) stays live through `(v : TypeV)`
+  annotations: `TypeV = U(TypeC) | named[args]`,
+  `TypeC = F(TypeV) | (TypeV, …) -> TypeC`.
+
+Legacy LIR mapping: `Thunk` = `thunk { c }` (U-intro), `Produce` =
+`ret v` (F-intro), `Roll`/`Unroll` are explicit value forms, `Bundle` is
+the handler record (clauses `fn name(x) => comp;`), by-name recursion is
+replaced by `fix` per D-12 (SCC pass). `Perform`'s type_args are
+deferred to M2; LTO's Dup/Drop memaware pass is out of scope for MIR.

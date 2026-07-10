@@ -1,0 +1,116 @@
+=== def with thunked identity lambda ===
+:parse(MIR)
+
+def id = thunk { fn(x) => ret x }
+
+---
+
+(FILE (DEF (THUNK_V (LAM_C (RET_C (VAR_V))))))
+
+=== nullary and applied constructors under roll ===
+:parse(MIR)
+
+def z = roll .zero
+def one = roll .succ(z)
+
+---
+
+(FILE (DEF (ROLL_V (CTOR_V))) (DEF (ROLL_V (CTOR_V (CTOR_ARGS (VAR_V))))))
+
+=== literals ===
+:parse(MIR)
+
+def n = 42
+def pi = 3.14
+def s = "hello"
+
+---
+
+(FILE (DEF (NUM_V)) (DEF (NUM_V)) (DEF (STR_V)))
+
+=== annotated value with U/F/fn types ===
+:parse(MIR)
+
+def v = (f : U((Number) -> F(List[Number])))
+
+---
+
+(FILE (DEF (PAREN_V (VAR_V) (U_TYPE_V (FN_TYPE_C (NAMED_TYPE_V) (F_TYPE_C (NAMED_TYPE_V (TYPE_ARGS (NAMED_TYPE_V)))))))))
+
+=== force and curried application ===
+:parse(MIR)
+
+def app = thunk { force f(x)(y) }
+
+---
+
+(FILE (DEF (THUNK_V (COMP_POSTFIX (COMP_POSTFIX (FORCE_C (VAR_V)) (VALUE_ARGS (VAR_V))) (VALUE_ARGS (VAR_V))))))
+
+=== application with two value args in one call ===
+:parse(MIR)
+
+def app2 = thunk { force f(x, y) }
+
+---
+
+(FILE (DEF (THUNK_V (COMP_POSTFIX (FORCE_C (VAR_V)) (VALUE_ARGS (VAR_V) (VAR_V))))))
+
+=== let sequencing ===
+:parse(MIR)
+
+def seq = thunk { let a = force f(x) in ret a }
+
+---
+
+(FILE (DEF (THUNK_V (LET_C (COMP_POSTFIX (FORCE_C (VAR_V)) (VALUE_ARGS (VAR_V))) (RET_C (VAR_V))))))
+
+=== case with binders and unroll scrutinee ===
+:parse(MIR)
+
+def pred = thunk {
+  fn(n) => case unroll n {
+    .zero => ret (roll .zero),
+    .succ(m) => ret m,
+  }
+}
+
+---
+
+(FILE (DEF (THUNK_V (LAM_C (CASE_C (UNROLL_V (VAR_V)) (CASE_ARM (RET_C (PAREN_V (ROLL_V (CTOR_V))))) (CASE_ARM (CASE_BINDERS) (RET_C (VAR_V))))))))
+
+=== fix for recursive computations ===
+:parse(MIR)
+
+def loop = thunk { fix f => fn(x) => force f(x) }
+
+---
+
+(FILE (DEF (THUNK_V (FIX_C (LAM_C (COMP_POSTFIX (FORCE_C (VAR_V)) (VALUE_ARGS (VAR_V))))))))
+
+=== handle perform sel and bundle ===
+:parse(MIR)
+
+def prog = thunk {
+  handle Console with bundle { fn log(msg) => ret msg; } in
+  let c = perform Console in
+  sel c.log("hi")
+}
+
+---
+
+(FILE (DEF (THUNK_V (HANDLE_C (BUNDLE_V (BUNDLE_CLAUSE (RET_C (VAR_V)))) (LET_C (PERFORM_C) (COMP_POSTFIX (SEL_C (VAR_V)) (VALUE_ARGS (STR_V))))))))
+
+=== parenthesized computation ===
+:parse(MIR)
+
+def p = thunk { (ret x) }
+
+---
+
+(FILE (DEF (THUNK_V (PAREN_C (RET_C (VAR_V))))))
+
+=== broken def is an error ===
+:fails(MIR)
+
+def = thunk
+

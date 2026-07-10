@@ -1,0 +1,30 @@
+# Elab engine: sort coercion and extern rules/passes
+
+Settled 2026-07-11. Two engine consequences of strict CBPV (D-36):
+
+**Sort coercion (auto-let).** Legacy LIR is direct-style; strict CBPV
+application and constructors take *value* arguments. When a construction
+places a computation where the target grammar expects a value, the
+engine auto-inserts `let __tN = c in …` at the nearest enclosing
+computation and substitutes the fresh variable. `__tN` uses a single
+deterministic counter per elab invocation (fixture-stable); the reserved
+`__t` prefix keeps fresh names lexable as ordinary idents without
+colliding with user code. Rules stay declarative — no gensym syntax in
+the DSL. Fallback if placement ever gets ambiguous: error instead of
+coerce, and require an explicit `let` in the rule.
+
+**Extern rules and passes.** Member/call classification needs
+declaration context (data variant vs cap op vs value method — legacy
+consulted `ctx.caps`/`ctx.variants`), which pure syntax-directed rules
+cannot decide. The elab kind therefore supports two extern hatches, both
+named in the definition (D-01, grep-able) and implemented in Rust:
+
+```
+extern rule member_classify from Lumo to MIR
+extern pass scc_fix
+extern pass use_require
+```
+
+An `extern rule` participates in rule dispatch like a written rule; an
+`extern pass` is a whole-tree pre/post transform (hosts the D-12 SCC/fix
+lowering and the D-30 `use` → `λrequire` lowering).

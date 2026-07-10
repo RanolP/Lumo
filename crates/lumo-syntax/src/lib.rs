@@ -4,4 +4,5 @@
 //! at the repo-root `lumo/` directory instead, then regenerate.
 
 pub mod lumo;
+pub mod mir;
 pub mod registry;

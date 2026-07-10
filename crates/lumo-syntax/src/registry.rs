@@ -10,6 +10,7 @@ pub struct LanguageOps {
 
 pub static LANGUAGES: &[LanguageOps] = &[
     LanguageOps { name: "Lumo", parse_report: lumo_report },
+    LanguageOps { name: "MIR", parse_report: mir_report },
 ];
 
 pub fn language(name: &str) -> Option<&'static LanguageOps> {
@@ -25,6 +26,19 @@ fn lumo_report(text: &str) -> ParseReport {
         errors: out.errors.iter().map(|e| format!("{}: {}", e.span, e.message)).collect(),
         lossless: out.root.text(),
         round_trip_sexpr: crate::lumo::printer::sexpr(&reparse.root),
+        canonical,
+    }
+}
+
+fn mir_report(text: &str) -> ParseReport {
+    let out = crate::mir::parser::parse(text);
+    let canonical = crate::mir::printer::canonical(&out.root);
+    let reparse = crate::mir::parser::parse(&canonical);
+    ParseReport {
+        sexpr: crate::mir::printer::sexpr(&out.root),
+        errors: out.errors.iter().map(|e| format!("{}: {}", e.span, e.message)).collect(),
+        lossless: out.root.text(),
+        round_trip_sexpr: crate::mir::printer::sexpr(&reparse.root),
         canonical,
     }
 }
