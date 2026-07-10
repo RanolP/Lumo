@@ -189,8 +189,16 @@ between A {
 
 ## 4. Type (`*.type.langue`)
 
-Being defined now, step by step from dictation. Decided at the architecture
-level so far:
+Being defined now, step by step from dictation.
+
+### 4.1 The type AST is a sub-language in `*.syn.langue`
+
+Types have presentation, so **the type AST itself is defined in
+`*.syn.langue`** — it is a sub-language, with tokens and grammar like any
+language. This supports `TypeV` and `TypeC` (CBPV value/computation types)
+naturally, with a syntax-integrated AST.
+
+### 4.2 Decided at the architecture level
 
 - Pluggable type system on a generic reasoning engine (section 5.4); Lumo
   v1 plugs Fω + spine-local bidirectional inference + capability rows.
@@ -360,6 +368,9 @@ Decided:
 14. **Same-language relations = `between A` blocks**: `lhs === rhs`
     equalities run as e-graph equality saturation; `$x` metavariables;
     `subst` tactic built-in (`$e[$b := $a]`).
+15. **The type AST is a syn sub-language**: types have presentation, so the
+    type AST is defined in `*.syn.langue`; `TypeV`/`TypeC` are supported
+    naturally with a syntax-integrated AST.
 
 Still open (mirrored in the artifact's 회신 대기 box):
 

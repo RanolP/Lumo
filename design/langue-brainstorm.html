@@ -576,7 +576,12 @@ Expr = <span class="k">praat</span> {
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-type)"></span>04-type.langue</span>
     <h2>타입 — 지금 정의하는 중</h2>
     <p class="sub">
-      단계별 딕테이션으로 정의 중 — 다음 메시지들을 따라간다.
+      <b>타입 AST 자체가 <code>*.syn.langue</code>로 정의된다.</b> 타입은 표시
+      문법(presentation)을 가지므로 하나의 하위 언어(sub-language)다. 그래서
+      TypeV·TypeC(CBPV 값/계산 타입)를 문법 통합 AST로 자연스럽게 지원한다.
+    </p>
+    <p class="sub" style="margin-top:14px">
+      단계별 딕테이션으로 정의 중 — 이어지는 결정을 따라간다.
       아키텍처 수준에서 결정된 것 — 플러그형 타입 시스템(<a href="#p-types">05d</a>):
       범용 추론 엔진 위에 Lumo v1은 Fω + spine-local 양방향 + capability row를 꽂는다.
       진단 템플릿은 규칙 옆, DSL 안에 산다.
@@ -836,6 +841,12 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <h3>같은 언어 관계 = between 블록</h3>
         <p>between A { lhs === rhs } 등식이 e-graph 등식 포화로 돈다.
         $x 메타변수, subst 택틱 내장 ($e[$b := $a]).</p>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>타입 AST는 syn의 하위 언어</h3>
+        <p>타입은 표시 문법을 가지므로 타입 AST 자체를 *.syn.langue로 정의한다.
+        TypeV·TypeC를 문법 통합 AST로 자연스럽게 지원.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
