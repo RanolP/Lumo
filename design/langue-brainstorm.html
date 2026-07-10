@@ -312,8 +312,8 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 <a class="use" href="#project">01-project.langue</a>        <span class="cm">// ① 프로젝트 레이아웃: cat + stdlib + DCE</span>
 <a class="use" href="#syntax">02-syntax.langue</a>         <span class="cm">// ② 문법: 모든 단계가 개별 언어다</span>
 <a class="use" href="#elab">03-elab.langue</a>           <span class="cm">// ③ 정제: from A to B 재작성 규칙</span>
-<a class="use" href="#type">04-type.langue</a>           <span class="cm">// ④ 타입: 추론 엔진 위의 판단</span>
-<a class="use" href="#architecture">05-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: salsa · ungrammar · e-graph · 추론 엔진</span>
+<a class="use" href="#type">04-type.langue</a>           <span class="cm">// ④ 타입: 관계 엔진 위의 판단</span>
+<a class="use" href="#architecture">05-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: salsa · ungrammar · e-graph · 관계 엔진</span>
 <a class="use" href="#exec">06-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
 <a class="use" href="#decisions">07-decisions.langue</a>      <span class="cm">// 결정 · 미결 · 논의 후보</span>
 <a class="use" href="#milestones">08-milestones.langue</a>     <span class="cm">// M0 – M4</span>
@@ -325,11 +325,10 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <div class="box ask">
         <h3>회신 대기 — 다음 메시지에서 답해 주면 도장으로 바꾼다</h3>
         <ul>
-          <li><b>무손실성 범위</b> — 제안: Lumo(표면)만 무손실(trivia 보존), 나머지 언어는 정규 프린트로 왕복. e-graph 노드가 trivia를 안 들고 다녀도 됨. <a href="#decisions">07</a></li>
           <li><b>e-graph 엔진</b> — 제안: egglog 스파이크 하나 후 결정. <a href="#decisions">07</a></li>
           <li><b>정제 해석 확인</b> — "엄격 감소"를 재귀 <code>to</code> 호출은 매칭된 패턴의 진부분트리만 받는다는 뜻으로 해석했다. 그리고 <code>*.elab.lumo</code>는 <code>*.elab.langue</code>의 오타로 해석했다. 맞나? <a href="#elab">03</a></li>
           <li><b>타입 챕터를 닫으려면 6문항</b> — 문맥 확장 · 규칙 중첩/탐색 · 진단 부착점 · Fω 원시 · 진입점 · capability row. <a href="#type">04</a></li>
-          <li><b>타입 플러그인 경계 · 비용 모델 위치</b> — 열려 있음. <a href="#decisions">07</a></li>
+          <li><b>비용 모델 위치</b> — 열려 있음. <a href="#decisions">07</a></li>
         </ul>
       </div>
     </div>
@@ -447,6 +446,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <b>문법</b>이 있다. 파일 이름이 곧 선언 — <code>MIR.syn.langue</code>가 있으면 이름
       <b>MIR</b>가 스코프에 올라 언어로써 참조된다.
       여러 파일로 쪼갤 땐 <code>Lumo.expr.syn.langue</code>처럼 첫 조각이 언어.
+      무손실(trivia 보존) 여부는 언어별로 정의한다.
     </p>
 
     <div class="kinds">
@@ -618,15 +618,16 @@ Expr = <span class="k">praat</span> {
         <li><b>문맥 확장</b> — 읽기는 <code>Γ.$name</code>. 바인더 규칙(λ, let)이 하위 골에서 Γ를 어떻게 늘리나? (<code>Γ + [$x: $t]</code> 같은 표기, 혹은 λProlog식 가정 추가.)</li>
         <li><b>규칙 중첩과 탐색</b> — 같은 head에 여러 규칙이 맞으면: elab처럼 충돌 불허인가, 관계 언어답게 백트래킹인가? 탐색의 종결 규율은? (elab은 엄격 감소였다.)</li>
         <li><b>진단 부착점</b> — 템플릿이 DSL에 사는 건 결정됨. <code>head := body</code>에서 <code>else error "…" at 노드</code>는 골 단위인가 규칙 단위인가?</li>
-        <li><b>Fω 원시</b> — 신선한 메타변수, 일반화/인스턴스화, 카인드 검사, 타입 수준 β — 어디까지 엔진 서비스이고 어디부터 정의 가능인가? (타입 플러그인 경계 미결과 연결.)</li>
+        <li><b>Fω 원시</b> — 신선한 메타변수, 일반화/인스턴스화, 카인드 검사, 타입 수준 β — 어디까지 엔진 서비스이고 어디부터 정의 가능인가?</li>
         <li><b>진입점</b> — 어떤 판단이 그 언어의 타입검사기인지 선언하는 방법, 유도 트리를 LSP·정제에 노출하는 방법.</li>
         <li><b>capability row</b> — ε를 타입 하위 언어와 판단에서 어떻게 표현하나.</li>
       </ol>
     </div>
     <p class="sub" style="margin-top:14px">
       단계별 딕테이션으로 정의 중 — 이어지는 결정을 따라간다.
-      아키텍처 수준에서 결정된 것 — 플러그형 타입 시스템(<a href="#p-types">05d</a>):
-      범용 추론 엔진 위에 Lumo v1은 Fω + spine-local 양방향 + capability row를 꽂는다.
+      <b>타입 플러그인 같은 건 없다</b> — 타입 시스템은 정의가 선언한 판단 그 자체다.
+      판단은 진짜 유도 트리를 만드는 범용 관계 엔진(<a href="#p-types">05d</a>) 위에서 돌고,
+      Lumo v1의 판단이 Fω + spine-local 양방향 + capability row를 구현한다.
       진단 템플릿은 규칙 옆, DSL 안에 산다.
     </p>
   </div>
@@ -653,8 +654,8 @@ Expr = <span class="k">praat</span> {
         <p>최적화는 등식 포화. 규칙 순서 무의미.</p>
       </a>
       <a class="pillar" href="#p-types" style="text-decoration:none;color:inherit">
-        <span class="no">05d</span><h3>플러그형 타입 시스템</h3>
-        <p>제대로 된 추론 엔진 위의 규칙 집합.</p>
+        <span class="no">05d</span><h3>관계형 타입 엔진</h3>
+        <p>판단이 곧 타입 시스템. 엔진은 유도 트리를 만든다.</p>
       </a>
     </div>
 
@@ -681,7 +682,7 @@ Expr = <span class="k">praat</span> {
         <span class="ph">infer(node)</span>
       </div>
       <p style="font-size:13.5px;margin-top:14px"><code>.type.langue</code> 파일 하나를 고치면
-      타입 테이블만 재파생된다. 후보 런타임: <code>salsa</code> 크레이트, 혹은 추론 엔진과
+      타입 테이블만 재파생된다. 후보 런타임: <code>salsa</code> 크레이트, 혹은 관계 엔진과
       충돌하면 목적 제작.</p>
     </div>
 
@@ -712,18 +713,17 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
     <!-- 05d pluggable types -->
     <div class="subsec" id="p-types">
       <span class="slabel">05d · 결정됨</span>
-      <h3>플러그형 타입 시스템 — 제대로 된 추론 엔진 위에서</h3>
+      <h3>관계형 타입 엔진 — 판단이 곧 타입 시스템</h3>
       <div class="minis">
         <div class="mini">
-          <h4>추론 엔진</h4>
-          <p>추론 규칙 해석기. <b>진짜 유도 트리</b>를 만든다. 전제, 모드(⇒/⇐),
-          단일화, 인스턴스화, 신선한 메타변수가 엔진 서비스. 엔진은 Lumo를 모른다.</p>
+          <h4>관계 엔진</h4>
+          <p>λProlog식 판단 언어(04)의 실행기. 골을 풀고 단일화하며
+          <b>진짜 유도 트리</b>를 만든다. 엔진은 Lumo를 모른다.</p>
         </div>
         <div class="mini">
-          <h4>타입 시스템 = 플러그인</h4>
-          <p>Rust 쪽 원시 연산 묶음(타입 형성자·카인드 규칙·row 연산) + DSL 규칙 집합.
-          Lumo v1은 <b>Fω + spine-local 양방향 + capability row</b>를 꽂는다.
-          엔진을 안 건드리고 다른 시스템으로 교체 가능.</p>
+          <h4>타입 플러그인은 없다</h4>
+          <p>타입 시스템은 정의가 선언한 <b>판단 그 자체</b>.
+          Lumo v1의 판단이 <b>Fω + spine-local 양방향 + capability row</b>를 구현한다.</p>
         </div>
         <div class="mini">
           <h4>유도가 곧 산출물</h4>
@@ -777,7 +777,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <span class="tag">elab · type → 검증된 규칙 테이블</span>
         <ul>
           <li>elab 재작성 규칙 → e-graph 엔진 (05c)</li>
-          <li>타입 판단 규칙 + 진단 템플릿 → 추론 엔진 (05d)</li>
+          <li>타입 판단 규칙 + 진단 템플릿 → 관계 엔진 (05d)</li>
         </ul>
         <p class="why"><b>이유:</b> 타입 규칙 하나 고치자고 생성된 Rust를 재컴파일하지
         않기. 의미는 조밀하지만 v1에서 코드젠이 필요할 만큼 성능 임계는 아니다 —
@@ -863,9 +863,9 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
-        <h3>플러그형 타입 시스템</h3>
-        <p>범용 추론 엔진(유도 트리 생성) + 플러그인. Lumo v1은 Fω + spine-local 양방향 +
-        capability row를 꽂는다.</p>
+        <h3>타입 시스템 = 판단 그 자체</h3>
+        <p>타입 플러그인은 없다. 판단은 유도 트리를 만드는 범용 관계 엔진 위에서 돌고,
+        Lumo v1의 판단이 Fω + spine-local 양방향 + capability row를 구현한다.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -915,22 +915,16 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <p>e-graph 추출의 비용을 어디에 쓰나 — 트리 생성자 주석, 규칙별 가중치, extern?
         제안: 생성자 주석을 기본으로, extern은 탈출구.</p>
       </article>
-      <article class="decision open">
-        <span class="seal" aria-label="미결">?</span>
-        <h3>무손실성의 범위</h3>
-        <p>trivia/공백 보존을 Lumo(표면)에만 적용하나, 모든 언어에 적용하나?
-        제안: Lumo만 무손실, 나머지 언어는 정규 프린트 왕복 — e-graph가 trivia를 안 들고 다닌다.</p>
-      </article>
-      <article class="decision open">
-        <span class="seal" aria-label="미결">?</span>
-        <h3>타입 플러그인의 경계</h3>
-        <p>타입 시스템의 어디까지가 Rust 플러그인 trait이고 어디부터가 DSL 규칙인가.</p>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>무손실성은 언어별로 정의</h3>
+        <p>trivia 보존 여부는 각 언어의 정의가 정한다.</p>
       </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
         <h3>하이브리드 실행 모델 확정</h3>
         <p>생성(syn) vs 해석(elab·type) 경계를 기둥 엔진들과 대조해 확정.
-        e-graph/추론 엔진 채택은 해석 쪽 손을 들어준다.</p>
+        e-graph/관계 엔진 채택은 해석 쪽 손을 들어준다.</p>
       </article>
     </div>
 
@@ -972,7 +966,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <li>
         <span class="m">M2</span>
         <div><h3>type</h3>
-        <p>추론 엔진 + Fω/capability 플러그인 + 판단 DSL. capability 타입 규칙 이식.</p></div>
+        <p>관계 엔진 + Fω/capability 판단 작성. capability 타입 규칙 이식.</p></div>
       </li>
       <li>
         <span class="m">M3</span>

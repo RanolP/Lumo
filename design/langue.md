@@ -88,6 +88,7 @@ language split across files uses the first name segment
 
 Per language, parser and pretty-printer are derived — every stage
 round-trips as text, and emitting JavaScript is pretty-printing a JS tree.
+Losslessness (trivia preservation) is defined language by language.
 
 ### 2.2 Tokens
 
@@ -240,8 +241,11 @@ infer_V Ident { name: $name } -> $return := $return = Γ.$name
 
 ### 4.4 Decided at the architecture level
 
-- Pluggable type system on a generic reasoning engine (section 5.4); Lumo
-  v1 plugs Fω + spine-local bidirectional inference + capability rows.
+- **There is no "type plugin".** A type system is the judgments a
+  definition declares — nothing else. Judgments run on a generic
+  relational engine that builds real derivation trees (section 5.4); Lumo
+  v1's judgments implement Fω + spine-local bidirectional inference +
+  capability rows.
 - Diagnostic message templates live in the DSL, attached to rule premises.
 
 ### 4.5 To close this chapter (open)
@@ -258,7 +262,6 @@ infer_V Ident { name: $name } -> $return := $return = Γ.$name
    per rule?
 4. **Fω primitives** — fresh metavariables, instantiation/generalization,
    kind checking, type-level β: which are engine services vs definable?
-   (Connects to the open type-plugin boundary.)
 5. **Entry point** — how a definition declares which judgment is the
    typechecker of a language, and how derivations are exposed (LSP,
    elaboration).
@@ -283,7 +286,7 @@ inputs, at both layers:
 Rule tables are pure values, which is exactly what memoization wants: the
 cat/merge/DCE project model (section 1) produces one immutable definition
 value per revision. Candidate runtime: the `salsa` crate, or a purpose-built
-equivalent if salsa's model fights the reasoning engine.
+equivalent if salsa's model fights the relational engine.
 
 ### 5.2 Ungrammar-like notation
 
@@ -303,25 +306,18 @@ so rule order carries no meaning. Candidate engines: `egg` / `egglog`.
 Same-language rules are declared as `between A` relation blocks
 (section 3.2); the cost-model declaration site is open (section 10).
 
-### 5.4 Pluggable type system
+### 5.4 Relational type engine
 
-#### 5.4.1 The reasoning engine
+#### 5.4.1 The engine
 
-Type checking runs on a generic **reasoning engine**: an inference-rule
-interpreter that builds proper derivation trees. Premises, modes
-(infer ⇒ / check ⇐), unification, instantiation/generalization, and fresh
-metavariables are engine services. The engine knows nothing about Lumo.
+Type checking runs on a generic **relational engine**: the executor of the
+λProlog-style judgment language (section 4). It solves goals, unifies, and
+builds proper derivation trees. The engine knows nothing about Lumo.
+**There is no "type plugin"** — a type system is the judgments a definition
+declares; Lumo v1's judgments implement Fω + spine-local bidirectional
+inference + capability rows.
 
-#### 5.4.2 Type systems as plugins
-
-A *type system* is a plugin on that engine: a Rust-side capability bundle
-(type formers, kind rules, row operations) plus the DSL rule set that drives
-it. Lumo v1 plugs in "Fω + spine-local bidirectional inference + capability
-rows". Because the engine is generic, a different language (or a future
-Lumo) can plug a different system without touching the engine. The plugin
-boundary (Rust trait vs DSL rules) is open (section 10).
-
-#### 5.4.3 Derivations as artifacts
+#### 5.4.2 Derivations as artifacts
 
 Because the engine produces real derivations, failed premises map to the
 DSL's diagnostic templates with full context, successful ones power
@@ -349,7 +345,7 @@ edit, run `langc gen`, commit generated code.
 
 For elab/type: `langc` compiles the rules to a compact checked IR that
 generic Rust engines execute — the e-graph engine for same-language elab,
-the reasoning engine. Rationale: changing a typing rule should not require
+the relational engine. Rationale: changing a typing rule should not require
 recompiling generated Rust; these rules are dense in semantics but not
 performance-critical enough to need codegen in v1. If profiling disagrees
 later, codegen them then.
@@ -375,7 +371,7 @@ generated. Langue-in-langue self-description is explicitly not a v1 goal.
 - **M1 — MIR + elab (lowering)**: write `MIR.syn.langue` and the
   `elab Lumo -> MIR` syntax-directed rules; the rewrite engine owns
   lowering. CBPV split decided here.
-- **M2 — type**: reasoning engine + Fω/caps plugin + judgment DSL; port the
+- **M2 — type**: relational engine + the Fω/caps judgments; port the
   capability typing rules.
 - **M3 — e-graph optimization**: same-language elab groups on equality
   saturation; optimization golden fixtures are the contract.
@@ -409,8 +405,9 @@ Decided:
    and the compiled-language layer.
 7. **E-graph equality saturation** for same-language elaboration
    (optimization); language-to-language elaboration stays syntax-directed.
-8. **Pluggable type system on a generic reasoning engine**; Lumo v1 plugs
-   Fω + spine-local bidirectional inference + capability rows.
+8. **No type plugin — a type system is its judgments**, run on a generic
+   relational engine that builds derivation trees; Lumo v1's judgments
+   implement Fω + spine-local bidirectional inference + capability rows.
 9. **Tokens are named literals/regexes only**: `token keyword.fn = 'fn'` —
    the name is the debug/display identity of the token; no special forms;
    longest match wins, literal beats regex on ties; dotted names double as
@@ -439,19 +436,17 @@ Decided:
     both sides are parameters and the type is effectively inout (relational:
     assignment propagates bottom-up); `with` attaches contexts (one or
     many); rules are `head := body`.
+18. **Losslessness is defined language by language** — each language's
+    definition decides whether it preserves trivia.
 
-Still open (mirrored in the artifact's 회신 대기 box):
+Still open (mirrored in the artifact's 회신 대기 box; plus the six
+type-chapter questions in section 4.5):
 
-15. **Cost model declaration** for e-graph extraction — proposal: grammar
+19. **Cost model declaration** for e-graph extraction — proposal: grammar
     annotations by default, extern as escape hatch.
-16. **Type-plugin boundary** — how much of a type system lives in the Rust
-    plugin trait vs the DSL rule set?
-17. **E-graph engine choice** — proposal: one egglog spike, then decide.
-18. **Hybrid execution boundary** (section 7) — confirm generated vs
+20. **E-graph engine choice** — proposal: one egglog spike, then decide.
+21. **Hybrid execution boundary** (section 7) — confirm generated vs
     interpreted split against the pillar engines.
-19. **Losslessness scope** — proposal: only Lumo (the surface language) is
-    lossless; other languages round-trip via canonical pretty-print (e-graph
-    nodes carry no trivia).
-20. **Strictly-decreasing measure** — interpreted as: a recursive `to` call
+22. **Strictly-decreasing measure** — interpreted as: a recursive `to` call
     may only take a strict subtree of the matched pattern. Confirm. (Also
     interpreted the dictated `*.elab.lumo` header as `*.elab.langue`.)
