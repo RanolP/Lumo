@@ -14,8 +14,9 @@ language declared by its `.syn.langue` file name, tokens are named
 literals/regexes only, scope is not a first-party concept (elaboration
 simulates it), elab rules are `from A to B` rewrite blocks (strictly
 decreasing, no conflicts) plus same-language `between A` relations run as
-e-graph equalities, and chapter order project layout → syntax →
-elaboration → type.
+e-graph equalities on egglog, a widely-adopted cost model (research
+pending), all three kinds code-generated to Rust, and chapter order
+project layout → syntax → elaboration → type.
 
 ## 1. Project layout
 
@@ -315,9 +316,9 @@ that engines interpret.
 
 Language-to-language elaboration is syntax-directed; same-language
 optimization runs as e-graph equality saturation with cost-based extraction,
-so rule order carries no meaning. Candidate engines: `egg` / `egglog`.
-Same-language rules are declared as `between A` relation blocks
-(section 3.2); the cost-model declaration site is open (section 10).
+so rule order carries no meaning. **Engine: egglog.** Same-language rules
+are declared as `between A` relation blocks (section 3.2); the cost model
+is a widely-adopted one, picked by a research pass (section 10.2).
 
 ### 5.4 Relational type engine
 
@@ -344,26 +345,21 @@ name. The rule: the `.langue` files must mention every extern, so
 `grep extern` over the definition shows exactly where the declarative story
 has holes.
 
-## 7. Execution model (proposed)
+## 7. Execution model
 
-Hybrid, per kind:
+**Decided: all three kinds are code-generated.** `langc` generates Rust
+for everything — there are no interpreted rule tables:
 
-### 7.1 Generated Rust
+- **syn** — per declared language: token DFA, syntax kinds, AST accessors,
+  parser, pretty-printer.
+- **elab** — `from`/`to` rewrites and `between` relations, compiled to
+  Rust running on egglog.
+- **type** — judgment rules and diagnostic templates, compiled to Rust on
+  the relational engine.
 
-For the hot, shape-defining parts: syn — per declared language, the token
-DFA, syntax kinds, AST accessors, parser, and pretty-printer. Workflow:
-edit, run `langc gen`, commit generated code.
+One workflow everywhere: edit, run `langc gen`, commit generated code.
 
-### 7.2 Interpreted rule tables
-
-For elab/type: `langc` compiles the rules to a compact checked IR that
-generic Rust engines execute — the e-graph engine for same-language elab,
-the relational engine. Rationale: changing a typing rule should not require
-recompiling generated Rust; these rules are dense in semantics but not
-performance-critical enough to need codegen in v1. If profiling disagrees
-later, codegen them then.
-
-### 7.3 langc
+### 7.1 langc
 
 One Rust crate (`crates/langc`) with a library API so the compiler embeds
 the loaded definition, plus a CLI (`langc gen`, `langc check` —
@@ -416,44 +412,24 @@ Locked decisions live one per file in `design/decisions/`:
 16. [Contexts](decisions/16-contexts.md)
 17. [Definable judgments — λProlog style](decisions/17-definable-judgments.md)
 18. [Losslessness per language](decisions/18-losslessness-per-language.md)
+19. [E-graph engine: egglog](decisions/19-egglog.md)
+20. [Cost model: adopt a widely-used model](decisions/20-cost-model.md)
+21. [All three kinds are code-generated](decisions/21-full-codegen.md)
 
 Open questions, in detail (the six type-chapter questions live in
 section 4.5; all are mirrored in the artifact):
 
-### 10.1 Cost model declaration (e-graph extraction)
-
-`between` equalities are undirected: after saturation an e-class holds
-many equivalent forms of the same expression, and a **cost function**
-decides which form is extracted as the final program. Example: once the
-β-reduction equality saturates, the redex and the reduced form sit in the
-same e-class — extraction only prefers the reduced form if node kinds
-carry costs. Where are costs written: (a) annotations on node declarations
-in `.syn.langue`, (b) alongside the `between` blocks, or (c) an extern
-cost function in Rust? Proposal: (a) as the default, (c) as the escape
-hatch.
-
-### 10.2 E-graph engine choice
-
-Which Rust library runs the saturation: `egg` (mature, plain rewriting),
-`egglog` (newer, datalog-integrated), or purpose-built. The deciding risk
-is the built-in `subst` tactic: substitution over binders
-(`$e[$b := $a]` — α-equivalence, capture avoidance) is the classically
-hard part of e-graphs over λ-terms, and if an off-the-shelf engine cannot
-express it, purpose-built becomes the answer. Proposal: one egglog spike
-that tries to encode `subst` before committing.
-
-### 10.3 Hybrid execution boundary
-
-What `langc` generates as Rust vs what engines interpret. Current
-proposal: syn is generated (token DFA, parser, printer — hot,
-shape-defining, performance-critical); elab/type rules are compiled to
-checked tables that generic engines interpret, so editing a typing rule
-never recompiles generated Rust. Needs a yes/no: is this split right?
-
-### 10.4 Strictly-decreasing measure (confirm interpretation)
+### 10.1 Strictly-decreasing measure (confirm interpretation)
 
 "only strictly decreasing allowed" was interpreted as: a recursive `to`
 call inside a construction may only take a **strict subtree of the
 matched pattern**, which guarantees elaboration terminates. Confirm, or
 state the intended measure. (Also: the dictated `*.elab.lumo` header was
 interpreted as a typo for `*.elab.langue`.)
+
+### 10.2 Cost-model research (action item)
+
+Decided to adopt a widely-used cost model; a research pass picks the
+concrete one. Candidates to survey: egg / egglog per-constructor costs
+with minimal-total-cost extraction (`:cost` annotations), and the
+extraction-gym line of work (greedy vs DAG-aware/ILP extractors).

@@ -296,7 +296,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <div class="eyebrow">
       <span>design/langue.md 미러</span><span class="dot"></span>
       <span>기준 2026-07-10</span><span class="dot"></span>
-      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 18개)</span>
+      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 21개)</span>
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
@@ -314,7 +314,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 <a class="use" href="#elab">03-elab.langue</a>           <span class="cm">// ③ 정제: from A to B 재작성 규칙</span>
 <a class="use" href="#type">04-type.langue</a>           <span class="cm">// ④ 타입: 관계 엔진 위의 판단</span>
 <a class="use" href="#architecture">05-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: salsa · ungrammar · e-graph · 관계 엔진</span>
-<a class="use" href="#exec">06-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
+<a class="use" href="#exec">06-exec.langue</a>           <span class="cm">// 실행 모델: 세 종류 모두 코드 생성</span>
 <a class="use" href="#decisions">07-open.langue</a>           <span class="cm">// 미결 · 논의 후보 — 결정 전문은 design/decisions/</span>
 <a class="use" href="#milestones">08-milestones.langue</a>     <span class="cm">// M0 – M4</span>
 
@@ -325,10 +325,8 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <div class="box ask">
         <h3>회신 대기 — 답하면 design/decisions/로 잠근다</h3>
         <ul>
-          <li><b>e-graph 엔진</b> — 제안: egglog 스파이크 하나 후 결정. <a href="#decisions">07</a></li>
           <li><b>정제 해석 확인</b> — "엄격 감소"를 재귀 <code>to</code> 호출은 매칭된 패턴의 진부분트리만 받는다는 뜻으로 해석했다. 그리고 <code>*.elab.lumo</code>는 <code>*.elab.langue</code>의 오타로 해석했다. 맞나? <a href="#elab">03</a></li>
           <li><b>타입 챕터를 닫으려면 6문항</b> — 문맥 확장 · 규칙 중첩/탐색 · 진단 부착점 · Fω 원시 · 진입점 · capability row. <a href="#type">04</a></li>
-          <li><b>비용 모델 위치</b> — 열려 있음. <a href="#decisions">07</a></li>
         </ul>
       </div>
     </div>
@@ -726,8 +724,9 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <span class="slabel">05c</span>
       <h3>e-graph 정제 — 최적화는 등식 포화로</h3>
       <p>언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화 + 비용 추출 —
-      규칙 순서가 무의미하다. 후보 엔진: egg / egglog.
-      같은 언어 규칙은 between 블록으로 선언(03) — 비용 모델 위치는 미결.</p>
+      규칙 순서가 무의미하다. 엔진은 <b>egglog</b>.
+      같은 언어 규칙은 between 블록으로 선언(03). 비용 모델은 널리 쓰이는
+      모델을 리서치해 채택한다.</p>
     </div>
 
     <!-- 05d pluggable types -->
@@ -774,34 +773,38 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
 <section id="exec">
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--ink)"></span>06-exec.langue</span>
-    <h2>실행 모델 — 생성과 해석의 하이브리드 <em style="font-style:normal;font-size:14px;color:var(--ink-soft);font-family:var(--mono)">(제안, 반론 환영)</em></h2>
+    <h2>실행 모델 — 세 종류 모두 코드 생성</h2>
     <p class="sub">
+      <b>syn·elab·type 전부 Rust 코드로 생성한다</b> — 해석되는 규칙 테이블은 없다.
       <code>crates/langc</code> 하나가 라이브러리(컴파일러에 정의를 탑재) + CLI
       (<code>langc gen</code>, <code>langc check</code>)를 겸한다.
+      워크플로는 하나 — 수정, <code>langc gen</code>, 커밋.
     </p>
     <div class="exec">
       <div class="cell">
-        <h3>생성되는 것</h3>
-        <span class="tag">syn → Rust 소스 코드 (선언된 언어마다)</span>
+        <h3>syn</h3>
+        <span class="tag">선언된 언어마다 Rust 소스</span>
         <ul>
-          <li>토큰 DFA, SyntaxKind, 무손실 트리</li>
+          <li>토큰 DFA, SyntaxKind, 트리</li>
           <li>타입이 붙은 AST 접근자</li>
-          <li>각 언어의 파서 (praat 블록 + extern 복구 훅)</li>
-          <li>각 언어의 프리티 프린터 — 텍스트 왕복</li>
+          <li>파서 (praat 블록 + extern 복구 훅)</li>
+          <li>프리티 프린터 — 텍스트 왕복</li>
         </ul>
-        <p class="why"><b>이유:</b> 형태를 정하는 뜨거운 경로. 언제나 같은
-        워크플로 — 수정, <code>langc gen</code>, 커밋.</p>
       </div>
       <div class="cell">
-        <h3>해석되는 것</h3>
-        <span class="tag">elab · type → 검증된 규칙 테이블</span>
+        <h3>elab</h3>
+        <span class="tag">from/to · between → Rust</span>
         <ul>
-          <li>elab 재작성 규칙 → e-graph 엔진 (05c)</li>
-          <li>타입 판단 규칙 + 진단 템플릿 → 관계 엔진 (05d)</li>
+          <li>from/to 재작성 → 생성된 Rust</li>
+          <li>between 관계 → egglog(05c) 위에서 도는 생성 코드</li>
         </ul>
-        <p class="why"><b>이유:</b> 타입 규칙 하나 고치자고 생성된 Rust를 재컴파일하지
-        않기. 의미는 조밀하지만 v1에서 코드젠이 필요할 만큼 성능 임계는 아니다 —
-        프로파일이 반박하면 그때 생성으로.</p>
+      </div>
+      <div class="cell">
+        <h3>type</h3>
+        <span class="tag">판단 → Rust</span>
+        <ul>
+          <li>판단 규칙 + 진단 템플릿 → 관계 엔진(05d) 코드</li>
+        </ul>
       </div>
     </div>
   </div>
@@ -812,44 +815,13 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-open.langue</span>
     <h2>열려 있는 것 — 다음 설계 대상</h2>
-    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(18개).
+    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(21개).
     여기는 아직 열려 있는 것과 다음 논의 후보만.</p>
-
-    <div class="board">
-      <article class="decision open">
-        <span class="seal" aria-label="미결">?</span>
-        <h3>비용 모델의 선언 위치</h3>
-        <p>between 등식은 방향이 없다 — 포화가 끝나면 한 e-class에 같은 식의 동치 형태가
-        여럿 쌓이고, 최종 프로그램으로 무엇을 뽑을지는 <b>비용 함수</b>가 정한다.
-        예: 베타 축약 등식이 포화되면 redex와 축약형이 같은 클래스에 있다 —
-        "축약형이 더 싸다"를 알려면 노드 종류마다 비용이 필요하다.
-        이 비용을 어디에 쓰나: (a) syn.langue의 노드 선언에 주석,
-        (b) between 블록 옆, (c) Rust extern 비용 함수.
-        제안: (a) 기본 + (c) 탈출구.</p>
-      </article>
-      <article class="decision open">
-        <span class="seal" aria-label="미결">?</span>
-        <h3>e-graph 엔진 선택</h3>
-        <p>egg(성숙, 순수 재작성) · egglog(신생, datalog 통합) · 자작 중 선택.
-        결정적 리스크는 내장 subst 택틱 — 바인더 위의 치환($e[$b := $a],
-        α-동치, 캡처 회피)은 λ-항 e-graph의 고전적 난제라서, 기성 엔진이
-        표현하지 못하면 자작으로 간다.
-        제안: egglog 스파이크 하나로 subst 인코딩부터 시험하고 결정.</p>
-      </article>
-      <article class="decision open">
-        <span class="seal" aria-label="미결">?</span>
-        <h3>하이브리드 실행 모델 확정</h3>
-        <p>langc가 무엇을 Rust 코드로 생성하고, 무엇을 엔진이 해석하나.
-        현재 제안: syn은 생성(토큰 DFA·파서·프린터 — 뜨겁고 성능 임계),
-        elab/type 규칙은 검사된 테이블로 컴파일해 범용 엔진이 해석 —
-        타입 규칙 하나 고칠 때마다 생성 Rust를 재컴파일하지 않기 위해.
-        이 경계가 맞는지 예/아니오가 필요하다.</p>
-      </article>
-    </div>
 
     <div class="prompts">
       <h3>다음 논의 후보</h3>
       <ol>
+        <li><b>비용 모델 리서치(액션)</b> — 널리 쓰이는 모델을 조사해 채택안을 보고: egg/egglog의 생성자별 비용 + 최소 총비용 추출(:cost 주석), extraction-gym 계열(greedy vs DAG-aware/ILP).</li>
         <li><b>stdlib 섀도잉</b> — 프로젝트가 stdlib과 같은 이름을 선언하면 에러인가, 프로젝트 쪽이 이기는가?</li>
         <li>같은 종류 병합에서 <b>규칙 우선순위/오버라이드</b> — 두 파일이 같은 노드에 규칙을 내면 에러인가, 명시적 override인가?</li>
         <li><b>stdlib의 범위</b> — 도우미 콤비네이터·표준 토큰 외에 무엇까지? (진단 서식 도우미 등)</li>
