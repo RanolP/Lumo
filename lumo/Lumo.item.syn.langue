@@ -54,7 +54,7 @@ CapItem =
   | AssocTypeDecl
   | OperationDecl
 AssocTypeDecl = 'type' name:ident
-OperationDecl = 'fn' name:ident param_list:ParamList (':' return_type:TypeExpr)? ';'?
+OperationDecl = 'fn' name:ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? ';'?
 
 CapAnnotation = '/' cap:CapSet
 CapSet = '{' sigs:CapSig* '}'
@@ -97,7 +97,7 @@ ImplItemBody =
   | AssocTypeBinding
   | ImplMethod
 AssocTypeBinding = 'type' name:ident '=' ty:TypeExpr
-ImplMethod = 'fn' name:ident param_list:ParamList (':' return_type:TypeExpr)? body:FnBody
+ImplMethod = 'fn' name:ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? body:FnBody
 
 // === Patterns ===
 

@@ -1083,6 +1083,10 @@ impl<'a> ImplMethod<'a> {
         self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
     }
 
+    pub fn generic_params(&self) -> Option<GenericParams<'a>> {
+        self.0.child_nodes().filter_map(GenericParams::cast).nth(0)
+    }
+
     pub fn param_list(&self) -> Option<ParamList<'a>> {
         self.0.child_nodes().filter_map(ParamList::cast).nth(0)
     }
@@ -1347,6 +1351,10 @@ impl<'a> AstNode<'a> for OperationDecl<'a> {
 impl<'a> OperationDecl<'a> {
     pub fn name(&self) -> Option<&'a Token> {
         self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn generic_params(&self) -> Option<GenericParams<'a>> {
+        self.0.child_nodes().filter_map(GenericParams::cast).nth(0)
     }
 
     pub fn param_list(&self) -> Option<ParamList<'a>> {

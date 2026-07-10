@@ -58,11 +58,19 @@ impl LexDfa {
                     pos = end;
                 }
                 None => {
+                    // One whole character per UNKNOWN token — a bare +1
+                    // would split multi-byte UTF-8 and break slicing.
+                    let ch_len = match bytes[pos] {
+                        0x00..=0x7f => 1,
+                        0xc0..=0xdf => 2,
+                        0xe0..=0xef => 3,
+                        _ => 4,
+                    };
                     out.push(RawToken {
                         pattern: None,
-                        span: Span::new(pos as u32, pos as u32 + 1),
+                        span: Span::new(pos as u32, (pos + ch_len) as u32),
                     });
-                    pos += 1;
+                    pos += ch_len;
                 }
             }
         }

@@ -936,6 +936,9 @@ impl Parser {
         let mut children = Vec::new();
         self.c.expect_into(SyntaxKind::KEYWORD_FN, &mut children);
         self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::BRACKET_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_generic_params())));
+        }
         children.push(SyntaxElement::Node(Box::new(self.parse_param_list())));
         if self.c.at(SyntaxKind::COLON) {
             self.c.expect_into(SyntaxKind::COLON, &mut children);
@@ -1142,6 +1145,9 @@ impl Parser {
         let mut children = Vec::new();
         self.c.expect_into(SyntaxKind::KEYWORD_FN, &mut children);
         self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::BRACKET_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_generic_params())));
+        }
         children.push(SyntaxElement::Node(Box::new(self.parse_param_list())));
         if self.c.at(SyntaxKind::COLON) {
             self.c.expect_into(SyntaxKind::COLON, &mut children);
