@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use langue_rt::Span;
 
-use crate::syntax::ast::{RuleBody, Stage, TokenPattern};
+use crate::syntax::ast::{Con, Pat, RuleBody, Stage, TokenPattern};
 
 /// Every generated parser starts at this rule; a language that appears in a
 /// `parse` stage must declare it.
@@ -58,6 +58,37 @@ pub struct PipelineDef {
     pub origin: Origin,
 }
 
+/// One elab rule with provenance (D-35).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ElabRuleDef {
+    pub pattern: Pat,
+    pub construction: Con,
+    pub origin: Origin,
+}
+
+/// The merged `from A to B` definition: every same-pair block across all
+/// files (D-05/D-13), plus the pair's extern rules (D-38).
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct ElabDef {
+    pub rules: Vec<ElabRuleDef>,
+    /// Declaration order preserved — extern rules dispatch first.
+    pub extern_rules: Vec<(String, Origin)>,
+}
+
+/// One `lhs === rhs` relation with provenance (D-14).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RelationDef {
+    pub lhs: Pat,
+    pub rhs: Con,
+    pub origin: Origin,
+}
+
+/// The merged `between L` group for one language (D-14).
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct BetweenDef {
+    pub relations: Vec<RelationDef>,
+}
+
 /// The whole merged project. Top-level names (languages, pipelines) share
 /// one global namespace (design §1.2); rule/token names live under their
 /// language and are qualified as `Lang::Rule` elsewhere.
@@ -65,4 +96,11 @@ pub struct PipelineDef {
 pub struct Definition {
     pub languages: BTreeMap<String, Language>,
     pub pipelines: BTreeMap<String, PipelineDef>,
+    /// `from A to B` blocks merged by (from, to) pair (D-05/D-13).
+    pub elabs: BTreeMap<(String, String), ElabDef>,
+    /// `between L` groups merged by language (D-14).
+    pub betweens: BTreeMap<String, BetweenDef>,
+    /// `extern pass` names — global, applied by the Rust registration
+    /// (D-38); declaration order preserved.
+    pub extern_passes: Vec<(String, Origin)>,
 }

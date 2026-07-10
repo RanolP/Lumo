@@ -7,7 +7,9 @@ use crate::syntax::ast::{self, Item};
 use crate::syntax::parser;
 
 use super::loader::{FileKind, LoadedFile};
-use super::model::{Definition, Language, Origin, PipelineDef, RuleDef, TokenDef};
+use super::model::{
+    Definition, ElabRuleDef, Language, Origin, PipelineDef, RelationDef, RuleDef, TokenDef,
+};
 
 /// M0 stdlib (D-29): starts empty; grows only on proven need. Each entry
 /// is a virtual `(path, text)` catted in front of the project files.
@@ -22,18 +24,19 @@ pub struct ParsedFile {
     pub ast: ast::File,
 }
 
-/// Parse one file according to its kind. Elab/type files parse to an
-/// empty AST with a warning until M1/M2.
+/// Parse one file according to its kind. Type files parse to an empty
+/// AST with a warning until M2.
 pub fn parse_file(path: &str, kind: &FileKind, text: &str) -> (ast::File, Vec<Diagnostic>) {
     match kind {
         FileKind::Syn { .. } => parser::parse_syn_file(path, text),
         FileKind::Manifest => parser::parse_manifest(path, text),
-        FileKind::Elab | FileKind::Type => (
+        FileKind::Elab => parser::parse_elab_file(path, text),
+        FileKind::Type => (
             ast::File::default(),
             vec![Diagnostic::warning(
                 path,
                 langue_rt::Span::default(),
-                "elab/type files are ignored until M1/M2",
+                "type files are ignored until M2",
             )],
         ),
     }
@@ -59,7 +62,10 @@ pub fn merge_asts(files: &[ParsedFile]) -> (Definition, Vec<Diagnostic>) {
             FileKind::Manifest => {
                 merge_manifest(&mut def, &file.path, file.ast, &mut diags);
             }
-            FileKind::Elab | FileKind::Type => {}
+            FileKind::Elab => {
+                merge_elab_file(&mut def, &file.path, file.ast, &mut diags);
+            }
+            FileKind::Type => {}
         }
     }
 
@@ -144,6 +150,78 @@ fn merge_syn_file(
                     path,
                     langue_rt::Span::default(),
                     "elab items may only appear in .elab.langue files",
+                ));
+            }
+        }
+    }
+}
+
+fn merge_elab_file(
+    def: &mut Definition,
+    path: &str,
+    ast: ast::File,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for item in ast.items {
+        match item {
+            Item::ElabBlock(b) => {
+                let origin = Origin { file: path.to_owned(), span: b.span };
+                let pair = (b.from, b.to);
+                let elab = def.elabs.entry(pair).or_default();
+                for rule in b.rules {
+                    elab.rules.push(ElabRuleDef {
+                        pattern: rule.pattern,
+                        construction: rule.construction,
+                        origin: Origin { file: origin.file.clone(), span: rule.span },
+                    });
+                }
+            }
+            Item::BetweenBlock(b) => {
+                let between = def.betweens.entry(b.lang).or_default();
+                for rel in b.relations {
+                    between.relations.push(RelationDef {
+                        lhs: rel.lhs,
+                        rhs: rel.rhs,
+                        origin: Origin { file: path.to_owned(), span: rel.span },
+                    });
+                }
+            }
+            Item::ExternRule(r) => {
+                let origin = Origin { file: path.to_owned(), span: r.span };
+                let elab = def.elabs.entry((r.from, r.to)).or_default();
+                if let Some((_, prev)) = elab.extern_rules.iter().find(|(n, _)| *n == r.name) {
+                    diags.push(Diagnostic::error(
+                        path,
+                        r.span,
+                        format!(
+                            "duplicate extern rule `{}` (first declared in {} at {})",
+                            r.name, prev.file, prev.span
+                        ),
+                    ));
+                } else {
+                    elab.extern_rules.push((r.name, origin));
+                }
+            }
+            Item::ExternPass(p) => {
+                let origin = Origin { file: path.to_owned(), span: p.span };
+                if let Some((_, prev)) = def.extern_passes.iter().find(|(n, _)| *n == p.name) {
+                    diags.push(Diagnostic::error(
+                        path,
+                        p.span,
+                        format!(
+                            "duplicate extern pass `{}` (first declared in {} at {})",
+                            p.name, prev.file, prev.span
+                        ),
+                    ));
+                } else {
+                    def.extern_passes.push((p.name, origin));
+                }
+            }
+            _ => {
+                diags.push(Diagnostic::error(
+                    path,
+                    langue_rt::Span::default(),
+                    "only elab items may appear in .elab.langue files",
                 ));
             }
         }

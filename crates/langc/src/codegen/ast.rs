@@ -3,9 +3,10 @@
 //! all-node-ref alternative rule, and per praat rule an enum over row
 //! placements plus its simple atoms.
 
+use crate::project::fields::{self, FieldTarget};
 use crate::project::model::Language;
 use crate::project::praat::{classify_row, RowKind, TailPart};
-use crate::syntax::ast::{Praat, RuleBody, Shape, ShapeKind};
+use crate::syntax::ast::{Praat, RuleBody, Shape};
 
 use super::naming::{kind_name, snake};
 use super::parser::enum_arms;
@@ -58,7 +59,21 @@ fn emit_struct(buf: &mut Buf, lang: &Language, name: &str, kind: &str, shape: Op
     buf.blank();
     emit_cast_by_kind(buf, name, kind);
 
-    let accessors = shape.map(|s| collect_accessors(lang, s)).unwrap_or_default();
+    let accessors: Vec<Accessor> = shape
+        .map(|s| fields::struct_fields(lang, s))
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|f| {
+            let class = match &f.target {
+                FieldTarget::Node(rule) => Class::Node(rule.clone()),
+                FieldTarget::Token(token) => Class::Token(kind_name(token)),
+                FieldTarget::LitToken(text) => {
+                    Class::Token(kind_name(&lang.literal_token(text)?.name))
+                }
+            };
+            Some(Accessor { name: f.label, class, many: f.many, skip: f.skip })
+        })
+        .collect();
     if accessors.is_empty() {
         return;
     }
@@ -242,72 +257,4 @@ struct Accessor {
     /// How many same-class single accessors precede this one — the
     /// `nth`/`skip` offset (`value:Expr … body:Expr` → 0 and 1).
     skip: usize,
-}
-
-fn collect_accessors(lang: &Language, shape: &Shape) -> Vec<Accessor> {
-    let mut raw = Vec::new();
-    walk(lang, shape, false, &mut raw);
-    // Assign per-class occurrence offsets.
-    let mut out: Vec<Accessor> = Vec::new();
-    for acc in raw {
-        let key = match &acc.class {
-            Class::Node(n) => format!("n:{n}"),
-            Class::Token(k) => format!("t:{k}"),
-        };
-        let skip = out
-            .iter()
-            .filter(|prev| {
-                !prev.many
-                    && key
-                        == match &prev.class {
-                            Class::Node(n) => format!("n:{n}"),
-                            Class::Token(k) => format!("t:{k}"),
-                        }
-            })
-            .count();
-        out.push(Accessor { skip, ..acc });
-    }
-    out
-}
-
-fn walk(lang: &Language, shape: &Shape, many: bool, out: &mut Vec<Accessor>) {
-    match &shape.kind {
-        ShapeKind::Label { label, shape: inner } => {
-            if let Some((class, inner_many)) = label_target(lang, inner) {
-                out.push(Accessor {
-                    name: label.clone(),
-                    class,
-                    many: many || inner_many,
-                    skip: 0,
-                });
-            }
-        }
-        ShapeKind::Seq(parts) | ShapeKind::Alt(parts) => {
-            for p in parts {
-                walk(lang, p, many, out);
-            }
-        }
-        ShapeKind::Opt(inner) => walk(lang, inner, many, out),
-        ShapeKind::Rep(inner) => walk(lang, inner, true, out),
-        ShapeKind::Sep { item, .. } => walk(lang, item, true, out),
-        _ => {}
-    }
-}
-
-/// What a label points at, unwrapping `?`/`*`/`sep(…)` around the atom.
-fn label_target(lang: &Language, shape: &Shape) -> Option<(Class, bool)> {
-    match &shape.kind {
-        ShapeKind::NodeRef(rule) => Some((Class::Node(rule.clone()), false)),
-        ShapeKind::TokenRef(token) => Some((Class::Token(kind_name(token)), false)),
-        ShapeKind::Lit(text) => {
-            let token = lang.literal_token(text)?;
-            Some((Class::Token(kind_name(&token.name)), false))
-        }
-        ShapeKind::Opt(inner) => label_target(lang, inner),
-        ShapeKind::Rep(inner) | ShapeKind::Sep { item: inner, .. } => {
-            label_target(lang, inner).map(|(class, _)| (class, true))
-        }
-        // A label over a composite shape has no obvious accessor; skip.
-        _ => None,
-    }
 }

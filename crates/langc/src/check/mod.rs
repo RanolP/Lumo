@@ -1,6 +1,8 @@
 //! `langc check`: every static guarantee over the merged, DCE'd
 //! definition. Collision errors are emitted earlier, during merge.
 
+pub mod elab;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diag::Diagnostic;
@@ -15,6 +17,7 @@ pub fn check_definition(def: &Definition) -> Vec<Diagnostic> {
     for (lang_name, lang) in &def.languages {
         check_language(lang_name, lang, &mut diags);
     }
+    elab::check_elabs(def, &mut diags);
     diags.sort();
     diags
 }

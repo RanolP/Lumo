@@ -18,6 +18,7 @@ pub fn dce(def: &Definition) -> Definition {
     }
 
     let mut live_langs: BTreeSet<&str> = BTreeSet::new();
+    let mut live_pairs: BTreeSet<(&str, &str)> = BTreeSet::new();
     for pipeline in def.pipelines.values() {
         for stage in &pipeline.stages {
             match &stage.kind {
@@ -27,6 +28,7 @@ pub fn dce(def: &Definition) -> Definition {
                 StageKind::Elab { from, to } => {
                     live_langs.insert(from);
                     live_langs.insert(to);
+                    live_pairs.insert((from, to));
                 }
                 StageKind::Judgment { lang, .. } => {
                     live_langs.insert(lang);
@@ -35,10 +37,28 @@ pub fn dce(def: &Definition) -> Definition {
         }
     }
 
-    let mut out = Definition { languages: Default::default(), pipelines: def.pipelines.clone() };
+    let mut out = Definition {
+        languages: Default::default(),
+        pipelines: def.pipelines.clone(),
+        elabs: Default::default(),
+        betweens: Default::default(),
+        // Passes have no from/to of their own; the Rust registration
+        // decides where they apply, so they are never pruned.
+        extern_passes: def.extern_passes.clone(),
+    };
     for (name, lang) in &def.languages {
         if live_langs.contains(name.as_str()) {
             out.languages.insert(name.clone(), prune_language(lang));
+        }
+    }
+    for (pair, elab) in &def.elabs {
+        if live_pairs.contains(&(pair.0.as_str(), pair.1.as_str())) {
+            out.elabs.insert(pair.clone(), elab.clone());
+        }
+    }
+    for (lang, between) in &def.betweens {
+        if live_langs.contains(lang.as_str()) {
+            out.betweens.insert(lang.clone(), between.clone());
         }
     }
     out
