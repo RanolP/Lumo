@@ -52,7 +52,7 @@ lumo/
 **Decided: no import system.** `langc` collects every kind-suffixed file
 under the project root and concatenates them into one global namespace.
 Neither file order nor item order carries meaning, and no forward
-declarations are needed — letrec-style visibility across all files.
+declarations are needed — order-free visibility across all files.
 
 ### 1.3 stdlib
 
@@ -139,7 +139,7 @@ Scope-graph style fact declarations (Statix-inspired, much smaller):
 ```
 scope {
   File introduces module_scope
-  FnDecl declares name in enclosing        // visible module-wide (letrec)
+  FnDecl declares name in enclosing        // visible module-wide, order-free
   Param declares name in body
   LetExpr declares binder in body           // sequential, shadows
   MatchArm declares pattern_binders in body
@@ -148,16 +148,26 @@ scope {
 }
 ```
 
+Scope facts are purely relational: they state which references can see which
+definitions, nothing more. Recursion is not a scope concept — it is realized
+at elaboration through `fix` (section 4).
+
 The engine builds the scope graph from these facts during a single CST walk
 and answers resolution queries. Output feeds both `type` (section 5) and the
 LSP (go-to-def falls out for free).
 
 ## 4. Elaboration (`*.elab.langue`)
 
-Not designed yet — taken up after scope (chapter 3) is settled. Decided at
-the architecture level only: language-to-language elaboration is
-syntax-directed; same-language optimization is e-graph equality saturation
-(section 6.3).
+Not designed yet — taken up after scope (chapter 3) is settled. Decided so
+far:
+
+- Language-to-language elaboration is syntax-directed; same-language
+  optimization is e-graph equality saturation (section 6.3).
+- **Recursion is realized with `fix` only.** There is no `letrec` core form.
+  Each mutually-recursive definition group (SCC) lowers through a `fix`
+  primitive — `fix (λ(f, g). (body_f, body_g))`, projected back out —
+  and acyclic definitions lower to plain `let`. (A `fix` primitive, not a
+  literal Y combinator: Y is untypeable in Fω.)
 
 ## 5. Type (`*.type.langue`)
 
@@ -351,19 +361,22 @@ Decided:
 10. **Chapter order**: project layout → syntax → scope → elaboration → type;
     architecture pillars after them; documents are snapshots (no changelog,
     no legacy exposition).
+11. **Recursion via `fix` only**: scope facts state unordered visibility
+    only; elaboration lowers each mutually-recursive SCC through a core
+    `fix` primitive — no `letrec` core form.
 
 Still open (mirrored in the artifact's 회신 대기 box):
 
-11. **Cost model declaration** for e-graph extraction — proposal: grammar
+12. **Cost model declaration** for e-graph extraction — proposal: grammar
     annotations by default, extern as escape hatch.
-12. **Type-plugin boundary** — how much of a type system lives in the Rust
+13. **Type-plugin boundary** — how much of a type system lives in the Rust
     plugin trait vs the DSL rule set?
-13. **E-graph engine choice** — proposal: one egglog spike that also tests
+14. **E-graph engine choice** — proposal: one egglog spike that also tests
     the "datalog side doubles as the scope engine" hypothesis.
-14. **Hybrid execution boundary** (section 8) — confirm generated vs
+15. **Hybrid execution boundary** (section 8) — confirm generated vs
     interpreted split against the pillar engines.
-15. **Losslessness scope** — proposal: only Lumo (the surface language) is
+16. **Losslessness scope** — proposal: only Lumo (the surface language) is
     lossless; other languages round-trip via canonical pretty-print (e-graph
     nodes carry no trivia).
-16. **Milestone order** — chapter order is reading order; should the build
+17. **Milestone order** — chapter order is reading order; should the build
     order also move scope (M2) ahead of elab (M1)?

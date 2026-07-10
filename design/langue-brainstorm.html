@@ -388,7 +388,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
         <rect x="398" y="96" width="230" height="150" rx="12" fill="#fff" stroke="#16202E" stroke-width="1.8"/>
         <text x="513" y="130" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">전역 이름공간</text>
         <text x="513" y="156" text-anchor="middle" fill="#4E5A6B" font-size="11">파일·항목 순서 무의미</text>
-        <text x="513" y="174" text-anchor="middle" fill="#4E5A6B" font-size="11">전방 선언 불필요 (letrec)</text>
+        <text x="513" y="174" text-anchor="middle" fill="#4E5A6B" font-size="11">전방 선언 불필요 (순서 무관)</text>
         <text x="513" y="192" text-anchor="middle" fill="#4E5A6B" font-size="11">같은 judgment/tree엔 가산 병합</text>
         <text x="513" y="210" text-anchor="middle" fill="#4E5A6B" font-size="11">이름 충돌만 에러</text>
 
@@ -414,7 +414,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
         <h4>01a · project-wide cat</h4>
         <p>langc가 루트 아래 모든 종류 접미사 파일을 모아 하나의 정의로 병합.
         파일 순서도 항목 순서도 무의미하고, 전방 선언 없이 모든 항목이 서로를 본다
-        (파일과 stdlib을 가로지르는 letrec식 전역 스코프).</p>
+        (파일과 stdlib을 가로지르는 순서 무관 전역 스코프).</p>
       </div>
       <div class="mini">
         <h4>01b · stdlib 포함</h4>
@@ -527,14 +527,16 @@ Expr = <span class="k">praat</span> {
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-scope)"></span>03-scope.langue</span>
     <h2>스코프 — 바인딩은 사실의 나열이다</h2>
     <p class="sub">
-      스코프 그래프식 사실 선언(Statix에서 영감, 훨씬 작게). 엔진이 CST 한 번 순회로
+      스코프 그래프식 사실 선언(Statix에서 영감, 훨씬 작게). 사실은 순수하게 관계적 —
+      어떤 참조가 어떤 선언을 볼 수 있는지만 말한다. 재귀는 스코프의 개념이 아니라
+      정제(04)에서 <code>fix</code>로 실현된다. 엔진이 CST 한 번 순회로
       그래프를 만들고 해석 질의에 답한다. 결과는 타입 검사(05)와 LSP 양쪽에 먹인다 —
       go-to-def가 공짜로 따라온다.
     </p>
     <div class="kinds">
       <article class="kind k-scope full">
         <header><span class="ext">*.scope.langue</span><span class="role">선언 · 참조 · 가시성</span></header>
-        <pre>FnDecl  <span class="k">declares</span> name <span class="k">in</span> enclosing  <span class="c">// letrec — 모듈 전역 가시</span>
+        <pre>FnDecl  <span class="k">declares</span> name <span class="k">in</span> enclosing  <span class="c">// 모듈 전역 가시, 순서 무관</span>
 Param   <span class="k">declares</span> name <span class="k">in</span> body
 LetExpr <span class="k">declares</span> binder <span class="k">in</span> body    <span class="c">// 순차적, 섀도잉</span>
 MatchArm <span class="k">declares</span> pattern_binders <span class="k">in</span> body
@@ -550,8 +552,12 @@ Ident   <span class="k">resolves in</span> lexical scope</pre>
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>04-elab.langue</span>
     <h2>정제 — 아직 설계하지 않았다</h2>
     <p class="sub">
-      스코프(03) 확정 후 다룬다. 지금 결정된 것은 아키텍처 수준뿐 —
+      스코프(03) 확정 후 다룬다. 지금까지 결정된 것 —
       언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화(<a href="#p-egraph">06c</a>).
+      그리고 <b>재귀는 <code>fix</code>로만 실현한다</b>: letrec 코어 형식은 없다.
+      상호 재귀 정의 그룹(SCC)은 <code>fix (λ(f, g). (body_f, body_g))</code>처럼
+      <code>fix</code> 원시 하나로 로워링하고, 순환 없는 정의는 그냥 <code>let</code>이 된다.
+      (리터럴 Y 콤비네이터가 아닌 <code>fix</code> 원시 — Y는 Fω에서 타입이 안 붙는다.)
     </p>
   </div>
 </section>
@@ -819,6 +825,12 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <h3>플러그형 타입 시스템</h3>
         <p>범용 추론 엔진(유도 트리 생성) + 플러그인. Lumo v1은 Fω + spine-local 양방향 +
         capability row를 꽂는다.</p>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>재귀는 fix로만</h3>
+        <p>스코프는 순서 무관 가시성만 말하고, 재귀는 정제에서 실현한다 —
+        상호 재귀 SCC를 fix 원시로 로워링. letrec 코어 형식 없음.</p>
       </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
