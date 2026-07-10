@@ -5,7 +5,7 @@ fn t() = 1 + 2 * 3
 
 ---
 
-(FILE (FN_DECL (EXPR_INFIX (NUMBER_EXPR) (EXPR_INFIX (NUMBER_EXPR) (NUMBER_EXPR)))))
+(FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY (EXPR_INFIX (NUMBER_EXPR) (EXPR_INFIX (NUMBER_EXPR) (NUMBER_EXPR)))))))
 
 === sum is left-associative ===
 :parse(Lumo)
@@ -14,7 +14,7 @@ fn t() = 1 - 2 - 3
 
 ---
 
-(FILE (FN_DECL (EXPR_INFIX (EXPR_INFIX (NUMBER_EXPR) (NUMBER_EXPR)) (NUMBER_EXPR))))
+(FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY (EXPR_INFIX (EXPR_INFIX (NUMBER_EXPR) (NUMBER_EXPR)) (NUMBER_EXPR))))))
 
 === power is right-associative ===
 :parse(Lumo)
@@ -23,7 +23,7 @@ fn t() = 2 ** 3 ** 4
 
 ---
 
-(FILE (FN_DECL (EXPR_INFIX (NUMBER_EXPR) (EXPR_INFIX (NUMBER_EXPR) (NUMBER_EXPR)))))
+(FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY (EXPR_INFIX (NUMBER_EXPR) (EXPR_INFIX (NUMBER_EXPR) (NUMBER_EXPR)))))))
 
 === unary minus and bang ===
 :parse(Lumo)
@@ -32,7 +32,7 @@ fn t(x) = -x * !x
 
 ---
 
-(FILE (FN_DECL (PARAM) (EXPR_INFIX (EXPR_PREFIX (IDENT_EXPR)) (EXPR_PREFIX (IDENT_EXPR)))))
+(FILE (ITEM (FN_DECL (PARAM_LIST (PARAM)) (EXPR_BODY (EXPR_INFIX (EXPR_PREFIX (IDENT_EXPR)) (EXPR_PREFIX (IDENT_EXPR)))))))
 
 === parens override precedence ===
 :parse(Lumo)
@@ -41,14 +41,14 @@ fn t() = (1 + 2) * 3
 
 ---
 
-(FILE (FN_DECL (EXPR_INFIX (PAREN_EXPR (EXPR_INFIX (NUMBER_EXPR) (NUMBER_EXPR))) (NUMBER_EXPR))))
+(FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY (EXPR_INFIX (PAREN_EXPR (EXPR_INFIX (NUMBER_EXPR) (NUMBER_EXPR))) (NUMBER_EXPR))))))
 
-=== let-in with string ===
+=== block with let statement and string ===
 :parse(Lumo)
 
-fn t() = let s = "hi\n" in s
+fn t() = { let s = "hi\n"; s }
 
 ---
 
-(FILE (FN_DECL (LET_EXPR (STRING_EXPR) (IDENT_EXPR))))
+(FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY (BLOCK_EXPR (LET_STMT (STRING_EXPR)) (EXPR_STMT (IDENT_EXPR)))))))
 

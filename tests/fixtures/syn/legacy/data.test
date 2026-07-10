@@ -1,0 +1,61 @@
+=== data with fields and member call ===
+:parse(Lumo)
+
+data OptionA { .some(A), .none }
+fn mk() { OptionA.some(a) }
+
+---
+
+(FILE (ITEM (DATA_DECL (VARIANT (VARIANT_FIELDS (NAMED_TYPE_EXPR))) (VARIANT))) (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)) (CALL_ARGS (IDENT_EXPR))))))))
+
+=== generic data ===
+:parse(Lumo)
+
+data Option[A] { .some(A), .none }
+fn id() { a }
+
+---
+
+(FILE (ITEM (DATA_DECL (GENERIC_PARAMS (GENERIC_PARAM)) (VARIANT (VARIANT_FIELDS (NAMED_TYPE_EXPR))) (VARIANT))) (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (IDENT_EXPR))))))
+
+=== data with odd whitespace ===
+:parse(Lumo)
+
+data   X   {   .a ,   .b }
+
+  fn   id()   {   x   }
+
+---
+
+(FILE (ITEM (DATA_DECL (VARIANT) (VARIANT))) (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (IDENT_EXPR))))))
+
+=== empty data ===
+:parse(Lumo)
+
+data Empty { }
+
+---
+
+(FILE (ITEM (DATA_DECL)))
+
+=== single variant ===
+:parse(Lumo)
+
+data One { .only }
+
+---
+
+(FILE (ITEM (DATA_DECL (VARIANT))))
+
+=== interleaved data and fns ===
+:parse(Lumo)
+
+data A { .v }
+fn f() { x }
+data B { .w, .z }
+fn g() { let y = x; y }
+
+---
+
+(FILE (ITEM (DATA_DECL (VARIANT))) (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (IDENT_EXPR))))) (ITEM (DATA_DECL (VARIANT) (VARIANT))) (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (LET_STMT (IDENT_EXPR)) (EXPR_STMT (IDENT_EXPR))))))
+

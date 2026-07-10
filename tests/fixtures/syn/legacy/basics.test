@@ -1,0 +1,72 @@
+=== block body with ident ===
+:parse(Lumo)
+
+fn id() { x }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (IDENT_EXPR))))))
+
+=== thunk ===
+:parse(Lumo)
+
+fn suspend() { thunk x }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (THUNK_EXPR (IDENT_EXPR)))))))
+
+=== force ===
+:parse(Lumo)
+
+fn resume() { force job }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (FORCE_EXPR (IDENT_EXPR)))))))
+
+=== block with let statement ===
+:parse(Lumo)
+
+fn main() { let x = y; x }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (LET_STMT (IDENT_EXPR)) (EXPR_STMT (IDENT_EXPR))))))
+
+=== nested block in let ===
+:parse(Lumo)
+
+fn main() { let x = { let y = z; y }; x }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (LET_STMT (BLOCK_EXPR (LET_STMT (IDENT_EXPR)) (EXPR_STMT (IDENT_EXPR)))) (EXPR_STMT (IDENT_EXPR))))))
+
+=== expr body ===
+:parse(Lumo)
+
+fn id() = x
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY (IDENT_EXPR)))))
+
+=== string body ===
+:parse(Lumo)
+
+fn greet() = "hello"
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY (STRING_EXPR)))))
+
+=== expr body holding a block ===
+:parse(Lumo)
+
+fn complex() = { let x = y; x }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY (BLOCK_EXPR (LET_STMT (IDENT_EXPR)) (EXPR_STMT (IDENT_EXPR)))))))
+

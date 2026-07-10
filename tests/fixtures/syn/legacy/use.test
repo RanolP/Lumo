@@ -1,0 +1,55 @@
+=== bare use ===
+:parse(Lumo)
+
+use myapp;
+
+---
+
+(FILE (ITEM (USE_DECL (USE_PATH))))
+
+=== dotted path ===
+:parse(Lumo)
+
+use myapp.utils;
+
+---
+
+(FILE (ITEM (USE_DECL (USE_PATH (USE_PATH_REST (USE_PATH_BRANCH))))))
+
+=== three segments ===
+:parse(Lumo)
+
+use myapp.utils.helper;
+
+---
+
+(FILE (ITEM (USE_DECL (USE_PATH (USE_PATH_REST (USE_PATH_BRANCH (USE_PATH_REST (USE_PATH_BRANCH))))))))
+
+=== use tree ===
+:parse(Lumo)
+
+use myapp.utils.{a, b};
+
+---
+
+(FILE (ITEM (USE_DECL (USE_PATH (USE_PATH_REST (USE_PATH_BRANCH (USE_PATH_REST (USE_TREE (USE_NAME_ITEM) (USE_NAME_ITEM)))))))))
+
+=== use tree with self ===
+:parse(Lumo)
+
+use myapp.utils.{a, b, self};
+
+---
+
+(FILE (ITEM (USE_DECL (USE_PATH (USE_PATH_REST (USE_PATH_BRANCH (USE_PATH_REST (USE_TREE (USE_NAME_ITEM) (USE_NAME_ITEM) (USE_NAME_ITEM)))))))))
+
+=== use before fn ===
+:parse(Lumo)
+
+use myapp;
+fn id() { x }
+
+---
+
+(FILE (ITEM (USE_DECL (USE_PATH))) (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (IDENT_EXPR))))))
+

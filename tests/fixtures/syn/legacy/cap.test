@@ -1,0 +1,46 @@
+=== cap decl with member call ===
+:parse(Lumo)
+
+cap Console { fn log(msg: String): Unit }
+fn f() { Console.log("hi") }
+
+---
+
+(FILE (ITEM (CAP_DECL (OPERATION_DECL (PARAM_LIST (PARAM (NAMED_TYPE_EXPR))) (NAMED_TYPE_EXPR)))) (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)) (CALL_ARGS (STRING_EXPR))))))))
+
+=== handle with in ===
+:parse(Lumo)
+
+fn f() { handle E with h in x }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (HANDLE_EXPR (IDENT_EXPR) (IDENT_EXPR)))))))
+
+=== handle for type ===
+:parse(Lumo)
+
+fn f() { handle Add for Number with h in x }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (HANDLE_EXPR (NAMED_TYPE_EXPR) (IDENT_EXPR) (IDENT_EXPR)))))))
+
+=== perform ===
+:parse(Lumo)
+
+fn f() { perform Console }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (PERFORM_EXPR))))))
+
+=== cap annotation on fn ===
+:parse(Lumo)
+
+fn f(x: Number): Number / { Console State[Number] } = x
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST (PARAM (NAMED_TYPE_EXPR))) (NAMED_TYPE_EXPR) (CAP_ANNOTATION (CAP_SET (CAP_SIG) (CAP_SIG (GENERIC_ARGS (NAMED_TYPE_EXPR))))) (EXPR_BODY (IDENT_EXPR)))))
+

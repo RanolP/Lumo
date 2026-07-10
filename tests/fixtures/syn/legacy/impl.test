@@ -1,0 +1,45 @@
+=== inherent impl ===
+:parse(Lumo)
+
+impl String { fn len(self): Number { str_len(self) } }
+
+---
+
+(FILE (ITEM (IMPL_DECL (NAMED_TYPE_EXPR) (IMPL_ITEM (IMPL_METHOD (PARAM_LIST (PARAM)) (NAMED_TYPE_EXPR) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (IDENT_EXPR))))))))))
+
+=== cap impl ===
+:parse(Lumo)
+
+impl String: Clone { fn clone(self): String { self } }
+
+---
+
+(FILE (ITEM (IMPL_DECL (NAMED_TYPE_EXPR) (IMPL_CAP (NAMED_TYPE_EXPR)) (IMPL_ITEM (IMPL_METHOD (PARAM_LIST (PARAM)) (NAMED_TYPE_EXPR) (BLOCK_EXPR (EXPR_STMT (IDENT_EXPR))))))))
+
+=== named impl ===
+:parse(Lumo)
+
+impl MyClone = String: Clone { fn clone(self): String { self } }
+
+---
+
+(FILE (ITEM (IMPL_DECL (NAMED_TYPE_EXPR) (IMPL_ASSIGN (NAMED_TYPE_EXPR)) (IMPL_CAP (NAMED_TYPE_EXPR)) (IMPL_ITEM (IMPL_METHOD (PARAM_LIST (PARAM)) (NAMED_TYPE_EXPR) (BLOCK_EXPR (EXPR_STMT (IDENT_EXPR))))))))
+
+=== two methods with semicolon ===
+:parse(Lumo)
+
+impl String { fn len(self): Number { str_len(self) }; fn upper(self): String { to_upper(self) } }
+
+---
+
+(FILE (ITEM (IMPL_DECL (NAMED_TYPE_EXPR) (IMPL_ITEM (IMPL_METHOD (PARAM_LIST (PARAM)) (NAMED_TYPE_EXPR) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (IDENT_EXPR))))))) (IMPL_ITEM (IMPL_METHOD (PARAM_LIST (PARAM)) (NAMED_TYPE_EXPR) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (IDENT_EXPR))))))))))
+
+=== generic impl with assoc type ===
+:parse(Lumo)
+
+impl[A] List[A]: Iterable { type Item = A fn next(self): Option[A] { nth(self) } }
+
+---
+
+(FILE (ITEM (IMPL_DECL (GENERIC_PARAMS (GENERIC_PARAM)) (NAMED_TYPE_EXPR (GENERIC_ARGS (NAMED_TYPE_EXPR))) (IMPL_CAP (NAMED_TYPE_EXPR)) (IMPL_ITEM (ASSOC_TYPE_BINDING (NAMED_TYPE_EXPR))) (IMPL_ITEM (IMPL_METHOD (PARAM_LIST (PARAM)) (NAMED_TYPE_EXPR (GENERIC_ARGS (NAMED_TYPE_EXPR))) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (IDENT_EXPR))))))))))
+

@@ -9,19 +9,55 @@ use super::lossless::Token;
 use super::syntax_kind::SyntaxKind;
 
 static PATTERNS: &[&str] = &[
-    "\\,", // comma
+    "=>", // arrow.fat
+    "->", // arrow.thin
+    "\\}", // brace.close
+    "\\{", // brace.open
+    "\\]", // bracket.close
+    "\\[", // bracket.open
+    ":", // colon
+    ",", // comma
+    "\\.", // dot
+    "#", // hash
+    "bundle", // keyword.bundle
+    "cap", // keyword.cap
+    "data", // keyword.data
+    "else", // keyword.else
+    "extern", // keyword.extern
     "fn", // keyword.fn
+    "for", // keyword.for
+    "force", // keyword.force
+    "handle", // keyword.handle
+    "if", // keyword.if
+    "impl", // keyword.impl
     "in", // keyword.in
     "let", // keyword.let
-    "\\!", // op.bang
-    "\\=", // op.eq
-    "\\-", // op.minus
+    "match", // keyword.match
+    "perform", // keyword.perform
+    "thunk", // keyword.thunk
+    "type", // keyword.type
+    "use", // keyword.use
+    "with", // keyword.with
+    "&&", // op.andand
+    "!", // op.bang
+    "=", // op.eq
+    "==", // op.eqeq
+    ">=", // op.ge
+    ">", // op.gt
+    "<=", // op.le
+    "<", // op.lt
+    "-", // op.minus
+    "!=", // op.neq
+    "\\|\\|", // op.oror
+    "%", // op.percent
     "\\+", // op.plus
     "\\*\\*", // op.pow
-    "\\/", // op.slash
+    "/", // op.slash
     "\\*", // op.star
     "\\)", // paren.close
     "\\(", // paren.open
+    ";", // semi
+    "_", // underscore
     "//[^\\n]*", // comment.line
     "[a-zA-Z_][a-zA-Z0-9_]*", // ident
     "[0-9]+(\\.[0-9]+)?", // lit.number
@@ -30,19 +66,55 @@ static PATTERNS: &[&str] = &[
 ];
 
 const KINDS: &[SyntaxKind] = &[
+    SyntaxKind::ARROW_FAT,
+    SyntaxKind::ARROW_THIN,
+    SyntaxKind::BRACE_CLOSE,
+    SyntaxKind::BRACE_OPEN,
+    SyntaxKind::BRACKET_CLOSE,
+    SyntaxKind::BRACKET_OPEN,
+    SyntaxKind::COLON,
     SyntaxKind::COMMA,
+    SyntaxKind::DOT,
+    SyntaxKind::HASH,
+    SyntaxKind::KEYWORD_BUNDLE,
+    SyntaxKind::KEYWORD_CAP,
+    SyntaxKind::KEYWORD_DATA,
+    SyntaxKind::KEYWORD_ELSE,
+    SyntaxKind::KEYWORD_EXTERN,
     SyntaxKind::KEYWORD_FN,
+    SyntaxKind::KEYWORD_FOR,
+    SyntaxKind::KEYWORD_FORCE,
+    SyntaxKind::KEYWORD_HANDLE,
+    SyntaxKind::KEYWORD_IF,
+    SyntaxKind::KEYWORD_IMPL,
     SyntaxKind::KEYWORD_IN,
     SyntaxKind::KEYWORD_LET,
+    SyntaxKind::KEYWORD_MATCH,
+    SyntaxKind::KEYWORD_PERFORM,
+    SyntaxKind::KEYWORD_THUNK,
+    SyntaxKind::KEYWORD_TYPE,
+    SyntaxKind::KEYWORD_USE,
+    SyntaxKind::KEYWORD_WITH,
+    SyntaxKind::OP_ANDAND,
     SyntaxKind::OP_BANG,
     SyntaxKind::OP_EQ,
+    SyntaxKind::OP_EQEQ,
+    SyntaxKind::OP_GE,
+    SyntaxKind::OP_GT,
+    SyntaxKind::OP_LE,
+    SyntaxKind::OP_LT,
     SyntaxKind::OP_MINUS,
+    SyntaxKind::OP_NEQ,
+    SyntaxKind::OP_OROR,
+    SyntaxKind::OP_PERCENT,
     SyntaxKind::OP_PLUS,
     SyntaxKind::OP_POW,
     SyntaxKind::OP_SLASH,
     SyntaxKind::OP_STAR,
     SyntaxKind::PAREN_CLOSE,
     SyntaxKind::PAREN_OPEN,
+    SyntaxKind::SEMI,
+    SyntaxKind::UNDERSCORE,
     SyntaxKind::COMMENT_LINE,
     SyntaxKind::IDENT,
     SyntaxKind::LIT_NUMBER,

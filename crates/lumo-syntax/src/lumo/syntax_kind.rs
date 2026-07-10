@@ -8,20 +8,88 @@ pub enum SyntaxKind { // language `Lumo`
     UNKNOWN,
     /// a recovery node wrapping skipped input
     ERROR,
+    /// token `arrow.fat`
+    ARROW_FAT,
+    /// token `arrow.thin`
+    ARROW_THIN,
+    /// token `brace.close`
+    BRACE_CLOSE,
+    /// token `brace.open`
+    BRACE_OPEN,
+    /// token `bracket.close`
+    BRACKET_CLOSE,
+    /// token `bracket.open`
+    BRACKET_OPEN,
+    /// token `colon`
+    COLON,
     /// token `comma`
     COMMA,
+    /// token `dot`
+    DOT,
+    /// token `hash`
+    HASH,
+    /// token `keyword.bundle`
+    KEYWORD_BUNDLE,
+    /// token `keyword.cap`
+    KEYWORD_CAP,
+    /// token `keyword.data`
+    KEYWORD_DATA,
+    /// token `keyword.else`
+    KEYWORD_ELSE,
+    /// token `keyword.extern`
+    KEYWORD_EXTERN,
     /// token `keyword.fn`
     KEYWORD_FN,
+    /// token `keyword.for`
+    KEYWORD_FOR,
+    /// token `keyword.force`
+    KEYWORD_FORCE,
+    /// token `keyword.handle`
+    KEYWORD_HANDLE,
+    /// token `keyword.if`
+    KEYWORD_IF,
+    /// token `keyword.impl`
+    KEYWORD_IMPL,
     /// token `keyword.in`
     KEYWORD_IN,
     /// token `keyword.let`
     KEYWORD_LET,
+    /// token `keyword.match`
+    KEYWORD_MATCH,
+    /// token `keyword.perform`
+    KEYWORD_PERFORM,
+    /// token `keyword.thunk`
+    KEYWORD_THUNK,
+    /// token `keyword.type`
+    KEYWORD_TYPE,
+    /// token `keyword.use`
+    KEYWORD_USE,
+    /// token `keyword.with`
+    KEYWORD_WITH,
+    /// token `op.andand`
+    OP_ANDAND,
     /// token `op.bang`
     OP_BANG,
     /// token `op.eq`
     OP_EQ,
+    /// token `op.eqeq`
+    OP_EQEQ,
+    /// token `op.ge`
+    OP_GE,
+    /// token `op.gt`
+    OP_GT,
+    /// token `op.le`
+    OP_LE,
+    /// token `op.lt`
+    OP_LT,
     /// token `op.minus`
     OP_MINUS,
+    /// token `op.neq`
+    OP_NEQ,
+    /// token `op.oror`
+    OP_OROR,
+    /// token `op.percent`
+    OP_PERCENT,
     /// token `op.plus`
     OP_PLUS,
     /// token `op.pow`
@@ -34,6 +102,10 @@ pub enum SyntaxKind { // language `Lumo`
     PAREN_CLOSE,
     /// token `paren.open`
     PAREN_OPEN,
+    /// token `semi`
+    SEMI,
+    /// token `underscore`
+    UNDERSCORE,
     /// token `comment.line`
     COMMENT_LINE,
     /// token `ident`
@@ -44,8 +116,44 @@ pub enum SyntaxKind { // language `Lumo`
     LIT_STRING,
     /// token `whitespace`
     WHITESPACE,
+    /// rule `AssocTypeBinding`
+    ASSOC_TYPE_BINDING,
+    /// rule `AssocTypeDecl`
+    ASSOC_TYPE_DECL,
+    /// rule `Attribute`
+    ATTRIBUTE,
+    /// rule `AttributeArgItem`
+    ATTRIBUTE_ARG_ITEM,
+    /// rule `AttributeArgs`
+    ATTRIBUTE_ARGS,
+    /// rule `BindPattern`
+    BIND_PATTERN,
+    /// rule `BlockExpr`
+    BLOCK_EXPR,
+    /// rule `BlockStmt`
+    BLOCK_STMT,
+    /// rule `BoundList`
+    BOUND_LIST,
+    /// rule `BundleEntry`
+    BUNDLE_ENTRY,
+    /// rule `BundleExpr`
+    BUNDLE_EXPR,
     /// rule `CallArgs`
     CALL_ARGS,
+    /// rule `CapAnnotation`
+    CAP_ANNOTATION,
+    /// rule `CapDecl`
+    CAP_DECL,
+    /// rule `CapItem`
+    CAP_ITEM,
+    /// rule `CapSet`
+    CAP_SET,
+    /// rule `CapSig`
+    CAP_SIG,
+    /// rule `DataDecl`
+    DATA_DECL,
+    /// rule `ElseClause`
+    ELSE_CLAUSE,
     /// rule `Expr`
     EXPR,
     /// praat row of `Expr`
@@ -54,22 +162,126 @@ pub enum SyntaxKind { // language `Lumo`
     EXPR_INFIX,
     /// praat row of `Expr`
     EXPR_POSTFIX,
+    /// rule `ExprBody`
+    EXPR_BODY,
+    /// rule `ExprStmt`
+    EXPR_STMT,
+    /// rule `ExternBlockItem`
+    EXTERN_BLOCK_ITEM,
+    /// rule `ExternBlockItemBody`
+    EXTERN_BLOCK_ITEM_BODY,
+    /// rule `ExternBlockTail`
+    EXTERN_BLOCK_TAIL,
+    /// rule `ExternDecl`
+    EXTERN_DECL,
+    /// rule `ExternFnTail`
+    EXTERN_FN_TAIL,
+    /// rule `ExternRest`
+    EXTERN_REST,
+    /// rule `ExternTypeTail`
+    EXTERN_TYPE_TAIL,
     /// rule `File`
     FILE,
+    /// rule `FnBody`
+    FN_BODY,
     /// rule `FnDecl`
     FN_DECL,
+    /// rule `FnTypeExpr`
+    FN_TYPE_EXPR,
+    /// rule `ForceExpr`
+    FORCE_EXPR,
+    /// rule `GenericArgs`
+    GENERIC_ARGS,
+    /// rule `GenericParam`
+    GENERIC_PARAM,
+    /// rule `GenericParams`
+    GENERIC_PARAMS,
+    /// rule `HandleExpr`
+    HANDLE_EXPR,
     /// rule `IdentExpr`
     IDENT_EXPR,
-    /// rule `LetExpr`
-    LET_EXPR,
+    /// rule `IdentPattern`
+    IDENT_PATTERN,
+    /// rule `IfElseExpr`
+    IF_ELSE_EXPR,
+    /// rule `ImplAssign`
+    IMPL_ASSIGN,
+    /// rule `ImplCap`
+    IMPL_CAP,
+    /// rule `ImplDecl`
+    IMPL_DECL,
+    /// rule `ImplItem`
+    IMPL_ITEM,
+    /// rule `ImplItemBody`
+    IMPL_ITEM_BODY,
+    /// rule `ImplMethod`
+    IMPL_METHOD,
+    /// rule `Item`
+    ITEM,
+    /// rule `ItemBody`
+    ITEM_BODY,
+    /// rule `LambdaExpr`
+    LAMBDA_EXPR,
+    /// rule `LambdaParam`
+    LAMBDA_PARAM,
+    /// rule `LambdaParamList`
+    LAMBDA_PARAM_LIST,
+    /// rule `LetStmt`
+    LET_STMT,
+    /// rule `MatchArm`
+    MATCH_ARM,
+    /// rule `MatchExpr`
+    MATCH_EXPR,
+    /// rule `MemberName`
+    MEMBER_NAME,
+    /// rule `NamedTypeExpr`
+    NAMED_TYPE_EXPR,
     /// rule `NumberExpr`
     NUMBER_EXPR,
+    /// rule `OperationDecl`
+    OPERATION_DECL,
     /// rule `Param`
     PARAM,
+    /// rule `ParamList`
+    PARAM_LIST,
     /// rule `ParenExpr`
     PAREN_EXPR,
+    /// rule `Pattern`
+    PATTERN,
+    /// rule `PerformExpr`
+    PERFORM_EXPR,
     /// rule `StringExpr`
     STRING_EXPR,
+    /// rule `ThunkExpr`
+    THUNK_EXPR,
+    /// rule `ThunkTypeExpr`
+    THUNK_TYPE_EXPR,
+    /// rule `TypeExpr`
+    TYPE_EXPR,
+    /// rule `UseDecl`
+    USE_DECL,
+    /// rule `UseNameItem`
+    USE_NAME_ITEM,
+    /// rule `UsePath`
+    USE_PATH,
+    /// rule `UsePathBranch`
+    USE_PATH_BRANCH,
+    /// rule `UsePathItem`
+    USE_PATH_ITEM,
+    /// rule `UsePathRest`
+    USE_PATH_REST,
+    /// rule `UseTree`
+    USE_TREE,
+    /// rule `Variant`
+    VARIANT,
+    /// rule `VariantFields`
+    VARIANT_FIELDS,
+    /// rule `VariantPattern`
+    VARIANT_PATTERN,
+    /// rule `VariantPatternFields`
+    VARIANT_PATTERN_FIELDS,
+    /// rule `WildcardPattern`
+    WILDCARD_PATTERN,
 }
 
 impl SyntaxKind {
@@ -80,12 +292,43 @@ impl SyntaxKind {
     /// Dotted token names double as highlight scopes (D-09).
     pub fn highlight_scope(self) -> Option<&'static str> {
         match self {
+            SyntaxKind::ARROW_FAT => Some("arrow.fat"),
+            SyntaxKind::ARROW_THIN => Some("arrow.thin"),
+            SyntaxKind::BRACE_CLOSE => Some("brace.close"),
+            SyntaxKind::BRACE_OPEN => Some("brace.open"),
+            SyntaxKind::BRACKET_CLOSE => Some("bracket.close"),
+            SyntaxKind::BRACKET_OPEN => Some("bracket.open"),
+            SyntaxKind::KEYWORD_BUNDLE => Some("keyword.bundle"),
+            SyntaxKind::KEYWORD_CAP => Some("keyword.cap"),
+            SyntaxKind::KEYWORD_DATA => Some("keyword.data"),
+            SyntaxKind::KEYWORD_ELSE => Some("keyword.else"),
+            SyntaxKind::KEYWORD_EXTERN => Some("keyword.extern"),
             SyntaxKind::KEYWORD_FN => Some("keyword.fn"),
+            SyntaxKind::KEYWORD_FOR => Some("keyword.for"),
+            SyntaxKind::KEYWORD_FORCE => Some("keyword.force"),
+            SyntaxKind::KEYWORD_HANDLE => Some("keyword.handle"),
+            SyntaxKind::KEYWORD_IF => Some("keyword.if"),
+            SyntaxKind::KEYWORD_IMPL => Some("keyword.impl"),
             SyntaxKind::KEYWORD_IN => Some("keyword.in"),
             SyntaxKind::KEYWORD_LET => Some("keyword.let"),
+            SyntaxKind::KEYWORD_MATCH => Some("keyword.match"),
+            SyntaxKind::KEYWORD_PERFORM => Some("keyword.perform"),
+            SyntaxKind::KEYWORD_THUNK => Some("keyword.thunk"),
+            SyntaxKind::KEYWORD_TYPE => Some("keyword.type"),
+            SyntaxKind::KEYWORD_USE => Some("keyword.use"),
+            SyntaxKind::KEYWORD_WITH => Some("keyword.with"),
+            SyntaxKind::OP_ANDAND => Some("op.andand"),
             SyntaxKind::OP_BANG => Some("op.bang"),
             SyntaxKind::OP_EQ => Some("op.eq"),
+            SyntaxKind::OP_EQEQ => Some("op.eqeq"),
+            SyntaxKind::OP_GE => Some("op.ge"),
+            SyntaxKind::OP_GT => Some("op.gt"),
+            SyntaxKind::OP_LE => Some("op.le"),
+            SyntaxKind::OP_LT => Some("op.lt"),
             SyntaxKind::OP_MINUS => Some("op.minus"),
+            SyntaxKind::OP_NEQ => Some("op.neq"),
+            SyntaxKind::OP_OROR => Some("op.oror"),
+            SyntaxKind::OP_PERCENT => Some("op.percent"),
             SyntaxKind::OP_PLUS => Some("op.plus"),
             SyntaxKind::OP_POW => Some("op.pow"),
             SyntaxKind::OP_SLASH => Some("op.slash"),

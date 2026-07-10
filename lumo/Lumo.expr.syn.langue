@@ -1,28 +1,59 @@
-// Lumo grammar, M0 slice: fn decls, let-in, idents, numbers, strings,
-// parens, calls, praat arithmetic. Shape and display syntax at once;
-// labels become accessors (design §2.3).
-
-File = items:FnDecl*
-
-FnDecl = 'fn' name:ident '(' params:sep(Param, ',')? ')' '=' body:Expr
-Param = name:ident
-
-LetExpr = 'let' name:ident '=' value:Expr 'in' body:Expr
+// Lumo expressions (migrated from legacy/crates/compiler/lumo.langue).
+// LL(1) deviations from legacy:
+//   - AnnotationExpr is folded into ParenExpr as an optional `: ty`.
+//   - LetExpr is not an expression atom; `let` lives in blocks (LetStmt),
+//     matching every legacy fixture.
+// Binding powers follow our convention (lbp > rbp left-assoc, lbp < rbp
+// right-assoc); member/call are node-payload postfix rows (D-34).
 
 IdentExpr = name:ident
 NumberExpr = value:lit.number
 StringExpr = value:lit.string
-ParenExpr = '(' inner:Expr ')'
+
+ThunkExpr = 'thunk' body:Expr
+ForceExpr = 'force' expr:Expr
+PerformExpr = 'perform' name:ident
+
+MatchExpr = 'match' scrutinee:Expr '{' arms:MatchArm* '}'
+MatchArm = pattern:Pattern '=>' body:Expr ','?
+
+HandleExpr = 'handle' cap_name:ident ('for' cap_type:TypeExpr)? 'with' handler:Expr 'in' body:Expr
+
+BundleExpr = 'bundle' '{' entries:BundleEntry* '}'
+BundleEntry = 'fn' name:ident param_list:ParamList body:FnBody ';'?
+
+IfElseExpr = 'if' condition:Expr then_body:BlockExpr ('else' else_clause:ElseClause)?
+ElseClause =
+  | IfElseExpr
+  | BlockExpr
+
+ParenExpr = '(' inner:Expr (':' ty:TypeExpr)? ')'
+LambdaExpr = 'fn' param_list:LambdaParamList body:FnBody
+LambdaParamList = '(' params:sep(LambdaParam, ',')? ')'
+LambdaParam = name:ident (':' ty:TypeExpr)?
+
+BlockExpr = '{' stmts:BlockStmt* '}'
+BlockStmt =
+  | LetStmt
+  | ExprStmt
+LetStmt = 'let' name:ident (':' ty:TypeExpr)? '=' value:Expr ';'
+ExprStmt = expr:Expr ';'?
+
 CallArgs = args:sep(Expr, ',')?
+MemberName = name:ident
 
 Expr = praat {
-  simple = LetExpr | IdentExpr | NumberExpr | StringExpr | ParenExpr
+  simple = IdentExpr | NumberExpr | StringExpr | ThunkExpr | ForceExpr | PerformExpr | MatchExpr | HandleExpr | BundleExpr | IfElseExpr | ParenExpr | LambdaExpr | BlockExpr
   operators {
     '-' | '!' @100,
-    @89 '**' @90,
-    @80 '*' | '/' @79,
-    @70 '+' | '-' @69,
+    @110 '.' MemberName,
     @110 '(' CallArgs ')',
+    @89 '**' @90,
+    @80 '*' | '/' | '%' @79,
+    @70 '+' | '-' @69,
+    @60 '==' | '!=' | '<' | '<=' | '>' | '>=' @59,
+    @50 '&&' @49,
+    @40 '||' @39,
   }
 }
 

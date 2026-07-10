@@ -1,0 +1,55 @@
+=== standalone extern fn with attribute ===
+:parse(Lumo)
+
+#[extern(name = "globalThis.console.log()")] extern fn println(msg: String);
+
+---
+
+(FILE (ITEM (ATTRIBUTE (ATTRIBUTE_ARGS (ATTRIBUTE_ARG_ITEM (STRING_EXPR)))) (EXTERN_DECL (EXTERN_FN_TAIL (PARAM_LIST (PARAM (NAMED_TYPE_EXPR)))))))
+
+=== extern block with inherited attrs ===
+:parse(Lumo)
+
+#[link(expr = "globalThis.String")]
+extern {
+  #[extern(property = "length")] fn __str_len(s: String): Number;
+  #[extern(name = "charAt")] fn __str_char_at(s: String, i: Number): String;
+}
+
+---
+
+(FILE (ITEM (ATTRIBUTE (ATTRIBUTE_ARGS (ATTRIBUTE_ARG_ITEM (STRING_EXPR)))) (EXTERN_DECL (EXTERN_BLOCK_TAIL (EXTERN_BLOCK_ITEM (ATTRIBUTE (ATTRIBUTE_ARGS (ATTRIBUTE_ARG_ITEM (STRING_EXPR)))) (EXTERN_FN_TAIL (PARAM_LIST (PARAM (NAMED_TYPE_EXPR))) (NAMED_TYPE_EXPR))) (EXTERN_BLOCK_ITEM (ATTRIBUTE (ATTRIBUTE_ARGS (ATTRIBUTE_ARG_ITEM (STRING_EXPR)))) (EXTERN_FN_TAIL (PARAM_LIST (PARAM (NAMED_TYPE_EXPR)) (PARAM (NAMED_TYPE_EXPR))) (NAMED_TYPE_EXPR)))))))
+
+=== extern module block ===
+:parse(Lumo)
+
+#[link(module = "node:fs")]
+extern {
+  fn readFileSync(path: String, encoding: String): String;
+}
+
+---
+
+(FILE (ITEM (ATTRIBUTE (ATTRIBUTE_ARGS (ATTRIBUTE_ARG_ITEM (STRING_EXPR)))) (EXTERN_DECL (EXTERN_BLOCK_TAIL (EXTERN_BLOCK_ITEM (EXTERN_FN_TAIL (PARAM_LIST (PARAM (NAMED_TYPE_EXPR)) (PARAM (NAMED_TYPE_EXPR))) (NAMED_TYPE_EXPR)))))))
+
+=== extern type ===
+:parse(Lumo)
+
+extern type Buffer;
+
+---
+
+(FILE (ITEM (EXTERN_DECL (EXTERN_TYPE_TAIL))))
+
+=== operators and lambdas (grammar coverage) ===
+:parse(Lumo)
+
+fn ops(a, b) = a % b == 0 && a <= b || !(a > b)
+fn apply() { map(fn (x: Number) = x * 2, xs) }
+fn typed(f: (Number, Number) -> Number / { Console }, x: thunk Item.Value) = f(x, x)
+fn seq() { bundle { fn go() { done() }; } }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST (PARAM) (PARAM)) (EXPR_BODY (EXPR_INFIX (EXPR_INFIX (EXPR_INFIX (EXPR_INFIX (IDENT_EXPR) (IDENT_EXPR)) (NUMBER_EXPR)) (EXPR_INFIX (IDENT_EXPR) (IDENT_EXPR))) (EXPR_PREFIX (PAREN_EXPR (EXPR_INFIX (IDENT_EXPR) (IDENT_EXPR)))))))) (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (LAMBDA_EXPR (LAMBDA_PARAM_LIST (LAMBDA_PARAM (NAMED_TYPE_EXPR))) (EXPR_BODY (EXPR_INFIX (IDENT_EXPR) (NUMBER_EXPR)))) (IDENT_EXPR))))))) (ITEM (FN_DECL (PARAM_LIST (PARAM (FN_TYPE_EXPR (NAMED_TYPE_EXPR) (NAMED_TYPE_EXPR) (NAMED_TYPE_EXPR) (CAP_ANNOTATION (CAP_SET (CAP_SIG))))) (PARAM (THUNK_TYPE_EXPR (NAMED_TYPE_EXPR)))) (EXPR_BODY (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (IDENT_EXPR) (IDENT_EXPR)))))) (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (BUNDLE_EXPR (BUNDLE_ENTRY (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS)))))))))))
+

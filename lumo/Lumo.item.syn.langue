@@ -1,0 +1,125 @@
+// Lumo items, attributes, patterns, and types (migrated from
+// legacy/crates/compiler/lumo.langue). LL(1) deviations from legacy:
+//   - `impl Name = Target: Cap` is left-factored: the head is one
+//     TypeExpr, `= Target` / `: Cap` become ImplAssign / ImplCap nodes.
+//   - ProjTypeExpr is folded into NamedTypeExpr as an optional `.assoc`.
+
+File = items:Item*
+
+Item = attrs:Attribute* body:ItemBody
+
+ItemBody =
+  | ExternDecl
+  | DataDecl
+  | CapDecl
+  | FnDecl
+  | UseDecl
+  | ImplDecl
+
+// === Attributes ===
+// The head may be a keyword: #[extern(name = "…")].
+
+Attribute = '#' '[' (name:ident | 'extern') ('=' direct_value:Expr)? args:AttributeArgs? ']'
+AttributeArgs = '(' items:sep(AttributeArgItem, ',')? ')'
+AttributeArgItem = name:ident ('=' value:Expr)?
+
+// === Data types ===
+
+DataDecl = 'data' name:ident generic_params:GenericParams? '{' variants:Variant* '}'
+Variant = attrs:Attribute* '.' name:ident fields:VariantFields? ','?
+VariantFields = '(' fields:sep(TypeExpr, ',')? ')'
+
+// === Functions ===
+
+FnDecl = 'fn' name:ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? body:FnBody
+FnBody =
+  | BlockExpr
+  | ExprBody
+ExprBody = '=' body:Expr
+
+ParamList = '(' params:sep(Param, ',')? ')'
+Param = name:ident (':' ty:TypeExpr)?
+
+// === Generics ===
+
+GenericParams = '[' params:sep(GenericParam, ',')? ']'
+GenericParam = name:ident (':' constraint:BoundList)?
+BoundList = bounds:sep(TypeExpr, '+')
+GenericArgs = '[' args:sep(TypeExpr, ',')? ']'
+
+// === Capabilities ===
+
+CapDecl = 'cap' name:ident '{' items:CapItem* '}'
+CapItem =
+  | AssocTypeDecl
+  | OperationDecl
+AssocTypeDecl = 'type' name:ident
+OperationDecl = 'fn' name:ident param_list:ParamList (':' return_type:TypeExpr)? ';'?
+
+CapAnnotation = '/' cap:CapSet
+CapSet = '{' sigs:CapSig* '}'
+CapSig = name:ident generic_args:GenericArgs?
+
+// === Extern declarations ===
+
+ExternDecl = 'extern' rest:ExternRest
+ExternRest =
+  | ExternTypeTail
+  | ExternFnTail
+  | ExternBlockTail
+ExternTypeTail = 'type' name:ident ';'?
+ExternFnTail = 'fn' name:ident param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? ';'?
+ExternBlockTail = '{' items:ExternBlockItem* '}'
+ExternBlockItem = attrs:Attribute* body:ExternBlockItemBody
+ExternBlockItemBody =
+  | ExternTypeTail
+  | ExternFnTail
+
+// === Use declarations ===
+
+UseDecl = 'use' path:UsePath ';'
+UsePath = head:ident rest:UsePathRest?
+UsePathRest = '.' item:UsePathItem
+UsePathItem =
+  | UsePathBranch
+  | UseTree
+UsePathBranch = next:ident cont:UsePathRest?
+UseTree = '{' names:sep(UseNameItem, ',')? '}'
+UseNameItem = name:ident
+
+// === Impl blocks ===
+
+ImplDecl = 'impl' generic_params:GenericParams? head:TypeExpr assign:ImplAssign? cap:ImplCap? '{' items:ImplItem* '}'
+ImplAssign = '=' target:TypeExpr
+ImplCap = ':' cap:TypeExpr
+ImplItem = body:ImplItemBody ';'?
+ImplItemBody =
+  | AssocTypeBinding
+  | ImplMethod
+AssocTypeBinding = 'type' name:ident '=' ty:TypeExpr
+ImplMethod = 'fn' name:ident param_list:ParamList (':' return_type:TypeExpr)? body:FnBody
+
+// === Patterns ===
+
+Pattern =
+  | VariantPattern
+  | BindPattern
+  | WildcardPattern
+  | IdentPattern
+
+VariantPattern = '.' name:ident fields:VariantPatternFields?
+VariantPatternFields = '(' fields:sep(Pattern, ',')? ')'
+BindPattern = 'let' name:ident
+WildcardPattern = '_'
+IdentPattern = name:ident
+
+// === Types ===
+
+TypeExpr =
+  | ThunkTypeExpr
+  | FnTypeExpr
+  | NamedTypeExpr
+
+ThunkTypeExpr = 'thunk' inner:TypeExpr
+FnTypeExpr = '(' params:sep(TypeExpr, ',')? ')' '->' return_type:TypeExpr cap_annotation:CapAnnotation?
+NamedTypeExpr = name:ident generic_args:GenericArgs? ('.' assoc:ident)?

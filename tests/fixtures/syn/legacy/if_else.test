@@ -1,0 +1,20 @@
+=== if else ===
+:parse(Lumo)
+
+data Bool { .true, .false }
+fn f(x: Bool) { if x { Bool.true } else { Bool.false } }
+
+---
+
+(FILE (ITEM (DATA_DECL (VARIANT) (VARIANT))) (ITEM (FN_DECL (PARAM_LIST (PARAM (NAMED_TYPE_EXPR))) (BLOCK_EXPR (EXPR_STMT (IF_ELSE_EXPR (IDENT_EXPR) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)))) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME))))))))))
+
+=== else-if chain ===
+:parse(Lumo)
+
+data Bool { .true, .false }
+fn f(x: Bool, y: Bool) { if x { Bool.true } else if y { Bool.true } else { Bool.false } }
+
+---
+
+(FILE (ITEM (DATA_DECL (VARIANT) (VARIANT))) (ITEM (FN_DECL (PARAM_LIST (PARAM (NAMED_TYPE_EXPR)) (PARAM (NAMED_TYPE_EXPR))) (BLOCK_EXPR (EXPR_STMT (IF_ELSE_EXPR (IDENT_EXPR) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)))) (IF_ELSE_EXPR (IDENT_EXPR) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)))) (BLOCK_EXPR (EXPR_STMT (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)))))))))))
+

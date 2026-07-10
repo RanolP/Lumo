@@ -14,7 +14,7 @@ fn byte_exact_round_trip() {
 
 #[test]
 fn round_trip_preserves_trivia_and_calls() {
-    let src = "// leading comment\nfn f(x) = g(x + 1, 2)  // trailing\nfn g(a, b) = let y = a in y\n";
+    let src = "// leading comment\nfn f(x) = g(x + 1, 2)  // trailing\nfn g(a, b) = { let y = a; y }\n";
     let out = parse(src);
     assert!(out.errors.is_empty(), "{:?}", out.errors);
     assert_eq!(out.root.text(), src);
@@ -25,11 +25,12 @@ fn body_sexpr(src: &str) -> String {
     let r = report(src);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     assert_eq!(r.round_trip_sexpr, r.sexpr, "canonical print must re-parse to the same tree");
-    // Strip the constant (FILE (FN_DECL …)) wrapper around the body.
+    // Strip the constant (FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY …))))
+    // wrapper around a no-param fn's body.
     let inner = r
         .sexpr
-        .strip_prefix("(FILE (FN_DECL ")
-        .and_then(|s| s.strip_suffix("))"))
+        .strip_prefix("(FILE (ITEM (FN_DECL (PARAM_LIST) (EXPR_BODY ")
+        .and_then(|s| s.strip_suffix("))))"))
         .unwrap_or(&r.sexpr)
         .to_owned();
     inner
@@ -75,17 +76,24 @@ fn calls_prefix_and_parens() {
 
 #[test]
 fn ast_accessors() {
-    use lumo_syntax::lumo::ast::{AstNode, Expr, File};
+    use lumo_syntax::lumo::ast::{AstNode, Expr, File, FnBody, ItemBody};
     use lumo_syntax::lumo::parser::parse;
 
     let out = parse("fn add(a, b) = a + b");
     let file = File::cast(&out.root).unwrap();
-    let fn_decl = file.items().next().unwrap();
+    let item = file.items().next().unwrap();
+    let Some(ItemBody::FnDecl(fn_decl)) = item.body() else {
+        panic!("item should be a fn decl")
+    };
     assert_eq!(fn_decl.name().unwrap().text, "add");
+    let param_list = fn_decl.param_list().unwrap();
     let params: Vec<String> =
-        fn_decl.params().map(|p| p.name().unwrap().text.clone()).collect();
+        param_list.params().map(|p| p.name().unwrap().text.clone()).collect();
     assert_eq!(params, ["a", "b"]);
-    let Some(Expr::Infix(infix)) = fn_decl.body() else {
+    let Some(FnBody::ExprBody(expr_body)) = fn_decl.body() else {
+        panic!("body should be an expr body")
+    };
+    let Some(Expr::Infix(infix)) = expr_body.body() else {
         panic!("body should be an infix expression")
     };
     assert_eq!(infix.op().unwrap().text, "+");

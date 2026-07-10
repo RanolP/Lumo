@@ -10,6 +10,219 @@ pub trait AstNode<'a>: Sized {
     fn syntax(&self) -> &'a SyntaxNode;
 }
 
+pub struct AssocTypeBinding<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AssocTypeBinding<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ASSOC_TYPE_BINDING).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> AssocTypeBinding<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn ty(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+}
+
+pub struct AssocTypeDecl<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AssocTypeDecl<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ASSOC_TYPE_DECL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> AssocTypeDecl<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+}
+
+pub struct Attribute<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for Attribute<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ATTRIBUTE).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> Attribute<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn direct_value(&self) -> Option<Expr<'a>> {
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+    }
+
+    pub fn args(&self) -> Option<AttributeArgs<'a>> {
+        self.0.child_nodes().filter_map(AttributeArgs::cast).nth(0)
+    }
+}
+
+pub struct AttributeArgItem<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AttributeArgItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ATTRIBUTE_ARG_ITEM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> AttributeArgItem<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn value(&self) -> Option<Expr<'a>> {
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+    }
+}
+
+pub struct AttributeArgs<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AttributeArgs<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ATTRIBUTE_ARGS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> AttributeArgs<'a> {
+    pub fn items(&self) -> impl Iterator<Item = AttributeArgItem<'a>> + 'a {
+        self.0.child_nodes().filter_map(AttributeArgItem::cast).skip(0)
+    }
+}
+
+pub struct BindPattern<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for BindPattern<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::BIND_PATTERN).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> BindPattern<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+}
+
+pub struct BlockExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for BlockExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::BLOCK_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> BlockExpr<'a> {
+    pub fn stmts(&self) -> impl Iterator<Item = BlockStmt<'a>> + 'a {
+        self.0.child_nodes().filter_map(BlockStmt::cast).skip(0)
+    }
+}
+
+pub enum BlockStmt<'a> {
+    LetStmt(LetStmt<'a>),
+    ExprStmt(ExprStmt<'a>),
+}
+
+impl<'a> AstNode<'a> for BlockStmt<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| LetStmt::cast(node).map(Self::LetStmt))
+            .or_else(|| ExprStmt::cast(node).map(Self::ExprStmt))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::LetStmt(n) => n.syntax(),
+            Self::ExprStmt(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct BoundList<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for BoundList<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::BOUND_LIST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> BoundList<'a> {
+    pub fn bounds(&self) -> impl Iterator<Item = TypeExpr<'a>> + 'a {
+        self.0.child_nodes().filter_map(TypeExpr::cast).skip(0)
+    }
+}
+
+pub struct BundleEntry<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for BundleEntry<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::BUNDLE_ENTRY).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> BundleEntry<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn param_list(&self) -> Option<ParamList<'a>> {
+        self.0.child_nodes().filter_map(ParamList::cast).nth(0)
+    }
+
+    pub fn body(&self) -> Option<FnBody<'a>> {
+        self.0.child_nodes().filter_map(FnBody::cast).nth(0)
+    }
+}
+
+pub struct BundleExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for BundleExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::BUNDLE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> BundleExpr<'a> {
+    pub fn entries(&self) -> impl Iterator<Item = BundleEntry<'a>> + 'a {
+        self.0.child_nodes().filter_map(BundleEntry::cast).skip(0)
+    }
+}
+
 pub struct CallArgs<'a>(pub &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for CallArgs<'a> {
@@ -27,15 +240,162 @@ impl<'a> CallArgs<'a> {
     }
 }
 
+pub struct CapAnnotation<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapAnnotation<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_ANNOTATION).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapAnnotation<'a> {
+    pub fn cap(&self) -> Option<CapSet<'a>> {
+        self.0.child_nodes().filter_map(CapSet::cast).nth(0)
+    }
+}
+
+pub struct CapDecl<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapDecl<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_DECL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapDecl<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn items(&self) -> impl Iterator<Item = CapItem<'a>> + 'a {
+        self.0.child_nodes().filter_map(CapItem::cast).skip(0)
+    }
+}
+
+pub enum CapItem<'a> {
+    AssocTypeDecl(AssocTypeDecl<'a>),
+    OperationDecl(OperationDecl<'a>),
+}
+
+impl<'a> AstNode<'a> for CapItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| AssocTypeDecl::cast(node).map(Self::AssocTypeDecl))
+            .or_else(|| OperationDecl::cast(node).map(Self::OperationDecl))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::AssocTypeDecl(n) => n.syntax(),
+            Self::OperationDecl(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct CapSet<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapSet<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_SET).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapSet<'a> {
+    pub fn sigs(&self) -> impl Iterator<Item = CapSig<'a>> + 'a {
+        self.0.child_nodes().filter_map(CapSig::cast).skip(0)
+    }
+}
+
+pub struct CapSig<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapSig<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_SIG).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapSig<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn generic_args(&self) -> Option<GenericArgs<'a>> {
+        self.0.child_nodes().filter_map(GenericArgs::cast).nth(0)
+    }
+}
+
+pub struct DataDecl<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for DataDecl<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::DATA_DECL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> DataDecl<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn generic_params(&self) -> Option<GenericParams<'a>> {
+        self.0.child_nodes().filter_map(GenericParams::cast).nth(0)
+    }
+
+    pub fn variants(&self) -> impl Iterator<Item = Variant<'a>> + 'a {
+        self.0.child_nodes().filter_map(Variant::cast).skip(0)
+    }
+}
+
+pub enum ElseClause<'a> {
+    IfElseExpr(IfElseExpr<'a>),
+    BlockExpr(BlockExpr<'a>),
+}
+
+impl<'a> AstNode<'a> for ElseClause<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| IfElseExpr::cast(node).map(Self::IfElseExpr))
+            .or_else(|| BlockExpr::cast(node).map(Self::BlockExpr))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::IfElseExpr(n) => n.syntax(),
+            Self::BlockExpr(n) => n.syntax(),
+        }
+    }
+}
+
 pub enum Expr<'a> {
     Prefix(ExprPrefix<'a>),
     Infix(ExprInfix<'a>),
     Postfix(ExprPostfix<'a>),
-    LetExpr(LetExpr<'a>),
     IdentExpr(IdentExpr<'a>),
     NumberExpr(NumberExpr<'a>),
     StringExpr(StringExpr<'a>),
+    ThunkExpr(ThunkExpr<'a>),
+    ForceExpr(ForceExpr<'a>),
+    PerformExpr(PerformExpr<'a>),
+    MatchExpr(MatchExpr<'a>),
+    HandleExpr(HandleExpr<'a>),
+    BundleExpr(BundleExpr<'a>),
+    IfElseExpr(IfElseExpr<'a>),
     ParenExpr(ParenExpr<'a>),
+    LambdaExpr(LambdaExpr<'a>),
+    BlockExpr(BlockExpr<'a>),
 }
 
 impl<'a> AstNode<'a> for Expr<'a> {
@@ -44,22 +404,38 @@ impl<'a> AstNode<'a> for Expr<'a> {
             .or_else(|| ExprPrefix::cast(node).map(Self::Prefix))
             .or_else(|| ExprInfix::cast(node).map(Self::Infix))
             .or_else(|| ExprPostfix::cast(node).map(Self::Postfix))
-            .or_else(|| LetExpr::cast(node).map(Self::LetExpr))
             .or_else(|| IdentExpr::cast(node).map(Self::IdentExpr))
             .or_else(|| NumberExpr::cast(node).map(Self::NumberExpr))
             .or_else(|| StringExpr::cast(node).map(Self::StringExpr))
+            .or_else(|| ThunkExpr::cast(node).map(Self::ThunkExpr))
+            .or_else(|| ForceExpr::cast(node).map(Self::ForceExpr))
+            .or_else(|| PerformExpr::cast(node).map(Self::PerformExpr))
+            .or_else(|| MatchExpr::cast(node).map(Self::MatchExpr))
+            .or_else(|| HandleExpr::cast(node).map(Self::HandleExpr))
+            .or_else(|| BundleExpr::cast(node).map(Self::BundleExpr))
+            .or_else(|| IfElseExpr::cast(node).map(Self::IfElseExpr))
             .or_else(|| ParenExpr::cast(node).map(Self::ParenExpr))
+            .or_else(|| LambdaExpr::cast(node).map(Self::LambdaExpr))
+            .or_else(|| BlockExpr::cast(node).map(Self::BlockExpr))
     }
     fn syntax(&self) -> &'a SyntaxNode {
         match self {
             Self::Prefix(n) => n.syntax(),
             Self::Infix(n) => n.syntax(),
             Self::Postfix(n) => n.syntax(),
-            Self::LetExpr(n) => n.syntax(),
             Self::IdentExpr(n) => n.syntax(),
             Self::NumberExpr(n) => n.syntax(),
             Self::StringExpr(n) => n.syntax(),
+            Self::ThunkExpr(n) => n.syntax(),
+            Self::ForceExpr(n) => n.syntax(),
+            Self::PerformExpr(n) => n.syntax(),
+            Self::MatchExpr(n) => n.syntax(),
+            Self::HandleExpr(n) => n.syntax(),
+            Self::BundleExpr(n) => n.syntax(),
+            Self::IfElseExpr(n) => n.syntax(),
             Self::ParenExpr(n) => n.syntax(),
+            Self::LambdaExpr(n) => n.syntax(),
+            Self::BlockExpr(n) => n.syntax(),
         }
     }
 }
@@ -145,8 +521,188 @@ impl<'a> ExprPostfix<'a> {
         self.operands().next()
     }
 
+    pub fn member_name(&self) -> Option<MemberName<'a>> {
+        self.0.child_nodes().filter_map(MemberName::cast).next()
+    }
+
     pub fn call_args(&self) -> Option<CallArgs<'a>> {
         self.0.child_nodes().filter_map(CallArgs::cast).next()
+    }
+}
+
+pub struct ExprBody<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExprBody<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXPR_BODY).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ExprBody<'a> {
+    pub fn body(&self) -> Option<Expr<'a>> {
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+    }
+}
+
+pub struct ExprStmt<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExprStmt<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXPR_STMT).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ExprStmt<'a> {
+    pub fn expr(&self) -> Option<Expr<'a>> {
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+    }
+}
+
+pub struct ExternBlockItem<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExternBlockItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXTERN_BLOCK_ITEM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ExternBlockItem<'a> {
+    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
+        self.0.child_nodes().filter_map(Attribute::cast).skip(0)
+    }
+
+    pub fn body(&self) -> Option<ExternBlockItemBody<'a>> {
+        self.0.child_nodes().filter_map(ExternBlockItemBody::cast).nth(0)
+    }
+}
+
+pub enum ExternBlockItemBody<'a> {
+    ExternTypeTail(ExternTypeTail<'a>),
+    ExternFnTail(ExternFnTail<'a>),
+}
+
+impl<'a> AstNode<'a> for ExternBlockItemBody<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| ExternTypeTail::cast(node).map(Self::ExternTypeTail))
+            .or_else(|| ExternFnTail::cast(node).map(Self::ExternFnTail))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::ExternTypeTail(n) => n.syntax(),
+            Self::ExternFnTail(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct ExternBlockTail<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExternBlockTail<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXTERN_BLOCK_TAIL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ExternBlockTail<'a> {
+    pub fn items(&self) -> impl Iterator<Item = ExternBlockItem<'a>> + 'a {
+        self.0.child_nodes().filter_map(ExternBlockItem::cast).skip(0)
+    }
+}
+
+pub struct ExternDecl<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExternDecl<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXTERN_DECL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ExternDecl<'a> {
+    pub fn rest(&self) -> Option<ExternRest<'a>> {
+        self.0.child_nodes().filter_map(ExternRest::cast).nth(0)
+    }
+}
+
+pub struct ExternFnTail<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExternFnTail<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXTERN_FN_TAIL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ExternFnTail<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn param_list(&self) -> Option<ParamList<'a>> {
+        self.0.child_nodes().filter_map(ParamList::cast).nth(0)
+    }
+
+    pub fn return_type(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+
+    pub fn cap_annotation(&self) -> Option<CapAnnotation<'a>> {
+        self.0.child_nodes().filter_map(CapAnnotation::cast).nth(0)
+    }
+}
+
+pub enum ExternRest<'a> {
+    ExternTypeTail(ExternTypeTail<'a>),
+    ExternFnTail(ExternFnTail<'a>),
+    ExternBlockTail(ExternBlockTail<'a>),
+}
+
+impl<'a> AstNode<'a> for ExternRest<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| ExternTypeTail::cast(node).map(Self::ExternTypeTail))
+            .or_else(|| ExternFnTail::cast(node).map(Self::ExternFnTail))
+            .or_else(|| ExternBlockTail::cast(node).map(Self::ExternBlockTail))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::ExternTypeTail(n) => n.syntax(),
+            Self::ExternFnTail(n) => n.syntax(),
+            Self::ExternBlockTail(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct ExternTypeTail<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ExternTypeTail<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::EXTERN_TYPE_TAIL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ExternTypeTail<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
     }
 }
 
@@ -162,8 +718,27 @@ impl<'a> AstNode<'a> for File<'a> {
 }
 
 impl<'a> File<'a> {
-    pub fn items(&self) -> impl Iterator<Item = FnDecl<'a>> + 'a {
-        self.0.child_nodes().filter_map(FnDecl::cast).skip(0)
+    pub fn items(&self) -> impl Iterator<Item = Item<'a>> + 'a {
+        self.0.child_nodes().filter_map(Item::cast).skip(0)
+    }
+}
+
+pub enum FnBody<'a> {
+    BlockExpr(BlockExpr<'a>),
+    ExprBody(ExprBody<'a>),
+}
+
+impl<'a> AstNode<'a> for FnBody<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| BlockExpr::cast(node).map(Self::BlockExpr))
+            .or_else(|| ExprBody::cast(node).map(Self::ExprBody))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::BlockExpr(n) => n.syntax(),
+            Self::ExprBody(n) => n.syntax(),
+        }
     }
 }
 
@@ -183,12 +758,150 @@ impl<'a> FnDecl<'a> {
         self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
     }
 
-    pub fn params(&self) -> impl Iterator<Item = Param<'a>> + 'a {
-        self.0.child_nodes().filter_map(Param::cast).skip(0)
+    pub fn generic_params(&self) -> Option<GenericParams<'a>> {
+        self.0.child_nodes().filter_map(GenericParams::cast).nth(0)
+    }
+
+    pub fn param_list(&self) -> Option<ParamList<'a>> {
+        self.0.child_nodes().filter_map(ParamList::cast).nth(0)
+    }
+
+    pub fn return_type(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+
+    pub fn cap_annotation(&self) -> Option<CapAnnotation<'a>> {
+        self.0.child_nodes().filter_map(CapAnnotation::cast).nth(0)
+    }
+
+    pub fn body(&self) -> Option<FnBody<'a>> {
+        self.0.child_nodes().filter_map(FnBody::cast).nth(0)
+    }
+}
+
+pub struct FnTypeExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for FnTypeExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::FN_TYPE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> FnTypeExpr<'a> {
+    pub fn params(&self) -> impl Iterator<Item = TypeExpr<'a>> + 'a {
+        self.0.child_nodes().filter_map(TypeExpr::cast).skip(0)
+    }
+
+    pub fn return_type(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+
+    pub fn cap_annotation(&self) -> Option<CapAnnotation<'a>> {
+        self.0.child_nodes().filter_map(CapAnnotation::cast).nth(0)
+    }
+}
+
+pub struct ForceExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ForceExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::FORCE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ForceExpr<'a> {
+    pub fn expr(&self) -> Option<Expr<'a>> {
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+    }
+}
+
+pub struct GenericArgs<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for GenericArgs<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::GENERIC_ARGS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> GenericArgs<'a> {
+    pub fn args(&self) -> impl Iterator<Item = TypeExpr<'a>> + 'a {
+        self.0.child_nodes().filter_map(TypeExpr::cast).skip(0)
+    }
+}
+
+pub struct GenericParam<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for GenericParam<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::GENERIC_PARAM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> GenericParam<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn constraint(&self) -> Option<BoundList<'a>> {
+        self.0.child_nodes().filter_map(BoundList::cast).nth(0)
+    }
+}
+
+pub struct GenericParams<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for GenericParams<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::GENERIC_PARAMS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> GenericParams<'a> {
+    pub fn params(&self) -> impl Iterator<Item = GenericParam<'a>> + 'a {
+        self.0.child_nodes().filter_map(GenericParam::cast).skip(0)
+    }
+}
+
+pub struct HandleExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for HandleExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::HANDLE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> HandleExpr<'a> {
+    pub fn cap_name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn cap_type(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+
+    pub fn handler(&self) -> Option<Expr<'a>> {
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
     }
 
     pub fn body(&self) -> Option<Expr<'a>> {
-        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+        self.0.child_nodes().filter_map(Expr::cast).nth(1)
     }
 }
 
@@ -209,28 +922,397 @@ impl<'a> IdentExpr<'a> {
     }
 }
 
-pub struct LetExpr<'a>(pub &'a SyntaxNode);
+pub struct IdentPattern<'a>(pub &'a SyntaxNode);
 
-impl<'a> AstNode<'a> for LetExpr<'a> {
+impl<'a> AstNode<'a> for IdentPattern<'a> {
     fn cast(node: &'a SyntaxNode) -> Option<Self> {
-        (node.kind == SyntaxKind::LET_EXPR).then(|| Self(node))
+        (node.kind == SyntaxKind::IDENT_PATTERN).then(|| Self(node))
     }
     fn syntax(&self) -> &'a SyntaxNode {
         self.0
     }
 }
 
-impl<'a> LetExpr<'a> {
+impl<'a> IdentPattern<'a> {
     pub fn name(&self) -> Option<&'a Token> {
         self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+}
+
+pub struct IfElseExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for IfElseExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::IF_ELSE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> IfElseExpr<'a> {
+    pub fn condition(&self) -> Option<Expr<'a>> {
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+    }
+
+    pub fn then_body(&self) -> Option<BlockExpr<'a>> {
+        self.0.child_nodes().filter_map(BlockExpr::cast).nth(0)
+    }
+
+    pub fn else_clause(&self) -> Option<ElseClause<'a>> {
+        self.0.child_nodes().filter_map(ElseClause::cast).nth(0)
+    }
+}
+
+pub struct ImplAssign<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ImplAssign<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::IMPL_ASSIGN).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ImplAssign<'a> {
+    pub fn target(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+}
+
+pub struct ImplCap<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ImplCap<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::IMPL_CAP).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ImplCap<'a> {
+    pub fn cap(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+}
+
+pub struct ImplDecl<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ImplDecl<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::IMPL_DECL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ImplDecl<'a> {
+    pub fn generic_params(&self) -> Option<GenericParams<'a>> {
+        self.0.child_nodes().filter_map(GenericParams::cast).nth(0)
+    }
+
+    pub fn head(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+
+    pub fn assign(&self) -> Option<ImplAssign<'a>> {
+        self.0.child_nodes().filter_map(ImplAssign::cast).nth(0)
+    }
+
+    pub fn cap(&self) -> Option<ImplCap<'a>> {
+        self.0.child_nodes().filter_map(ImplCap::cast).nth(0)
+    }
+
+    pub fn items(&self) -> impl Iterator<Item = ImplItem<'a>> + 'a {
+        self.0.child_nodes().filter_map(ImplItem::cast).skip(0)
+    }
+}
+
+pub struct ImplItem<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ImplItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::IMPL_ITEM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ImplItem<'a> {
+    pub fn body(&self) -> Option<ImplItemBody<'a>> {
+        self.0.child_nodes().filter_map(ImplItemBody::cast).nth(0)
+    }
+}
+
+pub enum ImplItemBody<'a> {
+    AssocTypeBinding(AssocTypeBinding<'a>),
+    ImplMethod(ImplMethod<'a>),
+}
+
+impl<'a> AstNode<'a> for ImplItemBody<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| AssocTypeBinding::cast(node).map(Self::AssocTypeBinding))
+            .or_else(|| ImplMethod::cast(node).map(Self::ImplMethod))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::AssocTypeBinding(n) => n.syntax(),
+            Self::ImplMethod(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct ImplMethod<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ImplMethod<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::IMPL_METHOD).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ImplMethod<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn param_list(&self) -> Option<ParamList<'a>> {
+        self.0.child_nodes().filter_map(ParamList::cast).nth(0)
+    }
+
+    pub fn return_type(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+
+    pub fn body(&self) -> Option<FnBody<'a>> {
+        self.0.child_nodes().filter_map(FnBody::cast).nth(0)
+    }
+}
+
+pub struct Item<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for Item<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ITEM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> Item<'a> {
+    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
+        self.0.child_nodes().filter_map(Attribute::cast).skip(0)
+    }
+
+    pub fn body(&self) -> Option<ItemBody<'a>> {
+        self.0.child_nodes().filter_map(ItemBody::cast).nth(0)
+    }
+}
+
+pub enum ItemBody<'a> {
+    ExternDecl(ExternDecl<'a>),
+    DataDecl(DataDecl<'a>),
+    CapDecl(CapDecl<'a>),
+    FnDecl(FnDecl<'a>),
+    UseDecl(UseDecl<'a>),
+    ImplDecl(ImplDecl<'a>),
+}
+
+impl<'a> AstNode<'a> for ItemBody<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| ExternDecl::cast(node).map(Self::ExternDecl))
+            .or_else(|| DataDecl::cast(node).map(Self::DataDecl))
+            .or_else(|| CapDecl::cast(node).map(Self::CapDecl))
+            .or_else(|| FnDecl::cast(node).map(Self::FnDecl))
+            .or_else(|| UseDecl::cast(node).map(Self::UseDecl))
+            .or_else(|| ImplDecl::cast(node).map(Self::ImplDecl))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::ExternDecl(n) => n.syntax(),
+            Self::DataDecl(n) => n.syntax(),
+            Self::CapDecl(n) => n.syntax(),
+            Self::FnDecl(n) => n.syntax(),
+            Self::UseDecl(n) => n.syntax(),
+            Self::ImplDecl(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct LambdaExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for LambdaExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::LAMBDA_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> LambdaExpr<'a> {
+    pub fn param_list(&self) -> Option<LambdaParamList<'a>> {
+        self.0.child_nodes().filter_map(LambdaParamList::cast).nth(0)
+    }
+
+    pub fn body(&self) -> Option<FnBody<'a>> {
+        self.0.child_nodes().filter_map(FnBody::cast).nth(0)
+    }
+}
+
+pub struct LambdaParam<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for LambdaParam<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::LAMBDA_PARAM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> LambdaParam<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn ty(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+}
+
+pub struct LambdaParamList<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for LambdaParamList<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::LAMBDA_PARAM_LIST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> LambdaParamList<'a> {
+    pub fn params(&self) -> impl Iterator<Item = LambdaParam<'a>> + 'a {
+        self.0.child_nodes().filter_map(LambdaParam::cast).skip(0)
+    }
+}
+
+pub struct LetStmt<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for LetStmt<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::LET_STMT).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> LetStmt<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn ty(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
     }
 
     pub fn value(&self) -> Option<Expr<'a>> {
         self.0.child_nodes().filter_map(Expr::cast).nth(0)
     }
+}
+
+pub struct MatchArm<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for MatchArm<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::MATCH_ARM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> MatchArm<'a> {
+    pub fn pattern(&self) -> Option<Pattern<'a>> {
+        self.0.child_nodes().filter_map(Pattern::cast).nth(0)
+    }
 
     pub fn body(&self) -> Option<Expr<'a>> {
-        self.0.child_nodes().filter_map(Expr::cast).nth(1)
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+    }
+}
+
+pub struct MatchExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for MatchExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::MATCH_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> MatchExpr<'a> {
+    pub fn scrutinee(&self) -> Option<Expr<'a>> {
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+    }
+
+    pub fn arms(&self) -> impl Iterator<Item = MatchArm<'a>> + 'a {
+        self.0.child_nodes().filter_map(MatchArm::cast).skip(0)
+    }
+}
+
+pub struct MemberName<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for MemberName<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::MEMBER_NAME).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> MemberName<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+}
+
+pub struct NamedTypeExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for NamedTypeExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::NAMED_TYPE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> NamedTypeExpr<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn generic_args(&self) -> Option<GenericArgs<'a>> {
+        self.0.child_nodes().filter_map(GenericArgs::cast).nth(0)
+    }
+
+    pub fn assoc(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(1)
     }
 }
 
@@ -251,6 +1333,31 @@ impl<'a> NumberExpr<'a> {
     }
 }
 
+pub struct OperationDecl<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for OperationDecl<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::OPERATION_DECL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> OperationDecl<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn param_list(&self) -> Option<ParamList<'a>> {
+        self.0.child_nodes().filter_map(ParamList::cast).nth(0)
+    }
+
+    pub fn return_type(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+}
+
 pub struct Param<'a>(pub &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for Param<'a> {
@@ -265,6 +1372,27 @@ impl<'a> AstNode<'a> for Param<'a> {
 impl<'a> Param<'a> {
     pub fn name(&self) -> Option<&'a Token> {
         self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn ty(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+}
+
+pub struct ParamList<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ParamList<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::PARAM_LIST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ParamList<'a> {
+    pub fn params(&self) -> impl Iterator<Item = Param<'a>> + 'a {
+        self.0.child_nodes().filter_map(Param::cast).skip(0)
     }
 }
 
@@ -283,6 +1411,52 @@ impl<'a> ParenExpr<'a> {
     pub fn inner(&self) -> Option<Expr<'a>> {
         self.0.child_nodes().filter_map(Expr::cast).nth(0)
     }
+
+    pub fn ty(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+}
+
+pub enum Pattern<'a> {
+    VariantPattern(VariantPattern<'a>),
+    BindPattern(BindPattern<'a>),
+    WildcardPattern(WildcardPattern<'a>),
+    IdentPattern(IdentPattern<'a>),
+}
+
+impl<'a> AstNode<'a> for Pattern<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| VariantPattern::cast(node).map(Self::VariantPattern))
+            .or_else(|| BindPattern::cast(node).map(Self::BindPattern))
+            .or_else(|| WildcardPattern::cast(node).map(Self::WildcardPattern))
+            .or_else(|| IdentPattern::cast(node).map(Self::IdentPattern))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::VariantPattern(n) => n.syntax(),
+            Self::BindPattern(n) => n.syntax(),
+            Self::WildcardPattern(n) => n.syntax(),
+            Self::IdentPattern(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct PerformExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for PerformExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::PERFORM_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> PerformExpr<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
 }
 
 pub struct StringExpr<'a>(pub &'a SyntaxNode);
@@ -299,5 +1473,281 @@ impl<'a> AstNode<'a> for StringExpr<'a> {
 impl<'a> StringExpr<'a> {
     pub fn value(&self) -> Option<&'a Token> {
         self.0.child_tokens().filter(|t| t.kind == SyntaxKind::LIT_STRING).nth(0)
+    }
+}
+
+pub struct ThunkExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ThunkExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::THUNK_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ThunkExpr<'a> {
+    pub fn body(&self) -> Option<Expr<'a>> {
+        self.0.child_nodes().filter_map(Expr::cast).nth(0)
+    }
+}
+
+pub struct ThunkTypeExpr<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ThunkTypeExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::THUNK_TYPE_EXPR).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ThunkTypeExpr<'a> {
+    pub fn inner(&self) -> Option<TypeExpr<'a>> {
+        self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+}
+
+pub enum TypeExpr<'a> {
+    ThunkTypeExpr(ThunkTypeExpr<'a>),
+    FnTypeExpr(FnTypeExpr<'a>),
+    NamedTypeExpr(NamedTypeExpr<'a>),
+}
+
+impl<'a> AstNode<'a> for TypeExpr<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| ThunkTypeExpr::cast(node).map(Self::ThunkTypeExpr))
+            .or_else(|| FnTypeExpr::cast(node).map(Self::FnTypeExpr))
+            .or_else(|| NamedTypeExpr::cast(node).map(Self::NamedTypeExpr))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::ThunkTypeExpr(n) => n.syntax(),
+            Self::FnTypeExpr(n) => n.syntax(),
+            Self::NamedTypeExpr(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct UseDecl<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UseDecl<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_DECL).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> UseDecl<'a> {
+    pub fn path(&self) -> Option<UsePath<'a>> {
+        self.0.child_nodes().filter_map(UsePath::cast).nth(0)
+    }
+}
+
+pub struct UseNameItem<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UseNameItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_NAME_ITEM).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> UseNameItem<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+}
+
+pub struct UsePath<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UsePath<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_PATH).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> UsePath<'a> {
+    pub fn head(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn rest(&self) -> Option<UsePathRest<'a>> {
+        self.0.child_nodes().filter_map(UsePathRest::cast).nth(0)
+    }
+}
+
+pub struct UsePathBranch<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UsePathBranch<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_PATH_BRANCH).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> UsePathBranch<'a> {
+    pub fn next(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn cont(&self) -> Option<UsePathRest<'a>> {
+        self.0.child_nodes().filter_map(UsePathRest::cast).nth(0)
+    }
+}
+
+pub enum UsePathItem<'a> {
+    UsePathBranch(UsePathBranch<'a>),
+    UseTree(UseTree<'a>),
+}
+
+impl<'a> AstNode<'a> for UsePathItem<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| UsePathBranch::cast(node).map(Self::UsePathBranch))
+            .or_else(|| UseTree::cast(node).map(Self::UseTree))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::UsePathBranch(n) => n.syntax(),
+            Self::UseTree(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct UsePathRest<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UsePathRest<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_PATH_REST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> UsePathRest<'a> {
+    pub fn item(&self) -> Option<UsePathItem<'a>> {
+        self.0.child_nodes().filter_map(UsePathItem::cast).nth(0)
+    }
+}
+
+pub struct UseTree<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for UseTree<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::USE_TREE).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> UseTree<'a> {
+    pub fn names(&self) -> impl Iterator<Item = UseNameItem<'a>> + 'a {
+        self.0.child_nodes().filter_map(UseNameItem::cast).skip(0)
+    }
+}
+
+pub struct Variant<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for Variant<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::VARIANT).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> Variant<'a> {
+    pub fn attrs(&self) -> impl Iterator<Item = Attribute<'a>> + 'a {
+        self.0.child_nodes().filter_map(Attribute::cast).skip(0)
+    }
+
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn fields(&self) -> Option<VariantFields<'a>> {
+        self.0.child_nodes().filter_map(VariantFields::cast).nth(0)
+    }
+}
+
+pub struct VariantFields<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for VariantFields<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::VARIANT_FIELDS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> VariantFields<'a> {
+    pub fn fields(&self) -> impl Iterator<Item = TypeExpr<'a>> + 'a {
+        self.0.child_nodes().filter_map(TypeExpr::cast).skip(0)
+    }
+}
+
+pub struct VariantPattern<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for VariantPattern<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::VARIANT_PATTERN).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> VariantPattern<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn fields(&self) -> Option<VariantPatternFields<'a>> {
+        self.0.child_nodes().filter_map(VariantPatternFields::cast).nth(0)
+    }
+}
+
+pub struct VariantPatternFields<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for VariantPatternFields<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::VARIANT_PATTERN_FIELDS).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> VariantPatternFields<'a> {
+    pub fn fields(&self) -> impl Iterator<Item = Pattern<'a>> + 'a {
+        self.0.child_nodes().filter_map(Pattern::cast).skip(0)
+    }
+}
+
+pub struct WildcardPattern<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for WildcardPattern<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::WILDCARD_PATTERN).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
     }
 }

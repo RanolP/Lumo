@@ -1,0 +1,36 @@
+=== match with ident patterns ===
+:parse(Lumo)
+
+fn choose() { match x { left => a, right => b } }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (MATCH_EXPR (IDENT_EXPR) (MATCH_ARM (IDENT_PATTERN) (IDENT_EXPR)) (MATCH_ARM (IDENT_PATTERN) (IDENT_EXPR))))))))
+
+=== single arm ===
+:parse(Lumo)
+
+fn pick() { match a { x => x } }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (MATCH_EXPR (IDENT_EXPR) (MATCH_ARM (IDENT_PATTERN) (IDENT_EXPR))))))))
+
+=== variant patterns with binders ===
+:parse(Lumo)
+
+fn pick2() { match a { .some(let x) => x, .none => a } }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (MATCH_EXPR (IDENT_EXPR) (MATCH_ARM (VARIANT_PATTERN (VARIANT_PATTERN_FIELDS (BIND_PATTERN))) (IDENT_EXPR)) (MATCH_ARM (VARIANT_PATTERN) (IDENT_EXPR))))))))
+
+=== wildcard and nested variant patterns ===
+:parse(Lumo)
+
+fn pick3() { match a { .pair(.some(let x), _) => x, _ => b } }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (MATCH_EXPR (IDENT_EXPR) (MATCH_ARM (VARIANT_PATTERN (VARIANT_PATTERN_FIELDS (VARIANT_PATTERN (VARIANT_PATTERN_FIELDS (BIND_PATTERN))) (WILDCARD_PATTERN))) (IDENT_EXPR)) (MATCH_ARM (WILDCARD_PATTERN) (IDENT_EXPR))))))))
+

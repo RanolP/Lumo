@@ -1,0 +1,18 @@
+=== annotated paren expr ===
+:parse(Lumo)
+
+fn f() { (x : A) }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (PAREN_EXPR (IDENT_EXPR) (NAMED_TYPE_EXPR)))))))
+
+=== plain paren expr ===
+:parse(Lumo)
+
+fn f() { (x) }
+
+---
+
+(FILE (ITEM (FN_DECL (PARAM_LIST) (BLOCK_EXPR (EXPR_STMT (PAREN_EXPR (IDENT_EXPR)))))))
+

@@ -33,10 +33,20 @@ pretty-printer.
       `tests/fixtures/{syn,elab,type}/**/*.test`; `:parse(L)` with
       automatic parse → print → re-parse round-trip; `:fails(L)`;
       `LANGC_UPDATE=1` bless mode.
-- [x] Write `Lumo.tokens.syn.langue` / `Lumo.expr.syn.langue`; seed
-      fixtures from tree-sitter style and the legacy fixtures' intent
-      (D-32). (`Lumo.item.syn.langue` arrives when the slice grows
-      beyond fn decls.)
+- [x] Write `Lumo.tokens.syn.langue` / `Lumo.item.syn.langue` /
+      `Lumo.expr.syn.langue`; seed fixtures from tree-sitter style and
+      `legacy/crates/compiler/tests/fixtures/` (D-32).
+- [x] Legacy syntax migration (2026-07-11): the full legacy surface
+      grammar (items, attributes, extern, data/cap/impl/use, match,
+      if/else, handle, thunk/force, perform, bundle, lambdas, blocks +
+      let statements, patterns, types) and every case from the 8 legacy
+      syntax fixture files, under `tests/fixtures/syn/legacy/`.
+      LL(1) deviations from legacy: annotation folded into ParenExpr;
+      `impl Name = Target: Cap` left-factored (ImplAssign/ImplCap);
+      ProjTypeExpr folded into NamedTypeExpr; LetExpr atom dropped
+      (blocks own `let`); praat AssignExpr row (`x = e; body`) not
+      migrated — no fixture uses it; add with M4 parity if needed.
+      Verification loop: `scripts/verify.sh`.
 - [x] `langc check`: exhaustiveness (LL(1) `|`-arm overlap), unknown
       refs/labels, regex validity, praat sanity, kind-name collisions,
       extern coverage (every extern must be named in the definition,

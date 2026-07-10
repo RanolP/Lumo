@@ -27,17 +27,209 @@ struct Parser {
 }
 
 impl Parser {
+    fn can_parse_assoc_type_binding(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_TYPE)
+    }
+    fn parse_assoc_type_binding(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_TYPE, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        self.c.expect_into(SyntaxKind::OP_EQ, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        SyntaxNode::from_children(SyntaxKind::ASSOC_TYPE_BINDING, children)
+    }
+
+    fn can_parse_assoc_type_decl(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_TYPE)
+    }
+    fn parse_assoc_type_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_TYPE, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        SyntaxNode::from_children(SyntaxKind::ASSOC_TYPE_DECL, children)
+    }
+
+    fn can_parse_attribute(&self) -> bool {
+        self.c.at(SyntaxKind::HASH)
+    }
+    fn parse_attribute(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::HASH, &mut children);
+        self.c.expect_into(SyntaxKind::BRACKET_OPEN, &mut children);
+        if self.c.at(SyntaxKind::IDENT) {
+            self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        } else if self.c.at(SyntaxKind::KEYWORD_EXTERN) {
+            self.c.expect_into(SyntaxKind::KEYWORD_EXTERN, &mut children);
+        } else {
+            self.c.error_here("expected one of the alternatives".to_owned());
+        }
+        if self.c.at(SyntaxKind::OP_EQ) {
+            self.c.expect_into(SyntaxKind::OP_EQ, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        }
+        if self.c.at(SyntaxKind::PAREN_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_attribute_args())));
+        }
+        self.c.expect_into(SyntaxKind::BRACKET_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::ATTRIBUTE, children)
+    }
+
+    fn can_parse_attribute_arg_item(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_attribute_arg_item(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::OP_EQ) {
+            self.c.expect_into(SyntaxKind::OP_EQ, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        }
+        SyntaxNode::from_children(SyntaxKind::ATTRIBUTE_ARG_ITEM, children)
+    }
+
+    fn can_parse_attribute_args(&self) -> bool {
+        self.c.at(SyntaxKind::PAREN_OPEN)
+    }
+    fn parse_attribute_args(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::PAREN_OPEN, &mut children);
+        if self.c.at(SyntaxKind::IDENT) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_attribute_arg_item())));
+            while self.c.at(SyntaxKind::COMMA) {
+                self.c.bump_into(&mut children);
+                // Trailing separator is allowed.
+                if self.c.at(SyntaxKind::IDENT) {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_attribute_arg_item())));
+                } else {
+                    break;
+                }
+            }
+        }
+        self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::ATTRIBUTE_ARGS, children)
+    }
+
+    fn can_parse_bind_pattern(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_LET)
+    }
+    fn parse_bind_pattern(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_LET, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        SyntaxNode::from_children(SyntaxKind::BIND_PATTERN, children)
+    }
+
+    fn can_parse_block_expr(&self) -> bool {
+        self.c.at(SyntaxKind::BRACE_OPEN)
+    }
+    fn parse_block_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        loop {
+            if self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::IDENT, SyntaxKind::KEYWORD_BUNDLE, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_IF, SyntaxKind::KEYWORD_LET, SyntaxKind::KEYWORD_MATCH, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_THUNK, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN]) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_block_stmt())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::IDENT, SyntaxKind::KEYWORD_BUNDLE, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_IF, SyntaxKind::KEYWORD_LET, SyntaxKind::KEYWORD_MATCH, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_THUNK, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN]) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::BLOCK_EXPR, children)
+    }
+
+    fn can_parse_block_stmt(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::IDENT, SyntaxKind::KEYWORD_BUNDLE, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_IF, SyntaxKind::KEYWORD_LET, SyntaxKind::KEYWORD_MATCH, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_THUNK, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN])
+    }
+    fn parse_block_stmt(&mut self) -> SyntaxNode {
+        if self.can_parse_let_stmt() {
+            return self.parse_let_stmt();
+        }
+        if self.can_parse_expr_stmt() {
+            return self.parse_expr_stmt();
+        }
+        self.c.error_here("expected BlockStmt".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_bound_list(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_THUNK, SyntaxKind::PAREN_OPEN])
+    }
+    fn parse_bound_list(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        while self.c.at(SyntaxKind::OP_PLUS) {
+            self.c.bump_into(&mut children);
+            // Trailing separator is allowed.
+            if self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_THUNK, SyntaxKind::PAREN_OPEN]) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+            } else {
+                break;
+            }
+        }
+        SyntaxNode::from_children(SyntaxKind::BOUND_LIST, children)
+    }
+
+    fn can_parse_bundle_entry(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_FN)
+    }
+    fn parse_bundle_entry(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_FN, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_param_list())));
+        children.push(SyntaxElement::Node(Box::new(self.parse_fn_body())));
+        if self.c.at(SyntaxKind::SEMI) {
+            self.c.expect_into(SyntaxKind::SEMI, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::BUNDLE_ENTRY, children)
+    }
+
+    fn can_parse_bundle_expr(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_BUNDLE)
+    }
+    fn parse_bundle_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_BUNDLE, &mut children);
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        loop {
+            if self.c.at(SyntaxKind::KEYWORD_FN) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_bundle_entry())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at(SyntaxKind::KEYWORD_FN) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::BUNDLE_EXPR, children)
+    }
+
     fn can_parse_call_args(&self) -> bool {
-        self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN])
+        self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::IDENT, SyntaxKind::KEYWORD_BUNDLE, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_IF, SyntaxKind::KEYWORD_MATCH, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_THUNK, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN])
     }
     fn parse_call_args(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
-        if self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN]) {
+        if self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::IDENT, SyntaxKind::KEYWORD_BUNDLE, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_IF, SyntaxKind::KEYWORD_MATCH, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_THUNK, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN]) {
             children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
             while self.c.at(SyntaxKind::COMMA) {
                 self.c.bump_into(&mut children);
                 // Trailing separator is allowed.
-                if self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN]) {
+                if self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::IDENT, SyntaxKind::KEYWORD_BUNDLE, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_IF, SyntaxKind::KEYWORD_MATCH, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_THUNK, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN]) {
                     children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
                 } else {
                     break;
@@ -47,8 +239,143 @@ impl Parser {
         SyntaxNode::from_children(SyntaxKind::CALL_ARGS, children)
     }
 
+    fn can_parse_cap_annotation(&self) -> bool {
+        self.c.at(SyntaxKind::OP_SLASH)
+    }
+    fn parse_cap_annotation(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::OP_SLASH, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_cap_set())));
+        SyntaxNode::from_children(SyntaxKind::CAP_ANNOTATION, children)
+    }
+
+    fn can_parse_cap_decl(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_CAP)
+    }
+    fn parse_cap_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_CAP, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        loop {
+            if self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE]) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_cap_item())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE]) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::CAP_DECL, children)
+    }
+
+    fn can_parse_cap_item(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE])
+    }
+    fn parse_cap_item(&mut self) -> SyntaxNode {
+        if self.can_parse_assoc_type_decl() {
+            return self.parse_assoc_type_decl();
+        }
+        if self.can_parse_operation_decl() {
+            return self.parse_operation_decl();
+        }
+        self.c.error_here("expected CapItem".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_cap_set(&self) -> bool {
+        self.c.at(SyntaxKind::BRACE_OPEN)
+    }
+    fn parse_cap_set(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        loop {
+            if self.c.at(SyntaxKind::IDENT) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_cap_sig())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at(SyntaxKind::IDENT) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::CAP_SET, children)
+    }
+
+    fn can_parse_cap_sig(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_cap_sig(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::BRACKET_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_generic_args())));
+        }
+        SyntaxNode::from_children(SyntaxKind::CAP_SIG, children)
+    }
+
+    fn can_parse_data_decl(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_DATA)
+    }
+    fn parse_data_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_DATA, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::BRACKET_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_generic_params())));
+        }
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        loop {
+            if self.c.at_any(&[SyntaxKind::DOT, SyntaxKind::HASH]) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_variant())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at_any(&[SyntaxKind::DOT, SyntaxKind::HASH]) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::DATA_DECL, children)
+    }
+
+    fn can_parse_else_clause(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::KEYWORD_IF])
+    }
+    fn parse_else_clause(&mut self) -> SyntaxNode {
+        if self.can_parse_if_else_expr() {
+            return self.parse_if_else_expr();
+        }
+        if self.can_parse_block_expr() {
+            return self.parse_block_expr();
+        }
+        self.c.error_here("expected ElseClause".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
     fn can_parse_expr(&self) -> bool {
-        self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN])
+        self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::IDENT, SyntaxKind::KEYWORD_BUNDLE, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_IF, SyntaxKind::KEYWORD_MATCH, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_THUNK, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN])
     }
     fn parse_expr(&mut self) -> SyntaxNode {
         self.parse_expr_bp(0)
@@ -56,6 +383,21 @@ impl Parser {
     fn parse_expr_bp(&mut self, min_bp: u16) -> SyntaxNode {
         let mut lhs = self.parse_expr_atom();
         loop {
+            if self.c.at_any(&[SyntaxKind::DOT]) && 110 > min_bp {
+                let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
+                self.c.bump_into(&mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_member_name())));
+                lhs = SyntaxNode::from_children(SyntaxKind::EXPR_POSTFIX, children);
+                continue;
+            }
+            if self.c.at_any(&[SyntaxKind::PAREN_OPEN]) && 110 > min_bp {
+                let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
+                self.c.bump_into(&mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_call_args())));
+                self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
+                lhs = SyntaxNode::from_children(SyntaxKind::EXPR_POSTFIX, children);
+                continue;
+            }
             if self.c.at_any(&[SyntaxKind::OP_POW]) && 90 > min_bp {
                 let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
                 self.c.bump_into(&mut children);
@@ -63,7 +405,7 @@ impl Parser {
                 lhs = SyntaxNode::from_children(SyntaxKind::EXPR_INFIX, children);
                 continue;
             }
-            if self.c.at_any(&[SyntaxKind::OP_STAR, SyntaxKind::OP_SLASH]) && 79 > min_bp {
+            if self.c.at_any(&[SyntaxKind::OP_STAR, SyntaxKind::OP_SLASH, SyntaxKind::OP_PERCENT]) && 79 > min_bp {
                 let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
                 self.c.bump_into(&mut children);
                 children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(80))));
@@ -77,12 +419,25 @@ impl Parser {
                 lhs = SyntaxNode::from_children(SyntaxKind::EXPR_INFIX, children);
                 continue;
             }
-            if self.c.at_any(&[SyntaxKind::PAREN_OPEN]) && 110 > min_bp {
+            if self.c.at_any(&[SyntaxKind::OP_EQEQ, SyntaxKind::OP_NEQ, SyntaxKind::OP_LT, SyntaxKind::OP_LE, SyntaxKind::OP_GT, SyntaxKind::OP_GE]) && 59 > min_bp {
                 let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
                 self.c.bump_into(&mut children);
-                children.push(SyntaxElement::Node(Box::new(self.parse_call_args())));
-                self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
-                lhs = SyntaxNode::from_children(SyntaxKind::EXPR_POSTFIX, children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(60))));
+                lhs = SyntaxNode::from_children(SyntaxKind::EXPR_INFIX, children);
+                continue;
+            }
+            if self.c.at_any(&[SyntaxKind::OP_ANDAND]) && 49 > min_bp {
+                let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
+                self.c.bump_into(&mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(50))));
+                lhs = SyntaxNode::from_children(SyntaxKind::EXPR_INFIX, children);
+                continue;
+            }
+            if self.c.at_any(&[SyntaxKind::OP_OROR]) && 39 > min_bp {
+                let mut children = vec![SyntaxElement::Node(Box::new(lhs))];
+                self.c.bump_into(&mut children);
+                children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(40))));
+                lhs = SyntaxNode::from_children(SyntaxKind::EXPR_INFIX, children);
                 continue;
             }
             break;
@@ -96,9 +451,6 @@ impl Parser {
             children.push(SyntaxElement::Node(Box::new(self.parse_expr_bp(100))));
             return SyntaxNode::from_children(SyntaxKind::EXPR_PREFIX, children);
         }
-        if self.can_parse_let_expr() {
-            return self.parse_let_expr();
-        }
         if self.can_parse_ident_expr() {
             return self.parse_ident_expr();
         }
@@ -108,26 +460,201 @@ impl Parser {
         if self.can_parse_string_expr() {
             return self.parse_string_expr();
         }
+        if self.can_parse_thunk_expr() {
+            return self.parse_thunk_expr();
+        }
+        if self.can_parse_force_expr() {
+            return self.parse_force_expr();
+        }
+        if self.can_parse_perform_expr() {
+            return self.parse_perform_expr();
+        }
+        if self.can_parse_match_expr() {
+            return self.parse_match_expr();
+        }
+        if self.can_parse_handle_expr() {
+            return self.parse_handle_expr();
+        }
+        if self.can_parse_bundle_expr() {
+            return self.parse_bundle_expr();
+        }
+        if self.can_parse_if_else_expr() {
+            return self.parse_if_else_expr();
+        }
         if self.can_parse_paren_expr() {
             return self.parse_paren_expr();
+        }
+        if self.can_parse_lambda_expr() {
+            return self.parse_lambda_expr();
+        }
+        if self.can_parse_block_expr() {
+            return self.parse_block_expr();
         }
         self.recover_expr()
     }
 
-    fn can_parse_file(&self) -> bool {
+    fn can_parse_expr_body(&self) -> bool {
+        self.c.at(SyntaxKind::OP_EQ)
+    }
+    fn parse_expr_body(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::OP_EQ, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        SyntaxNode::from_children(SyntaxKind::EXPR_BODY, children)
+    }
+
+    fn can_parse_expr_stmt(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::IDENT, SyntaxKind::KEYWORD_BUNDLE, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_IF, SyntaxKind::KEYWORD_MATCH, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_THUNK, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::PAREN_OPEN])
+    }
+    fn parse_expr_stmt(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        if self.c.at(SyntaxKind::SEMI) {
+            self.c.expect_into(SyntaxKind::SEMI, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::EXPR_STMT, children)
+    }
+
+    fn can_parse_extern_block_item(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::HASH, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE])
+    }
+    fn parse_extern_block_item(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        loop {
+            if self.c.at(SyntaxKind::HASH) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_attribute())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE]) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE]) && !self.c.at(SyntaxKind::HASH) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        children.push(SyntaxElement::Node(Box::new(self.parse_extern_block_item_body())));
+        SyntaxNode::from_children(SyntaxKind::EXTERN_BLOCK_ITEM, children)
+    }
+
+    fn can_parse_extern_block_item_body(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE])
+    }
+    fn parse_extern_block_item_body(&mut self) -> SyntaxNode {
+        if self.can_parse_extern_type_tail() {
+            return self.parse_extern_type_tail();
+        }
+        if self.can_parse_extern_fn_tail() {
+            return self.parse_extern_fn_tail();
+        }
+        self.c.error_here("expected ExternBlockItemBody".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_extern_block_tail(&self) -> bool {
+        self.c.at(SyntaxKind::BRACE_OPEN)
+    }
+    fn parse_extern_block_tail(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        loop {
+            if self.c.at_any(&[SyntaxKind::HASH, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE]) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_extern_block_item())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at_any(&[SyntaxKind::HASH, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE]) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::EXTERN_BLOCK_TAIL, children)
+    }
+
+    fn can_parse_extern_decl(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_EXTERN)
+    }
+    fn parse_extern_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_EXTERN, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_extern_rest())));
+        SyntaxNode::from_children(SyntaxKind::EXTERN_DECL, children)
+    }
+
+    fn can_parse_extern_fn_tail(&self) -> bool {
         self.c.at(SyntaxKind::KEYWORD_FN)
+    }
+    fn parse_extern_fn_tail(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_FN, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_param_list())));
+        if self.c.at(SyntaxKind::COLON) {
+            self.c.expect_into(SyntaxKind::COLON, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        if self.c.at(SyntaxKind::OP_SLASH) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_cap_annotation())));
+        }
+        if self.c.at(SyntaxKind::SEMI) {
+            self.c.expect_into(SyntaxKind::SEMI, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::EXTERN_FN_TAIL, children)
+    }
+
+    fn can_parse_extern_rest(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE])
+    }
+    fn parse_extern_rest(&mut self) -> SyntaxNode {
+        if self.can_parse_extern_type_tail() {
+            return self.parse_extern_type_tail();
+        }
+        if self.can_parse_extern_fn_tail() {
+            return self.parse_extern_fn_tail();
+        }
+        if self.can_parse_extern_block_tail() {
+            return self.parse_extern_block_tail();
+        }
+        self.c.error_here("expected ExternRest".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_extern_type_tail(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_TYPE)
+    }
+    fn parse_extern_type_tail(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_TYPE, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::SEMI) {
+            self.c.expect_into(SyntaxKind::SEMI, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::EXTERN_TYPE_TAIL, children)
+    }
+
+    fn can_parse_file(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::HASH, SyntaxKind::KEYWORD_CAP, SyntaxKind::KEYWORD_DATA, SyntaxKind::KEYWORD_EXTERN, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_IMPL, SyntaxKind::KEYWORD_USE])
     }
     fn parse_file(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         loop {
-            if self.c.at(SyntaxKind::KEYWORD_FN) {
-                children.push(SyntaxElement::Node(Box::new(self.parse_fn_decl())));
+            if self.c.at_any(&[SyntaxKind::HASH, SyntaxKind::KEYWORD_CAP, SyntaxKind::KEYWORD_DATA, SyntaxKind::KEYWORD_EXTERN, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_IMPL, SyntaxKind::KEYWORD_USE]) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_item())));
                 continue;
             }
             if !self.c.eof() && !false {
                 self.c.error_here("unexpected input".to_owned());
                 let mut bad = Vec::new();
-                while !self.c.eof() && !false && !self.c.at(SyntaxKind::KEYWORD_FN) {
+                while !self.c.eof() && !false && !self.c.at_any(&[SyntaxKind::HASH, SyntaxKind::KEYWORD_CAP, SyntaxKind::KEYWORD_DATA, SyntaxKind::KEYWORD_EXTERN, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_IMPL, SyntaxKind::KEYWORD_USE]) {
                     self.c.bump_into(&mut bad);
                 }
                 children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
@@ -138,6 +665,20 @@ impl Parser {
         SyntaxNode::from_children(SyntaxKind::FILE, children)
     }
 
+    fn can_parse_fn_body(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::OP_EQ])
+    }
+    fn parse_fn_body(&mut self) -> SyntaxNode {
+        if self.can_parse_block_expr() {
+            return self.parse_block_expr();
+        }
+        if self.can_parse_expr_body() {
+            return self.parse_expr_body();
+        }
+        self.c.error_here("expected FnBody".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
     fn can_parse_fn_decl(&self) -> bool {
         self.c.at(SyntaxKind::KEYWORD_FN)
     }
@@ -145,6 +686,491 @@ impl Parser {
         let mut children = Vec::new();
         self.c.expect_into(SyntaxKind::KEYWORD_FN, &mut children);
         self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::BRACKET_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_generic_params())));
+        }
+        children.push(SyntaxElement::Node(Box::new(self.parse_param_list())));
+        if self.c.at(SyntaxKind::COLON) {
+            self.c.expect_into(SyntaxKind::COLON, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        if self.c.at(SyntaxKind::OP_SLASH) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_cap_annotation())));
+        }
+        children.push(SyntaxElement::Node(Box::new(self.parse_fn_body())));
+        SyntaxNode::from_children(SyntaxKind::FN_DECL, children)
+    }
+
+    fn can_parse_fn_type_expr(&self) -> bool {
+        self.c.at(SyntaxKind::PAREN_OPEN)
+    }
+    fn parse_fn_type_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::PAREN_OPEN, &mut children);
+        if self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_THUNK, SyntaxKind::PAREN_OPEN]) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+            while self.c.at(SyntaxKind::COMMA) {
+                self.c.bump_into(&mut children);
+                // Trailing separator is allowed.
+                if self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_THUNK, SyntaxKind::PAREN_OPEN]) {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+                } else {
+                    break;
+                }
+            }
+        }
+        self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
+        self.c.expect_into(SyntaxKind::ARROW_THIN, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        if self.c.at(SyntaxKind::OP_SLASH) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_cap_annotation())));
+        }
+        SyntaxNode::from_children(SyntaxKind::FN_TYPE_EXPR, children)
+    }
+
+    fn can_parse_force_expr(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_FORCE)
+    }
+    fn parse_force_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_FORCE, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        SyntaxNode::from_children(SyntaxKind::FORCE_EXPR, children)
+    }
+
+    fn can_parse_generic_args(&self) -> bool {
+        self.c.at(SyntaxKind::BRACKET_OPEN)
+    }
+    fn parse_generic_args(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::BRACKET_OPEN, &mut children);
+        if self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_THUNK, SyntaxKind::PAREN_OPEN]) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+            while self.c.at(SyntaxKind::COMMA) {
+                self.c.bump_into(&mut children);
+                // Trailing separator is allowed.
+                if self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_THUNK, SyntaxKind::PAREN_OPEN]) {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+                } else {
+                    break;
+                }
+            }
+        }
+        self.c.expect_into(SyntaxKind::BRACKET_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::GENERIC_ARGS, children)
+    }
+
+    fn can_parse_generic_param(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_generic_param(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::COLON) {
+            self.c.expect_into(SyntaxKind::COLON, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_bound_list())));
+        }
+        SyntaxNode::from_children(SyntaxKind::GENERIC_PARAM, children)
+    }
+
+    fn can_parse_generic_params(&self) -> bool {
+        self.c.at(SyntaxKind::BRACKET_OPEN)
+    }
+    fn parse_generic_params(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::BRACKET_OPEN, &mut children);
+        if self.c.at(SyntaxKind::IDENT) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_generic_param())));
+            while self.c.at(SyntaxKind::COMMA) {
+                self.c.bump_into(&mut children);
+                // Trailing separator is allowed.
+                if self.c.at(SyntaxKind::IDENT) {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_generic_param())));
+                } else {
+                    break;
+                }
+            }
+        }
+        self.c.expect_into(SyntaxKind::BRACKET_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::GENERIC_PARAMS, children)
+    }
+
+    fn can_parse_handle_expr(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_HANDLE)
+    }
+    fn parse_handle_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_HANDLE, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::KEYWORD_FOR) {
+            self.c.expect_into(SyntaxKind::KEYWORD_FOR, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        self.c.expect_into(SyntaxKind::KEYWORD_WITH, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        self.c.expect_into(SyntaxKind::KEYWORD_IN, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        SyntaxNode::from_children(SyntaxKind::HANDLE_EXPR, children)
+    }
+
+    fn can_parse_ident_expr(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_ident_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        SyntaxNode::from_children(SyntaxKind::IDENT_EXPR, children)
+    }
+
+    fn can_parse_ident_pattern(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_ident_pattern(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        SyntaxNode::from_children(SyntaxKind::IDENT_PATTERN, children)
+    }
+
+    fn can_parse_if_else_expr(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_IF)
+    }
+    fn parse_if_else_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_IF, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        children.push(SyntaxElement::Node(Box::new(self.parse_block_expr())));
+        if self.c.at(SyntaxKind::KEYWORD_ELSE) {
+            self.c.expect_into(SyntaxKind::KEYWORD_ELSE, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_else_clause())));
+        }
+        SyntaxNode::from_children(SyntaxKind::IF_ELSE_EXPR, children)
+    }
+
+    fn can_parse_impl_assign(&self) -> bool {
+        self.c.at(SyntaxKind::OP_EQ)
+    }
+    fn parse_impl_assign(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::OP_EQ, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        SyntaxNode::from_children(SyntaxKind::IMPL_ASSIGN, children)
+    }
+
+    fn can_parse_impl_cap(&self) -> bool {
+        self.c.at(SyntaxKind::COLON)
+    }
+    fn parse_impl_cap(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::COLON, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        SyntaxNode::from_children(SyntaxKind::IMPL_CAP, children)
+    }
+
+    fn can_parse_impl_decl(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_IMPL)
+    }
+    fn parse_impl_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_IMPL, &mut children);
+        if self.c.at(SyntaxKind::BRACKET_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_generic_params())));
+        }
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        if self.c.at(SyntaxKind::OP_EQ) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_impl_assign())));
+        }
+        if self.c.at(SyntaxKind::COLON) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_impl_cap())));
+        }
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        loop {
+            if self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE]) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_impl_item())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE]) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::IMPL_DECL, children)
+    }
+
+    fn can_parse_impl_item(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE])
+    }
+    fn parse_impl_item(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Node(Box::new(self.parse_impl_item_body())));
+        if self.c.at(SyntaxKind::SEMI) {
+            self.c.expect_into(SyntaxKind::SEMI, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::IMPL_ITEM, children)
+    }
+
+    fn can_parse_impl_item_body(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_TYPE])
+    }
+    fn parse_impl_item_body(&mut self) -> SyntaxNode {
+        if self.can_parse_assoc_type_binding() {
+            return self.parse_assoc_type_binding();
+        }
+        if self.can_parse_impl_method() {
+            return self.parse_impl_method();
+        }
+        self.c.error_here("expected ImplItemBody".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_impl_method(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_FN)
+    }
+    fn parse_impl_method(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_FN, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_param_list())));
+        if self.c.at(SyntaxKind::COLON) {
+            self.c.expect_into(SyntaxKind::COLON, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        children.push(SyntaxElement::Node(Box::new(self.parse_fn_body())));
+        SyntaxNode::from_children(SyntaxKind::IMPL_METHOD, children)
+    }
+
+    fn can_parse_item(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::HASH, SyntaxKind::KEYWORD_CAP, SyntaxKind::KEYWORD_DATA, SyntaxKind::KEYWORD_EXTERN, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_IMPL, SyntaxKind::KEYWORD_USE])
+    }
+    fn parse_item(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        loop {
+            if self.c.at(SyntaxKind::HASH) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_attribute())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at_any(&[SyntaxKind::KEYWORD_CAP, SyntaxKind::KEYWORD_DATA, SyntaxKind::KEYWORD_EXTERN, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_IMPL, SyntaxKind::KEYWORD_USE]) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at_any(&[SyntaxKind::KEYWORD_CAP, SyntaxKind::KEYWORD_DATA, SyntaxKind::KEYWORD_EXTERN, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_IMPL, SyntaxKind::KEYWORD_USE]) && !self.c.at(SyntaxKind::HASH) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        children.push(SyntaxElement::Node(Box::new(self.parse_item_body())));
+        SyntaxNode::from_children(SyntaxKind::ITEM, children)
+    }
+
+    fn can_parse_item_body(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::KEYWORD_CAP, SyntaxKind::KEYWORD_DATA, SyntaxKind::KEYWORD_EXTERN, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_IMPL, SyntaxKind::KEYWORD_USE])
+    }
+    fn parse_item_body(&mut self) -> SyntaxNode {
+        if self.can_parse_extern_decl() {
+            return self.parse_extern_decl();
+        }
+        if self.can_parse_data_decl() {
+            return self.parse_data_decl();
+        }
+        if self.can_parse_cap_decl() {
+            return self.parse_cap_decl();
+        }
+        if self.can_parse_fn_decl() {
+            return self.parse_fn_decl();
+        }
+        if self.can_parse_use_decl() {
+            return self.parse_use_decl();
+        }
+        if self.can_parse_impl_decl() {
+            return self.parse_impl_decl();
+        }
+        self.c.error_here("expected ItemBody".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_lambda_expr(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_FN)
+    }
+    fn parse_lambda_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_FN, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_lambda_param_list())));
+        children.push(SyntaxElement::Node(Box::new(self.parse_fn_body())));
+        SyntaxNode::from_children(SyntaxKind::LAMBDA_EXPR, children)
+    }
+
+    fn can_parse_lambda_param(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_lambda_param(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::COLON) {
+            self.c.expect_into(SyntaxKind::COLON, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        SyntaxNode::from_children(SyntaxKind::LAMBDA_PARAM, children)
+    }
+
+    fn can_parse_lambda_param_list(&self) -> bool {
+        self.c.at(SyntaxKind::PAREN_OPEN)
+    }
+    fn parse_lambda_param_list(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::PAREN_OPEN, &mut children);
+        if self.c.at(SyntaxKind::IDENT) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_lambda_param())));
+            while self.c.at(SyntaxKind::COMMA) {
+                self.c.bump_into(&mut children);
+                // Trailing separator is allowed.
+                if self.c.at(SyntaxKind::IDENT) {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_lambda_param())));
+                } else {
+                    break;
+                }
+            }
+        }
+        self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::LAMBDA_PARAM_LIST, children)
+    }
+
+    fn can_parse_let_stmt(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_LET)
+    }
+    fn parse_let_stmt(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_LET, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::COLON) {
+            self.c.expect_into(SyntaxKind::COLON, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        self.c.expect_into(SyntaxKind::OP_EQ, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        self.c.expect_into(SyntaxKind::SEMI, &mut children);
+        SyntaxNode::from_children(SyntaxKind::LET_STMT, children)
+    }
+
+    fn can_parse_match_arm(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::DOT, SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::UNDERSCORE])
+    }
+    fn parse_match_arm(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Node(Box::new(self.parse_pattern())));
+        self.c.expect_into(SyntaxKind::ARROW_FAT, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        if self.c.at(SyntaxKind::COMMA) {
+            self.c.expect_into(SyntaxKind::COMMA, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::MATCH_ARM, children)
+    }
+
+    fn can_parse_match_expr(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_MATCH)
+    }
+    fn parse_match_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_MATCH, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        loop {
+            if self.c.at_any(&[SyntaxKind::DOT, SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::UNDERSCORE]) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_match_arm())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at_any(&[SyntaxKind::DOT, SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::UNDERSCORE]) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::MATCH_EXPR, children)
+    }
+
+    fn can_parse_member_name(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_member_name(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        SyntaxNode::from_children(SyntaxKind::MEMBER_NAME, children)
+    }
+
+    fn can_parse_named_type_expr(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_named_type_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::BRACKET_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_generic_args())));
+        }
+        if self.c.at(SyntaxKind::DOT) {
+            self.c.expect_into(SyntaxKind::DOT, &mut children);
+            self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::NAMED_TYPE_EXPR, children)
+    }
+
+    fn can_parse_number_expr(&self) -> bool {
+        self.c.at(SyntaxKind::LIT_NUMBER)
+    }
+    fn parse_number_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::LIT_NUMBER, &mut children);
+        SyntaxNode::from_children(SyntaxKind::NUMBER_EXPR, children)
+    }
+
+    fn can_parse_operation_decl(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_FN)
+    }
+    fn parse_operation_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_FN, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_param_list())));
+        if self.c.at(SyntaxKind::COLON) {
+            self.c.expect_into(SyntaxKind::COLON, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        if self.c.at(SyntaxKind::SEMI) {
+            self.c.expect_into(SyntaxKind::SEMI, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::OPERATION_DECL, children)
+    }
+
+    fn can_parse_param(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_param(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::COLON) {
+            self.c.expect_into(SyntaxKind::COLON, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
+        SyntaxNode::from_children(SyntaxKind::PARAM, children)
+    }
+
+    fn can_parse_param_list(&self) -> bool {
+        self.c.at(SyntaxKind::PAREN_OPEN)
+    }
+    fn parse_param_list(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
         self.c.expect_into(SyntaxKind::PAREN_OPEN, &mut children);
         if self.c.at(SyntaxKind::IDENT) {
             children.push(SyntaxElement::Node(Box::new(self.parse_param())));
@@ -159,50 +1185,7 @@ impl Parser {
             }
         }
         self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
-        self.c.expect_into(SyntaxKind::OP_EQ, &mut children);
-        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
-        SyntaxNode::from_children(SyntaxKind::FN_DECL, children)
-    }
-
-    fn can_parse_ident_expr(&self) -> bool {
-        self.c.at(SyntaxKind::IDENT)
-    }
-    fn parse_ident_expr(&mut self) -> SyntaxNode {
-        let mut children = Vec::new();
-        self.c.expect_into(SyntaxKind::IDENT, &mut children);
-        SyntaxNode::from_children(SyntaxKind::IDENT_EXPR, children)
-    }
-
-    fn can_parse_let_expr(&self) -> bool {
-        self.c.at(SyntaxKind::KEYWORD_LET)
-    }
-    fn parse_let_expr(&mut self) -> SyntaxNode {
-        let mut children = Vec::new();
-        self.c.expect_into(SyntaxKind::KEYWORD_LET, &mut children);
-        self.c.expect_into(SyntaxKind::IDENT, &mut children);
-        self.c.expect_into(SyntaxKind::OP_EQ, &mut children);
-        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
-        self.c.expect_into(SyntaxKind::KEYWORD_IN, &mut children);
-        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
-        SyntaxNode::from_children(SyntaxKind::LET_EXPR, children)
-    }
-
-    fn can_parse_number_expr(&self) -> bool {
-        self.c.at(SyntaxKind::LIT_NUMBER)
-    }
-    fn parse_number_expr(&mut self) -> SyntaxNode {
-        let mut children = Vec::new();
-        self.c.expect_into(SyntaxKind::LIT_NUMBER, &mut children);
-        SyntaxNode::from_children(SyntaxKind::NUMBER_EXPR, children)
-    }
-
-    fn can_parse_param(&self) -> bool {
-        self.c.at(SyntaxKind::IDENT)
-    }
-    fn parse_param(&mut self) -> SyntaxNode {
-        let mut children = Vec::new();
-        self.c.expect_into(SyntaxKind::IDENT, &mut children);
-        SyntaxNode::from_children(SyntaxKind::PARAM, children)
+        SyntaxNode::from_children(SyntaxKind::PARAM_LIST, children)
     }
 
     fn can_parse_paren_expr(&self) -> bool {
@@ -212,8 +1195,42 @@ impl Parser {
         let mut children = Vec::new();
         self.c.expect_into(SyntaxKind::PAREN_OPEN, &mut children);
         children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        if self.c.at(SyntaxKind::COLON) {
+            self.c.expect_into(SyntaxKind::COLON, &mut children);
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        }
         self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
         SyntaxNode::from_children(SyntaxKind::PAREN_EXPR, children)
+    }
+
+    fn can_parse_pattern(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::DOT, SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::UNDERSCORE])
+    }
+    fn parse_pattern(&mut self) -> SyntaxNode {
+        if self.can_parse_variant_pattern() {
+            return self.parse_variant_pattern();
+        }
+        if self.can_parse_bind_pattern() {
+            return self.parse_bind_pattern();
+        }
+        if self.can_parse_wildcard_pattern() {
+            return self.parse_wildcard_pattern();
+        }
+        if self.can_parse_ident_pattern() {
+            return self.parse_ident_pattern();
+        }
+        self.c.error_here("expected Pattern".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_perform_expr(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_PERFORM)
+    }
+    fn parse_perform_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_PERFORM, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        SyntaxNode::from_children(SyntaxKind::PERFORM_EXPR, children)
     }
 
     fn can_parse_string_expr(&self) -> bool {
@@ -225,11 +1242,236 @@ impl Parser {
         SyntaxNode::from_children(SyntaxKind::STRING_EXPR, children)
     }
 
+    fn can_parse_thunk_expr(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_THUNK)
+    }
+    fn parse_thunk_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_THUNK, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
+        SyntaxNode::from_children(SyntaxKind::THUNK_EXPR, children)
+    }
+
+    fn can_parse_thunk_type_expr(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_THUNK)
+    }
+    fn parse_thunk_type_expr(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_THUNK, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+        SyntaxNode::from_children(SyntaxKind::THUNK_TYPE_EXPR, children)
+    }
+
+    fn can_parse_type_expr(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_THUNK, SyntaxKind::PAREN_OPEN])
+    }
+    fn parse_type_expr(&mut self) -> SyntaxNode {
+        if self.can_parse_thunk_type_expr() {
+            return self.parse_thunk_type_expr();
+        }
+        if self.can_parse_fn_type_expr() {
+            return self.parse_fn_type_expr();
+        }
+        if self.can_parse_named_type_expr() {
+            return self.parse_named_type_expr();
+        }
+        self.c.error_here("expected TypeExpr".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_use_decl(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_USE)
+    }
+    fn parse_use_decl(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_USE, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_use_path())));
+        self.c.expect_into(SyntaxKind::SEMI, &mut children);
+        SyntaxNode::from_children(SyntaxKind::USE_DECL, children)
+    }
+
+    fn can_parse_use_name_item(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_use_name_item(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        SyntaxNode::from_children(SyntaxKind::USE_NAME_ITEM, children)
+    }
+
+    fn can_parse_use_path(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_use_path(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::DOT) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_use_path_rest())));
+        }
+        SyntaxNode::from_children(SyntaxKind::USE_PATH, children)
+    }
+
+    fn can_parse_use_path_branch(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_use_path_branch(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::DOT) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_use_path_rest())));
+        }
+        SyntaxNode::from_children(SyntaxKind::USE_PATH_BRANCH, children)
+    }
+
+    fn can_parse_use_path_item(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::BRACE_OPEN, SyntaxKind::IDENT])
+    }
+    fn parse_use_path_item(&mut self) -> SyntaxNode {
+        if self.can_parse_use_path_branch() {
+            return self.parse_use_path_branch();
+        }
+        if self.can_parse_use_tree() {
+            return self.parse_use_tree();
+        }
+        self.c.error_here("expected UsePathItem".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_use_path_rest(&self) -> bool {
+        self.c.at(SyntaxKind::DOT)
+    }
+    fn parse_use_path_rest(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::DOT, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_use_path_item())));
+        SyntaxNode::from_children(SyntaxKind::USE_PATH_REST, children)
+    }
+
+    fn can_parse_use_tree(&self) -> bool {
+        self.c.at(SyntaxKind::BRACE_OPEN)
+    }
+    fn parse_use_tree(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        if self.c.at(SyntaxKind::IDENT) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_use_name_item())));
+            while self.c.at(SyntaxKind::COMMA) {
+                self.c.bump_into(&mut children);
+                // Trailing separator is allowed.
+                if self.c.at(SyntaxKind::IDENT) {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_use_name_item())));
+                } else {
+                    break;
+                }
+            }
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::USE_TREE, children)
+    }
+
+    fn can_parse_variant(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::DOT, SyntaxKind::HASH])
+    }
+    fn parse_variant(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        loop {
+            if self.c.at(SyntaxKind::HASH) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_attribute())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::DOT) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::DOT) && !self.c.at(SyntaxKind::HASH) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::DOT, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::PAREN_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_variant_fields())));
+        }
+        if self.c.at(SyntaxKind::COMMA) {
+            self.c.expect_into(SyntaxKind::COMMA, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::VARIANT, children)
+    }
+
+    fn can_parse_variant_fields(&self) -> bool {
+        self.c.at(SyntaxKind::PAREN_OPEN)
+    }
+    fn parse_variant_fields(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::PAREN_OPEN, &mut children);
+        if self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_THUNK, SyntaxKind::PAREN_OPEN]) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+            while self.c.at(SyntaxKind::COMMA) {
+                self.c.bump_into(&mut children);
+                // Trailing separator is allowed.
+                if self.c.at_any(&[SyntaxKind::IDENT, SyntaxKind::KEYWORD_THUNK, SyntaxKind::PAREN_OPEN]) {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_type_expr())));
+                } else {
+                    break;
+                }
+            }
+        }
+        self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::VARIANT_FIELDS, children)
+    }
+
+    fn can_parse_variant_pattern(&self) -> bool {
+        self.c.at(SyntaxKind::DOT)
+    }
+    fn parse_variant_pattern(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::DOT, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::PAREN_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_variant_pattern_fields())));
+        }
+        SyntaxNode::from_children(SyntaxKind::VARIANT_PATTERN, children)
+    }
+
+    fn can_parse_variant_pattern_fields(&self) -> bool {
+        self.c.at(SyntaxKind::PAREN_OPEN)
+    }
+    fn parse_variant_pattern_fields(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::PAREN_OPEN, &mut children);
+        if self.c.at_any(&[SyntaxKind::DOT, SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::UNDERSCORE]) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_pattern())));
+            while self.c.at(SyntaxKind::COMMA) {
+                self.c.bump_into(&mut children);
+                // Trailing separator is allowed.
+                if self.c.at_any(&[SyntaxKind::DOT, SyntaxKind::IDENT, SyntaxKind::KEYWORD_LET, SyntaxKind::UNDERSCORE]) {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_pattern())));
+                } else {
+                    break;
+                }
+            }
+        }
+        self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::VARIANT_PATTERN_FIELDS, children)
+    }
+
+    fn can_parse_wildcard_pattern(&self) -> bool {
+        self.c.at(SyntaxKind::UNDERSCORE)
+    }
+    fn parse_wildcard_pattern(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::UNDERSCORE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::WILDCARD_PATTERN, children)
+    }
+
     /// Default recovery for `extern recover Expr`.
     fn recover_expr(&mut self) -> SyntaxNode {
         self.c.error_here("expected Expr".to_owned());
         let mut children = Vec::new();
-        while !self.c.eof() && !self.c.at_any(&[SyntaxKind::COMMA, SyntaxKind::IDENT, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_IN, SyntaxKind::KEYWORD_LET, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_BANG, SyntaxKind::OP_MINUS, SyntaxKind::OP_PLUS, SyntaxKind::OP_POW, SyntaxKind::OP_SLASH, SyntaxKind::OP_STAR, SyntaxKind::PAREN_CLOSE, SyntaxKind::PAREN_OPEN]) {
+        while !self.c.eof() && !self.c.at_any(&[SyntaxKind::BRACE_CLOSE, SyntaxKind::BRACE_OPEN, SyntaxKind::BRACKET_CLOSE, SyntaxKind::COLON, SyntaxKind::COMMA, SyntaxKind::DOT, SyntaxKind::HASH, SyntaxKind::IDENT, SyntaxKind::KEYWORD_BUNDLE, SyntaxKind::KEYWORD_CAP, SyntaxKind::KEYWORD_DATA, SyntaxKind::KEYWORD_EXTERN, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_IF, SyntaxKind::KEYWORD_IMPL, SyntaxKind::KEYWORD_IN, SyntaxKind::KEYWORD_LET, SyntaxKind::KEYWORD_MATCH, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_THUNK, SyntaxKind::KEYWORD_TYPE, SyntaxKind::KEYWORD_USE, SyntaxKind::LIT_NUMBER, SyntaxKind::LIT_STRING, SyntaxKind::OP_ANDAND, SyntaxKind::OP_BANG, SyntaxKind::OP_EQEQ, SyntaxKind::OP_GE, SyntaxKind::OP_GT, SyntaxKind::OP_LE, SyntaxKind::OP_LT, SyntaxKind::OP_MINUS, SyntaxKind::OP_NEQ, SyntaxKind::OP_OROR, SyntaxKind::OP_PERCENT, SyntaxKind::OP_PLUS, SyntaxKind::OP_POW, SyntaxKind::OP_SLASH, SyntaxKind::OP_STAR, SyntaxKind::PAREN_CLOSE, SyntaxKind::PAREN_OPEN, SyntaxKind::SEMI, SyntaxKind::UNDERSCORE]) {
             self.c.bump_into(&mut children);
         }
         SyntaxNode::from_children(SyntaxKind::ERROR, children)
