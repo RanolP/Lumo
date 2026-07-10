@@ -124,8 +124,16 @@ fn check_pair(
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Binding {
-    Scalar,
-    List,
+    TokenScalar,
+    NodeScalar,
+    TokenList,
+    NodeList,
+}
+
+impl Binding {
+    fn is_list(self) -> bool {
+        matches!(self, Binding::TokenList | Binding::NodeList)
+    }
 }
 
 /// The root of a pattern must be a concrete node — dispatch is by root
@@ -178,8 +186,17 @@ fn check_pat(
     }
     match pat {
         Pat::Var { name, span } | Pat::ListVar { name, span } => {
-            let kind =
-                if matches!(pat, Pat::ListVar { .. }) { Binding::List } else { Binding::Scalar };
+            let is_list = matches!(pat, Pat::ListVar { .. });
+            let is_token = !matches!(
+                expected,
+                None | Some(Field { target: FieldTarget::Node(_), .. })
+            );
+            let kind = match (is_token, is_list) {
+                (true, false) => Binding::TokenScalar,
+                (true, true) => Binding::TokenList,
+                (false, false) => Binding::NodeScalar,
+                (false, true) => Binding::NodeList,
+            };
             if bindings.insert(name.clone(), kind).is_some() {
                 error(diags, *span, format!("metavariable `${name}` is bound twice"));
             }
@@ -278,7 +295,7 @@ fn check_con(
         let ok = match con {
             Con::ListVarTo { .. } => field.many,
             Con::Var { name, .. } => {
-                (ctx.bindings.get(name) == Some(&Binding::List)) == field.many
+                ctx.bindings.get(name).is_none_or(|b| b.is_list() == field.many)
             }
             _ => !field.many,
         };
@@ -300,10 +317,16 @@ fn check_con(
             ),
             Some(kind) if *kind != want => {
                 let msg = match want {
-                    Binding::Scalar => format!(
+                    _ if kind.is_list() && !want.is_list() => format!(
                         "`${name}` is bound as a list — use `[${name}* to L]`"
                     ),
-                    Binding::List => format!("`${name}` is not bound as a list"),
+                    _ if !kind.is_list() && want.is_list() => {
+                        format!("`${name}` is not bound as a list")
+                    }
+                    Binding::NodeScalar | Binding::NodeList => format!(
+                        "`${name}` is bound to a token — only node captures can recurse"
+                    ),
+                    _ => format!("`${name}` has the wrong binding kind here"),
                 };
                 error(diags, span, msg);
             }
@@ -312,12 +335,18 @@ fn check_con(
     };
     match con {
         Con::Var { name, span } => {
-            if !ctx.bindings.contains_key(name) {
-                error(
+            match ctx.bindings.get(name) {
+                None => error(
                     diags,
                     *span,
                     format!("metavariable `${name}` is not bound by the pattern"),
-                );
+                ),
+                Some(b) if b.is_list() && expected.is_none() => error(
+                    diags,
+                    *span,
+                    format!("`${name}` is a list — it cannot be the whole construction"),
+                ),
+                Some(_) => {}
             }
         }
         Con::VarTo { name, lang, span } => match ctx.rec_target {
@@ -327,7 +356,7 @@ fn check_con(
                 "`to` recursion is not available in `between` relations".to_owned(),
             ),
             Some(target) => {
-                check_bound(diags, name, *span, Binding::Scalar);
+                check_bound(diags, name, *span, Binding::NodeScalar);
                 if lang != target {
                     error(
                         diags,
@@ -344,7 +373,7 @@ fn check_con(
                 "`to` recursion is not available in `between` relations".to_owned(),
             ),
             Some(target) => {
-                check_bound(diags, name, *span, Binding::List);
+                check_bound(diags, name, *span, Binding::NodeList);
                 if lang != target {
                     error(
                         diags,
@@ -355,8 +384,15 @@ fn check_con(
             }
         },
         Con::Subst { target, var, replacement, span } => {
-            for name in [target, var, replacement] {
-                check_bound(diags, name, *span, Binding::Scalar);
+            check_bound(diags, target, *span, Binding::NodeScalar);
+            for name in [var, replacement] {
+                if !ctx.bindings.contains_key(name) {
+                    error(
+                        diags,
+                        *span,
+                        format!("metavariable `${name}` is not bound by the pattern"),
+                    );
+                }
             }
         }
         Con::Lit { text, span } => {

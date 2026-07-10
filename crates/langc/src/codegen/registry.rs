@@ -1,15 +1,21 @@
-//! Registry emitter: `name → parse-report fn` for every language, so the
-//! corpus harness dispatches `:parse(L)` without knowing any language.
+//! Registry emitter: `name → parse-report fn` for every language (so the
+//! corpus harness dispatches `:parse(L)`), plus `(from, to) → elab-report
+//! fn` for every elab pair (`:elab(A -> B)`).
 
 use crate::project::model::Definition;
 
+use super::elab::pair_module;
 use super::naming::module_name;
 use super::Buf;
 
 pub fn generate(def: &Definition) -> String {
     let mut buf = Buf::new();
     buf.blank();
-    buf.line("use langue_rt::ParseReport;");
+    if def.elabs.is_empty() {
+        buf.line("use langue_rt::ParseReport;");
+    } else {
+        buf.line("use langue_rt::{ElabReport, ParseReport};");
+    }
     buf.blank();
     buf.open("pub struct LanguageOps {");
     buf.line("pub name: &'static str,");
@@ -28,6 +34,38 @@ pub fn generate(def: &Definition) -> String {
     buf.open("pub fn language(name: &str) -> Option<&'static LanguageOps> {");
     buf.line("LANGUAGES.iter().find(|l| l.name == name)");
     buf.close("}");
+    if !def.elabs.is_empty() {
+        buf.blank();
+        buf.open("pub struct ElabOps {");
+        buf.line("pub from: &'static str,");
+        buf.line("pub to: &'static str,");
+        buf.line("pub elab_report: fn(&str) -> ElabReport,");
+        buf.close("}");
+        buf.blank();
+        buf.open("pub static ELABS: &[ElabOps] = &[");
+        for (from, to) in def.elabs.keys() {
+            buf.line(&format!(
+                "ElabOps {{ from: {from:?}, to: {to:?}, elab_report: {}_elab_report }},",
+                pair_module(from, to)
+            ));
+        }
+        buf.close("];");
+        buf.blank();
+        buf.open("pub fn elab(from: &str, to: &str) -> Option<&'static ElabOps> {");
+        buf.line("ELABS.iter().find(|e| e.from == from && e.to == to)");
+        buf.close("}");
+        for (from, to) in def.elabs.keys() {
+            let module = pair_module(from, to);
+            buf.blank();
+            buf.line(&format!(
+                "/// Externs come from the handwritten `crate::elab_externs::{module}()`."
+            ));
+            buf.open(&format!("fn {module}_elab_report(text: &str) -> ElabReport {{"));
+            buf.line(&format!("let mut externs = crate::elab_externs::{module}();"));
+            buf.line(&format!("crate::elab::{module}::elab(text, externs.as_mut())"));
+            buf.close("}");
+        }
+    }
     for lang_name in def.languages.keys() {
         let module = module_name(lang_name);
         buf.blank();

@@ -3,6 +3,7 @@
 
 pub mod ast;
 pub mod builder;
+pub mod elab;
 pub mod lexer;
 pub mod lossless;
 pub mod naming;
@@ -33,6 +34,15 @@ pub fn generate(def: &Definition) -> Vec<(String, String)> {
         files.push((format!("{module}/lossless.rs"), lossless::generate()));
         files.push((format!("{module}/parser.rs"), parser::generate(lang)));
         files.push((format!("{module}/printer.rs"), printer::generate()));
+    }
+    if !def.elabs.is_empty() {
+        files.push(("elab/mod.rs".to_owned(), elab::generate_mod(def)));
+        for ((from, to), elab_def) in &def.elabs {
+            files.push((
+                format!("elab/{}.rs", elab::pair_module(from, to)),
+                elab::generate_pair(def, from, to, elab_def),
+            ));
+        }
     }
     files.push(("registry.rs".to_owned(), registry::generate(def)));
     files

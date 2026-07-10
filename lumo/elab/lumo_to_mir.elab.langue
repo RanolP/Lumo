@@ -1,0 +1,41 @@
+// Lumo → MIR elaboration (D-35). Reference semantics: the legacy
+// HIR→LIR lowering (legacy/crates/lir/src/lib.rs). Sort mismatches are
+// engine-coerced (D-38): a computation in value position auto-lets
+// (`let __tN = c in …`), a value in computation position returns
+// (`ret v`) — both implemented in `elab_externs.rs`.
+
+from Lumo to MIR {
+  NumberExpr { value: $v } ==> NumV { value: $v }
+  StringExpr { value: $v } ==> StrV { value: $v }
+  IdentExpr { name: $n } ==> VarV { name: $n }
+
+  ThunkExpr { body: $b } ==> ThunkV { body: $b to MIR }
+  ForceExpr { expr: $e } ==> ForceC { value: $e to MIR }
+  PerformExpr { name: $c } ==> PerformC { cap: $c }
+
+  // Parens and `= expr` fn bodies are transparent.
+  ParenExpr { inner: $e } ==> $e to MIR
+  ExprBody { body: $e } ==> $e to MIR
+
+  // match auto-unrolls its scrutinee (legacy mk_unroll).
+  MatchExpr { scrutinee: $s, arms: [$a*] }
+    ==> CaseC { scrutinee: UnrollV { value: $s to MIR }, arms: [$a* to MIR] }
+
+  HandleExpr { cap_name: $c, handler: $h, body: $b }
+    ==> HandleC { cap: $c, handler: $h to MIR, body: $b to MIR }
+
+  BundleExpr { entries: [$e*] } ==> BundleV { clauses: [$e* to MIR] }
+  BundleEntry { name: $n, param_list: ParamList { params: [$p*] }, body: $b }
+    ==> BundleClause { name: $n, params: [$p* to MIR], body: $b to MIR }
+  Param { name: $n } ==> VarV { name: $n }
+
+  // Patterns become case binders (spliced as plain idents).
+  BindPattern { name: $n } ==> VarV { name: $n }
+  IdentPattern { name: $n } ==> VarV { name: $n }
+  WildcardPattern ==> VarV { name: '_' }
+
+  // Calls force the callee and apply value args (legacy force-then-
+  // apply). A computation callee/arg is coerced by the engine (D-38).
+  ExprPostfix { expr: $f, call_args: CallArgs { args: [$a*] } }
+    ==> CompPostfix { expr: ForceC { value: $f to MIR }, value_args: ValueArgs { args: [$a* to MIR] } }
+}
