@@ -4,6 +4,25 @@
 // (`let __tN = c in …`), a value in computation position returns
 // (`ret v`) — both implemented in `elab_externs.rs`.
 
+// Extern rules (D-01/D-38) host what syntax-directed rules cannot:
+//   module           — File assembly: skips type-level items, collects defs
+//   fn_curry         — fn/lambda param lists fold into curried thunk spines
+//   block            — block statements fold into nested `let`
+//   match_arm        — optional binder lists (no absent-field patterns)
+//   member_classify  — data ctor vs cap op vs value method (needs decls)
+//   use_decl         — `use` → require-derived defs (D-30)
+extern rule module from Lumo to MIR
+extern rule fn_curry from Lumo to MIR
+extern rule block from Lumo to MIR
+extern rule match_arm from Lumo to MIR
+extern rule member_classify from Lumo to MIR
+extern rule use_decl from Lumo to MIR
+
+// Extern passes (D-12/D-30): self-recursive defs get `fix`; require-
+// derived defs are hoisted first.
+extern pass scc_fix
+extern pass use_require
+
 from Lumo to MIR {
   NumberExpr { value: $v } ==> NumV { value: $v }
   StringExpr { value: $v } ==> StrV { value: $v }

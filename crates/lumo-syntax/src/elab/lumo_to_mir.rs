@@ -2,7 +2,7 @@
 // The definition under `lumo/` is the source of truth.
 #![allow(dead_code, unused_variables, unused_mut, clippy::all)]
 
-use langue_rt::{ElabCtx, ElabReport};
+use langue_rt::{ElabCtx, ElabReport, PassPhase};
 
 use crate::lumo::lossless::SyntaxNode as FromNode;
 use crate::lumo::syntax_kind::SyntaxKind as FromKind;
@@ -37,12 +37,42 @@ pub trait Externs {
     fn wrap_pending(&mut self, _pending: &[(String, String)], body: &str, kind: ToKind) -> (String, ToKind) {
         (body.to_owned(), kind)
     }
+
+    /// `extern rule module from Lumo to MIR`
+    fn rule_module(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
+    /// `extern rule fn_curry from Lumo to MIR`
+    fn rule_fn_curry(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
+    /// `extern rule block from Lumo to MIR`
+    fn rule_block(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
+    /// `extern rule match_arm from Lumo to MIR`
+    fn rule_match_arm(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
+    /// `extern rule member_classify from Lumo to MIR`
+    fn rule_member_classify(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
+    /// `extern rule use_decl from Lumo to MIR`
+    fn rule_use_decl(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
+    /// `extern pass scc_fix` — offered both phases; `None` = skip.
+    fn pass_scc_fix(&mut self, phase: PassPhase, text: &str) -> Option<String>;
+
+    /// `extern pass use_require` — offered both phases; `None` = skip.
+    fn pass_use_require(&mut self, phase: PassPhase, text: &str) -> Option<String>;
 }
 
 /// Run `elab Lumo to MIR` end to end over source text.
 pub fn elab(text: &str, externs: &mut dyn Externs) -> ElabReport {
     let mut errors: Vec<String> = Vec::new();
     let mut src = text.to_owned();
+    if let Some(t) = externs.pass_scc_fix(PassPhase::PreSource, &src) {
+        src = t;
+    }
+    if let Some(t) = externs.pass_use_require(PassPhase::PreSource, &src) {
+        src = t;
+    }
     let parsed = crate::lumo::parser::parse(&src);
     errors.extend(parsed.errors.iter().map(|e| format!("Lumo: {} at {}", e.message, e.span)));
     let mut ctx = ElabCtx::new();
@@ -58,6 +88,12 @@ pub fn elab(text: &str, externs: &mut dyn Externs) -> ElabReport {
         None => ctx.error("elaboration produced no output".to_owned()),
     }
     errors.append(&mut ctx.errors);
+    if let Some(t) = externs.pass_scc_fix(PassPhase::PostTarget, &output) {
+        output = t;
+    }
+    if let Some(t) = externs.pass_use_require(PassPhase::PostTarget, &output) {
+        output = t;
+    }
     let reparsed = crate::mir::parser::parse(&output);
     errors.extend(reparsed.errors.iter().map(|e| format!("MIR: {} at {} in `{output}`", e.message, e.span)));
     ElabReport {
@@ -69,6 +105,24 @@ pub fn elab(text: &str, externs: &mut dyn Externs) -> ElabReport {
 /// Top-down dispatch by root kind. Extern rules go first, in
 /// declaration order (they see every node and decline with `None`).
 pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+    if let Some(frag) = externs.rule_module(ctx, node) {
+        return Some(frag);
+    }
+    if let Some(frag) = externs.rule_fn_curry(ctx, node) {
+        return Some(frag);
+    }
+    if let Some(frag) = externs.rule_block(ctx, node) {
+        return Some(frag);
+    }
+    if let Some(frag) = externs.rule_match_arm(ctx, node) {
+        return Some(frag);
+    }
+    if let Some(frag) = externs.rule_member_classify(ctx, node) {
+        return Some(frag);
+    }
+    if let Some(frag) = externs.rule_use_decl(ctx, node) {
+        return Some(frag);
+    }
     match node.kind {
         FromKind::BIND_PATTERN => {
             if let Some(frag) = rule_13(ctx, externs, node) {
