@@ -189,40 +189,12 @@ between A {
 
 ## 4. Type (`*.type.langue`)
 
-The most ambitious kind, and deliberately the most constrained. The reasoning
-engine and the plugged type system (section 5.4) provide the primitives; the
-DSL declares the syntax-directed rules on top:
+Being defined now, step by step from dictation. Decided at the architecture
+level so far:
 
-```
-types {
-  judgment infer(e: Expr) -> Type
-  judgment check(e: Expr, t: Type)
-
-  rule infer App(f, a):
-    infer(f) ~> Fn(param, ret | caps)
-      else error "cannot call a non-function of type {0}" at f
-    check(a, param)
-      else error "expected {param}, found {0}" at a
-    -----------------------------------
-    ret | caps
-
-  rule check Lam(x, body) against Fn(param, ret | caps):
-    bind x : param
-    check(body, ret)
-
-  rule infer Perform(cap, args): ...
-}
-```
-
-Engine/plugin services (invocable, not definable): unification (`~>`),
-instantiation/generalization, kind checking, row operations for capabilities,
-fresh metavariables. The DSL owns which rule fires for which node, what the
-premises are, and what errors each failed premise reports — **decided:
-diagnostic message templates live in the DSL** (each premise may carry an
-`else error "..." at node` clause; the engine fills type/name holes and maps
-`at` to spans). If a rule cannot be expressed, it is written as `extern rule`
-in Rust against a stable API — the definition file still names it, so
-coverage is visible.
+- Pluggable type system on a generic reasoning engine (section 5.4); Lumo
+  v1 plugs Fω + spine-local bidirectional inference + capability rows.
+- Diagnostic message templates live in the DSL, attached to rule premises.
 
 ## 5. Core architecture
 

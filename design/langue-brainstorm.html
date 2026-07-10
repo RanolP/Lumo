@@ -574,26 +574,13 @@ Expr = <span class="k">praat</span> {
 <section id="type">
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-type)"></span>04-type.langue</span>
-    <h2>타입 — 가장 야심차고, 가장 절제된 부분</h2>
+    <h2>타입 — 지금 정의하는 중</h2>
     <p class="sub">
-      추론 엔진(05d)이 유도를 만들고, 플러그인(Lumo v1: Fω + spine-local 양방향 +
-      capability row)이 원시 연산을 제공한다 — DSL에선 정의할 수 없고 호출만 가능.
-      DSL이 소유하는 것: 어떤 노드에 어떤 규칙이 발화하는지, 전제가 무엇인지, 실패 시
-      어떤 진단을 내는지(템플릿은 규칙 옆에). 표현 불가능한 규칙은 <code>extern rule</code>로
-      이름만 남기고 Rust로.
+      단계별 딕테이션으로 정의 중 — 다음 메시지들을 따라간다.
+      아키텍처 수준에서 결정된 것 — 플러그형 타입 시스템(<a href="#p-types">05d</a>):
+      범용 추론 엔진 위에 Lumo v1은 Fω + spine-local 양방향 + capability row를 꽂는다.
+      진단 템플릿은 규칙 옆, DSL 안에 산다.
     </p>
-    <div class="kinds">
-      <article class="kind k-type full">
-        <header><span class="ext">*.type.langue</span><span class="role">판단 · 규칙 · 진단 템플릿</span></header>
-        <pre><span class="k">rule</span> infer App(f, a):
-  infer(f) ~> Fn(param, ret | caps)
-    <span class="e">else error "cannot call a non-function of type {0}" at f</span>
-  check(a, param)
-    <span class="e">else error "expected {param}, found {0}" at a</span>
-  -----------------------------------
-  ret | caps</pre>
-      </article>
-    </div>
   </div>
 </section>
 
