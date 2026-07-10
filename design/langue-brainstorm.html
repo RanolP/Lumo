@@ -296,7 +296,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <div class="eyebrow">
       <span>design/langue.md 미러</span><span class="dot"></span>
       <span>기준 2026-07-10</span><span class="dot"></span>
-      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 30개)</span>
+      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 32개)</span>
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
@@ -325,8 +325,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <div class="box ask">
         <h3>회신 대기 — 답하면 design/decisions/로 잠근다</h3>
         <ul>
-          <li><b>비용 모델 채택안</b> — 리서치 완료. 제안: 생성자별 상수 비용(기본 1) + egglog 내장 최소 트리 비용 추출. 상세는 <a href="#decisions">07</a>.</li>
-          <li><b>픽스처 형식 채택안</b> — 설계 완료. 제안: tree-sitter corpus 형(제목·:속성·소스·---·기대), 텍스트 입/출력 비교. 상세는 <a href="#decisions">07</a>.</li>
+          <li>지금 비어 있다 — 다음 딕테이션을 기다린다.</li>
         </ul>
       </div>
     </div>
@@ -804,45 +803,9 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-open.langue</span>
     <h2>열려 있는 것 — 다음 설계 대상</h2>
-    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(30개).
-    여기는 아직 열려 있는 것과 다음 논의 후보만.</p>
+    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(32개).
+    지금 열려 있는 것이 없다 — 제기된 질문은 전부 잠겼다. 다음 설계 대상이 생기면 여기 올라온다.</p>
 
-    <div class="board">
-      <article class="decision open">
-        <span class="seal" aria-label="제안">?</span>
-        <h3>비용 모델 채택안 — 리서치 결과</h3>
-        <p><b>널리 쓰이는 모델</b> = 생성자별 상수 비용(기본 1) + 최소 트리 비용 추출.
-        egglog가 정확히 이걸 내장한다: 생성자에 <code>:cost N</code> 주석, <code>extract</code>가
-        비용 합이 최소인 항을 뽑는다(고정점 bottom-up, 가산 트리 비용에 최적).
-        egg의 AstSize/greedy, Cranelift(오퍼코드별 상수 계층), Herbie(AstSize)도 같은 계열.</p>
-        <p style="margin-top:8px"><b>제안:</b> ① 문법의 노드 선언에 선택적 정수 비용 주석,
-        기본 1 — egglog <code>:cost</code>로 1:1 컴파일. ② v1 추출기는 egglog 내장
-        최소 트리 비용(ILP/DAG-aware는 v1에서 안 함). ③ 동적 비용은 egglog
-        set-cost / Rust CostModel 탈출구로 유보. ④ 주의: 트리 비용은 공유
-        부분항을 중복 계산하므로 subst류(복제하는) 재작성의 비용을 오판할 수
-        있다(Tensat이 ILP로 간 이유) — v1에서 감수, 문제가 되면 DAG-aware로.</p>
-      </article>
-      <article class="decision open">
-        <span class="seal" aria-label="제안">?</span>
-        <h3>픽스처 형식 채택안 — 설계 결과</h3>
-        <p><b>tree-sitter corpus 형</b>: <code>=</code> 펜스 제목 + <code>:</code>속성, 소스,
-        <code>---</code>, 기대 출력. <code>tests/fixtures/{syn,elab,type}/**/*.test</code>를
-        glob으로 발견, 파일 하나에 여러 케이스. 속성이 검사를 정한다:</p>
-        <p style="margin-top:8px">
-        · <code>:parse(L)</code> — 기대 = 이름 노드 S-식. 모든 parse 픽스처에
-        왕복 검사가 자동으로 붙는다(파스→프린트→재파스 트리 동일).<br>
-        · <code>:elab(A -&gt; B)</code> — 입력은 A 텍스트, 기대는 B 텍스트.
-        비교는 정규화-후-비교: 기대 텍스트를 B 파서로 파싱해 양쪽을 프리티
-        프린트한 뒤 문자열 비교 — 공백에 강건하고, 기대 블록이 B의 왕복
-        테스트를 겸한다.<br>
-        · <code>:optimize(L)</code> — between 포화+추출, 입/출력 모두 L 텍스트.<br>
-        · <code>:infer(L)</code> — 기대 = <code>name : Type</code> 줄(타입은 타입 하위
-        언어의 프린터로 출력).<br>
-        · <code>:fails</code> — 기대 섹션 없음(진단 보류와 일치; 나중에 메시지를
-        --- 아래 추가해도 형식 불변). <code>--update</code> 블레스 모드 지원.<br>
-        legacy 픽스처는 이미 input/---/expected 꼴이라 마이그레이션이 싸다.</p>
-      </article>
-    </div>
 
   </div>
 </section>

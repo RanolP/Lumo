@@ -334,8 +334,9 @@ that engines interpret.
 Language-to-language elaboration is syntax-directed; same-language
 optimization runs as e-graph equality saturation with cost-based extraction,
 so rule order carries no meaning. **Engine: egglog.** Same-language rules
-are declared as `between A` relation blocks (section 3.2); the cost model
-is a widely-adopted one, picked by a research pass (section 10.2).
+are declared as `between A` relation blocks (section 3.2); costs are
+per-constructor constants (default 1) with egglog's built-in
+min-tree-cost extraction (decision 31).
 
 ### 5.4 Relational type engine
 
@@ -444,49 +445,10 @@ Locked decisions live one per file in `design/decisions/`:
 28. [Strictly decreasing = strict subtree of the matched pattern](decisions/28-strict-subtree-measure.md)
 29. [stdlib starts small, extends later](decisions/29-stdlib-starts-small.md)
 30. [How elaboration simulates scope](decisions/30-scope-simulation.md)
+31. [Cost model: per-constructor constants, min-tree-cost extraction](decisions/31-cost-model-constant-tree.md)
+32. [Golden fixture format: tree-sitter-corpus shape](decisions/32-fixture-format.md)
 
 Open questions, in detail (mirrored in the artifact):
 
-### 10.1 Cost-model proposal (researched, awaiting confirm)
-
-The widely adopted model is **constant per-constructor costs (default 1) +
-minimal-total-tree-cost extraction** — exactly what egglog builds in
-(`:cost N` on constructors; `extract` returns the cheapest term via
-fixpoint bottom-up propagation, optimal for additive tree cost). Same
-family: egg's `AstSize` + greedy extractor, Cranelift's per-opcode
-constant tiers, Herbie's AstSize. Proposal:
-
-1. Costs are an optional integer annotation on node declarations in the
-   grammar, default 1 — compiles 1:1 onto egglog `:cost`.
-2. v1 extractor is egglog's built-in min-tree-cost extract; no ILP /
-   DAG-aware extraction in v1.
-3. Dynamic costs stay an escape hatch (egglog `set-cost` / Rust
-   `CostModel`), not a DSL feature.
-4. Caveat: tree cost double-counts shared subterms, so duplicating
-   rewrites (subst-style) can be mis-ranked — accepted for v1 (this is
-   why Tensat moved to ILP); revisit with DAG-aware extraction if it
-   bites.
-
-### 10.2 Fixture-format proposal (designed, awaiting confirm)
-
-Tree-sitter-corpus shape: `=`-fenced title + `:`-attributes, source,
-`---`, expected. Files at `tests/fixtures/{syn,elab,type}/**/*.test`,
-glob-discovered, many cases per file. The attribute names the check:
-
-- `:parse(L)` — expected is the named-node S-expression; every parse
-  fixture automatically also checks parse → pretty-print → re-parse tree
-  equality.
-- `:elab(A -> B)` — input is A-text, expected is B-text; comparison is
-  canonicalize-then-compare (parse expected with B's parser,
-  pretty-print both sides, compare strings) — whitespace-robust, and
-  each expected block doubles as a B round-trip test.
-- `:optimize(L)` — between saturation + extraction; input and expected
-  both L-text.
-- `:infer(L)` — expected is `name : Type` lines, types printed by the
-  type sub-language's own printer.
-- `:fails` — no expected section (matches deferred diagnostics; messages
-  can be added under `---` later without a format change). `--update`
-  bless mode regenerates expected blocks.
-
-Legacy fixtures are already `input / --- / expected`, so migration is
-cheap.
+Nothing is currently open — every raised question is locked in
+`design/decisions/`.
