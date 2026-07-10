@@ -1,10 +1,13 @@
 //! Deterministic Rust emitters (D-21). Everything iterates BTree-ordered
 //! collections, so `langc gen` is byte-stable for a given definition.
 
+pub mod ast;
 pub mod lexer;
 pub mod lossless;
 pub mod naming;
 pub mod parser;
+pub mod printer;
+pub mod registry;
 pub mod syntax_kind;
 
 use crate::project::model::{Definition, Language, TokenDef};
@@ -23,10 +26,13 @@ pub fn generate(def: &Definition) -> Vec<(String, String)> {
             format!("{module}/syntax_kind.rs"),
             syntax_kind::generate(lang_name, lang),
         ));
+        files.push((format!("{module}/ast.rs"), ast::generate(lang)));
         files.push((format!("{module}/lexer.rs"), lexer::generate(lang)));
         files.push((format!("{module}/lossless.rs"), lossless::generate()));
         files.push((format!("{module}/parser.rs"), parser::generate(lang)));
+        files.push((format!("{module}/printer.rs"), printer::generate()));
     }
+    files.push(("registry.rs".to_owned(), registry::generate(def)));
     files
 }
 
@@ -34,9 +40,11 @@ fn language_mod(lang_name: &str) -> String {
     let mut buf = Buf::new();
     buf.line(&format!("//! Generated modules for language `{lang_name}`."));
     buf.blank();
+    buf.line("pub mod ast;");
     buf.line("pub mod lexer;");
     buf.line("pub mod lossless;");
     buf.line("pub mod parser;");
+    buf.line("pub mod printer;");
     buf.line("pub mod syntax_kind;");
     buf.finish()
 }

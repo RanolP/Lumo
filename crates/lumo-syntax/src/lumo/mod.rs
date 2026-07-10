@@ -2,7 +2,9 @@
 // The definition under `lumo/` is the source of truth.
 //! Generated modules for language `Lumo`.
 
+pub mod ast;
 pub mod lexer;
 pub mod lossless;
 pub mod parser;
+pub mod printer;
 pub mod syntax_kind;
