@@ -1,0 +1,120 @@
+# Langue 2 implementation plan
+
+Derived from the 32 locked decisions in `design/decisions/`; the design
+snapshot is `design/langue.md`. Each item cites the decisions it
+implements (D-numbers). Every milestone keeps `langc check` + the fixture
+suite green.
+
+## M0 — langc core: project model + syn codegen
+
+Goal: `langc gen` turns `Lumo.syn.langue` into a working parser and
+pretty-printer.
+
+- [ ] Cargo workspace at repo root; `crates/langc` = library + CLI
+      (`langc gen`, `langc check`) (D-01).
+- [ ] Hand-written parser for the `.langue` format itself — the only
+      hand-written parser in the system (bootstrapping note; D-01).
+- [ ] Project model: glob kind-suffixed files + stdlib into one global
+      namespace (cat, D-05); strict name-collision errors, stdlib
+      included (D-22); additive merge for same judgment / same language /
+      same from-to and between blocks (D-05, D-13, D-14); DCE of unused
+      items (D-05); manifest parsing — the pipe that glues syn/elab/type
+      files, the entry point (D-27).
+- [ ] salsa query layer from day one: `parse(file)` →
+      `merged_definition(project)` → `rule_tables(kind)` → generated code
+      (D-06).
+- [ ] syn codegen (D-21): token DFA with longest-match, literal-beats-
+      regex, dotted names as highlight scopes (D-09); SyntaxKind; typed
+      AST accessors; tree with per-language losslessness (D-18); parser
+      from shapes + `praat` blocks with extern recovery hooks (D-02,
+      D-03); pretty-printer (text round-trip, D-03).
+- [ ] Fixture harness (D-32): corpus format at
+      `tests/fixtures/{syn,elab,type}/**/*.test`; `:parse(L)` with
+      automatic parse → print → re-parse round-trip; `:fails`;
+      `--update` bless mode.
+- [ ] Write `Lumo.tokens.syn.langue` / `Lumo.item.syn.langue` /
+      `Lumo.expr.syn.langue`; seed fixtures from tree-sitter style and
+      `legacy/crates/compiler/tests/fixtures/` (D-32).
+- [ ] `langc check`: exhaustiveness, unknown labels, extern coverage
+      (every extern must be named in the definition, D-01/extern rule),
+      collisions.
+
+Exit gate: parser recovery quality is acceptable — otherwise fall back to
+hand-written per D-02.
+
+## M1 — MIR + elaboration
+
+Goal: `elab Lumo -> MIR` runs end to end as generated Rust.
+
+- [ ] Write `MIR.syn.langue`; decide the CBPV value/computation split
+      here; the type AST (TypeV/TypeC) is part of syn (D-15).
+- [ ] elab codegen (D-21): `from A to B { pattern ==> construction }`
+      blocks → Rust; `<subtree> to <Lang>` recursion restricted to strict
+      subtrees of the matched pattern (D-13, D-28); conflicting rules are
+      compile-time errors (D-13); cross-file block merging (D-05).
+- [ ] Recursion lowering: SCC detection, `fix` primitive for cyclic
+      groups, plain `let` otherwise — no letrec core form (D-12).
+- [ ] Scope simulation (D-11, D-30): name resolution through Γ contexts;
+      `use` statements hoisted first in tree and lowered as
+      `λrequire. let x = require('x') in ...`; capability handlers
+      lexically scoped, Effekt-like — no dynamic scope.
+- [ ] `between A { lhs === rhs }` → egglog programs (D-14, D-19);
+      built-in `subst` tactic (`$e[$b := $a]`, D-14, D-24); per-
+      constructor costs default 1 compiled to egglog `:cost`, built-in
+      min-tree-cost `extract` (D-31).
+- [ ] `:elab(A -> B)` fixtures with canonicalize-then-compare (D-32).
+
+## M2 — type
+
+Goal: `LIR.type.langue` judgments typecheck Lumo programs.
+
+- [ ] Relational engine, λProlog as the implementation reference (D-23):
+      goals, unification (`=`), contexts as multimaps
+      (`context Γ = [Ident: TypeV]`, D-16), read `Γ.$name`, write
+      `with Γ+{a: b}` (D-23); strictly decreasing recursion (D-23,
+      D-28); exactly one rule may succeed per goal (D-23).
+- [ ] Judgment codegen (D-17, D-21): `infer_C LIR -> TypeC with Γ`
+      declarations (arrows are separators; type param is inout; names are
+      just names), `head := body` rules → Rust on the engine.
+- [ ] Minimal built-in tactics: `subst`, `hash`; capability rows as
+      hash-keyed maps — a map is a set when the key is a hash, no row
+      datatype (D-24, D-25).
+- [ ] Diagnostics: failures bail with a generic message — nothing more
+      for now (D-26).
+- [ ] Write the Fω + spine-local bidirectional + capability-row judgments
+      (D-08); port the legacy capability typing rules.
+- [ ] `:infer(L)` fixtures (`name : Type` lines, types printed by the
+      type sub-language's printer) and `:fails` fixtures (D-32).
+
+## M3 — e-graph optimization
+
+Goal: the between rule groups optimize MIR/LIR under golden fixtures.
+
+- [ ] Same-language between groups run as saturation + extraction on
+      egglog (D-07, D-14, D-19, D-31).
+- [ ] `:optimize(L)` golden fixtures are the contract (D-32); port the
+      legacy LTO fixtures' intent.
+- [ ] Watch the known caveat: tree cost double-counts shared subterms —
+      if subst-style rewrites get mis-ranked, evaluate DAG-aware
+      extraction (D-31).
+
+## M4 — JS emission
+
+Goal: end-to-end Lumo → JS compilation; legacy golden parity.
+
+- [ ] Write `JS.syn.langue`; emission is pretty-printing the JS tree
+      (D-03).
+- [ ] `elab MIR/LIR -> JS` rules.
+- [ ] Bring over the remaining legacy golden fixtures
+      (`legacy/crates/compiler/tests/fixtures/`, D-32).
+
+## Cross-cutting rules
+
+- The definition is the source of truth; Rust is engines + generated
+  output, never the definition (D-01).
+- All three kinds are code-generated — edit, `langc gen`, commit; no
+  interpreted rule tables (D-21).
+- Documents stay snapshots; new decisions get a new numbered file in
+  `design/decisions/` (D-10).
+- stdlib and built-in tactics start minimal and grow only on proven need
+  (D-24, D-29).
