@@ -18,6 +18,7 @@ static PATTERNS: &[&str] = &[
     ":", // colon
     ",", // comma
     "\\.", // dot
+    "\\.\\.", // dotdot
     "#", // hash
     "bundle", // keyword.bundle
     "cap", // keyword.cap
@@ -75,6 +76,7 @@ const KINDS: &[SyntaxKind] = &[
     SyntaxKind::COLON,
     SyntaxKind::COMMA,
     SyntaxKind::DOT,
+    SyntaxKind::DOTDOT,
     SyntaxKind::HASH,
     SyntaxKind::KEYWORD_BUNDLE,
     SyntaxKind::KEYWORD_CAP,

@@ -43,7 +43,8 @@ Param = name:ident (':' ty:TypeExpr)?
 // === Generics ===
 
 GenericParams = '[' params:sep(GenericParam, ',')? ']'
-GenericParam = name:ident (':' constraint:BoundList)?
+// `cap c` declares a capability-row variable (used with `/ { ..c }`).
+GenericParam = 'cap'? name:ident (':' constraint:BoundList)?
 BoundList = bounds:sep(TypeExpr, '+')
 GenericArgs = '[' args:sep(TypeExpr, ',')? ']'
 
@@ -57,8 +58,15 @@ AssocTypeDecl = 'type' name:ident
 OperationDecl = 'fn' name:ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? ';'?
 
 CapAnnotation = '/' cap:CapSet
-CapSet = '{' sigs:CapSig* '}'
+// Entries are sigs or a row rest (`..`/`..c`), with optional commas:
+// `{ Console State[Number] }`, `{ .., E2 }`, `{ ..c, E1, E2 }`.
+CapSet = '{' entries:CapEntry* '}'
+CapEntry = body:CapEntryBody ','?
+CapEntryBody =
+  | CapSig
+  | CapRest
 CapSig = name:ident generic_args:GenericArgs?
+CapRest = '..' name:ident?
 
 // === Extern declarations ===
 
@@ -97,7 +105,7 @@ ImplItemBody =
   | AssocTypeBinding
   | ImplMethod
 AssocTypeBinding = 'type' name:ident '=' ty:TypeExpr
-ImplMethod = 'fn' name:ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? body:FnBody
+ImplMethod = 'fn' name:ident generic_params:GenericParams? param_list:ParamList (':' return_type:TypeExpr)? cap_annotation:CapAnnotation? body:FnBody
 
 // === Patterns ===
 
@@ -111,7 +119,9 @@ VariantPattern = '.' name:ident fields:VariantPatternFields?
 VariantPatternFields = '(' fields:sep(Pattern, ',')? ')'
 BindPattern = 'let' name:ident
 WildcardPattern = '_'
-IdentPattern = name:ident
+// Bare `some(x)` patterns appear in legacy type fixtures (rejected by
+// the typechecker, not the parser).
+IdentPattern = name:ident fields:VariantPatternFields?
 
 // === Types ===
 

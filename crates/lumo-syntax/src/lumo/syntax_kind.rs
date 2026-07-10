@@ -26,6 +26,8 @@ pub enum SyntaxKind { // language `Lumo`
     COMMA,
     /// token `dot`
     DOT,
+    /// token `dotdot`
+    DOTDOT,
     /// token `hash`
     HASH,
     /// token `keyword.bundle`
@@ -144,8 +146,14 @@ pub enum SyntaxKind { // language `Lumo`
     CAP_ANNOTATION,
     /// rule `CapDecl`
     CAP_DECL,
+    /// rule `CapEntry`
+    CAP_ENTRY,
+    /// rule `CapEntryBody`
+    CAP_ENTRY_BODY,
     /// rule `CapItem`
     CAP_ITEM,
+    /// rule `CapRest`
+    CAP_REST,
     /// rule `CapSet`
     CAP_SET,
     /// rule `CapSig`

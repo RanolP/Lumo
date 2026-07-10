@@ -278,6 +278,42 @@ impl<'a> CapDecl<'a> {
     }
 }
 
+pub struct CapEntry<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapEntry<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_ENTRY).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapEntry<'a> {
+    pub fn body(&self) -> Option<CapEntryBody<'a>> {
+        self.0.child_nodes().filter_map(CapEntryBody::cast).nth(0)
+    }
+}
+
+pub enum CapEntryBody<'a> {
+    CapSig(CapSig<'a>),
+    CapRest(CapRest<'a>),
+}
+
+impl<'a> AstNode<'a> for CapEntryBody<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| CapSig::cast(node).map(Self::CapSig))
+            .or_else(|| CapRest::cast(node).map(Self::CapRest))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::CapSig(n) => n.syntax(),
+            Self::CapRest(n) => n.syntax(),
+        }
+    }
+}
+
 pub enum CapItem<'a> {
     AssocTypeDecl(AssocTypeDecl<'a>),
     OperationDecl(OperationDecl<'a>),
@@ -297,6 +333,23 @@ impl<'a> AstNode<'a> for CapItem<'a> {
     }
 }
 
+pub struct CapRest<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapRest<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_REST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapRest<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+}
+
 pub struct CapSet<'a>(pub &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for CapSet<'a> {
@@ -309,8 +362,8 @@ impl<'a> AstNode<'a> for CapSet<'a> {
 }
 
 impl<'a> CapSet<'a> {
-    pub fn sigs(&self) -> impl Iterator<Item = CapSig<'a>> + 'a {
-        self.0.child_nodes().filter_map(CapSig::cast).skip(0)
+    pub fn entries(&self) -> impl Iterator<Item = CapEntry<'a>> + 'a {
+        self.0.child_nodes().filter_map(CapEntry::cast).skip(0)
     }
 }
 
@@ -937,6 +990,10 @@ impl<'a> IdentPattern<'a> {
     pub fn name(&self) -> Option<&'a Token> {
         self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
     }
+
+    pub fn fields(&self) -> Option<VariantPatternFields<'a>> {
+        self.0.child_nodes().filter_map(VariantPatternFields::cast).nth(0)
+    }
 }
 
 pub struct IfElseExpr<'a>(pub &'a SyntaxNode);
@@ -1093,6 +1150,10 @@ impl<'a> ImplMethod<'a> {
 
     pub fn return_type(&self) -> Option<TypeExpr<'a>> {
         self.0.child_nodes().filter_map(TypeExpr::cast).nth(0)
+    }
+
+    pub fn cap_annotation(&self) -> Option<CapAnnotation<'a>> {
+        self.0.child_nodes().filter_map(CapAnnotation::cast).nth(0)
     }
 
     pub fn body(&self) -> Option<FnBody<'a>> {
