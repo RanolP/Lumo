@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 langue-rt.workspace = true
+regex-automata.workspace = true
+salsa.workspace = true
 
 [[bin]]
 name = "langc"

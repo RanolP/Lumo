@@ -5,6 +5,8 @@
 //! (`langc gen`, D-21). The `.langue` parser in `syntax/` is the only
 //! hand-written parser in the system (D-01).
 
+pub mod check;
+pub mod db;
 pub mod diag;
 pub mod project;
 pub mod syntax;

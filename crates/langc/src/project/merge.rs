@@ -13,39 +13,72 @@ use super::model::{Definition, Language, Origin, PipelineDef, RuleDef, TokenDef}
 /// is a virtual `(path, text)` catted in front of the project files.
 pub const STDLIB_FILES: &[(&str, &str)] = &[];
 
-/// Parse and merge a whole project (stdlib + files).
-pub fn merge_project(files: &[LoadedFile]) -> (Definition, Vec<Diagnostic>) {
+/// One parsed file, ready to merge. This is what the salsa `parse_langue`
+/// query produces per file.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ParsedFile {
+    pub path: String,
+    pub kind: FileKind,
+    pub ast: ast::File,
+}
+
+/// Parse one file according to its kind. Elab/type files parse to an
+/// empty AST with a warning until M1/M2.
+pub fn parse_file(path: &str, kind: &FileKind, text: &str) -> (ast::File, Vec<Diagnostic>) {
+    match kind {
+        FileKind::Syn { .. } => parser::parse_syn_file(path, text),
+        FileKind::Manifest => parser::parse_manifest(path, text),
+        FileKind::Elab | FileKind::Type => (
+            ast::File::default(),
+            vec![Diagnostic::warning(
+                path,
+                langue_rt::Span::default(),
+                "elab/type files are ignored until M1/M2",
+            )],
+        ),
+    }
+}
+
+/// Cat stdlib + parsed files into one definition.
+pub fn merge_asts(files: &[ParsedFile]) -> (Definition, Vec<Diagnostic>) {
     let mut def = Definition::default();
     let mut diags = Vec::new();
 
-    let stdlib = STDLIB_FILES.iter().map(|(path, text)| LoadedFile {
-        path: (*path).to_owned(),
-        kind: super::loader::classify_file_name(path).expect("stdlib file names are valid"),
-        text: (*text).to_owned(),
+    let stdlib = STDLIB_FILES.iter().map(|(path, text)| {
+        let kind = super::loader::classify_file_name(path).expect("stdlib file names are valid");
+        let (ast, stdlib_diags) = parse_file(path, &kind, text);
+        assert!(stdlib_diags.is_empty(), "stdlib must parse cleanly: {stdlib_diags:?}");
+        ParsedFile { path: (*path).to_owned(), kind, ast }
     });
 
     for file in stdlib.chain(files.iter().cloned()) {
         match &file.kind {
             FileKind::Syn { language } => {
-                let (ast, mut file_diags) = parser::parse_syn_file(&file.path, &file.text);
-                diags.append(&mut file_diags);
-                merge_syn_file(&mut def, language, &file.path, ast, &mut diags);
+                merge_syn_file(&mut def, language, &file.path, file.ast, &mut diags);
             }
             FileKind::Manifest => {
-                let (ast, mut file_diags) = parser::parse_manifest(&file.path, &file.text);
-                diags.append(&mut file_diags);
-                merge_manifest(&mut def, &file.path, ast, &mut diags);
+                merge_manifest(&mut def, &file.path, file.ast, &mut diags);
             }
-            FileKind::Elab | FileKind::Type => {
-                diags.push(Diagnostic::warning(
-                    &file.path,
-                    langue_rt::Span::default(),
-                    "elab/type files are ignored until M1/M2",
-                ));
-            }
+            FileKind::Elab | FileKind::Type => {}
         }
     }
 
+    (def, diags)
+}
+
+/// Parse and merge a whole project (stdlib + files) in one call.
+pub fn merge_project(files: &[LoadedFile]) -> (Definition, Vec<Diagnostic>) {
+    let mut diags = Vec::new();
+    let parsed: Vec<ParsedFile> = files
+        .iter()
+        .map(|f| {
+            let (ast, mut file_diags) = parse_file(&f.path, &f.kind, &f.text);
+            diags.append(&mut file_diags);
+            ParsedFile { path: f.path.clone(), kind: f.kind.clone(), ast }
+        })
+        .collect();
+    let (def, mut merge_diags) = merge_asts(&parsed);
+    diags.append(&mut merge_diags);
     (def, diags)
 }
 

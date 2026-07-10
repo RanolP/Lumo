@@ -10,4 +10,4 @@ license = "MIT OR Apache-2.0"
 langue-rt = { path = "crates/langue-rt" }
 langc = { path = "crates/langc" }
 regex-automata = "0.4"
-salsa = "0.19"
+salsa = "0.27"
