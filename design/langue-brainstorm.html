@@ -602,7 +602,10 @@ Expr = <span class="k">praat</span> {
 
 <span class="c">// 규칙: head := body</span>
 <span class="k">infer_V</span> TypeAssignment { expr: $e, ty: $t } <span class="k">-&gt;</span> $inferred
-  <span class="k">:=</span> $inferred = (<span class="k">check_V</span> $e <span class="k">&lt;-</span> $t)</pre>
+  <span class="k">:=</span> $inferred = (<span class="k">check_V</span> $e <span class="k">&lt;-</span> $t)
+
+<span class="c">// 문맥 접근: Γ.$name</span>
+<span class="k">infer_V</span> Ident { name: $name } <span class="k">-&gt;</span> $return <span class="k">:=</span> $return = Γ.$name</pre>
       </article>
     </div>
     <p class="sub" style="margin-top:14px">

@@ -229,6 +229,12 @@ Suffixes like `_V`/`_C` carry no meaning to the engine — a judgment name is
 just a name, like a function naming convention (`infer_ε`, `infer_wtf`,
 `infer_YOU_WILL_BE_FIRED` are all valid).
 
+The context is accessed as `Γ.$name`:
+
+```
+infer_V Ident { name: $name } -> $return := $return = Γ.$name
+```
+
 ### 4.4 Decided at the architecture level
 
 - Pluggable type system on a generic reasoning engine (section 5.4); Lumo
