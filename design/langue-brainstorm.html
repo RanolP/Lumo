@@ -296,7 +296,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     <div class="eyebrow">
       <span>design/langue.md 미러</span><span class="dot"></span>
       <span>기준 2026-07-10</span><span class="dot"></span>
-      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 29개)</span>
+      <span>설계 중인 것과 미결만 담는다 — 잠긴 결정은 design/decisions/ (파일 30개)</span>
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
@@ -561,6 +561,10 @@ Expr = <span class="k">praat</span> {
     <p class="sub" style="margin-top:18px">
       <b>스코프는 1급 개념이 아니다</b>: <code>.scope.langue</code> 종류도, 별도 스코프
       엔진도 없다 — 정제가 스코프를 시뮬레이트한다.
+      이름 해소는 <b>Γ 문맥</b>으로. <b>use 문</b>은 트리 맨 앞으로 정렬해
+      <code>λrequire. let x = require('x') in …</code>로 번역한다 — 모듈이
+      require의 함수가 된다. <b>동적 스코프는 없다</b> — 캡 핸들러는
+      Effekt식 접근(어휘적 스코프, 명시적 capability 전달).
       그리고 <b>재귀는 <code>fix</code>로만 실현한다</b>: letrec 코어 형식은 없다.
       상호 재귀 정의 그룹(SCC)은 <code>fix (λ(f, g). (body_f, body_g))</code>처럼
       <code>fix</code> 원시 하나로 로워링하고, 순환 없는 정의는 그냥 <code>let</code>이 된다.
@@ -800,7 +804,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-open.langue</span>
     <h2>열려 있는 것 — 다음 설계 대상</h2>
-    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(29개).
+    <p class="sub">잠긴 결정은 이 페이지에 없다 — <code>design/decisions/</code>에 결정당 파일 하나(30개).
     여기는 아직 열려 있는 것과 다음 논의 후보만.</p>
 
     <div class="board">
@@ -840,12 +844,6 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </article>
     </div>
 
-    <div class="prompts">
-      <h3>다음 논의 후보</h3>
-      <ol>
-        <li>정제의 스코프 시뮬레이션 방식 — 이름 해소·use/모듈·캡 핸들러의 동적 스코프를 어떤 재작성으로 담는가?</li>
-      </ol>
-    </div>
   </div>
 </section>
 

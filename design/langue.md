@@ -188,12 +188,23 @@ between A {
 - Language-to-language elaboration is syntax-directed (`from`/`to`);
   same-language optimization is e-graph equality saturation (`between`).
 - **Scope is not a first-party concept.** There is no `.scope.langue` kind
-  and no separate scope engine — elaboration simulates scope.
+  and no separate scope engine — elaboration simulates scope
+  (section 3.4).
 - **Recursion is realized with `fix` only.** There is no `letrec` core form.
   Each mutually-recursive definition group (SCC) lowers through a `fix`
   primitive — `fix (λ(f, g). (body_f, body_g))`, projected back out —
   and acyclic definitions lower to plain `let`. (A `fix` primitive, not a
   literal Y combinator: Y is untypeable in Fω.)
+
+### 3.4 Scope simulation
+
+- **Name resolution = Γ contexts** — the judgment-context machinery does
+  name resolution; no separate resolver.
+- **`use` statements** are ordered to be first in the tree and translate
+  as `λrequire. let x = require('x') in ...` — the module becomes a
+  function of `require`, each use a `let` binding.
+- **There is no dynamic scope.** Capability handlers take the
+  Effekt-like approach: lexically scoped, explicitly passed capabilities.
 
 ## 4. Type (`*.type.langue`)
 
@@ -432,6 +443,7 @@ Locked decisions live one per file in `design/decisions/`:
 27. [The manifest glues the kind files by piping](decisions/27-manifest-pipes.md)
 28. [Strictly decreasing = strict subtree of the matched pattern](decisions/28-strict-subtree-measure.md)
 29. [stdlib starts small, extends later](decisions/29-stdlib-starts-small.md)
+30. [How elaboration simulates scope](decisions/30-scope-simulation.md)
 
 Open questions, in detail (mirrored in the artifact):
 
