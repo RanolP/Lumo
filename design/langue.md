@@ -3,17 +3,17 @@
 Status: current snapshot of the design (as of 2026-07-10); no changelog —
 this document only states what is decided and what is open.
 One artifact defines all of Lumo — tokens, grammar, every pipeline language,
-elaboration, binding, typing. Rust code is engines that execute the
-definition plus explicitly-declared escape hatches, never the definition
-itself.
+elaboration, typing. Rust code is engines that execute the definition plus
+explicitly-declared escape hatches, never the definition itself.
 
 Decided so far: full-language-definition scope, tooling in Rust, parsers
 generated from grammars, diagnostic templates in the DSL, name "Langue"
 (v2), multi-file project with no imports (cat + stdlib + DCE), the four
-architecture pillars (section 6), every pipeline stage is an individual
+architecture pillars (section 5), every pipeline stage is an individual
 language declared by its `.syn.langue` file name, tokens are named
-literals/regexes only, and chapter order project layout → syntax → scope →
-elaboration → type.
+literals/regexes only, scope is not a first-party concept (elaboration
+simulates it), and chapter order project layout → syntax → elaboration →
+type.
 
 ## 1. Project layout
 
@@ -24,7 +24,6 @@ A definition is a multi-file Langue project. The suffix declares the role:
 ```
 <name>.langue         project manifest: language name + options (no kind suffix)
 <Name>.syn.langue     a language: lexical structure + grammar = shape AND display syntax
-<name>.scope.langue   binding: scopes, declarations, references
 <name>.elab.langue    elaboration: rewrite rules between/within languages
 <name>.type.langue    kinds, type formers, bidirectional typing judgments
 ```
@@ -39,7 +38,6 @@ lumo/
   Lumo.expr.syn.langue
   MIR.syn.langue
   JS.syn.langue
-  scope/lexical.scope.langue
   elab/item.elab.langue
   elab/expr.elab.langue
   types/fn.type.langue
@@ -132,28 +130,24 @@ Expr = praat {
 Per language, the generator emits syntax kinds, typed AST accessors, a
 lossless tree, the parser (extern recovery hooks), and the pretty-printer.
 
-## 3. Scope (`*.scope.langue`)
+## 3. Elaboration (`*.elab.langue`)
 
-Not designed yet. Decided so far: recursion is not a scope concept — it is
-realized at elaboration through `fix` (section 4).
-
-## 4. Elaboration (`*.elab.langue`)
-
-Not designed yet — taken up after scope (chapter 3) is settled. Decided so
-far:
+Not designed yet. Decided so far:
 
 - Language-to-language elaboration is syntax-directed; same-language
-  optimization is e-graph equality saturation (section 6.3).
+  optimization is e-graph equality saturation (section 5.3).
+- **Scope is not a first-party concept.** There is no `.scope.langue` kind
+  and no separate scope engine — elaboration simulates scope.
 - **Recursion is realized with `fix` only.** There is no `letrec` core form.
   Each mutually-recursive definition group (SCC) lowers through a `fix`
   primitive — `fix (λ(f, g). (body_f, body_g))`, projected back out —
   and acyclic definitions lower to plain `let`. (A `fix` primitive, not a
   literal Y combinator: Y is untypeable in Fω.)
 
-## 5. Type (`*.type.langue`)
+## 4. Type (`*.type.langue`)
 
 The most ambitious kind, and deliberately the most constrained. The reasoning
-engine and the plugged type system (section 6.4) provide the primitives; the
+engine and the plugged type system (section 5.4) provide the primitives; the
 DSL declares the syntax-directed rules on top:
 
 ```
@@ -187,11 +181,11 @@ diagnostic message templates live in the DSL** (each premise may carry an
 in Rust against a stable API — the definition file still names it, so
 coverage is visible.
 
-## 6. Core architecture
+## 5. Core architecture
 
-Four pillars underneath chapters 1–5.
+Four pillars underneath chapters 1–4.
 
-### 6.1 Salsa-like incremental queries
+### 5.1 Salsa-like incremental queries
 
 **Decided: day one.** Every derived artifact is a memoized query over
 inputs, at both layers:
@@ -200,97 +194,96 @@ inputs, at both layers:
   → `rule_tables(kind)` → generated code. Editing one `.type.langue` file
   re-derives only the type tables.
 - **Compiled-language layer**: the compiler that Langue produces is itself
-  query-structured — `cst(file)`, `mir(file)`, `resolve(node)`,
-  `infer(node)`.
+  query-structured — `cst(file)`, `mir(file)`, `infer(node)`.
 
 Rule tables are pure values, which is exactly what memoization wants: the
 cat/merge/DCE project model (section 1) produces one immutable definition
 value per revision. Candidate runtime: the `salsa` crate, or a purpose-built
 equivalent if salsa's model fights the reasoning engine.
 
-### 6.2 Ungrammar-like notation
+### 5.2 Ungrammar-like notation
 
 A `.langue` file describes the **shape of trees**, never a parsing
 algorithm. Labels become accessors, alternatives become node kinds, and the
 parser is *derived* from the shape (plus `praat` blocks) rather than
 written. Every pipeline language is declared this way and therefore carries
 its own display syntax (section 2.1). The philosophy extends further: elab
-rules, scope rules, and typing rules are likewise shape-first,
-algorithm-free declarations that engines interpret.
+rules and typing rules are likewise shape-first, algorithm-free declarations
+that engines interpret.
 
-### 6.3 E-graph elaboration
+### 5.3 E-graph elaboration
 
 Language-to-language elaboration is syntax-directed; same-language
 optimization runs as e-graph equality saturation with cost-based extraction,
 so rule order carries no meaning. Candidate engines: `egg` / `egglog`.
-Details are filled in when chapter 4 is designed; the cost-model declaration
-site is open (section 11).
+Details are filled in when chapter 3 is designed; the cost-model declaration
+site is open (section 10).
 
-### 6.4 Pluggable type system
+### 5.4 Pluggable type system
 
-#### 6.4.1 The reasoning engine
+#### 5.4.1 The reasoning engine
 
 Type checking runs on a generic **reasoning engine**: an inference-rule
 interpreter that builds proper derivation trees. Premises, modes
 (infer ⇒ / check ⇐), unification, instantiation/generalization, and fresh
 metavariables are engine services. The engine knows nothing about Lumo.
 
-#### 6.4.2 Type systems as plugins
+#### 5.4.2 Type systems as plugins
 
 A *type system* is a plugin on that engine: a Rust-side capability bundle
 (type formers, kind rules, row operations) plus the DSL rule set that drives
 it. Lumo v1 plugs in "Fω + spine-local bidirectional inference + capability
 rows". Because the engine is generic, a different language (or a future
 Lumo) can plug a different system without touching the engine. The plugin
-boundary (Rust trait vs DSL rules) is open (section 11).
+boundary (Rust trait vs DSL rules) is open (section 10).
 
-#### 6.4.3 Derivations as artifacts
+#### 5.4.3 Derivations as artifacts
 
 Because the engine produces real derivations, failed premises map to the
 DSL's diagnostic templates with full context, successful ones power
 explanations ("why does this expression have this type") and LSP hovers, and
 every derivation is a salsa query — incremental re-typechecking falls out.
 
-## 7. Extern hatches
+## 6. Extern hatches
 
 Every kind can declare `extern` items implemented in Rust and registered by
 name. The rule: the `.langue` files must mention every extern, so
 `grep extern` over the definition shows exactly where the declarative story
 has holes.
 
-## 8. Execution model (proposed)
+## 7. Execution model (proposed)
 
 Hybrid, per kind:
 
-### 8.1 Generated Rust
+### 7.1 Generated Rust
 
 For the hot, shape-defining parts: syn — per declared language, the token
 DFA, syntax kinds, AST accessors, parser, and pretty-printer. Workflow:
 edit, run `langc gen`, commit generated code.
 
-### 8.2 Interpreted rule tables
+### 7.2 Interpreted rule tables
 
-For scope/elab/type: `langc` compiles the rules to a compact checked IR that
-generic Rust engines execute — the scope resolution engine, the e-graph engine
-for same-language elab, the reasoning engine. Rationale: changing a typing
-rule should not require recompiling generated Rust; these rules are dense in
-semantics but not performance-critical enough to need codegen in v1. If
-profiling disagrees later, codegen them then.
+For elab/type: `langc` compiles the rules to a compact checked IR that
+generic Rust engines execute — the e-graph engine for same-language elab,
+the reasoning engine. Rationale: changing a typing rule should not require
+recompiling generated Rust; these rules are dense in semantics but not
+performance-critical enough to need codegen in v1. If profiling disagrees
+later, codegen them then.
 
-### 8.3 langc
+### 7.3 langc
 
 One Rust crate (`crates/langc`) with a library API so the compiler embeds
 the loaded definition, plus a CLI (`langc gen`, `langc check` —
 exhaustiveness, unknown labels, extern coverage, collisions). Both sit on
-the salsa layer (section 6.1).
+the salsa layer (section 5.1).
 
-## 9. Bootstrapping note
+## 8. Bootstrapping note
 
 Langue 2 files need their own parser. `langc` hand-writes exactly one
 parser — for the `.langue` format itself — and everything downstream is
 generated. Langue-in-langue self-description is explicitly not a v1 goal.
 
-## 10. Milestones
+## 9. Milestones
 
 - **M0 — langc core**: `.langue` parser, project cat/merge/DCE model,
   `langc check`, salsa query runtime skeleton. Write `Lumo.syn.langue`;
@@ -298,18 +291,17 @@ generated. Langue-in-langue self-description is explicitly not a v1 goal.
 - **M1 — MIR + elab (lowering)**: write `MIR.syn.langue` and the
   `elab Lumo -> MIR` syntax-directed rules; the rewrite engine owns
   lowering. CBPV split decided here.
-- **M2 — scope**: `.scope.langue` design + resolution engine.
-- **M3 — type**: reasoning engine + Fω/caps plugin + judgment DSL; port the
+- **M2 — type**: reasoning engine + Fω/caps plugin + judgment DSL; port the
   capability typing rules.
-- **M4 — e-graph optimization**: same-language elab groups on equality
+- **M3 — e-graph optimization**: same-language elab groups on equality
   saturation; optimization golden fixtures are the contract.
-- **M5 — JS**: write `JS.syn.langue` and `elab MIR/LIR -> JS` — emission is
+- **M4 — JS**: write `JS.syn.langue` and `elab MIR/LIR -> JS` — emission is
   pretty-printing the JS tree; remaining golden fixtures brought over
   (source material in `legacy/crates/compiler/tests/fixtures/`).
 
 Each milestone keeps `langc check` + golden-file tests green.
 
-## 11. Decisions and open questions
+## 10. Decisions and open questions
 
 Decided:
 
@@ -339,25 +331,23 @@ Decided:
    the name is the debug/display identity of the token; no special forms;
    longest match wins, literal beats regex on ties; dotted names double as
    highlight scopes.
-10. **Chapter order**: project layout → syntax → scope → elaboration → type;
+10. **Chapter order**: project layout → syntax → elaboration → type;
     architecture pillars after them; documents are snapshots (no changelog,
     no legacy exposition).
-11. **Recursion via `fix` only**: scope states unordered visibility only;
-    elaboration lowers each mutually-recursive SCC through a core `fix`
-    primitive — no `letrec` core form.
+11. **Scope is not a first-party concept**: no `.scope.langue` kind, no
+    scope engine — elaboration simulates scope.
+12. **Recursion via `fix` only**: elaboration lowers each mutually-recursive
+    SCC through a core `fix` primitive — no `letrec` core form.
 
 Still open (mirrored in the artifact's 회신 대기 box):
 
-12. **Cost model declaration** for e-graph extraction — proposal: grammar
+13. **Cost model declaration** for e-graph extraction — proposal: grammar
     annotations by default, extern as escape hatch.
-13. **Type-plugin boundary** — how much of a type system lives in the Rust
+14. **Type-plugin boundary** — how much of a type system lives in the Rust
     plugin trait vs the DSL rule set?
-14. **E-graph engine choice** — proposal: one egglog spike that also tests
-    the "datalog side doubles as the scope engine" hypothesis.
-15. **Hybrid execution boundary** (section 8) — confirm generated vs
+15. **E-graph engine choice** — proposal: one egglog spike, then decide.
+16. **Hybrid execution boundary** (section 7) — confirm generated vs
     interpreted split against the pillar engines.
-16. **Losslessness scope** — proposal: only Lumo (the surface language) is
+17. **Losslessness scope** — proposal: only Lumo (the surface language) is
     lossless; other languages round-trip via canonical pretty-print (e-graph
     nodes carry no trivia).
-17. **Milestone order** — chapter order is reading order; should the build
-    order also move scope (M2) ahead of elab (M1)?

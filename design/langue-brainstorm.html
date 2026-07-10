@@ -300,7 +300,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
     </div>
     <h1>언어를 정의하는 언어,<br><span class="latin">Langue&nbsp;2</span></h1>
     <p class="lede">
-      Lumo의 어휘·문법·트리·정제(elaboration)·바인딩·타입 규칙 <b>전부</b>를 선언적으로
+      Lumo의 어휘·문법·정제(elaboration)·타입 규칙 <b>전부</b>를 선언적으로
       기술하는 DSL. Rust 코드는 정의를 실행하는 <b>엔진</b>일 뿐, 언어의 정의는 언제나
       <code>.langue</code> 파일 안에 있다.
     </p>
@@ -311,13 +311,12 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 
 <a class="use" href="#project">01-project.langue</a>        <span class="cm">// ① 프로젝트 레이아웃: cat + stdlib + DCE</span>
 <a class="use" href="#syntax">02-syntax.langue</a>         <span class="cm">// ② 문법: 모든 단계가 개별 언어다</span>
-<a class="use" href="#scope">03-scope.langue</a>          <span class="cm">// ③ 스코프: 바인딩 사실 선언</span>
-<a class="use" href="#elab">04-elab.langue</a>           <span class="cm">// ④ 정제: 미설계 — 스코프 다음</span>
-<a class="use" href="#type">05-type.langue</a>           <span class="cm">// ⑤ 타입: 추론 엔진 위의 판단</span>
-<a class="use" href="#architecture">06-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: salsa · ungrammar · e-graph · 추론 엔진</span>
-<a class="use" href="#exec">07-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
-<a class="use" href="#decisions">08-decisions.langue</a>      <span class="cm">// 결정 · 미결 · 논의 후보</span>
-<a class="use" href="#milestones">09-milestones.langue</a>     <span class="cm">// M0 – M5</span>
+<a class="use" href="#elab">03-elab.langue</a>           <span class="cm">// ③ 정제: 미설계 — 스코프도 여기서 시뮬레이트</span>
+<a class="use" href="#type">04-type.langue</a>           <span class="cm">// ④ 타입: 추론 엔진 위의 판단</span>
+<a class="use" href="#architecture">05-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: salsa · ungrammar · e-graph · 추론 엔진</span>
+<a class="use" href="#exec">06-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
+<a class="use" href="#decisions">07-decisions.langue</a>      <span class="cm">// 결정 · 미결 · 논의 후보</span>
+<a class="use" href="#milestones">08-milestones.langue</a>     <span class="cm">// M0 – M4</span>
 
 <span class="cm">+ stdlib (foldr, map, 표준 토큰 …)   // 안 쓰이면 DCE로 제거</span></pre>
     </nav>
@@ -326,10 +325,9 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
       <div class="box ask">
         <h3>회신 대기 — 다음 메시지에서 답해 주면 도장으로 바꾼다</h3>
         <ul>
-          <li><b>무손실성 범위</b> — 제안: Lumo(표면)만 무손실(trivia 보존), 나머지 언어는 정규 프린트로 왕복. e-graph 노드가 trivia를 안 들고 다녀도 됨. <a href="#decisions">08</a></li>
-          <li><b>마일스톤 순서</b> — 챕터 순서는 읽기 순서로만 적용했다. 구현 순서도 scope(M2)를 elab(M1)보다 앞당길까? 현재는 로워링이 단독 테스트 가능해서 elab 먼저. <a href="#milestones">09</a></li>
-          <li><b>e-graph 엔진</b> — 제안: egglog 스파이크 하나로 "스코프 엔진 겸용" 가설까지 검증 후 결정. <a href="#decisions">08</a></li>
-          <li><b>타입 플러그인 경계 · 비용 모델 위치</b> — 열려 있음. <a href="#decisions">08</a></li>
+          <li><b>무손실성 범위</b> — 제안: Lumo(표면)만 무손실(trivia 보존), 나머지 언어는 정규 프린트로 왕복. e-graph 노드가 trivia를 안 들고 다녀도 됨. <a href="#decisions">07</a></li>
+          <li><b>e-graph 엔진</b> — 제안: egglog 스파이크 하나 후 결정. <a href="#decisions">07</a></li>
+          <li><b>타입 플러그인 경계 · 비용 모델 위치</b> — 열려 있음. <a href="#decisions">07</a></li>
         </ul>
       </div>
     </div>
@@ -366,8 +364,8 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
         <text x="40" y="93" fill="#0E8A6D" font-size="12.5" font-weight="600">MIR.syn.langue</text>
         <rect x="24" y="118" width="214" height="36" rx="7" fill="#fff" stroke="#B96A00" stroke-width="1.4"/>
         <text x="40" y="141" fill="#B96A00" font-size="12.5" font-weight="600">elab/expr.elab.langue</text>
-        <rect x="24" y="166" width="214" height="36" rx="7" fill="#fff" stroke="#7A3FB8" stroke-width="1.4"/>
-        <text x="40" y="189" fill="#7A3FB8" font-size="12.5" font-weight="600">scope/lexical.scope.langue</text>
+        <rect x="24" y="166" width="214" height="36" rx="7" fill="#fff" stroke="#2547D0" stroke-width="1.4"/>
+        <text x="40" y="189" fill="#2547D0" font-size="12.5" font-weight="600">Lumo.item.syn.langue</text>
         <rect x="24" y="214" width="214" height="36" rx="7" fill="#fff" stroke="#C2366B" stroke-width="1.4"/>
         <text x="40" y="237" fill="#C2366B" font-size="12.5" font-weight="600">types/cap.type.langue</text>
         <!-- stdlib -->
@@ -389,7 +387,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
         <text x="513" y="130" text-anchor="middle" fill="#16202E" font-size="15" font-weight="600">전역 이름공간</text>
         <text x="513" y="156" text-anchor="middle" fill="#4E5A6B" font-size="11">파일·항목 순서 무의미</text>
         <text x="513" y="174" text-anchor="middle" fill="#4E5A6B" font-size="11">전방 선언 불필요 (순서 무관)</text>
-        <text x="513" y="192" text-anchor="middle" fill="#4E5A6B" font-size="11">같은 judgment/tree엔 가산 병합</text>
+        <text x="513" y="192" text-anchor="middle" fill="#4E5A6B" font-size="11">같은 judgment/언어엔 가산 병합</text>
         <text x="513" y="210" text-anchor="middle" fill="#4E5A6B" font-size="11">이름 충돌만 에러</text>
 
         <!-- DCE arrow -->
@@ -521,26 +519,16 @@ Expr = <span class="k">praat</span> {
   </div>
 </section>
 
-<!-- ============ 03 SCOPE ============ -->
-<section id="scope">
-  <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--k-scope)"></span>03-scope.langue</span>
-    <h2>스코프 — 아직 설계하지 않았다</h2>
-    <p class="sub">
-      지금 결정된 것 하나 — 재귀는 스코프의 개념이 아니다.
-      스코프는 순서 무관 가시성만 말하고, 재귀는 정제(04)에서 <code>fix</code>로 실현된다.
-    </p>
-  </div>
-</section>
-
-<!-- ============ 04 ELABORATION ============ -->
+<!-- ============ 03 ELABORATION ============ -->
 <section id="elab">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>04-elab.langue</span>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>03-elab.langue</span>
     <h2>정제 — 아직 설계하지 않았다</h2>
     <p class="sub">
-      스코프(03) 확정 후 다룬다. 지금까지 결정된 것 —
-      언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화(<a href="#p-egraph">06c</a>).
+      지금까지 결정된 것 —
+      언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화(<a href="#p-egraph">05c</a>).
+      <b>스코프는 1급 개념이 아니다</b>: <code>.scope.langue</code> 종류도, 별도 스코프
+      엔진도 없다 — 정제가 스코프를 시뮬레이트한다.
       그리고 <b>재귀는 <code>fix</code>로만 실현한다</b>: letrec 코어 형식은 없다.
       상호 재귀 정의 그룹(SCC)은 <code>fix (λ(f, g). (body_f, body_g))</code>처럼
       <code>fix</code> 원시 하나로 로워링하고, 순환 없는 정의는 그냥 <code>let</code>이 된다.
@@ -549,13 +537,13 @@ Expr = <span class="k">praat</span> {
   </div>
 </section>
 
-<!-- ============ 05 TYPE ============ -->
+<!-- ============ 04 TYPE ============ -->
 <section id="type">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--k-type)"></span>05-type.langue</span>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--k-type)"></span>04-type.langue</span>
     <h2>타입 — 가장 야심차고, 가장 절제된 부분</h2>
     <p class="sub">
-      추론 엔진(06d)이 유도를 만들고, 플러그인(Lumo v1: Fω + spine-local 양방향 +
+      추론 엔진(05d)이 유도를 만들고, 플러그인(Lumo v1: Fω + spine-local 양방향 +
       capability row)이 원시 연산을 제공한다 — DSL에선 정의할 수 없고 호출만 가능.
       DSL이 소유하는 것: 어떤 노드에 어떤 규칙이 발화하는지, 전제가 무엇인지, 실패 시
       어떤 진단을 내는지(템플릿은 규칙 옆에). 표현 불가능한 규칙은 <code>extern rule</code>로
@@ -576,35 +564,35 @@ Expr = <span class="k">praat</span> {
   </div>
 </section>
 
-<!-- ============ 06 CORE ARCHITECTURE ============ -->
+<!-- ============ 05 CORE ARCHITECTURE ============ -->
 <section id="architecture">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--cobalt)"></span>06-architecture.langue</span>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--cobalt)"></span>05-architecture.langue</span>
     <h2>핵심 아키텍처 — 네 개의 기둥</h2>
-    <p class="sub">앞의 다섯 챕터(01~05)를 떠받치는 네 가지 선택. 한 소절에 한 개념만.</p>
+    <p class="sub">앞의 네 챕터(01~04)를 떠받치는 네 가지 선택. 한 소절에 한 개념만.</p>
 
     <div class="pillars">
       <a class="pillar" href="#p-salsa" style="text-decoration:none;color:inherit">
-        <span class="no">06a</span><h3>salsa식 증분 질의</h3>
+        <span class="no">05a</span><h3>salsa식 증분 질의</h3>
         <p>모든 파생물은 메모이즈된 질의. 첫날부터.</p>
       </a>
       <a class="pillar" href="#p-ungrammar" style="text-decoration:none;color:inherit">
-        <span class="no">06b</span><h3>ungrammar식 표기</h3>
+        <span class="no">05b</span><h3>ungrammar식 표기</h3>
         <p>알고리즘이 아니라 트리의 모양을 쓴다.</p>
       </a>
       <a class="pillar" href="#p-egraph" style="text-decoration:none;color:inherit">
-        <span class="no">06c</span><h3>e-graph 정제</h3>
+        <span class="no">05c</span><h3>e-graph 정제</h3>
         <p>최적화는 등식 포화. 규칙 순서 무의미.</p>
       </a>
       <a class="pillar" href="#p-types" style="text-decoration:none;color:inherit">
-        <span class="no">06d</span><h3>플러그형 타입 시스템</h3>
+        <span class="no">05d</span><h3>플러그형 타입 시스템</h3>
         <p>제대로 된 추론 엔진 위의 규칙 집합.</p>
       </a>
     </div>
 
     <!-- 02a salsa -->
     <div class="subsec" id="p-salsa">
-      <span class="slabel">06a · 결정됨 — 이전의 미결 문항을 닫는다</span>
+      <span class="slabel">05a · 결정됨 — 이전의 미결 문항을 닫는다</span>
       <h3>salsa식 증분 질의, 첫날부터</h3>
       <p>모든 파생 산출물은 입력에 대한 <b>메모이즈된 질의</b>다. 편집이 더럽힌 것만
       다시 계산한다. cat/병합/DCE가 만드는 정의는 리비전당 하나의 불변 값 —
@@ -622,7 +610,6 @@ Expr = <span class="k">praat</span> {
         <span class="arr">·</span>
         <span class="ph">cst(file)</span><span class="arr">→</span>
         <span class="ph">mir(file)</span><span class="arr">→</span>
-        <span class="ph">resolve(node)</span><span class="arr">→</span>
         <span class="ph">infer(node)</span>
       </div>
       <p style="font-size:13.5px;margin-top:14px"><code>.type.langue</code> 파일 하나를 고치면
@@ -632,31 +619,31 @@ Expr = <span class="k">praat</span> {
 
     <!-- 02b ungrammar -->
     <div class="subsec" id="p-ungrammar">
-      <span class="slabel">06b · langue 1의 혈통</span>
+      <span class="slabel">05b · langue 1의 혈통</span>
       <h3>ungrammar식 표기 — 모양을 쓰면, 알고리즘은 유도된다</h3>
       <p><code>.langue</code> 표기는 <b>트리의 모양</b>을 기술하지, 파싱 알고리즘을 기술하지
       않는다. 레이블은 접근자가 되고, 대안은 노드 종류가 되고, 파서는 모양(+ 우선순위
       주석)에서 <b>유도</b>된다. <b>파이프라인의 모든 단계(Lumo, MIR, LIR, JS)는 각자 문법으로 선언되는 개별 언어이고,
       따라서 자기 표시 문법을 가진다</b>. 언어마다 파서와 프리티 프린터가 유도되어
       모든 단계가 텍스트로 왕복한다. 이 철학이 문법 너머까지 간다: elab
-      규칙·스코프 사실·타입 규칙 전부가 엔진이 해석하는 모양-우선·알고리즘-부재 선언이다.</p>
+      규칙·타입 규칙 전부가 엔진이 해석하는 모양-우선·알고리즘-부재 선언이다.</p>
       <pre class="snippet"><span class="c">// 무엇을 쓰는가: 트리의 모양 = 곧 그 트리의 표시 문법</span>
 FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span>(Param, <span class="k">','</span>) …
 <span class="c">// 무엇을 쓰지 않는가: peek() / expect() / 재귀 하강의 순서 / print 함수</span></pre>
     </div>
 
-    <!-- 06c e-graph -->
+    <!-- 05c e-graph -->
     <div class="subsec" id="p-egraph">
-      <span class="slabel">06c · 결정됨</span>
+      <span class="slabel">05c · 결정됨</span>
       <h3>e-graph 정제 — 최적화는 등식 포화로</h3>
       <p>언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화 + 비용 추출 —
       규칙 순서가 무의미하다. 후보 엔진: egg / egglog.
-      상세는 정제 챕터(04)를 설계할 때 채운다.</p>
+      상세는 정제 챕터(03)를 설계할 때 채운다.</p>
     </div>
 
-    <!-- 06d pluggable types -->
+    <!-- 05d pluggable types -->
     <div class="subsec" id="p-types">
-      <span class="slabel">06d · 결정됨</span>
+      <span class="slabel">05d · 결정됨</span>
       <h3>플러그형 타입 시스템 — 제대로 된 추론 엔진 위에서</h3>
       <div class="minis">
         <div class="mini">
@@ -695,10 +682,10 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   </div>
 </section>
 
-<!-- ============ 07 EXECUTION MODEL ============ -->
+<!-- ============ 06 EXECUTION MODEL ============ -->
 <section id="exec">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--ink)"></span>07-exec.langue</span>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--ink)"></span>06-exec.langue</span>
     <h2>실행 모델 — 생성과 해석의 하이브리드 <em style="font-style:normal;font-size:14px;color:var(--ink-soft);font-family:var(--mono)">(제안, 반론 환영)</em></h2>
     <p class="sub">
       <code>crates/langc</code> 하나가 라이브러리(컴파일러에 정의를 탑재) + CLI
@@ -719,11 +706,10 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </div>
       <div class="cell">
         <h3>해석되는 것</h3>
-        <span class="tag">elab · scope · type → 검증된 규칙 테이블</span>
+        <span class="tag">elab · type → 검증된 규칙 테이블</span>
         <ul>
-          <li>elab 재작성 규칙 → e-graph 엔진 (06c)</li>
-          <li>스코프 규칙 → 해석 엔진</li>
-          <li>타입 판단 규칙 + 진단 템플릿 → 추론 엔진 (06d)</li>
+          <li>elab 재작성 규칙 → e-graph 엔진 (05c)</li>
+          <li>타입 판단 규칙 + 진단 템플릿 → 추론 엔진 (05d)</li>
         </ul>
         <p class="why"><b>이유:</b> 타입 규칙 하나 고치자고 생성된 Rust를 재컴파일하지
         않기. 의미는 조밀하지만 v1에서 코드젠이 필요할 만큼 성능 임계는 아니다 —
@@ -733,10 +719,10 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   </div>
 </section>
 
-<!-- ============ 08 DECISIONS ============ -->
+<!-- ============ 07 DECISIONS ============ -->
 <section id="decisions">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>08-decisions.langue</span>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-decisions.langue</span>
     <h2>결정된 것 · 열려 있는 것</h2>
     <p class="sub">도장이 찍힌 카드는 확정. 점선 카드가 오늘의 브레인스토밍 대상이다.</p>
 
@@ -788,7 +774,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
         <h3>챕터 순서</h3>
-        <p>프로젝트 레이아웃 → 문법 → 스코프 → 정제 → 타입. 문서와 아티팩트 모두 이 순서.</p>
+        <p>프로젝트 레이아웃 → 문법 → 정제 → 타입. 문서와 아티팩트 모두 이 순서.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -815,9 +801,15 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
+        <h3>스코프는 1급 개념이 아니다</h3>
+        <p>.scope.langue 종류도, 별도 스코프 엔진도 없다.
+        정제가 스코프를 시뮬레이트한다.</p>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
         <h3>재귀는 fix로만</h3>
-        <p>스코프는 순서 무관 가시성만 말하고, 재귀는 정제에서 실현한다 —
-        상호 재귀 SCC를 fix 원시로 로워링. letrec 코어 형식 없음.</p>
+        <p>정제가 상호 재귀 SCC를 fix 원시로 로워링하고, 순환 없는 정의는 let.
+        letrec 코어 형식 없음.</p>
       </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
@@ -839,7 +831,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
         <h3>하이브리드 실행 모델 확정</h3>
-        <p>생성(syn·tree) vs 해석(elab·scope·type) 경계를 기둥 엔진들과 대조해 확정.
+        <p>생성(syn) vs 해석(elab·type) 경계를 기둥 엔진들과 대조해 확정.
         e-graph/추론 엔진 채택은 해석 쪽 손을 들어준다.</p>
       </article>
     </div>
@@ -849,10 +841,9 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <ol>
         <li><b>stdlib 섀도잉</b> — 프로젝트가 stdlib과 같은 이름을 선언하면 에러인가, 프로젝트 쪽이 이기는가?</li>
         <li>같은 종류 병합에서 <b>규칙 우선순위/오버라이드</b> — 두 파일이 같은 노드에 규칙을 내면 에러인가, 명시적 override인가?</li>
-        <li><b>stdlib의 범위</b> — 도우미 콤비네이터·표준 토큰 외에 무엇까지? (공통 스코프 패턴, 진단 서식 도우미 등)</li>
-        <li><b>e-graph 엔진 선택</b> — egg, egglog, 목적 제작? egglog의 datalog 면이 스코프 엔진을 겸할 수 있는지 검증.</li>
-        <li><b>마일스톤 순서</b> — 챕터 순서(레이아웃→문법→스코프→정제→타입)를 구현 순서에도 적용해 scope를 elab보다 앞당길까? 현재 M1 elab → M2 scope.</li>
-        <li><code>.scope.langue</code>의 표현력 범위 — use/모듈 시스템, 캡 핸들러의 동적 스코프까지 담는가?</li>
+        <li><b>stdlib의 범위</b> — 도우미 콤비네이터·표준 토큰 외에 무엇까지? (진단 서식 도우미 등)</li>
+        <li><b>e-graph 엔진 선택</b> — egg, egglog, 목적 제작?</li>
+        <li>정제의 스코프 시뮬레이션 방식 — 이름 해소·use/모듈·캡 핸들러의 동적 스코프를 어떤 재작성으로 담는가?</li>
         <li>진단 템플릿의 <b>다국어/수준</b>(note, help) 지원 여부.</li>
         <li>langue 프로젝트 자체의 테스트 형식 — golden 픽스처를 어떤 모양으로 쓸지.</li>
       </ol>
@@ -860,10 +851,10 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   </div>
 </section>
 
-<!-- ============ 09 MILESTONES ============ -->
+<!-- ============ 08 MILESTONES ============ -->
 <section id="milestones">
   <div class="wrap">
-    <span class="sec-eyebrow"><span class="k" style="background:var(--cobalt)"></span>09-milestones.langue</span>
+    <span class="sec-eyebrow"><span class="k" style="background:var(--cobalt)"></span>08-milestones.langue</span>
     <h2>마일스톤</h2>
     <p class="sub">각 단계에서 <code>langc check</code>와 golden 테스트를 초록으로 유지.
       golden 픽스처가 각 단계의 계약이다.</p>
@@ -882,20 +873,16 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </li>
       <li>
         <span class="m">M2</span>
-        <div><h3>scope</h3><p>.scope.langue 설계 + 해석 엔진. LSP go-to-def의 기반.</p></div>
-      </li>
-      <li>
-        <span class="m">M3</span>
         <div><h3>type</h3>
         <p>추론 엔진 + Fω/capability 플러그인 + 판단 DSL. capability 타입 규칙 이식.</p></div>
       </li>
       <li>
-        <span class="m">M4</span>
+        <span class="m">M3</span>
         <div><h3>e-graph 최적화</h3>
         <p>같은 언어 elab 규칙군을 등식 포화로. 최적화 golden 픽스처가 계약.</p></div>
       </li>
       <li>
-        <span class="m">M5</span>
+        <span class="m">M4</span>
         <div><h3>JS</h3>
         <p>JS.syn.langue 작성, MIR/LIR → JS elab — 방출은 JS 트리의 프리티 프린트.
         남은 golden 픽스처 정리.</p></div>
