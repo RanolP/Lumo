@@ -3,12 +3,17 @@
 //! nothing else.
 
 mod cursor;
+mod elab;
 mod lexer;
 mod print;
 mod span;
 mod tree;
 
 pub use cursor::Cursor;
+pub use elab::{
+    first_token, nodes_in, nth_node_in, nth_token_of, tokens_of, ElabCtx, ElabReport, Frag,
+    PassPhase,
+};
 pub use lexer::{regex_escape, LexDfa, RawToken};
 pub use print::{print_canonical, sexpr, ParseReport};
 pub use span::Span;
