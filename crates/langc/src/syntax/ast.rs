@@ -112,6 +112,9 @@ pub enum OpElem {
     Operand(u16),
     /// `'+' | '-'` — token alternatives at this position.
     Toks(Vec<String>),
+    /// `CallArgs` — a rule parsed in place; only valid in a postfix tail
+    /// (`@110 '(' CallArgs ')'` — the call-expr form).
+    Node(String),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]

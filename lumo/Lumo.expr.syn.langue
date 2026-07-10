@@ -1,0 +1,29 @@
+// Lumo grammar, M0 slice: fn decls, let-in, idents, numbers, strings,
+// parens, calls, praat arithmetic. Shape and display syntax at once;
+// labels become accessors (design §2.3).
+
+File = items:FnDecl*
+
+FnDecl = 'fn' name:ident '(' params:sep(Param, ',')? ')' '=' body:Expr
+Param = name:ident
+
+LetExpr = 'let' name:ident '=' value:Expr 'in' body:Expr
+
+Ident = name:ident
+Number = value:lit.number
+String = value:lit.string
+ParenExpr = '(' inner:Expr ')'
+CallArgs = args:sep(Expr, ',')?
+
+Expr = praat {
+  simple = LetExpr | Ident | Number | String | ParenExpr
+  operators {
+    '-' | '!' @100,
+    @89 '**' @90,
+    @80 '*' | '/' @79,
+    @70 '+' | '-' @69,
+    @110 '(' CallArgs ')',
+  }
+}
+
+extern recover Expr

@@ -70,10 +70,14 @@ fn prune_language(lang: &Language) -> Language {
                 }
                 for row in &praat.rows {
                     for elem in &row.elems {
-                        if let OpElem::Toks(toks) = elem {
-                            for t in toks {
-                                mark_literal(lang, t, &mut live_tokens);
+                        match elem {
+                            OpElem::Toks(toks) => {
+                                for t in toks {
+                                    mark_literal(lang, t, &mut live_tokens);
+                                }
                             }
+                            OpElem::Node(name) => work.push(name.clone()),
+                            OpElem::Operand(_) => {}
                         }
                     }
                 }

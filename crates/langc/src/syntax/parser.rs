@@ -440,6 +440,11 @@ impl Parser<'_> {
                     }
                     elems.push(OpElem::Toks(toks));
                 }
+                TokenKind::Name(n) if name_is_node_ref(&n) => {
+                    end = self.cur().span;
+                    self.pos += 1;
+                    elems.push(OpElem::Node(n));
+                }
                 _ => break,
             }
         }

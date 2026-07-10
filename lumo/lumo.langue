@@ -1,0 +1,8 @@
+// Lumo project manifest (D-27, D-33). The pipe is the entry point.
+//
+// Full form once M1/M2 land:
+//   main = parse Lumo | elab Lumo to MIR | elab MIR to LIR | check_V LIR
+// M0 only has the parse stage; later stages would reference languages
+// that do not exist yet.
+
+main = parse Lumo

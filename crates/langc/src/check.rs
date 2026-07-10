@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::diag::Diagnostic;
 use crate::project::first::{first_sets, shape_first, FirstSets};
 use crate::project::model::{Definition, Language, RuleDef, START_RULE};
-use crate::project::praat::{classify_row, RowKind};
+use crate::project::praat::{classify_row, RowKind, TailPart};
 use crate::syntax::ast::{RuleBody, Shape, ShapeKind, StageKind, TokenPattern};
 
 pub fn check_definition(def: &Definition) -> Vec<Diagnostic> {
@@ -310,17 +310,39 @@ fn check_praat(
         for tok in kind.lead_toks() {
             check_tok(tok);
         }
-        // Every row token must be a declared literal.
+        // Every row token must be a declared literal; node payloads in a
+        // postfix tail must be rules.
         let all_toks: Vec<&String> = match &kind {
-            RowKind::Prefix { toks, .. }
-            | RowKind::Infix { toks, .. }
-            | RowKind::Postfix { toks, .. } => toks.iter().collect(),
+            RowKind::Prefix { toks, .. } | RowKind::Infix { toks, .. } => toks.iter().collect(),
+            RowKind::Postfix { tail, .. } => tail
+                .iter()
+                .flat_map(|p| match p {
+                    TailPart::Toks(toks) => toks.iter(),
+                    TailPart::Node(_) => [].iter(),
+                })
+                .collect(),
             RowKind::Mixfix { head, inner, .. } => {
                 head.iter().chain(inner.iter().flat_map(|(_, t)| t.iter())).collect()
             }
         };
         for tok in all_toks {
             check_literal(lang_name, lang, rule, row.span, tok, diags);
+        }
+        if let RowKind::Postfix { tail, .. } = &kind {
+            for part in tail {
+                if let TailPart::Node(name) = part {
+                    if !lang.rules.contains_key(name) {
+                        diags.push(Diagnostic::error(
+                            &rule.origin.file,
+                            row.span,
+                            format!(
+                                "unknown rule `{name}` in postfix row of praat rule `{}`",
+                                rule.name
+                            ),
+                        ));
+                    }
+                }
+            }
         }
     }
 

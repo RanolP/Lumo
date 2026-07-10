@@ -14,12 +14,19 @@ pub enum RowKind {
     Prefix { toks: Vec<String>, rbp: u16 },
     /// `@80 '*' | '/' @79`
     Infix { lbp: u16, toks: Vec<String>, rbp: u16 },
-    /// `@110 '!'`
-    Postfix { lbp: u16, toks: Vec<String> },
+    /// `@110 '!'` or, with a payload, `@110 '(' CallArgs ')'` — the tail
+    /// is consumed in order after the lead tokens.
+    Postfix { lbp: u16, tail: Vec<TailPart> },
     /// `@40 '?' @0 ':' @39` — after the head tokens, each `(bp, toks)`
     /// pair parses an inner operand then expects its tokens; the final
     /// operand parses at `lbp` (like an infix right side).
     Mixfix { lbp: u16, head: Vec<String>, inner: Vec<(u16, Vec<String>)>, rbp: u16 },
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum TailPart {
+    Toks(Vec<String>),
+    Node(String),
 }
 
 impl RowKind {
@@ -27,9 +34,11 @@ impl RowKind {
     /// for prefix rows).
     pub fn lead_toks(&self) -> &[String] {
         match self {
-            RowKind::Prefix { toks, .. }
-            | RowKind::Infix { toks, .. }
-            | RowKind::Postfix { toks, .. } => toks,
+            RowKind::Prefix { toks, .. } | RowKind::Infix { toks, .. } => toks,
+            RowKind::Postfix { tail, .. } => match tail.first() {
+                Some(TailPart::Toks(toks)) => toks,
+                _ => &[],
+            },
             RowKind::Mixfix { head, .. } => head,
         }
     }
@@ -42,8 +51,20 @@ pub fn classify_row(row: &OpRow) -> Result<RowKind, String> {
         [OpElem::Toks(toks), OpElem::Operand(rbp)] => {
             Ok(RowKind::Prefix { toks: toks.clone(), rbp: *rbp })
         }
-        [OpElem::Operand(lbp), OpElem::Toks(toks)] => {
-            Ok(RowKind::Postfix { lbp: *lbp, toks: toks.clone() })
+        // Postfix: `@lbp` then tokens/nodes with no further operand; must
+        // lead with tokens so the Pratt loop can dispatch on them.
+        [OpElem::Operand(lbp), OpElem::Toks(_), rest @ ..]
+            if !rest.iter().any(|p| matches!(p, OpElem::Operand(_))) =>
+        {
+            let tail = e[1..]
+                .iter()
+                .map(|p| match p {
+                    OpElem::Toks(toks) => TailPart::Toks(toks.clone()),
+                    OpElem::Node(name) => TailPart::Node(name.clone()),
+                    OpElem::Operand(_) => unreachable!("guarded above"),
+                })
+                .collect();
+            Ok(RowKind::Postfix { lbp: *lbp, tail })
         }
         [OpElem::Operand(lbp), OpElem::Toks(toks), OpElem::Operand(rbp)] => {
             Ok(RowKind::Infix { lbp: *lbp, toks: toks.clone(), rbp: *rbp })
@@ -54,8 +75,11 @@ pub fn classify_row(row: &OpRow) -> Result<RowKind, String> {
             if e.len() >= 5 && e.len() % 2 == 1 {
                 let mut ok = true;
                 for (i, elem) in e.iter().enumerate() {
-                    let want_operand = i % 2 == 0;
-                    ok &= matches!(elem, OpElem::Operand(_)) == want_operand;
+                    ok &= if i % 2 == 0 {
+                        matches!(elem, OpElem::Operand(_))
+                    } else {
+                        matches!(elem, OpElem::Toks(_))
+                    };
                 }
                 if ok {
                     let OpElem::Operand(lbp) = e[0] else { unreachable!() };
@@ -106,7 +130,23 @@ mod tests {
         );
         assert_eq!(
             classify_row(&row(vec![OpElem::Operand(110), toks("!")])),
-            Ok(RowKind::Postfix { lbp: 110, toks: vec!["!".into()] })
+            Ok(RowKind::Postfix { lbp: 110, tail: vec![TailPart::Toks(vec!["!".into()])] })
+        );
+        assert_eq!(
+            classify_row(&row(vec![
+                OpElem::Operand(110),
+                toks("("),
+                OpElem::Node("CallArgs".into()),
+                toks(")"),
+            ])),
+            Ok(RowKind::Postfix {
+                lbp: 110,
+                tail: vec![
+                    TailPart::Toks(vec!["(".into()]),
+                    TailPart::Node("CallArgs".into()),
+                    TailPart::Toks(vec![")".into()]),
+                ],
+            })
         );
         assert_eq!(
             classify_row(&row(vec![
