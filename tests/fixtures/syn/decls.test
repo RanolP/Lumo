@@ -1,0 +1,38 @@
+=== empty file parses to a bare FILE ===
+:parse(Lumo)
+
+
+
+---
+
+(FILE)
+
+=== single fn without params ===
+:parse(Lumo)
+
+fn one() = 1
+
+---
+
+(FILE (FN_DECL (NUMBER_EXPR)))
+
+=== params with trailing comma ===
+:parse(Lumo)
+
+fn pair(a, b,) = a
+
+---
+
+(FILE (FN_DECL (PARAM) (PARAM) (IDENT_EXPR)))
+
+=== two decls with comments (migrated from legacy syntax fixtures) ===
+:parse(Lumo)
+
+// identity
+fn id(x) = x
+fn twice(f, x) = f(f(x))  // apply twice
+
+---
+
+(FILE (FN_DECL (PARAM) (IDENT_EXPR)) (FN_DECL (PARAM) (PARAM) (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (IDENT_EXPR)))))))
+

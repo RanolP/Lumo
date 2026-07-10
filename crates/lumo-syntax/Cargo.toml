@@ -6,3 +6,6 @@ license.workspace = true
 
 [dependencies]
 langue-rt.workspace = true
+
+[dev-dependencies]
+langc.workspace = true

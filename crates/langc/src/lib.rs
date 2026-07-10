@@ -7,6 +7,7 @@
 
 pub mod check;
 pub mod codegen;
+pub mod corpus;
 pub mod db;
 pub mod diag;
 pub mod project;
