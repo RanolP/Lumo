@@ -134,27 +134,8 @@ lossless tree, the parser (extern recovery hooks), and the pretty-printer.
 
 ## 3. Scope (`*.scope.langue`)
 
-Scope-graph style fact declarations (Statix-inspired, much smaller):
-
-```
-scope {
-  File introduces module_scope
-  FnDecl declares name in enclosing        // visible module-wide, order-free
-  Param declares name in body
-  LetExpr declares binder in body           // sequential, shadows
-  MatchArm declares pattern_binders in body
-  Ident resolves in lexical scope
-  UseDecl imports path into enclosing
-}
-```
-
-Scope facts are purely relational: they state which references can see which
-definitions, nothing more. Recursion is not a scope concept — it is realized
-at elaboration through `fix` (section 4).
-
-The engine builds the scope graph from these facts during a single CST walk
-and answers resolution queries. Output feeds both `type` (section 5) and the
-LSP (go-to-def falls out for free).
+Not designed yet. Decided so far: recursion is not a scope concept — it is
+realized at elaboration through `fix` (section 4).
 
 ## 4. Elaboration (`*.elab.langue`)
 
@@ -234,7 +215,7 @@ algorithm. Labels become accessors, alternatives become node kinds, and the
 parser is *derived* from the shape (plus `praat` blocks) rather than
 written. Every pipeline language is declared this way and therefore carries
 its own display syntax (section 2.1). The philosophy extends further: elab
-rules, scope facts, and typing rules are likewise shape-first,
+rules, scope rules, and typing rules are likewise shape-first,
 algorithm-free declarations that engines interpret.
 
 ### 6.3 E-graph elaboration
@@ -290,7 +271,7 @@ edit, run `langc gen`, commit generated code.
 ### 8.2 Interpreted rule tables
 
 For scope/elab/type: `langc` compiles the rules to a compact checked IR that
-generic Rust engines execute — the scope-graph engine, the e-graph engine
+generic Rust engines execute — the scope resolution engine, the e-graph engine
 for same-language elab, the reasoning engine. Rationale: changing a typing
 rule should not require recompiling generated Rust; these rules are dense in
 semantics but not performance-critical enough to need codegen in v1. If
@@ -317,7 +298,7 @@ generated. Langue-in-langue self-description is explicitly not a v1 goal.
 - **M1 — MIR + elab (lowering)**: write `MIR.syn.langue` and the
   `elab Lumo -> MIR` syntax-directed rules; the rewrite engine owns
   lowering. CBPV split decided here.
-- **M2 — scope**: scope facts + resolution engine.
+- **M2 — scope**: `.scope.langue` design + resolution engine.
 - **M3 — type**: reasoning engine + Fω/caps plugin + judgment DSL; port the
   capability typing rules.
 - **M4 — e-graph optimization**: same-language elab groups on equality
@@ -361,9 +342,9 @@ Decided:
 10. **Chapter order**: project layout → syntax → scope → elaboration → type;
     architecture pillars after them; documents are snapshots (no changelog,
     no legacy exposition).
-11. **Recursion via `fix` only**: scope facts state unordered visibility
-    only; elaboration lowers each mutually-recursive SCC through a core
-    `fix` primitive — no `letrec` core form.
+11. **Recursion via `fix` only**: scope states unordered visibility only;
+    elaboration lowers each mutually-recursive SCC through a core `fix`
+    primitive — no `letrec` core form.
 
 Still open (mirrored in the artifact's 회신 대기 box):
 

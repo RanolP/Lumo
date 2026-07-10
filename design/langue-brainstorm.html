@@ -525,24 +525,11 @@ Expr = <span class="k">praat</span> {
 <section id="scope">
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-scope)"></span>03-scope.langue</span>
-    <h2>스코프 — 바인딩은 사실의 나열이다</h2>
+    <h2>스코프 — 아직 설계하지 않았다</h2>
     <p class="sub">
-      스코프 그래프식 사실 선언(Statix에서 영감, 훨씬 작게). 사실은 순수하게 관계적 —
-      어떤 참조가 어떤 선언을 볼 수 있는지만 말한다. 재귀는 스코프의 개념이 아니라
-      정제(04)에서 <code>fix</code>로 실현된다. 엔진이 CST 한 번 순회로
-      그래프를 만들고 해석 질의에 답한다. 결과는 타입 검사(05)와 LSP 양쪽에 먹인다 —
-      go-to-def가 공짜로 따라온다.
+      지금 결정된 것 하나 — 재귀는 스코프의 개념이 아니다.
+      스코프는 순서 무관 가시성만 말하고, 재귀는 정제(04)에서 <code>fix</code>로 실현된다.
     </p>
-    <div class="kinds">
-      <article class="kind k-scope full">
-        <header><span class="ext">*.scope.langue</span><span class="role">선언 · 참조 · 가시성</span></header>
-        <pre>FnDecl  <span class="k">declares</span> name <span class="k">in</span> enclosing  <span class="c">// 모듈 전역 가시, 순서 무관</span>
-Param   <span class="k">declares</span> name <span class="k">in</span> body
-LetExpr <span class="k">declares</span> binder <span class="k">in</span> body    <span class="c">// 순차적, 섀도잉</span>
-MatchArm <span class="k">declares</span> pattern_binders <span class="k">in</span> body
-Ident   <span class="k">resolves in</span> lexical scope</pre>
-      </article>
-    </div>
   </div>
 </section>
 
@@ -735,7 +722,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <span class="tag">elab · scope · type → 검증된 규칙 테이블</span>
         <ul>
           <li>elab 재작성 규칙 → e-graph 엔진 (06c)</li>
-          <li>스코프 사실과 해석 질의 → 스코프 그래프 엔진</li>
+          <li>스코프 규칙 → 해석 엔진</li>
           <li>타입 판단 규칙 + 진단 템플릿 → 추론 엔진 (06d)</li>
         </ul>
         <p class="why"><b>이유:</b> 타입 규칙 하나 고치자고 생성된 Rust를 재컴파일하지
@@ -895,7 +882,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </li>
       <li>
         <span class="m">M2</span>
-        <div><h3>scope</h3><p>스코프 사실 + 해석 엔진. LSP go-to-def의 기반.</p></div>
+        <div><h3>scope</h3><p>.scope.langue 설계 + 해석 엔진. LSP go-to-def의 기반.</p></div>
       </li>
       <li>
         <span class="m">M3</span>
