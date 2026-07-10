@@ -3,16 +3,10 @@
 
 use std::sync::LazyLock;
 
-use langue_rt::{LexDfa, Span};
+use langue_rt::LexDfa;
 
+use super::lossless::Token;
 use super::syntax_kind::SyntaxKind;
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Token {
-    pub kind: SyntaxKind,
-    pub text: String,
-    pub span: Span,
-}
 
 static PATTERNS: &[&str] = &[
     "\\,", // comma

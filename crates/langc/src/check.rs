@@ -202,7 +202,18 @@ fn check_shape(
                 check_shape(lang_name, lang, rule, arm, sets, labels, diags);
             }
         }
-        ShapeKind::Opt(inner) | ShapeKind::Rep(inner) => {
+        ShapeKind::Opt(inner) => {
+            check_shape(lang_name, lang, rule, inner, sets, labels, diags);
+        }
+        ShapeKind::Rep(inner) => {
+            // A repetition of a possibly-empty shape would loop forever.
+            if shape_first(lang, sets, inner).nullable {
+                diags.push(Diagnostic::error(
+                    &rule.origin.file,
+                    shape.span,
+                    format!("repetition of a possibly-empty shape in rule `{}`", rule.name),
+                ));
+            }
             check_shape(lang_name, lang, rule, inner, sets, labels, diags);
         }
         ShapeKind::Label { label, shape: inner } => {
@@ -240,6 +251,13 @@ fn check_shape(
         }
         ShapeKind::Sep { item, sep } => {
             check_literal(lang_name, lang, rule, shape.span, sep, diags);
+            if shape_first(lang, sets, item).nullable {
+                diags.push(Diagnostic::error(
+                    &rule.origin.file,
+                    shape.span,
+                    format!("sep() over a possibly-empty shape in rule `{}`", rule.name),
+                ));
+            }
             check_shape(lang_name, lang, rule, item, sets, labels, diags);
         }
     }

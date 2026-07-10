@@ -16,16 +16,10 @@ pub fn generate(lang: &Language) -> String {
     buf.blank();
     buf.line("use std::sync::LazyLock;");
     buf.blank();
-    buf.line("use langue_rt::{LexDfa, Span};");
+    buf.line("use langue_rt::LexDfa;");
     buf.blank();
+    buf.line("use super::lossless::Token;");
     buf.line("use super::syntax_kind::SyntaxKind;");
-    buf.blank();
-    buf.line("#[derive(Clone, PartialEq, Eq, Debug)]");
-    buf.open("pub struct Token {");
-    buf.line("pub kind: SyntaxKind,");
-    buf.line("pub text: String,");
-    buf.line("pub span: Span,");
-    buf.close("}");
 
     buf.blank();
     buf.open("static PATTERNS: &[&str] = &[");

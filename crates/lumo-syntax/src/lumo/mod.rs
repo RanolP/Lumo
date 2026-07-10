@@ -3,4 +3,6 @@
 //! Generated modules for language `Lumo`.
 
 pub mod lexer;
+pub mod lossless;
+pub mod parser;
 pub mod syntax_kind;

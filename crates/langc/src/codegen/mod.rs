@@ -2,7 +2,9 @@
 //! collections, so `langc gen` is byte-stable for a given definition.
 
 pub mod lexer;
+pub mod lossless;
 pub mod naming;
+pub mod parser;
 pub mod syntax_kind;
 
 use crate::project::model::{Definition, Language, TokenDef};
@@ -22,6 +24,8 @@ pub fn generate(def: &Definition) -> Vec<(String, String)> {
             syntax_kind::generate(lang_name, lang),
         ));
         files.push((format!("{module}/lexer.rs"), lexer::generate(lang)));
+        files.push((format!("{module}/lossless.rs"), lossless::generate()));
+        files.push((format!("{module}/parser.rs"), parser::generate(lang)));
     }
     files
 }
@@ -31,6 +35,8 @@ fn language_mod(lang_name: &str) -> String {
     buf.line(&format!("//! Generated modules for language `{lang_name}`."));
     buf.blank();
     buf.line("pub mod lexer;");
+    buf.line("pub mod lossless;");
+    buf.line("pub mod parser;");
     buf.line("pub mod syntax_kind;");
     buf.finish()
 }
@@ -83,6 +89,13 @@ impl Buf {
     pub fn close(&mut self, s: &str) {
         self.indent -= 1;
         self.line(s);
+    }
+
+    /// Dedent, print, re-indent — for `} else {` / `} else if x {`.
+    pub fn else_open(&mut self, s: &str) {
+        self.indent -= 1;
+        self.line(s);
+        self.indent += 1;
     }
 
     pub fn finish(self) -> String {
