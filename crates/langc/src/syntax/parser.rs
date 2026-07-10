@@ -29,6 +29,14 @@ pub fn parse_manifest(file: &str, text: &str) -> (File, Vec<Diagnostic>) {
     (ast, diags)
 }
 
+pub fn parse_elab_file(file: &str, text: &str) -> (File, Vec<Diagnostic>) {
+    let (tokens, mut diags) = lexer::lex(file, text);
+    let mut p = Parser { file, tokens, pos: 0, diags: Vec::new() };
+    let ast = p.parse_elab();
+    diags.append(&mut p.diags);
+    (ast, diags)
+}
+
 struct Parser<'f> {
     file: &'f str,
     tokens: Vec<Token>,
@@ -458,6 +466,372 @@ impl Parser<'_> {
         Some(OpRow { elems, span: start.cover(end) })
     }
 
+    // === elab files (D-35) ===
+
+    fn at_sym(&self, s: &str) -> bool {
+        matches!(self.cur().kind, TokenKind::Sym(sym) if sym == s)
+    }
+
+    fn expect_sym(&mut self, s: &str) -> bool {
+        if self.at_sym(s) {
+            self.pos += 1;
+            true
+        } else {
+            self.error_here(format!("expected `{s}`, found {}", self.cur().kind.describe()));
+            false
+        }
+    }
+
+    /// Skip to the next plausible elab item start after an error.
+    fn recover_to_elab_item(&mut self) {
+        while !self.at_eof() {
+            if self.at_name("from") || self.at_name("between") || self.at_name("extern") {
+                return;
+            }
+            self.pos += 1;
+        }
+    }
+
+    fn parse_elab(&mut self) -> File {
+        let mut items = Vec::new();
+        while !self.at_eof() {
+            let before = self.pos;
+            if let Some(item) = self.parse_elab_item() {
+                items.push(item);
+            }
+            if self.pos == before {
+                self.error_here(format!(
+                    "expected `from`, `between`, or `extern`, found {}",
+                    self.cur().kind.describe()
+                ));
+                self.pos += 1;
+                self.recover_to_elab_item();
+            }
+        }
+        File { items }
+    }
+
+    fn parse_elab_item(&mut self) -> Option<Item> {
+        if self.at_name("from") {
+            return self.parse_from_block();
+        }
+        if self.at_name("between") {
+            return self.parse_between_block();
+        }
+        if self.at_name("extern") {
+            return self.parse_extern_elab();
+        }
+        None
+    }
+
+    fn parse_from_block(&mut self) -> Option<Item> {
+        let start = self.bump().span; // from
+        let (from, _) = self.expect_name("a source language");
+        if !self.at_name("to") {
+            self.error_here(format!(
+                "expected `to`, found {}",
+                self.cur().kind.describe()
+            ));
+            self.recover_to_elab_item();
+            return None;
+        }
+        self.bump();
+        let (to, to_span) = self.expect_name("a target language");
+        let span = start.cover(to_span);
+        self.expect_punct('{');
+        let mut rules = Vec::new();
+        while !self.at_punct('}') && !self.at_eof() {
+            let before = self.pos;
+            let Some(pattern) = self.parse_pat() else {
+                self.recover_rule_body();
+                continue;
+            };
+            if !self.expect_sym("==>") {
+                self.recover_rule_body();
+                continue;
+            }
+            let Some(construction) = self.parse_con() else {
+                self.recover_rule_body();
+                continue;
+            };
+            let span = pattern.span().cover(construction.span());
+            rules.push(ElabRule { pattern, construction, span });
+            if self.pos == before {
+                self.pos += 1; // safety: always make progress
+            }
+        }
+        self.expect_punct('}');
+        Some(Item::ElabBlock(ElabBlock { from, to, span, rules }))
+    }
+
+    fn parse_between_block(&mut self) -> Option<Item> {
+        let start = self.bump().span; // between
+        let (lang, lang_span) = self.expect_name("a language name");
+        let span = start.cover(lang_span);
+        self.expect_punct('{');
+        let mut relations = Vec::new();
+        while !self.at_punct('}') && !self.at_eof() {
+            let before = self.pos;
+            let Some(lhs) = self.parse_pat() else {
+                self.recover_rule_body();
+                continue;
+            };
+            if !self.expect_sym("===") {
+                self.recover_rule_body();
+                continue;
+            }
+            let Some(rhs) = self.parse_con() else {
+                self.recover_rule_body();
+                continue;
+            };
+            let span = lhs.span().cover(rhs.span());
+            relations.push(Relation { lhs, rhs, span });
+            if self.pos == before {
+                self.pos += 1;
+            }
+        }
+        self.expect_punct('}');
+        Some(Item::BetweenBlock(BetweenBlock { lang, span, relations }))
+    }
+
+    /// Skip a broken rule: conservatively drop the rest of the enclosing
+    /// block (to its closing `}`), so the item loop always progresses.
+    fn recover_rule_body(&mut self) {
+        let mut depth = 0usize;
+        while !self.at_eof() {
+            match &self.cur().kind {
+                TokenKind::Punct('{') => depth += 1,
+                TokenKind::Punct('}') => {
+                    if depth == 0 {
+                        return;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+            self.pos += 1;
+        }
+    }
+
+    fn parse_extern_elab(&mut self) -> Option<Item> {
+        let start = self.cur().span;
+        self.bump(); // extern
+        if self.at_name("pass") {
+            self.bump();
+            let (name, name_span) = self.expect_name("a pass name");
+            return Some(Item::ExternPass(ExternPass { name, span: start.cover(name_span) }));
+        }
+        if self.at_name("rule") {
+            self.bump();
+            let (name, _) = self.expect_name("a rule name");
+            if !self.at_name("from") {
+                self.error_here(format!(
+                    "expected `from`, found {}",
+                    self.cur().kind.describe()
+                ));
+                self.recover_to_elab_item();
+                return None;
+            }
+            self.bump();
+            let (from, _) = self.expect_name("a source language");
+            if !self.at_name("to") {
+                self.error_here(format!(
+                    "expected `to`, found {}",
+                    self.cur().kind.describe()
+                ));
+                self.recover_to_elab_item();
+                return None;
+            }
+            self.bump();
+            let (to, to_span) = self.expect_name("a target language");
+            return Some(Item::ExternRule(ExternRule {
+                name,
+                from,
+                to,
+                span: start.cover(to_span),
+            }));
+        }
+        self.error_here(format!(
+            "expected `rule` or `pass` after `extern`, found {}",
+            self.cur().kind.describe()
+        ));
+        self.recover_to_elab_item();
+        None
+    }
+
+    // === patterns and constructions (D-35) ===
+
+    fn parse_pat(&mut self) -> Option<Pat> {
+        let span = self.cur().span;
+        match self.cur().kind.clone() {
+            TokenKind::Var(name) => {
+                self.pos += 1;
+                Some(Pat::Var { name, span })
+            }
+            TokenKind::Str(text) => {
+                self.pos += 1;
+                Some(Pat::Lit { text, span })
+            }
+            TokenKind::Punct('[') => {
+                let (name, _, end) = self.parse_list_capture()?;
+                Some(Pat::ListVar { name, span: span.cover(end) })
+            }
+            TokenKind::Name(_) => {
+                let (lang, name, mut span) = self.parse_node_head()?;
+                let mut fields = Vec::new();
+                if self.eat_punct('{') {
+                    while !self.at_punct('}') && !self.at_eof() {
+                        let (field, _) = self.expect_name("a field label");
+                        if field.is_empty() {
+                            self.recover_rule_body();
+                            break;
+                        }
+                        self.expect_punct(':');
+                        let pat = self.parse_pat()?;
+                        fields.push((field, pat));
+                        if !self.eat_punct(',') {
+                            break;
+                        }
+                    }
+                    let end = self.cur().span;
+                    self.expect_punct('}');
+                    span = span.cover(end);
+                }
+                Some(Pat::Node { lang, name, fields, span })
+            }
+            other => {
+                self.error_here(format!("expected a pattern, found {}", other.describe()));
+                None
+            }
+        }
+    }
+
+    fn parse_con(&mut self) -> Option<Con> {
+        let span = self.cur().span;
+        match self.cur().kind.clone() {
+            TokenKind::Var(name) => {
+                self.pos += 1;
+                // `$x to Lang`
+                if self.at_name("to") {
+                    self.bump();
+                    let (lang, lang_span) = self.expect_name("a target language");
+                    return Some(Con::VarTo { name, lang, span: span.cover(lang_span) });
+                }
+                // `$e[$b := $a]`
+                if self.at_punct('[') {
+                    self.pos += 1;
+                    let var = self.expect_var("the bound metavariable")?;
+                    self.expect_sym(":=");
+                    let replacement = self.expect_var("the replacement metavariable")?;
+                    let end = self.cur().span;
+                    self.expect_punct(']');
+                    return Some(Con::Subst {
+                        target: name,
+                        var,
+                        replacement,
+                        span: span.cover(end),
+                    });
+                }
+                Some(Con::Var { name, span })
+            }
+            TokenKind::Str(text) => {
+                self.pos += 1;
+                Some(Con::Lit { text, span })
+            }
+            TokenKind::Punct('[') => {
+                let (name, lang, end) = self.parse_list_capture()?;
+                let Some(lang) = lang else {
+                    self.diags.push(Diagnostic::error(
+                        self.file,
+                        span.cover(end),
+                        "a list in a construction must recurse: `[$x* to Lang]`",
+                    ));
+                    return None;
+                };
+                Some(Con::ListVarTo { name, lang, span: span.cover(end) })
+            }
+            TokenKind::Name(_) => {
+                let (lang, name, mut span) = self.parse_node_head()?;
+                let mut fields = Vec::new();
+                if self.eat_punct('{') {
+                    while !self.at_punct('}') && !self.at_eof() {
+                        let (field, _) = self.expect_name("a field label");
+                        if field.is_empty() {
+                            self.recover_rule_body();
+                            break;
+                        }
+                        self.expect_punct(':');
+                        let con = self.parse_con()?;
+                        fields.push((field, con));
+                        if !self.eat_punct(',') {
+                            break;
+                        }
+                    }
+                    let end = self.cur().span;
+                    self.expect_punct('}');
+                    span = span.cover(end);
+                }
+                Some(Con::Node { lang, name, fields, span })
+            }
+            other => {
+                self.error_here(format!(
+                    "expected a construction, found {}",
+                    other.describe()
+                ));
+                None
+            }
+        }
+    }
+
+    /// `(Lang ::)? Name` — the head of a node pattern/construction.
+    fn parse_node_head(&mut self) -> Option<(Option<String>, String, Span)> {
+        let (first, first_span) = self.expect_name("a node name");
+        if first.is_empty() {
+            return None;
+        }
+        if self.at_sym("::") {
+            self.pos += 1;
+            let (name, name_span) = self.expect_name("a node name");
+            if name.is_empty() {
+                return None;
+            }
+            Some((Some(first), name, first_span.cover(name_span)))
+        } else {
+            Some((None, first, first_span))
+        }
+    }
+
+    /// `[$x* (to Lang)? ]` minus the leading `[` decision — returns
+    /// `(var, lang, closing span)`. The caller sits on `[`.
+    fn parse_list_capture(&mut self) -> Option<(String, Option<String>, Span)> {
+        self.expect_punct('[');
+        let name = self.expect_var("a list metavariable")?;
+        self.expect_punct('*');
+        let mut lang = None;
+        if self.at_name("to") {
+            self.bump();
+            let (l, _) = self.expect_name("a target language");
+            if l.is_empty() {
+                return None;
+            }
+            lang = Some(l);
+        }
+        let end = self.cur().span;
+        self.expect_punct(']');
+        Some((name, lang, end))
+    }
+
+    fn expect_var(&mut self, what: &str) -> Option<String> {
+        if let TokenKind::Var(v) = &self.cur().kind {
+            let v = v.clone();
+            self.pos += 1;
+            Some(v)
+        } else {
+            self.error_here(format!("expected {what}, found {}", self.cur().kind.describe()));
+            None
+        }
+    }
+
     // === manifest (D-33) ===
 
     fn parse_manifest_file(&mut self) -> File {
@@ -676,5 +1050,128 @@ mod tests {
         assert!(ast.items.iter().any(
             |i| matches!(i, Item::Rule(r) if r.name == "Good")
         ));
+    }
+
+    // === elab files (D-35) ===
+
+    fn elab(text: &str) -> File {
+        let (ast, diags) = parse_elab_file("t.elab.langue", text);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        ast
+    }
+
+    /// The locked D-35 from-block example, verbatim.
+    #[test]
+    fn from_block_locked_example() {
+        let ast = elab(
+            "from Lumo to MIR {\n  FnDecl { name: $n, param_list: ParamList { params: [$p*] }, body: $b }\n    ==> Lambda { params: [$p* to MIR], body: $b to MIR }\n}",
+        );
+        let Item::ElabBlock(b) = &ast.items[0] else { panic!() };
+        assert_eq!((b.from.as_str(), b.to.as_str()), ("Lumo", "MIR"));
+        assert_eq!(b.rules.len(), 1);
+        let rule = &b.rules[0];
+        let Pat::Node { lang, name, fields, .. } = &rule.pattern else { panic!() };
+        assert_eq!(lang, &None);
+        assert_eq!(name, "FnDecl");
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].0, "name");
+        assert!(matches!(&fields[0].1, Pat::Var { name, .. } if name == "n"));
+        let Pat::Node { name, fields: inner, .. } = &fields[1].1 else { panic!() };
+        assert_eq!(name, "ParamList");
+        assert!(matches!(&inner[0].1, Pat::ListVar { name, .. } if name == "p"));
+        let Con::Node { name, fields, .. } = &rule.construction else { panic!() };
+        assert_eq!(name, "Lambda");
+        assert!(matches!(
+            &fields[0].1,
+            Con::ListVarTo { name, lang, .. } if name == "p" && lang == "MIR"
+        ));
+        assert!(matches!(
+            &fields[1].1,
+            Con::VarTo { name, lang, .. } if name == "b" && lang == "MIR"
+        ));
+    }
+
+    /// The locked D-14/D-35 between example, verbatim.
+    #[test]
+    fn between_block_locked_example() {
+        let ast = elab(
+            "between MIR {\n  Apply { fn: Lambda { param: $b, body: $e }, arg: $a } === $e[$b := $a]\n}",
+        );
+        let Item::BetweenBlock(b) = &ast.items[0] else { panic!() };
+        assert_eq!(b.lang, "MIR");
+        assert_eq!(b.relations.len(), 1);
+        let rel = &b.relations[0];
+        let Pat::Node { name, fields, .. } = &rel.lhs else { panic!() };
+        assert_eq!(name, "Apply");
+        assert_eq!(fields[0].0, "fn");
+        assert!(matches!(
+            &rel.rhs,
+            Con::Subst { target, var, replacement, .. }
+                if target == "e" && var == "b" && replacement == "a"
+        ));
+    }
+
+    #[test]
+    fn qualified_names_literals_and_bare_nodes() {
+        let ast = elab(
+            "from Lumo to MIR {\n  Lumo::WildcardPattern ==> MIR::VarV { name: 'x' }\n  NumberExpr { value: $v } ==> NumV { value: $v }\n}",
+        );
+        let Item::ElabBlock(b) = &ast.items[0] else { panic!() };
+        assert_eq!(b.rules.len(), 2);
+        let Pat::Node { lang, name, fields, .. } = &b.rules[0].pattern else { panic!() };
+        assert_eq!(lang.as_deref(), Some("Lumo"));
+        assert_eq!(name, "WildcardPattern");
+        assert!(fields.is_empty());
+        let Con::Node { lang, fields, .. } = &b.rules[0].construction else { panic!() };
+        assert_eq!(lang.as_deref(), Some("MIR"));
+        assert!(matches!(&fields[0].1, Con::Lit { text, .. } if text == "x"));
+    }
+
+    #[test]
+    fn extern_rule_and_pass() {
+        let ast = elab(
+            "extern rule member_classify from Lumo to MIR\nextern pass scc_fix\nextern pass use_require",
+        );
+        assert_eq!(ast.items.len(), 3);
+        let Item::ExternRule(r) = &ast.items[0] else { panic!() };
+        assert_eq!(r.name, "member_classify");
+        assert_eq!((r.from.as_str(), r.to.as_str()), ("Lumo", "MIR"));
+        let Item::ExternPass(p) = &ast.items[1] else { panic!() };
+        assert_eq!(p.name, "scc_fix");
+    }
+
+    #[test]
+    fn literal_pattern_and_trailing_comma() {
+        let ast = elab(
+            "from Lumo to MIR {\n  Attribute { name: 'extern', } ==> VarV { name: $n, }\n}",
+        );
+        let Item::ElabBlock(b) = &ast.items[0] else { panic!() };
+        let Pat::Node { fields, .. } = &b.rules[0].pattern else { panic!() };
+        assert!(matches!(&fields[0].1, Pat::Lit { text, .. } if text == "extern"));
+    }
+
+    #[test]
+    fn broken_rule_recovers_to_next_item() {
+        let (ast, diags) = parse_elab_file(
+            "t.elab.langue",
+            "from Lumo to MIR {\n  FnDecl { ==> Bad\n  }\n}\nextern pass scc_fix",
+        );
+        assert!(!diags.is_empty());
+        assert!(ast
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::ExternPass(p) if p.name == "scc_fix")));
+    }
+
+    #[test]
+    fn list_construction_without_to_is_error() {
+        let (_, diags) = parse_elab_file(
+            "t.elab.langue",
+            "from Lumo to MIR {\n  ParamList { params: [$p*] } ==> ValueArgs { args: [$p*] }\n}",
+        );
+        assert!(
+            diags.iter().any(|d| d.message.contains("must recurse")),
+            "{diags:?}"
+        );
     }
 }

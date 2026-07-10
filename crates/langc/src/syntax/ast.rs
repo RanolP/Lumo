@@ -18,6 +18,14 @@ pub enum Item {
     ExternRecover(ExternRecover),
     /// `main = parse Lumo | elab Lumo to MIR | …` (manifest files only, D-27/D-33)
     Pipeline(Pipeline),
+    /// `from Lumo to MIR { pattern ==> construction … }` (elab files, D-13/D-35)
+    ElabBlock(ElabBlock),
+    /// `between MIR { lhs === rhs … }` (elab files, D-14)
+    BetweenBlock(BetweenBlock),
+    /// `extern rule member_classify from Lumo to MIR` (D-01/D-38)
+    ExternRule(ExternRule),
+    /// `extern pass scc_fix` (D-01/D-38)
+    ExternPass(ExternPass),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -156,5 +164,113 @@ impl Pipeline {
             StageKind::Parse { lang } => Some(lang.as_str()),
             _ => None,
         })
+    }
+}
+
+// === elab items (D-35) ===
+
+/// `from Lumo to MIR { rules }` — merged across files by (from, to).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ElabBlock {
+    pub from: String,
+    pub to: String,
+    /// Span of the `from A to B` header.
+    pub span: Span,
+    pub rules: Vec<ElabRule>,
+}
+
+/// `pattern ==> construction`
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ElabRule {
+    pub pattern: Pat,
+    pub construction: Con,
+    pub span: Span,
+}
+
+/// `between MIR { relations }` — merged across files by language.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct BetweenBlock {
+    pub lang: String,
+    /// Span of the `between L` header.
+    pub span: Span,
+    pub relations: Vec<Relation>,
+}
+
+/// `lhs === rhs`
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Relation {
+    pub lhs: Pat,
+    pub rhs: Con,
+    pub span: Span,
+}
+
+/// `extern rule member_classify from Lumo to MIR`
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ExternRule {
+    pub name: String,
+    pub from: String,
+    pub to: String,
+    pub span: Span,
+}
+
+/// `extern pass scc_fix`
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ExternPass {
+    pub name: String,
+    pub span: Span,
+}
+
+/// One side of an elab rule: what the source tree must look like.
+/// Fields are matched by syn label; omitted fields match anything (D-35).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Pat {
+    /// `FnDecl { name: $n, … }` / `Lumo::FnDecl` (bare name = no field
+    /// constraints).
+    Node { lang: Option<String>, name: String, fields: Vec<(String, Pat)>, span: Span },
+    /// `$x`
+    Var { name: String, span: Span },
+    /// `[$x*]` — captures a labeled sep/rep field as a list.
+    ListVar { name: String, span: Span },
+    /// `'literal'` — a token's text.
+    Lit { text: String, span: Span },
+}
+
+/// The other side: how to build the target tree.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Con {
+    Node { lang: Option<String>, name: String, fields: Vec<(String, Con)>, span: Span },
+    /// `$x` — splice a binding as-is.
+    Var { name: String, span: Span },
+    /// `$x to MIR` — recursive elaboration (strict subtree, D-28).
+    VarTo { name: String, lang: String, span: Span },
+    /// `[$x* to MIR]` — elementwise recursive elaboration of a list capture.
+    ListVarTo { name: String, lang: String, span: Span },
+    /// `$e[$b := $a]` — built-in subst (D-24).
+    Subst { target: String, var: String, replacement: String, span: Span },
+    /// `'literal'`
+    Lit { text: String, span: Span },
+}
+
+impl Pat {
+    pub fn span(&self) -> Span {
+        match self {
+            Pat::Node { span, .. }
+            | Pat::Var { span, .. }
+            | Pat::ListVar { span, .. }
+            | Pat::Lit { span, .. } => *span,
+        }
+    }
+}
+
+impl Con {
+    pub fn span(&self) -> Span {
+        match self {
+            Con::Node { span, .. }
+            | Con::Var { span, .. }
+            | Con::VarTo { span, .. }
+            | Con::ListVarTo { span, .. }
+            | Con::Subst { span, .. }
+            | Con::Lit { span, .. } => *span,
+        }
     }
 }

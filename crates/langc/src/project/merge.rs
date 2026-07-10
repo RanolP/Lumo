@@ -138,6 +138,14 @@ fn merge_syn_file(
                     "pipelines may only appear in the manifest (suffix-less .langue file)",
                 ));
             }
+            Item::ElabBlock(_) | Item::BetweenBlock(_) | Item::ExternRule(_)
+            | Item::ExternPass(_) => {
+                diags.push(Diagnostic::error(
+                    path,
+                    langue_rt::Span::default(),
+                    "elab items may only appear in .elab.langue files",
+                ));
+            }
         }
     }
 }

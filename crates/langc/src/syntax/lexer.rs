@@ -19,8 +19,12 @@ pub enum TokenKind {
     Regex(String),
     /// Binding power: `100`.
     Num(u16),
-    /// One of `= | ? * + ( ) { } , : @`.
+    /// One of `= | ? * + ( ) { } [ ] , : @`.
     Punct(char),
+    /// `==>` `===` `::` `:=` — multi-char symbols (elab files).
+    Sym(&'static str),
+    /// `$x` — a metavariable (elab files).
+    Var(String),
     Eof,
 }
 
@@ -32,6 +36,8 @@ impl TokenKind {
             TokenKind::Regex(_) => "regex".to_owned(),
             TokenKind::Num(n) => format!("number `{n}`"),
             TokenKind::Punct(c) => format!("`{c}`"),
+            TokenKind::Sym(s) => format!("`{s}`"),
+            TokenKind::Var(v) => format!("metavariable `${v}`"),
             TokenKind::Eof => "end of file".to_owned(),
         }
     }
@@ -57,8 +63,43 @@ pub fn lex(file: &str, text: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                     i += 1;
                 }
             }
-            b'=' | b'|' | b'?' | b'*' | b'+' | b'(' | b')' | b'{' | b'}' | b',' | b':'
-            | b'@' => {
+            b'=' if bytes[i..].starts_with(b"==>") || bytes[i..].starts_with(b"===") => {
+                let sym = if bytes[i..].starts_with(b"==>") { "==>" } else { "===" };
+                i += 3;
+                tokens.push(Token {
+                    kind: TokenKind::Sym(sym),
+                    span: Span::new(start as u32, i as u32),
+                });
+            }
+            b':' if matches!(bytes.get(i + 1), Some(b':' | b'=')) => {
+                let sym = if bytes[i + 1] == b':' { "::" } else { ":=" };
+                i += 2;
+                tokens.push(Token {
+                    kind: TokenKind::Sym(sym),
+                    span: Span::new(start as u32, i as u32),
+                });
+            }
+            b'$' => {
+                i += 1;
+                if i < bytes.len() && is_name_start(bytes[i]) {
+                    let name_start = i;
+                    while i < bytes.len() && is_name_continue(bytes[i]) {
+                        i += 1;
+                    }
+                    tokens.push(Token {
+                        kind: TokenKind::Var(text[name_start..i].to_owned()),
+                        span: Span::new(start as u32, i as u32),
+                    });
+                } else {
+                    diags.push(Diagnostic::error(
+                        file,
+                        Span::new(start as u32, i as u32),
+                        "expected a name after `$`",
+                    ));
+                }
+            }
+            b'=' | b'|' | b'?' | b'*' | b'+' | b'(' | b')' | b'{' | b'}' | b'[' | b']'
+            | b',' | b':' | b'@' => {
                 i += 1;
                 tokens.push(Token {
                     kind: TokenKind::Punct(b as char),
@@ -297,6 +338,36 @@ mod tests {
                 TokenKind::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn elab_symbols_and_metavars() {
+        assert_eq!(
+            kinds("$e[$b := $a] ==> Lumo::FnDecl === x:"),
+            vec![
+                TokenKind::Var("e".into()),
+                TokenKind::Punct('['),
+                TokenKind::Var("b".into()),
+                TokenKind::Sym(":="),
+                TokenKind::Var("a".into()),
+                TokenKind::Punct(']'),
+                TokenKind::Sym("==>"),
+                TokenKind::Name("Lumo".into()),
+                TokenKind::Sym("::"),
+                TokenKind::Name("FnDecl".into()),
+                TokenKind::Sym("==="),
+                TokenKind::Name("x".into()),
+                TokenKind::Punct(':'),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn bare_dollar_is_reported() {
+        let (_, diags) = lex("t", "$ x");
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("expected a name after `$`"));
     }
 
     #[test]
