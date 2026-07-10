@@ -9,14 +9,14 @@ Param = name:ident
 
 LetExpr = 'let' name:ident '=' value:Expr 'in' body:Expr
 
-Ident = name:ident
-Number = value:lit.number
-String = value:lit.string
+IdentExpr = name:ident
+NumberExpr = value:lit.number
+StringExpr = value:lit.string
 ParenExpr = '(' inner:Expr ')'
 CallArgs = args:sep(Expr, ',')?
 
 Expr = praat {
-  simple = LetExpr | Ident | Number | String | ParenExpr
+  simple = LetExpr | IdentExpr | NumberExpr | StringExpr | ParenExpr
   operators {
     '-' | '!' @100,
     @89 '**' @90,

@@ -22,11 +22,75 @@ fn main() -> ExitCode {
             None => usage(),
         },
         Some("gen") => {
-            eprintln!("langc gen: not implemented yet");
-            ExitCode::FAILURE
+            let dir = args.get(1);
+            let out = args
+                .iter()
+                .position(|a| a == "-o")
+                .and_then(|i| args.get(i + 1));
+            let check_only = args.iter().any(|a| a == "--check");
+            match (dir, out) {
+                (Some(dir), Some(out)) => run_gen(Path::new(dir), Path::new(out), check_only),
+                _ => usage(),
+            }
         }
         _ => usage(),
     }
+}
+
+fn run_gen(root: &Path, out_dir: &Path, check_only: bool) -> ExitCode {
+    let (salsa_db, project, texts) = match load_project(root) {
+        Ok(loaded) => loaded,
+        Err(code) => return code,
+    };
+
+    // Never generate from a broken definition.
+    let diags = db::check_definition(&salsa_db, project);
+    let mut errors = 0;
+    for d in &diags {
+        if d.severity == Severity::Error {
+            errors += 1;
+            let empty = String::new();
+            eprintln!("{}", d.render(texts.get(&d.file).unwrap_or(&empty)));
+        }
+    }
+    if errors > 0 {
+        eprintln!("langc: {errors} error(s) — nothing generated");
+        return ExitCode::FAILURE;
+    }
+
+    let files = db::generated_files(&salsa_db, project);
+    let mut stale = 0;
+    for (rel, content) in &files {
+        let path = out_dir.join(rel);
+        if check_only {
+            let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
+            if &on_disk != content {
+                eprintln!("langc gen --check: {} is out of date", path.display());
+                stale += 1;
+            }
+        } else {
+            if let Some(parent) = path.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    eprintln!("langc: cannot create {}: {e}", parent.display());
+                    return ExitCode::FAILURE;
+                }
+            }
+            if let Err(e) = std::fs::write(&path, content) {
+                eprintln!("langc: cannot write {}: {e}", path.display());
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    if check_only {
+        if stale > 0 {
+            eprintln!("langc gen --check: {stale} file(s) out of date — rerun `langc gen`");
+            return ExitCode::FAILURE;
+        }
+        println!("langc gen --check: {} file(s) up to date", files.len());
+    } else {
+        println!("langc gen: wrote {} file(s) under {}", files.len(), out_dir.display());
+    }
+    ExitCode::SUCCESS
 }
 
 fn usage() -> ExitCode {
@@ -34,17 +98,19 @@ fn usage() -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn run_check(root: &Path) -> ExitCode {
+type LoadedProject = (salsa::DatabaseImpl, Project, BTreeMap<String, String>);
+
+fn load_project(root: &Path) -> Result<LoadedProject, ExitCode> {
     let files = match loader::scan_project(root) {
         Ok(files) => files,
         Err(e) => {
             eprintln!("langc: cannot read {}: {e}", root.display());
-            return ExitCode::FAILURE;
+            return Err(ExitCode::FAILURE);
         }
     };
     if files.is_empty() {
         eprintln!("langc: no .langue files under {}", root.display());
-        return ExitCode::FAILURE;
+        return Err(ExitCode::FAILURE);
     }
 
     let texts: BTreeMap<String, String> =
@@ -56,6 +122,14 @@ fn run_check(root: &Path) -> ExitCode {
         .map(|f| SourceFile::new(&salsa_db, f.path, f.kind, f.text))
         .collect();
     let project = Project::new(&salsa_db, inputs);
+    Ok((salsa_db, project, texts))
+}
+
+fn run_check(root: &Path) -> ExitCode {
+    let (salsa_db, project, texts) = match load_project(root) {
+        Ok(loaded) => loaded,
+        Err(code) => return code,
+    };
 
     let diags = db::check_definition(&salsa_db, project);
     let mut errors = 0;

@@ -66,6 +66,13 @@ pub fn merged_definition(db: &dyn salsa::Database, project: Project) -> Merged {
     Merged { definition: dce(&def), diags }
 }
 
+/// Generated Rust sources as `(relative path, content)` pairs, in
+/// deterministic order (D-21).
+#[salsa::tracked]
+pub fn generated_files(db: &dyn salsa::Database, project: Project) -> Vec<(String, String)> {
+    crate::codegen::generate(&merged_definition(db, project).definition)
+}
+
 /// All diagnostics for the project: parse + merge + check.
 #[salsa::tracked]
 pub fn check_definition(db: &dyn salsa::Database, project: Project) -> Vec<Diagnostic> {

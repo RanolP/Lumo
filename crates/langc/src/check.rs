@@ -72,6 +72,7 @@ fn check_pipelines(def: &Definition, diags: &mut Vec<Diagnostic>) {
 
 fn check_language(lang_name: &str, lang: &Language, diags: &mut Vec<Diagnostic>) {
     check_tokens(lang_name, lang, diags);
+    check_kind_names(lang_name, lang, diags);
 
     let sets = first_sets(lang);
     for rule in lang.rules.values() {
@@ -91,6 +92,45 @@ fn check_language(lang_name: &str, lang: &Language, diags: &mut Vec<Diagnostic>)
                 origin.span,
                 format!("extern recover names unknown rule `{rule_name}` in language `{lang_name}`"),
             ));
+        }
+    }
+}
+
+/// Tokens, rules, and synthesized praat row kinds share one generated
+/// `SyntaxKind` enum — their uppercased names must be distinct (`ident`
+/// vs `Ident` both map to `IDENT`).
+fn check_kind_names(lang_name: &str, lang: &Language, diags: &mut Vec<Diagnostic>) {
+    use crate::codegen::naming::kind_name;
+    use crate::codegen::syntax_kind::praat_kinds;
+
+    let mut seen: BTreeMap<String, (String, crate::project::model::Origin)> = BTreeMap::new();
+    let mut visit =
+        |kind: String, what: String, origin: &crate::project::model::Origin, diags: &mut Vec<Diagnostic>| {
+            if let Some((prev_what, prev)) = seen.insert(kind.clone(), (what.clone(), origin.clone())) {
+                diags.push(Diagnostic::error(
+                    &origin.file,
+                    origin.span,
+                    format!(
+                        "{what} and {prev_what} (at {}:{}) both generate SyntaxKind `{kind}` in language `{lang_name}`",
+                        prev.file, prev.span
+                    ),
+                ));
+            }
+        };
+    for token in lang.tokens.values() {
+        visit(kind_name(&token.name), format!("token `{}`", token.name), &token.origin, diags);
+    }
+    for rule in lang.rules.values() {
+        visit(kind_name(&rule.name), format!("rule `{}`", rule.name), &rule.origin, diags);
+        if let RuleBody::Praat(praat) = &rule.body {
+            for row_kind in praat_kinds(&rule.name, praat) {
+                visit(
+                    kind_name(&row_kind),
+                    format!("praat rows of `{}`", rule.name),
+                    &rule.origin,
+                    diags,
+                );
+            }
         }
     }
 }

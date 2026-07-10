@@ -6,6 +6,7 @@
 //! hand-written parser in the system (D-01).
 
 pub mod check;
+pub mod codegen;
 pub mod db;
 pub mod diag;
 pub mod project;
