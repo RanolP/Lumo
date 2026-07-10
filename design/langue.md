@@ -225,7 +225,9 @@ infer_V TypeAssignment { expr: $e, ty: $t } -> $inferred
   := $inferred = (check_V $e <- $t)
 ```
 
-The `_V`/`_C` suffixes pair the judgments with `TypeV`/`TypeC`.
+Suffixes like `_V`/`_C` carry no meaning to the engine — a judgment name is
+just a name, like a function naming convention (`infer_ε`, `infer_wtf`,
+`infer_YOU_WILL_BE_FIRED` are all valid).
 
 ### 4.4 Decided at the architecture level
 
