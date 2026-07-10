@@ -250,23 +250,36 @@ infer_V Ident { name: $name } -> $return := $return = Γ.$name
 
 ### 4.5 To close this chapter (open)
 
-1. **Context extension** — reading is `Γ.$name`; how does a binder rule
-   (λ, let) extend Γ for a sub-goal? (e.g. a `Γ + [$x: $t]` form, or
-   λProlog-style hypothetical assumptions.)
-2. **Rule overlap and search** — several rules matching the same head:
-   conflicting disallowed like elab, or relational backtracking? And what
-   termination discipline does the search have (elab had strictly
-   decreasing)?
-3. **Diagnostic attachment point** — templates live in the DSL (decided);
-   in `head := body`, does `else error "..." at node` attach per goal or
-   per rule?
-4. **Fω primitives** — fresh metavariables, instantiation/generalization,
-   kind checking, type-level β: which are engine services vs definable?
-5. **Entry point** — how a definition declares which judgment is the
-   typechecker of a language, and how derivations are exposed (LSP,
-   elaboration).
-6. **Capability rows** — how ε is represented in the type sub-language and
-   in judgments.
+1. **Context extension** — reading is `Γ.$name`, but there is no writing
+   yet. A λ rule must check its body with the parameter added: for
+   `check_C Lambda { param: $x, body: $b } <- ...` the `$b` goal has to
+   run under Γ extended with `[$x: $t1]`. Options: a local extension form
+   on a goal (something like `Γ + [$x: $t1]`), or λProlog-style
+   hypothetical assumptions (add the fact for the duration of the goal).
+   Which notation?
+2. **Rule overlap and search** — when two rules match the same head, is it
+   an error (elab's "conflicting disallowed") or does the relational
+   language backtrack, trying the next rule on failure? Backtracking makes
+   diagnostics harder (which failure gets reported?) and needs its own
+   termination story (elab's was "strictly decreasing").
+3. **Diagnostic attachment point** — templates live in the DSL (decided),
+   but a `head := body` body is a chain of goals. When `$return = Γ.$name`
+   fails (unbound name), where does the "unbound variable {name}" template
+   sit: per goal, per rule, or per judgment with a default?
+4. **Built-in tactics for the type side** — elab got `subst` as a built-in
+   tactic. Same question here for: fresh metavariables,
+   ∀ instantiation/generalization, kind checking, type-level β. Which are
+   built-in tactics, which are definable judgments? (A possible line:
+   what must appear in the derivation tree is a judgment; purely
+   mechanical operations are tactics.)
+5. **Entry point** — a definition declares many judgments (`infer_V`,
+   `infer_C`, `check_C`, …). When langc is asked to typecheck a Lumo
+   file, which judgment is the root, and how is that declared? Also: the
+   API that exposes derivation trees to the LSP (hover, "why this type").
+6. **Capability rows** — Lumo function types carry `ret | ε`. Rows unify
+   set-like (order-free, duplicate-free, row variables), unlike plain
+   structural unification. How are rows written in the type sub-language,
+   and does the engine get a built-in row-unification tactic?
 
 ## 5. Core architecture
 
@@ -383,70 +396,64 @@ Each milestone keeps `langc check` + golden-file tests green.
 
 ## 10. Decisions and open questions
 
-Decided:
+Locked decisions live one per file in `design/decisions/`:
 
-1. **Full-language-definition scope**; name stays **"Langue" (v2)**; tooling
-   in **Rust** (`crates/langc`).
-2. **Parsers are generated** from the `.syn.langue` files, with `praat`
-   blocks and extern recovery hooks. Fall back to hand-written only if
-   recovery quality proves insufficient at M0 exit.
-3. **Every stage is an individual language declared by file name**:
-   `MIR.syn.langue` puts `MIR` in the global namespace, referenceable as a
-   language; no marker keywords, no surface/internal distinction, arbitrary
-   chain length. Emission = pretty-printing the target language (JS).
-   Lumo's CBPV split is a `.syn.langue` choice deferred to M1.
-4. **Diagnostics live in the DSL** as message templates on rule premises.
-5. **Multi-file project format, no imports**: kind-suffixed files
-   concatenated project-wide together with the Langue stdlib into one global
-   namespace — no `use`, no forward declarations, unused items DCE-ed.
-   Same-kind files merge additively, checked globally; the suffix-less
-   `<name>.langue` is a manifest (language name + options).
-6. **Salsa-like architecture from day one**, at both the definition layer
-   and the compiled-language layer.
-7. **E-graph equality saturation** for same-language elaboration
-   (optimization); language-to-language elaboration stays syntax-directed.
-8. **No type plugin — a type system is its judgments**, run on a generic
-   relational engine that builds derivation trees; Lumo v1's judgments
-   implement Fω + spine-local bidirectional inference + capability rows.
-9. **Tokens are named literals/regexes only**: `token keyword.fn = 'fn'` —
-   the name is the debug/display identity of the token; no special forms;
-   longest match wins, literal beats regex on ties; dotted names double as
-   highlight scopes.
-10. **Chapter order**: project layout → syntax → elaboration → type;
-    architecture pillars after them; documents are snapshots (no changelog,
-    no legacy exposition).
-11. **Scope is not a first-party concept**: no `.scope.langue` kind, no
-    scope engine — elaboration simulates scope.
-12. **Recursion via `fix` only**: elaboration lowers each mutually-recursive
-    SCC through a core `fix` primitive — no `letrec` core form.
-13. **Elab rule form**: `from A to B { pattern ==> construction }` blocks;
-    `<subtree> to <Lang>` inside a construction is recursive elaboration;
-    same from/to blocks merge across files. Only strictly decreasing
-    recursion allowed; conflicting rules disallowed.
-14. **Same-language relations = `between A` blocks**: `lhs === rhs`
-    equalities run as e-graph equality saturation; `$x` metavariables;
-    `subst` tactic built-in (`$e[$b := $a]`).
-15. **The type AST is a syn sub-language**: types have presentation, so the
-    type AST is defined in `*.syn.langue`; `TypeV`/`TypeC` are supported
-    naturally with a syntax-integrated AST.
-16. **Contexts**: `context Γ = [Ident: TypeV]` — a named multimap
-    (theoretically a set of tuples).
-17. **Definable judgments, λProlog style**: `infer_C LIR -> TypeC with Γ`,
-    `check_C LIR <- TypeC with Γ` — the arrow is separator notation only;
-    both sides are parameters and the type is effectively inout (relational:
-    assignment propagates bottom-up); `with` attaches contexts (one or
-    many); rules are `head := body`.
-18. **Losslessness is defined language by language** — each language's
-    definition decides whether it preserves trivia.
+1. [Full-language-definition DSL](decisions/01-full-language-definition.md)
+2. [Parsers are generated](decisions/02-generated-parsers.md)
+3. [Every stage is a language declared by its file name](decisions/03-language-per-file.md)
+4. [Diagnostics live in the DSL](decisions/04-diagnostics-in-dsl.md)
+5. [No imports — cat + stdlib + DCE](decisions/05-no-imports.md)
+6. [Salsa-like architecture from day one](decisions/06-salsa-day-one.md)
+7. [E-graph for same-language elaboration](decisions/07-egraph-elaboration.md)
+8. [No type plugin — a type system is its judgments](decisions/08-type-system-is-judgments.md)
+9. [Tokens are named literals/regexes only](decisions/09-token-model.md)
+10. [Chapter order and document policy](decisions/10-chapter-order.md)
+11. [Scope is not a first-party concept](decisions/11-scope-not-first-party.md)
+12. [Recursion via `fix` only](decisions/12-fix-only-recursion.md)
+13. [Elab rule form: `from A to B` blocks](decisions/13-elab-from-to.md)
+14. [Same-language relations: `between A` blocks](decisions/14-between-relations.md)
+15. [The type AST is a syn sub-language](decisions/15-type-ast-sub-language.md)
+16. [Contexts](decisions/16-contexts.md)
+17. [Definable judgments — λProlog style](decisions/17-definable-judgments.md)
+18. [Losslessness per language](decisions/18-losslessness-per-language.md)
 
-Still open (mirrored in the artifact's 회신 대기 box; plus the six
-type-chapter questions in section 4.5):
+Open questions, in detail (the six type-chapter questions live in
+section 4.5; all are mirrored in the artifact):
 
-19. **Cost model declaration** for e-graph extraction — proposal: grammar
-    annotations by default, extern as escape hatch.
-20. **E-graph engine choice** — proposal: one egglog spike, then decide.
-21. **Hybrid execution boundary** (section 7) — confirm generated vs
-    interpreted split against the pillar engines.
-22. **Strictly-decreasing measure** — interpreted as: a recursive `to` call
-    may only take a strict subtree of the matched pattern. Confirm. (Also
-    interpreted the dictated `*.elab.lumo` header as `*.elab.langue`.)
+### 10.1 Cost model declaration (e-graph extraction)
+
+`between` equalities are undirected: after saturation an e-class holds
+many equivalent forms of the same expression, and a **cost function**
+decides which form is extracted as the final program. Example: once the
+β-reduction equality saturates, the redex and the reduced form sit in the
+same e-class — extraction only prefers the reduced form if node kinds
+carry costs. Where are costs written: (a) annotations on node declarations
+in `.syn.langue`, (b) alongside the `between` blocks, or (c) an extern
+cost function in Rust? Proposal: (a) as the default, (c) as the escape
+hatch.
+
+### 10.2 E-graph engine choice
+
+Which Rust library runs the saturation: `egg` (mature, plain rewriting),
+`egglog` (newer, datalog-integrated), or purpose-built. The deciding risk
+is the built-in `subst` tactic: substitution over binders
+(`$e[$b := $a]` — α-equivalence, capture avoidance) is the classically
+hard part of e-graphs over λ-terms, and if an off-the-shelf engine cannot
+express it, purpose-built becomes the answer. Proposal: one egglog spike
+that tries to encode `subst` before committing.
+
+### 10.3 Hybrid execution boundary
+
+What `langc` generates as Rust vs what engines interpret. Current
+proposal: syn is generated (token DFA, parser, printer — hot,
+shape-defining, performance-critical); elab/type rules are compiled to
+checked tables that generic engines interpret, so editing a typing rule
+never recompiles generated Rust. Needs a yes/no: is this split right?
+
+### 10.4 Strictly-decreasing measure (confirm interpretation)
+
+"only strictly decreasing allowed" was interpreted as: a recursive `to`
+call inside a construction may only take a **strict subtree of the
+matched pattern**, which guarantees elaboration terminates. Confirm, or
+state the intended measure. (Also: the dictated `*.elab.lumo` header was
+interpreted as a typo for `*.elab.langue`.)

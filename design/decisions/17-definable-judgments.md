@@ -1,0 +1,20 @@
+# Definable judgments — λProlog-style relational language
+
+```
+infer_C LIR -> TypeC with Γ
+check_C LIR <- TypeC with Γ
+
+infer_V TypeAssignment { expr: $e, ty: $t } -> $inferred
+  := $inferred = (check_V $e <- $t)
+
+infer_V Ident { name: $name } -> $return := $return = Γ.$name
+```
+
+`infer` and `check` are definable judgments. The arrow (`->` / `<-`) is
+mere separator notation between the relation's two parameters — both
+sides are parameters, and because the language is relational (assignment
+happens at the bottom of a derivation and propagates up) the type
+parameter is in fact **inout**. `with` attaches contexts — there can be
+many. Rules are `head := body`; `=` unifies; a parenthesized judgment
+call is a goal. Judgment names are just names, like a function naming
+convention — suffixes such as `_V`/`_C` carry no meaning to the engine.

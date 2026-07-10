@@ -615,12 +615,32 @@ Expr = <span class="k">praat</span> {
     <div class="prompts" style="margin-top:26px">
       <h3>타입 챕터를 닫으려면 — 회신 대기</h3>
       <ol>
-        <li><b>문맥 확장</b> — 읽기는 <code>Γ.$name</code>. 바인더 규칙(λ, let)이 하위 골에서 Γ를 어떻게 늘리나? (<code>Γ + [$x: $t]</code> 같은 표기, 혹은 λProlog식 가정 추가.)</li>
-        <li><b>규칙 중첩과 탐색</b> — 같은 head에 여러 규칙이 맞으면: elab처럼 충돌 불허인가, 관계 언어답게 백트래킹인가? 탐색의 종결 규율은? (elab은 엄격 감소였다.)</li>
-        <li><b>진단 부착점</b> — 템플릿이 DSL에 사는 건 결정됨. <code>head := body</code>에서 <code>else error "…" at 노드</code>는 골 단위인가 규칙 단위인가?</li>
-        <li><b>Fω 원시</b> — 신선한 메타변수, 일반화/인스턴스화, 카인드 검사, 타입 수준 β — 어디까지 엔진 서비스이고 어디부터 정의 가능인가?</li>
-        <li><b>진입점</b> — 어떤 판단이 그 언어의 타입검사기인지 선언하는 방법, 유도 트리를 LSP·정제에 노출하는 방법.</li>
-        <li><b>capability row</b> — ε를 타입 하위 언어와 판단에서 어떻게 표현하나.</li>
+        <li><b>문맥 확장</b> — 지금은 읽기(<code>Γ.$name</code>)만 있고 쓰기가 없다.
+        λ 규칙은 "매개변수를 Γ에 넣은 채로 body를 검사"해야 한다:
+        <code>check_C Lambda { param: $x, body: $b } &lt;- …</code>에서 <code>$b</code> 골은
+        Γ에 <code>[$x: $t1]</code>이 추가된 상태로 돌아야 하는데, 그 표기가 아직 없다.
+        선택지: 골에 지역 확장을 붙이는 표기(<code>Γ + [$x: $t1]</code> 꼴),
+        혹은 λProlog식 가정 추가(골이 도는 동안만 사실을 추가). 어느 쪽?</li>
+        <li><b>규칙 중첩과 탐색</b> — 같은 head에 규칙 둘이 맞으면 에러인가(elab의
+        "충돌 불허"와 같은 규율), 아니면 관계 언어답게 실패하면 다음 규칙을
+        시도(백트래킹)하나? 백트래킹이면 진단이 어려워지고(여러 실패 중 무엇을
+        보고하나) 종결성 이야기도 따로 필요하다(elab은 "엄격 감소"였다).</li>
+        <li><b>진단 부착점</b> — 템플릿이 DSL에 사는 건 결정됐지만, <code>head := body</code>의
+        body는 골의 연쇄다. <code>$return = Γ.$name</code>이 실패(미정의 이름)하면
+        "unbound variable {name}" 템플릿을 어디에 쓰나 — 골마다, 규칙마다,
+        아니면 판단마다 기본값 하나?</li>
+        <li><b>타입 쪽 내장 택틱</b> — elab은 subst를 내장 택틱으로 받았다. 타입 쪽도
+        같은 질문: 신선한 메타변수 생성, ∀ 인스턴스화/일반화, 카인드 검사,
+        타입 수준 β — 어디까지 내장 택틱이고 어디부터 판단으로 정의 가능한가?
+        (기준 제안: 유도 트리에 남아야 하는 것은 판단, 순수 기계적 연산은 택틱.)</li>
+        <li><b>진입점</b> — 정의엔 판단이 여럿이다(infer_V, infer_C, check_C …).
+        langc가 "Lumo 파일을 타입검사하라"를 받으면 어떤 판단을 루트로 실행하나,
+        그걸 어떻게 선언하나? 그리고 유도 트리를 LSP(호버, "왜 이 타입인가")에
+        노출하는 API.</li>
+        <li><b>capability row</b> — Lumo 함수 타입은 <code>ret | ε</code>를 든다. row는
+        집합처럼 단일화된다(순서 무관·중복 없음·row 변수) — 일반 구조 단일화와
+        다르다. row를 타입 하위 언어에서 어떻게 쓰고, 엔진이 row 단일화를
+        내장 택틱으로 주나?</li>
       </ol>
     </div>
     <p class="sub" style="margin-top:14px">
@@ -792,7 +812,8 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--seal)"></span>07-decisions.langue</span>
     <h2>결정된 것 · 열려 있는 것</h2>
-    <p class="sub">도장이 찍힌 카드는 확정. 점선 카드가 오늘의 브레인스토밍 대상이다.</p>
+    <p class="sub">도장이 찍힌 카드는 확정 — 전문은 <code>design/decisions/</code>에 결정당 파일 하나(18개).
+    점선 카드가 브레인스토밍 대상이다.</p>
 
     <div class="board">
       <article class="decision done">
@@ -912,8 +933,13 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
         <h3>비용 모델의 선언 위치</h3>
-        <p>e-graph 추출의 비용을 어디에 쓰나 — 트리 생성자 주석, 규칙별 가중치, extern?
-        제안: 생성자 주석을 기본으로, extern은 탈출구.</p>
+        <p>between 등식은 방향이 없다 — 포화가 끝나면 한 e-class에 같은 식의 동치 형태가
+        여럿 쌓이고, 최종 프로그램으로 무엇을 뽑을지는 <b>비용 함수</b>가 정한다.
+        예: 베타 축약 등식이 포화되면 redex와 축약형이 같은 클래스에 있다 —
+        "축약형이 더 싸다"를 알려면 노드 종류마다 비용이 필요하다.
+        이 비용을 어디에 쓰나: (a) syn.langue의 노드 선언에 주석,
+        (b) between 블록 옆, (c) Rust extern 비용 함수.
+        제안: (a) 기본 + (c) 탈출구.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>
@@ -922,9 +948,21 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       </article>
       <article class="decision open">
         <span class="seal" aria-label="미결">?</span>
+        <h3>e-graph 엔진 선택</h3>
+        <p>egg(성숙, 순수 재작성) · egglog(신생, datalog 통합) · 자작 중 선택.
+        결정적 리스크는 내장 subst 택틱 — 바인더 위의 치환($e[$b := $a],
+        α-동치, 캡처 회피)은 λ-항 e-graph의 고전적 난제라서, 기성 엔진이
+        표현하지 못하면 자작으로 간다.
+        제안: egglog 스파이크 하나로 subst 인코딩부터 시험하고 결정.</p>
+      </article>
+      <article class="decision open">
+        <span class="seal" aria-label="미결">?</span>
         <h3>하이브리드 실행 모델 확정</h3>
-        <p>생성(syn) vs 해석(elab·type) 경계를 기둥 엔진들과 대조해 확정.
-        e-graph/관계 엔진 채택은 해석 쪽 손을 들어준다.</p>
+        <p>langc가 무엇을 Rust 코드로 생성하고, 무엇을 엔진이 해석하나.
+        현재 제안: syn은 생성(토큰 DFA·파서·프린터 — 뜨겁고 성능 임계),
+        elab/type 규칙은 검사된 테이블로 컴파일해 범용 엔진이 해석 —
+        타입 규칙 하나 고칠 때마다 생성 Rust를 재컴파일하지 않기 위해.
+        이 경계가 맞는지 예/아니오가 필요하다.</p>
       </article>
     </div>
 
@@ -934,7 +972,6 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <li><b>stdlib 섀도잉</b> — 프로젝트가 stdlib과 같은 이름을 선언하면 에러인가, 프로젝트 쪽이 이기는가?</li>
         <li>같은 종류 병합에서 <b>규칙 우선순위/오버라이드</b> — 두 파일이 같은 노드에 규칙을 내면 에러인가, 명시적 override인가?</li>
         <li><b>stdlib의 범위</b> — 도우미 콤비네이터·표준 토큰 외에 무엇까지? (진단 서식 도우미 등)</li>
-        <li><b>e-graph 엔진 선택</b> — egg, egglog, 목적 제작?</li>
         <li>정제의 스코프 시뮬레이션 방식 — 이름 해소·use/모듈·캡 핸들러의 동적 스코프를 어떤 재작성으로 담는가?</li>
         <li>진단 템플릿의 <b>다국어/수준</b>(note, help) 지원 여부.</li>
         <li>langue 프로젝트 자체의 테스트 형식 — golden 픽스처를 어떤 모양으로 쓸지.</li>
