@@ -311,7 +311,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
 
 <a class="use" href="#project">01-project.langue</a>        <span class="cm">// ① 프로젝트 레이아웃: cat + stdlib + DCE</span>
 <a class="use" href="#syntax">02-syntax.langue</a>         <span class="cm">// ② 문법: 모든 단계가 개별 언어다</span>
-<a class="use" href="#elab">03-elab.langue</a>           <span class="cm">// ③ 정제: 미설계 — 스코프도 여기서 시뮬레이트</span>
+<a class="use" href="#elab">03-elab.langue</a>           <span class="cm">// ③ 정제: from A to B 재작성 규칙</span>
 <a class="use" href="#type">04-type.langue</a>           <span class="cm">// ④ 타입: 추론 엔진 위의 판단</span>
 <a class="use" href="#architecture">05-architecture.langue</a>   <span class="cm">// 핵심 아키텍처: salsa · ungrammar · e-graph · 추론 엔진</span>
 <a class="use" href="#exec">06-exec.langue</a>           <span class="cm">// 실행 모델: 생성 vs 해석</span>
@@ -327,6 +327,7 @@ footer .wrap{padding:44px 28px 72px;font-family:var(--mono);font-size:12.5px;col
         <ul>
           <li><b>무손실성 범위</b> — 제안: Lumo(표면)만 무손실(trivia 보존), 나머지 언어는 정규 프린트로 왕복. e-graph 노드가 trivia를 안 들고 다녀도 됨. <a href="#decisions">07</a></li>
           <li><b>e-graph 엔진</b> — 제안: egglog 스파이크 하나 후 결정. <a href="#decisions">07</a></li>
+          <li><b>정제 해석 확인</b> — "엄격 감소"를 재귀 <code>to</code> 호출은 매칭된 패턴의 진부분트리만 받는다는 뜻으로 해석했다. 그리고 <code>*.elab.lumo</code>는 <code>*.elab.langue</code>의 오타로 해석했다. 맞나? <a href="#elab">03</a></li>
           <li><b>타입 플러그인 경계 · 비용 모델 위치</b> — 열려 있음. <a href="#decisions">07</a></li>
         </ul>
       </div>
@@ -523,10 +524,28 @@ Expr = <span class="k">praat</span> {
 <section id="elab">
   <div class="wrap">
     <span class="sec-eyebrow"><span class="k" style="background:var(--k-elab)"></span>03-elab.langue</span>
-    <h2>정제 — 아직 설계하지 않았다</h2>
+    <h2>정제 — from A to B 재작성 블록</h2>
     <p class="sub">
-      지금까지 결정된 것 —
-      언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화(<a href="#p-egraph">05c</a>).
+      <b>*.elab.langue는 <code>from A to B</code> 블록으로 재작성 규칙을 선언한다.</b>
+      규칙은 패턴 <code>==&gt;</code> 구성이고, 구성 안의 <code>… to MIR</code>가 하위
+      트리의 재귀 정제다. 같은 from/to 블록은 여러 정의·여러 파일에 걸쳐 병합된다.
+      <b>엄격히 감소하는 재귀만 허용</b>(종료 보장), <b>충돌하는 규칙은 불허</b>(에러 —
+      규칙 순서·우선순위 없음).
+    </p>
+    <div class="kinds">
+      <article class="kind k-elab full">
+        <header><span class="ext">*.elab.langue</span><span class="role">from · to · ==&gt;</span></header>
+        <pre><span class="k">from</span> Lumo <span class="k">to</span> MIR {
+  FnDecl { ... } <span class="k">==&gt;</span> Lambda { ..., body: Lumo::FnDecl { ... } <span class="k">to</span> MIR }
+  ...
+}
+
+<span class="c">// 여러 정의·여러 파일에 걸쳐 병합</span>
+<span class="k">from</span> Lumo <span class="k">to</span> MIR { ... }</pre>
+      </article>
+    </div>
+    <p class="sub" style="margin-top:18px">
+      같은 언어 최적화는 e-graph 등식 포화(<a href="#p-egraph">05c</a>) — 선언 형태는 미설계.
       <b>스코프는 1급 개념이 아니다</b>: <code>.scope.langue</code> 종류도, 별도 스코프
       엔진도 없다 — 정제가 스코프를 시뮬레이트한다.
       그리고 <b>재귀는 <code>fix</code>로만 실현한다</b>: letrec 코어 형식은 없다.
@@ -638,7 +657,7 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
       <h3>e-graph 정제 — 최적화는 등식 포화로</h3>
       <p>언어 간 정제는 구문 지향, 같은 언어 최적화는 e-graph 등식 포화 + 비용 추출 —
       규칙 순서가 무의미하다. 후보 엔진: egg / egglog.
-      상세는 정제 챕터(03)를 설계할 때 채운다.</p>
+      같은 언어 최적화의 선언 형태는 미설계 — 비용 모델 위치도 미결.</p>
     </div>
 
     <!-- 05d pluggable types -->
@@ -804,6 +823,12 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <h3>스코프는 1급 개념이 아니다</h3>
         <p>.scope.langue 종류도, 별도 스코프 엔진도 없다.
         정제가 스코프를 시뮬레이트한다.</p>
+      </article>
+      <article class="decision done">
+        <span class="seal" aria-label="결정됨">결</span>
+        <h3>정제 = from A to B 재작성 블록</h3>
+        <p>패턴 ==&gt; 구성, 구성 안의 to가 재귀 정제. 같은 from/to는 파일 간 병합.
+        엄격 감소만 허용, 충돌 불허.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>

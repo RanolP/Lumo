@@ -12,8 +12,9 @@ generated from grammars, diagnostic templates in the DSL, name "Langue"
 architecture pillars (section 5), every pipeline stage is an individual
 language declared by its `.syn.langue` file name, tokens are named
 literals/regexes only, scope is not a first-party concept (elaboration
-simulates it), and chapter order project layout → syntax → elaboration →
-type.
+simulates it), elab rules are `from A to B` rewrite blocks (strictly
+decreasing, no conflicts), and chapter order project layout → syntax →
+elaboration → type.
 
 ## 1. Project layout
 
@@ -132,7 +133,32 @@ lossless tree, the parser (extern recovery hooks), and the pretty-printer.
 
 ## 3. Elaboration (`*.elab.langue`)
 
-Not designed yet. Decided so far:
+### 3.1 `from A to B` blocks
+
+Rules live in `from <Lang> to <Lang>` blocks: a source pattern `==>` a
+target construction. Inside a construction, `<subtree> to <Lang>`
+recursively elaborates that subtree; node names qualify as `Lumo::FnDecl`.
+Blocks with the same from/to pair merge across definitions and files.
+
+```
+from Lumo to MIR {
+  FnDecl { ... } ==> Lambda { ..., body: Lumo::FnDecl { ... } to MIR }
+  ...
+}
+
+// merged across multiple definitions, multiple files
+from Lumo to MIR { ... }
+```
+
+Two checked constraints:
+
+- **Only strictly decreasing allowed** — a recursive `to` call takes a
+  strictly smaller input than the matched pattern, so elaboration
+  terminates.
+- **Conflicting disallowed** — two rules that can fire on the same input
+  are an error; there is no rule ordering or priority.
+
+### 3.2 Decided semantics
 
 - Language-to-language elaboration is syntax-directed; same-language
   optimization is e-graph equality saturation (section 5.3).
@@ -216,8 +242,8 @@ that engines interpret.
 Language-to-language elaboration is syntax-directed; same-language
 optimization runs as e-graph equality saturation with cost-based extraction,
 so rule order carries no meaning. Candidate engines: `egg` / `egglog`.
-Details are filled in when chapter 3 is designed; the cost-model declaration
-site is open (section 10).
+How same-language optimization groups are declared is not designed yet; the
+cost-model declaration site is open (section 10).
 
 ### 5.4 Pluggable type system
 
@@ -338,6 +364,10 @@ Decided:
     scope engine — elaboration simulates scope.
 12. **Recursion via `fix` only**: elaboration lowers each mutually-recursive
     SCC through a core `fix` primitive — no `letrec` core form.
+13. **Elab rule form**: `from A to B { pattern ==> construction }` blocks;
+    `<subtree> to <Lang>` inside a construction is recursive elaboration;
+    same from/to blocks merge across files. Only strictly decreasing
+    recursion allowed; conflicting rules disallowed.
 
 Still open (mirrored in the artifact's 회신 대기 box):
 
@@ -351,3 +381,6 @@ Still open (mirrored in the artifact's 회신 대기 box):
 17. **Losslessness scope** — proposal: only Lumo (the surface language) is
     lossless; other languages round-trip via canonical pretty-print (e-graph
     nodes carry no trivia).
+18. **Strictly-decreasing measure** — interpreted as: a recursive `to` call
+    may only take a strict subtree of the matched pattern. Confirm. (Also
+    interpreted the dictated `*.elab.lumo` header as `*.elab.langue`.)
