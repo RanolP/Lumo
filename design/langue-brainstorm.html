@@ -583,9 +583,11 @@ Expr = <span class="k">praat</span> {
     </p>
     <p class="sub" style="margin-top:14px">
       <b>infer와 check는 정의 가능한 판단이다</b> — λProlog식 관계 언어.
-      선언이 관계의 두 매개변수를 모드 화살표로 인코딩한다:
-      <code>-&gt;</code>는 산출(추론), <code>&lt;-</code>는 입력(검사),
-      <code>with Γ</code>가 문맥. 규칙은 <code>head := body</code>이고,
+      화살표(<code>-&gt;</code> / <code>&lt;-</code>)는 두 매개변수 사이의
+      <b>구분자 표기일 뿐</b> — 둘 다 그냥 매개변수다. 관계 언어라서 대입은
+      유도의 아래에서 일어나 위로 전파되고, 그래서 타입 매개변수는 사실상
+      <b>inout</b>이다. <code>with</code>는 문맥을 붙인다 — 여러 개일 수 있다.
+      규칙은 <code>head := body</code>이고,
       <code>=</code>는 단일화, 괄호친 판단 호출이 골(goal)이다.
       _V/_C 같은 접미사는 엔진에 아무 의미가 없다 — 판단 이름은 그냥 이름,
       함수 명명 규칙 같은 것 (<code>infer_ε</code>, <code>infer_wtf</code> 전부 유효).
@@ -885,7 +887,8 @@ FnDecl = <span class="k">'fn'</span> name:Ident params:<span class="k">sep</span
         <span class="seal" aria-label="결정됨">결</span>
         <h3>판단은 정의 가능 — λProlog식</h3>
         <p>infer_C LIR -&gt; TypeC with Γ / check_C LIR &lt;- TypeC with Γ.
-        모드 화살표가 두 매개변수를 인코딩, 규칙은 head := body.</p>
+        화살표는 구분자 표기일 뿐, 타입은 사실상 inout. with 문맥은 여러 개 가능.
+        규칙은 head := body.</p>
       </article>
       <article class="decision done">
         <span class="seal" aria-label="결정됨">결</span>

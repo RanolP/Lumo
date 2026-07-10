@@ -209,8 +209,11 @@ context Γ = [Ident: TypeV]
 ### 4.3 Judgments: `infer` and `check` are definable
 
 Judgments form a **λProlog-style relational language**. A declaration
-encodes the relation's two parameters with a mode arrow — `->` synthesizes
-(output), `<-` checks (input) — and `with Γ` names the context:
+separates the relation's two parameters with an arrow — `->` and `<-` both
+just mean "parameter"; the arrow is mere separator notation, not a
+direction. Because the language is relational, assignment happens at the
+bottom of a derivation and propagates up, so the type parameter is in fact
+**inout**. `with Γ` attaches a context — there can be many:
 
 ```
 infer_C LIR -> TypeC with Γ
@@ -411,8 +414,10 @@ Decided:
 16. **Contexts**: `context Γ = [Ident: TypeV]` — a named multimap
     (theoretically a set of tuples).
 17. **Definable judgments, λProlog style**: `infer_C LIR -> TypeC with Γ`,
-    `check_C LIR <- TypeC with Γ` — mode arrows encode the two parameters
-    (`->` output, `<-` input); rules are `head := body`.
+    `check_C LIR <- TypeC with Γ` — the arrow is separator notation only;
+    both sides are parameters and the type is effectively inout (relational:
+    assignment propagates bottom-up); `with` attaches contexts (one or
+    many); rules are `head := body`.
 
 Still open (mirrored in the artifact's 회신 대기 box):
 
