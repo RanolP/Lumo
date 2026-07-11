@@ -138,11 +138,16 @@ capability rows = D-41; design artifact `design/m2-type-brainstorm.html`.
       the new `paren_annot` extern rule; `scc_fix` keeps annotations
       around `fix`. Partial signatures, assoc types, bounded generics,
       and latent-effect arrows bail to inference (D-39/41).
-- [ ] Step 3 — relational engine, λProlog as the implementation
-      reference (D-23): goals, unification (`=`), contexts as multimaps
-      (`context Γ = [Ident: TypeV]`, D-16), read `Γ.$name`, write
-      `with Γ+{a: b}` (D-23); strictly decreasing recursion (D-23,
-      D-28); exactly one rule may succeed per goal (D-23).
+- [x] Step 3 (2026-07-11) — relational engine: `langue-rt::judge`
+      (λProlog reference, D-23). First-order terms + unification with
+      occurs check; contexts as named multimaps, reads newest-first
+      (shadowing), scoped `with Γ+{k: v}` extension around calls
+      (D-16/D-23); exactly-one-rule-succeeds via snapshot trials —
+      zero = soft bail (D-26), two+ = hard error; strict decrease
+      checked at runtime per judgment on the first argument's term
+      size (D-28) — non-decreasing rules bail instead of diverging;
+      derivation trees with args resolved once the whole proof
+      succeeds (assignment propagates up, D-17). 7 unit tests.
 - [ ] Step 4 — judgment codegen (D-17, D-21): `infer_C MIR -> TypeC
       with Γ` declarations (arrows are separators; type param is inout;
       names are just names), `head := body` rules → Rust on the engine;
