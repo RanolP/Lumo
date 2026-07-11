@@ -2,11 +2,12 @@
 // The definition under `lumo/` is the source of truth.
 
 /// Egglog program for `between MIR` (compiled here, D-19;
-/// saturation + min-tree-cost extraction land in M3, D-37/D-31).
+/// executed by the D-42 saturate/extract/reduce loop).
 pub static PROGRAM: &str = r#"
 ; between MIR — compiled by langc (D-14/D-19). Costs default to 1
-; per constructor (D-31). M1 modeling notes: optional fields are
-; required; list fields are Vec sorts; execution lands in M3 (D-37).
+; per constructor (D-31). Modeling notes (D-42): optional fields are
+; required — drivers encode absent lists as empty Vecs and bare
+; parens as their inner node; list fields are Vec sorts.
 (datatype*
   (CapEntryBody
     (CapRest String :cost 1)
@@ -86,8 +87,9 @@ pub static PROGRAM: &str = r#"
   (sort TypeVVec (Vec TypeV))
   (sort ValueVec (Vec Value))
 )
-; built-in tactic (D-24): capture-avoiding substitution
-(function subst (Comp String Value) Comp)
+; built-in tactic (D-24): substitution, reduced host-side (D-42).
+; High cost steers extraction to subst-free forms when they exist.
+(constructor subst (Comp String Value) Comp :cost 1000)
 (rewrite (ForceC (ThunkV c)) c)
 (rewrite (LetC b (RetC a) e) (subst e b a))
 

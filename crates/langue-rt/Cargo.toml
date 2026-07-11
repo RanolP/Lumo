@@ -5,4 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+egglog = { version = "2.0.0", default-features = false }
 regex-automata.workspace = true

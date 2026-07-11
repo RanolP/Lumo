@@ -1,9 +1,9 @@
 //! Between-group emitter (M1 step 8, D-19): each `between L` group
 //! compiles to an egglog program — the language's node grammar as
 //! mutually recursive datatypes (per-constructor `:cost 1`, D-31) plus
-//! one `(rewrite lhs rhs)` per relation, `subst` declared as the
-//! built-in tactic function (D-24). Compiled text only in M1; saturation
-//! and extraction land in M3 (D-37).
+//! one `(rewrite lhs rhs)` per relation. `subst` (the D-24 built-in
+//! tactic) is a high-cost constructor reduced host-side by the D-42
+//! saturate/extract/reduce loop.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,7 +19,7 @@ pub fn generate(lang_name: &str, lang: &Language, between: &BetweenDef) -> Strin
     buf.line(&format!(
         "/// Egglog program for `between {lang_name}` (compiled here, D-19;"
     ));
-    buf.line("/// saturation + min-tree-cost extraction land in M3, D-37/D-31).");
+    buf.line("/// executed by the D-42 saturate/extract/reduce loop).");
     buf.line("pub static PROGRAM: &str = r#\"");
     let mut program = String::new();
     emit_program(&mut program, lang_name, lang, between);
@@ -76,8 +76,9 @@ fn field_type(field_target: &FieldTarget, many: bool) -> EggType {
 fn emit_program(out: &mut String, lang_name: &str, lang: &Language, between: &BetweenDef) {
     out.push_str(&format!(
         "; between {lang_name} — compiled by langc (D-14/D-19). Costs default to 1\n\
-         ; per constructor (D-31). M1 modeling notes: optional fields are\n\
-         ; required; list fields are Vec sorts; execution lands in M3 (D-37).\n"
+         ; per constructor (D-31). Modeling notes (D-42): optional fields are\n\
+         ; required — drivers encode absent lists as empty Vecs and bare\n\
+         ; parens as their inner node; list fields are Vec sorts.\n"
     ));
 
     // Sort rules (enum/praat) own their member constructors; concrete
@@ -157,8 +158,9 @@ fn emit_program(out: &mut String, lang_name: &str, lang: &Language, between: &Be
     }
     for (target, var, replacement, result) in &subst_sigs {
         out.push_str(&format!(
-            "; built-in tactic (D-24): capture-avoiding substitution\n\
-             (function subst ({target} {var} {replacement}) {result})\n"
+            "; built-in tactic (D-24): substitution, reduced host-side (D-42).\n\
+             ; High cost steers extraction to subst-free forms when they exist.\n\
+             (constructor subst ({target} {var} {replacement}) {result} :cost 1000)\n"
         ));
     }
     out.push_str(&rewrites);
