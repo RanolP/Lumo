@@ -62,7 +62,7 @@ infer_V ThunkV { body: $b } -> $t := infer_C $b $tc $amb, $t = UTypeV { inner: $
 infer_V ParenV { inner: $v, ty: $ty } -> $t := annot $v $ty $t
 // Iso-recursion is shallow: roll/unroll keep the named type (D-39).
 infer_V UnrollV { value: $v } -> $t := $t = (infer_V $v)
-infer_V RollV { value: CtorV { tag: $g, args: $cas } } -> $t := ctor $g $cas $t
+infer_V RollV { value: CtorV { tag: $g, args: $cas } } -> $t := ctor $cas $g $t
 
 // === Annotations: normalize, then check ===
 
@@ -192,11 +192,13 @@ apply FTypeC { inner: $i, row: $r } [] -> $t $amb
   := subset $r $amb,
      $t = FTypeC { inner: $i, row: $r }
 
-// === Data constructors (Δ) ===
+// === Data constructors (Δ). The args structure is the subject —
+// nested ctors share their tag, so the tag cannot carry the
+// strict-decrease measure ===
 
-ctor $g '#none' -> $t := ctor_args $g [] $t
-ctor $g CtorArgs { args: $as } -> $t := ctor_args $g $as $t
-ctor_args $g $as -> $t
+ctor '#none' $g -> $t := ctor_args [] $g $t
+ctor CtorArgs { args: $as } $g -> $t := ctor_args $as $g $t
+ctor_args $as $g -> $t
   := Variant($o, $vbs, $ps) = Δ.$g,
      P($o2, $ps2) = (inst $vbs P($o, $ps)),
      check_args $as $ps2,

@@ -1,0 +1,9 @@
+=== self recursion through fix ===
+:infer(Lumo)
+
+data Nat { .zero, .succ(Nat) }
+fn add(n: Nat, m: Nat): Nat / {} { match n { .zero => m, .succ(let n) => { let next = Nat.succ(m); add(n, next) } } }
+
+---
+
+add : U((Nat) -> (Nat) -> F(Nat))

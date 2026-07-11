@@ -458,15 +458,15 @@ pub fn rules() -> Vec<Rule> {
         },
         Rule {
             judgment: "ctor".to_owned(),
-            params: vec![var(0), atom("#none"), var(1)],
+            params: vec![atom("#none"), var(0), var(1)],
             var_count: 2,
             body: vec![
-                Goal::Call { judgment: "ctor_args".to_owned(), args: vec![var(0), atom("#nil"), var(1)], extends: vec![] },
+                Goal::Call { judgment: "ctor_args".to_owned(), args: vec![atom("#nil"), var(0), var(1)], extends: vec![] },
             ],
         },
         Rule {
             judgment: "ctor".to_owned(),
-            params: vec![var(0), app("CtorArgs", vec![var(1)]), var(2)],
+            params: vec![app("CtorArgs", vec![var(0)]), var(1), var(2)],
             var_count: 3,
             body: vec![
                 Goal::Call { judgment: "ctor_args".to_owned(), args: vec![var(0), var(1), var(2)], extends: vec![] },
@@ -477,11 +477,11 @@ pub fn rules() -> Vec<Rule> {
             params: vec![var(0), var(1), var(2)],
             var_count: 10,
             body: vec![
-                Goal::CtxRead { ctx: "Δ".to_owned(), key: var(0), value: var(6) },
+                Goal::CtxRead { ctx: "Δ".to_owned(), key: var(1), value: var(6) },
                 Goal::Unify(app("Variant", vec![var(3), var(4), var(5)]), var(6)),
                 Goal::Call { judgment: "inst".to_owned(), args: vec![var(4), app("P", vec![var(3), var(5)]), var(9)], extends: vec![] },
                 Goal::Unify(app("P", vec![var(7), var(8)]), var(9)),
-                Goal::Call { judgment: "check_args".to_owned(), args: vec![var(1), var(8)], extends: vec![] },
+                Goal::Call { judgment: "check_args".to_owned(), args: vec![var(0), var(8)], extends: vec![] },
                 Goal::Unify(var(2), var(7)),
             ],
         },
@@ -626,7 +626,7 @@ pub fn rules() -> Vec<Rule> {
             params: vec![app("RollV", vec![app("CtorV", vec![var(0), var(1)])]), var(2)],
             var_count: 3,
             body: vec![
-                Goal::Call { judgment: "ctor".to_owned(), args: vec![var(0), var(1), var(2)], extends: vec![] },
+                Goal::Call { judgment: "ctor".to_owned(), args: vec![var(1), var(0), var(2)], extends: vec![] },
             ],
         },
         Rule {

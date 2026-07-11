@@ -1,0 +1,35 @@
+=== expression annotation checks ===
+:infer(Lumo)
+
+fn f(a: A): A / {} { (a : A) }
+
+---
+
+f : U((A) -> F(A))
+
+=== expression annotation mismatch ===
+:infer(Lumo)
+
+fn f(a: A): B / {} { (a : B) }
+
+---
+
+ERROR
+
+=== annotated let ===
+:infer(Lumo)
+
+fn f(a: A): A / {} { let x = (a : A); x }
+
+---
+
+f : U((A) -> F(A))
+
+=== plain parens are transparent ===
+:infer(Lumo)
+
+fn f(a: A): A / {} { (a) }
+
+---
+
+f : U((A) -> F(A))

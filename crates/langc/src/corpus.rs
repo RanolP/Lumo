@@ -22,6 +22,9 @@ use langue_rt::{ElabReport, ParseReport};
 
 pub type ReportFn = fn(&str) -> ParseReport;
 pub type ElabFn = fn(&str) -> ElabReport;
+/// `:infer(L)` reuses the ElabReport shape: `output` is the
+/// `name : Type` lines, or `ERROR: …` when judging bails (D-26).
+pub type InferFn = fn(&str) -> ElabReport;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Attr {
@@ -30,6 +33,10 @@ pub enum Attr {
     /// `:elab(Lumo -> MIR)` — source is A-text, expected is B-text;
     /// comparison canonicalizes both sides with B's printer (D-32).
     Elab { from: String, to: String },
+    /// `:infer(Lumo)` — the full pipeline (parse | elab | judge);
+    /// expected is `name : Type` lines, or a line starting with
+    /// `ERROR` for an expected bail (message free, D-26).
+    Infer(String),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -119,6 +126,9 @@ fn parse_attr(line: &str) -> Option<Attr> {
         let (from, to) = pair.split_once("->")?;
         return Some(Attr::Elab { from: from.trim().to_owned(), to: to.trim().to_owned() });
     }
+    if let Some(lang) = inner(":infer(") {
+        return Some(Attr::Infer(lang));
+    }
     None
 }
 
@@ -136,6 +146,7 @@ fn render_corpus(cases: &[Case]) -> String {
             Attr::Parse(l) => out.push_str(&format!(":parse({l})\n")),
             Attr::Fails(l) => out.push_str(&format!(":fails({l})\n")),
             Attr::Elab { from, to } => out.push_str(&format!(":elab({from} -> {to})\n")),
+            Attr::Infer(l) => out.push_str(&format!(":infer({l})\n")),
         }
         out.push('\n');
         out.push_str(&case.source);
@@ -162,6 +173,7 @@ pub fn run_dir(
     root: &Path,
     lookup: impl Fn(&str) -> Option<ReportFn>,
     elab_lookup: impl Fn(&str, &str) -> Option<ElabFn>,
+    infer_lookup: impl Fn(&str) -> Option<InferFn>,
 ) -> Result<String, String> {
     let update = std::env::var("LANGC_UPDATE").is_ok_and(|v| v == "1");
     let mut files = Vec::new();
@@ -248,9 +260,50 @@ pub fn run_dir(
                 }
                 continue;
             }
+            if let Attr::Infer(lang) = &case.attr {
+                let Some(infer_fn) = infer_lookup(lang) else {
+                    fail(format!("no infer driver for `{lang}`"), &mut failures);
+                    continue;
+                };
+                let report = infer_fn(&case.source);
+                if !report.errors.is_empty() {
+                    fail(format!("pipeline errors: {:?}", report.errors), &mut failures);
+                    continue;
+                }
+                match (&case.expected, update) {
+                    (Some(expected), _) => {
+                        // An expected bail matches any bail: messages
+                        // are deliberately generic for now (D-26).
+                        let both_bail = expected.starts_with("ERROR")
+                            && report.output.starts_with("ERROR");
+                        if !both_bail && expected.trim() != report.output.trim() {
+                            fail(
+                                format!(
+                                    "inferred types mismatch:\n  expected: {}\n  actual:   {}",
+                                    expected.trim(),
+                                    report.output.trim()
+                                ),
+                                &mut failures,
+                            );
+                        }
+                    }
+                    (None, true) => {
+                        case.expected = Some(report.output.clone());
+                        changed = true;
+                        blessed += 1;
+                    }
+                    (None, false) => {
+                        fail(
+                            "missing expected block — bless with LANGC_UPDATE=1".to_owned(),
+                            &mut failures,
+                        );
+                    }
+                }
+                continue;
+            }
             let lang = match &case.attr {
                 Attr::Parse(l) | Attr::Fails(l) => l.clone(),
-                Attr::Elab { .. } => unreachable!("handled above"),
+                Attr::Elab { .. } | Attr::Infer(_) => unreachable!("handled above"),
             };
             let Some(report_fn) = lookup(&lang) else {
                 fail(format!("unknown language `{lang}`"), &mut failures);
@@ -258,7 +311,7 @@ pub fn run_dir(
             };
             let report = report_fn(&case.source);
             match &case.attr {
-                Attr::Elab { .. } => unreachable!("handled above"),
+                Attr::Elab { .. } | Attr::Infer(_) => unreachable!("handled above"),
                 Attr::Fails(_) => {
                     if report.errors.is_empty() {
                         fail("expected parse errors, got a clean parse".to_owned(), &mut failures);

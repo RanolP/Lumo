@@ -1,0 +1,56 @@
+=== annotated identity ===
+:infer(Lumo)
+
+fn id(a: A): A / {} { a }
+
+---
+
+id : U((A) -> F(A))
+
+=== let binding ===
+:infer(Lumo)
+
+fn f(a: A): A / {} { let x = a; x }
+
+---
+
+f : U((A) -> F(A))
+
+=== unknown variable ===
+:infer(Lumo)
+
+fn bad(): A / {} { x }
+
+---
+
+ERROR
+
+=== return type mismatch ===
+:infer(Lumo)
+
+fn bad(a: A): B / {} { a }
+
+---
+
+ERROR
+
+=== thunk parameters force ===
+:infer(Lumo)
+
+fn f(job: thunk A): A / {} { force job }
+
+---
+
+f : U((U(F(A))) -> F(A))
+
+=== generic identity instantiates per use ===
+:infer(Lumo)
+
+data Nat { .zero }
+fn id[T](x: T): T / {} { x }
+fn use_it(n: Nat): Nat / {} { id(n) }
+
+---
+
+id : U(forall T. (T) -> F(T))
+use_it : U((Nat) -> F(Nat))

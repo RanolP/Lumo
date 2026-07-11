@@ -1,0 +1,35 @@
+=== functions pass through ===
+:infer(Lumo)
+
+fn f(mapper: (T) -> T): (T) -> T / {} { mapper }
+
+---
+
+f : U((U((T) -> F(T))) -> F(U((T) -> F(T))))
+
+=== open-row parameters ===
+:infer(Lumo)
+
+fn g(mapper: (T) -> T / { .. }): (T) -> T / { .. } / {} { mapper }
+
+---
+
+g : U((U((T) -> F(T) / {..})) -> F(U((T) -> F(T) / {..})))
+
+=== apply a functional parameter ===
+:infer(Lumo)
+
+fn apply(f: (A) -> B, x: A): B / {} { f(x) }
+
+---
+
+apply : U((U((A) -> F(B))) -> (A) -> F(B))
+
+=== identity over functions ===
+:infer(Lumo)
+
+fn identity(f: (T) -> T): (T) -> T / {} { f }
+
+---
+
+identity : U((U((T) -> F(T))) -> F(U((T) -> F(T))))

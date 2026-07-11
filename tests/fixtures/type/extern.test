@@ -1,0 +1,11 @@
+=== extern fns seed the context ===
+:infer(Lumo)
+
+#[extern = "console.log"]
+extern fn console_log(msg: String)
+fn main(msg: String): Unit / {} { console_log(msg) }
+
+---
+
+console_log : U((String) -> F(Unit))
+main : U((String) -> F(Unit))

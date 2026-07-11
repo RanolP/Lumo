@@ -850,11 +850,14 @@ impl Parser<'_> {
     /// A goal: a bare call (`check_C $a $b with Γ+{a: b}`), a
     /// parenthesized call, or a unification `a = b`.
     fn parse_body_goal(&mut self) -> Option<BodyGoal> {
-        // Bare call: a Name directly followed by a `$var`/`'lit'`
+        // Bare call: a Name directly followed by a `$var`/`'lit'`/list
         // argument. `Name {` opens the Name's own field block and
         // `Name (` is a raw functor term — both unify-goal heads.
         if matches!(self.cur().kind, TokenKind::Name(_))
-            && matches!(self.nth(1).kind, TokenKind::Var(_) | TokenKind::Str(_))
+            && matches!(
+                self.nth(1).kind,
+                TokenKind::Var(_) | TokenKind::Str(_) | TokenKind::Punct('[')
+            )
         {
             return Some(BodyGoal::Call(self.parse_bare_call(false)?));
         }

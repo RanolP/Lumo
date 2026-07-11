@@ -1,0 +1,100 @@
+=== constructors make their data type ===
+:infer(Lumo)
+
+data OptionA { .some(A), .none }
+fn mk(a: A): OptionA / {} { OptionA.some(a) }
+
+---
+
+mk : U((A) -> F(OptionA))
+
+=== generic data instantiates from the expectation ===
+:infer(Lumo)
+
+data Nat { .zero, .succ(Nat) }
+data Option[A] { .some(A), .none }
+fn sub1(x: Nat): Option[Nat] / {} { match x { .zero => Option.none, .succ(let x) => Option.some(x) } }
+
+---
+
+sub1 : U((Nat) -> F(Option[Nat]))
+
+=== match binder types flow ===
+:infer(Lumo)
+
+data OptionA { .some(A), .none }
+fn pick2(a: OptionA, b: A): A / {} { match a { .some(let x) => x, .none => b } }
+
+---
+
+pick2 : U((OptionA) -> (A) -> F(A))
+
+=== wrong binder arity ===
+:infer(Lumo)
+
+data Option { .some(A), .none }
+fn bad(a: Option): Option / {} { match a { .some(let x, let y) => a, .none => a } }
+
+---
+
+ERROR
+
+=== unknown variant ===
+:infer(Lumo)
+
+data Option { .some(A), .none }
+fn bad2(a: Option): Option / {} { match a { .nope => a } }
+
+---
+
+ERROR
+
+=== arm result mismatch ===
+:infer(Lumo)
+
+data OptionInt { .some(B), .none }
+fn bad3(a: OptionInt, c: C): B / {} { match a { .some(x) => c, .none => c } }
+
+---
+
+ERROR
+
+=== bool round trip ===
+:infer(Lumo)
+
+data Bool { .true, .false }
+fn not(x: Bool): Bool / {} { match x { .true => Bool.false, .false => Bool.true } }
+
+---
+
+not : U((Bool) -> F(Bool))
+
+=== iso-recursive lists ===
+:infer(Lumo)
+
+data List[A] { .nil, .cons(A, List[A]) }
+fn head_or(l: List[Number], d: Number): Number / {} { match l { .nil => d, .cons(x, xs) => x } }
+
+---
+
+head_or : U((List[Number]) -> (Number) -> F(Number))
+
+=== tree with three binders ===
+:infer(Lumo)
+
+data Tree[A] { .leaf, .node(Tree[A], A, Tree[A]) }
+fn depth(t: Tree[Number]): Number / {} { match t { .leaf => 0, .node(l, x, r) => x } }
+
+---
+
+depth : U((Tree[Number]) -> F(Number))
+
+=== roll after unroll ===
+:infer(Lumo)
+
+data Nat { .zero, .succ(Nat) }
+fn double(n: Nat): Nat / {} { match n { .zero => Nat.zero, .succ(let m) => Nat.succ(Nat.succ(m)) } }
+
+---
+
+double : U((Nat) -> F(Nat))

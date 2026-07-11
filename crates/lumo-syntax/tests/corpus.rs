@@ -13,7 +13,14 @@ fn corpus() {
     let elab_lookup = |from: &str, to: &str| {
         lumo_syntax::registry::elab(from, to).map(|ops| ops.elab_report)
     };
-    match langc::corpus::run_dir(&root, lookup, elab_lookup) {
+    // The `:infer(Lumo)` driver is handwritten (M2 step 7) — it seeds
+    // judgment contexts from the Lumo tree, so it lives next to the
+    // extern impls rather than in the generated registry.
+    let infer_lookup = |lang: &str| {
+        (lang == "Lumo")
+            .then_some(lumo_syntax::judge_driver::infer_report as langc::corpus::InferFn)
+    };
+    match langc::corpus::run_dir(&root, lookup, elab_lookup, infer_lookup) {
         Ok(summary) => println!("corpus: {summary}"),
         Err(failures) => panic!("corpus failures\n{failures}"),
     }

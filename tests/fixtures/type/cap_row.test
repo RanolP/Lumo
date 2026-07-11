@@ -1,0 +1,50 @@
+=== row-polymorphic identity ===
+:infer(Lumo)
+
+fn id[cap c](a: A): A / { ..c } { a }
+
+---
+
+id : U(forall c. (A) -> F(A) / {..c})
+
+=== rest plus a named cap ===
+:infer(Lumo)
+
+cap IO { fn op(): Result }
+fn with_io[cap c](): Result / { ..c, IO } { IO.op }
+
+---
+
+with_io : U(forall c. F(Result) / {IO, ..c})
+
+=== two named caps over a rest ===
+:infer(Lumo)
+
+cap E1 { fn op1(): A }
+cap E2 { fn op2(): B }
+fn with_both[cap c](): A / { ..c, E1, E2 } { E1.op1 }
+
+---
+
+with_both : U(forall c. F(A) / {E1, E2, ..c})
+
+=== callers instantiate the row ===
+:infer(Lumo)
+
+fn pure_fn[cap c](a: A): A / { ..c } { a }
+fn caller(x: A): A / {} { pure_fn(x) }
+
+---
+
+pure_fn : U(forall c. (A) -> F(A) / {..c})
+caller : U((A) -> F(A))
+
+=== a rigid rest rejects stray performs ===
+:infer(Lumo)
+
+cap IO { fn op(): Result }
+fn sneaky[cap c](a: A): A / { ..c } { let x = IO.op; a }
+
+---
+
+ERROR

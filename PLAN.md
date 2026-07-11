@@ -194,11 +194,27 @@ capability rows = D-41; design artifact `design/m2-type-brainstorm.html`.
       thunk against an unconstrained type bails hard (three U-rules) —
       annotate the spine. Unannotated lambdas/fix bail (cap and type
       inference of bare defs deferred with D-39's cap_inference).
-- [ ] Step 7 — `:infer(Lumo)` fixtures run the full pipeline (parse,
-      elab, judge; `name : Type` lines printed by the MIR type
-      printer) plus `:fails` (D-32); migrate the in-scope legacy
-      buckets (D-39). Deferred with their machinery: resume, bounds,
-      assoc_types, cap_inference, match exhaustiveness.
+- [x] Step 7 (2026-07-12) — `:infer(Lumo)` corpus attribute runs the
+      full pipeline (parse Lumo, elab, judge each def in order); the
+      handwritten driver (`judge_driver.rs`, next to the extern impls)
+      seeds Δ/Σ/Γ from the *Lumo* tree per the seed-shape contracts,
+      prints types in the MIR type sub-language (`name : Type` lines;
+      rows as ` / {entries, ..rest}`), and reports bails as `ERROR`
+      (any-message match, D-26). 8 fixture files under
+      `tests/fixtures/type/` migrate the in-scope legacy buckets
+      (~40 cases): basics, annotation, data (+match+iso), recursion,
+      extern, cap, cap_row, hof. Migration adaptations: curried
+      CBPV-explicit types, `ERROR` without messages, hof row
+      annotations spelled on both sides (exact coercion, no
+      subsumption inside U). Bugs this shook out: FnTypeExpr's
+      `params()` accessor includes the return (same kind class — split
+      by position in the elab translation; ret is now always
+      `F(value)`, a returned fn is an implicit thunk), and `ctor`'s
+      subject is the args structure, not the shared tag. Deferred
+      with machinery, as D-39: resume, bounds, assoc_types,
+      cap_inference, exhaustiveness; also mutual recursion (D-12
+      groups), nested patterns, `if/else` and impl dispatch (elab
+      gaps, M4 parity).
 
 ## M3 — e-graph optimization
 

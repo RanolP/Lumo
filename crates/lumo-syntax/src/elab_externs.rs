@@ -156,21 +156,21 @@ impl LumoToMir {
 
     /// `(A, B) -> R / {row}` curries one param per arrow to mirror
     /// `curry()`; zero params yield the bare `F` (a nullary fn is just
-    /// a thunk). The row sits on the innermost F (D-41).
+    /// a thunk). The row sits on the innermost F (D-41). The return is
+    /// always a value type — a fn-typed return is an implicit thunk
+    /// (`F(U(…))`), matching the `ret`-wrapped term the elab emits.
     fn fn_type_c(&mut self, f: &l::FnTypeExpr<'_>) -> Option<String> {
-        let params: Vec<l::TypeExpr<'_>> = f.params().collect();
+        // FnTypeExpr's params and return share the TypeExpr kind
+        // class, so the generated `params()` accessor yields the
+        // return as its last element (M0 offset scheme limitation) —
+        // split it off by position.
+        let mut params: Vec<l::TypeExpr<'_>> = f.params().collect();
+        let ret = params.pop()?;
         let row = match f.cap_annotation() {
             None => None,
             Some(a) => Some(self.cap_row(a)?),
         };
-        let ret = f.return_type()?;
-        let mut text = match (&ret, &row) {
-            (l::TypeExpr::FnTypeExpr(_), None) => self.type_c(&ret)?,
-            // A row on an arrow is the latent-effect case — not
-            // spellable in MIR (D-41).
-            (l::TypeExpr::FnTypeExpr(_), Some(_)) => return None,
-            _ => builder::f_type_c(&self.type_v(&ret)?, row.as_deref()),
-        };
+        let mut text = builder::f_type_c(&self.type_v(&ret)?, row.as_deref());
         for param in params.iter().rev() {
             text = builder::fn_type_c(&[&self.type_v(param)?], &text);
         }
@@ -224,11 +224,7 @@ impl LumoToMir {
             None => None,
             Some(a) => Some(self.cap_row(a)?),
         };
-        let mut text = match (&ret, &row) {
-            (l::TypeExpr::FnTypeExpr(_), None) => self.type_c(&ret)?,
-            (l::TypeExpr::FnTypeExpr(_), Some(_)) => return None,
-            _ => builder::f_type_c(&self.type_v(&ret)?, row.as_deref()),
-        };
+        let mut text = builder::f_type_c(&self.type_v(&ret)?, row.as_deref());
         for ty in param_types.iter().rev() {
             text = builder::fn_type_c(&[ty], &text);
         }
@@ -711,4 +707,30 @@ type FromNodeAlias = LumoNode;
 
 pub fn lumo_to_mir() -> Box<dyn Externs> {
     Box::<LumoToMir>::default()
+}
+
+// === Type-translation helpers for the judge driver (M2 step 7) ===
+
+/// A Lumo TypeExpr as MIR TypeV text; `None` = not spellable (D-39).
+pub fn type_v_text(ty: &l::TypeExpr<'_>) -> Option<String> {
+    LumoToMir::default().type_v(ty)
+}
+
+/// A Lumo CapAnnotation as MIR CapRow text.
+pub fn cap_row_text(annotation: l::CapAnnotation<'_>) -> Option<String> {
+    LumoToMir::default().cap_row(annotation)
+}
+
+/// A signature (typed params, return, optional row) as a curried MIR
+/// comp-type text — the shape shared by fn defs and cap operations.
+pub fn signature_type_c_text(
+    param_types: &[String],
+    ret: &str,
+    row: Option<&str>,
+) -> String {
+    let mut text = builder::f_type_c(ret, row);
+    for ty in param_types.iter().rev() {
+        text = builder::fn_type_c(&[ty], &text);
+    }
+    text
 }

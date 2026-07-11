@@ -259,8 +259,9 @@ fix id = thunk { &lambda;x. ret x }</div>
       <li><span class="date">2026-07-11</span>M2 4단계 구현 — <code>.type.langue</code>이 세 번째 아이템 종류로: 판단 선언·규칙이 Rust 규칙 테이블로 codegen, MIR 시드 판단이 실제 트리 위에서 풀림, verify 녹색</li>
       <li><span class="date">2026-07-11</span>M2 5단계 구현 — subst·hash 태틱: 해시 키 집합 항과 열린 row 유니피케이션(<code>{A|r}={A,B}</code>), <code>$e[$b := $a]</code>·<code>(hash $es)</code> DSL 표면, verify 녹색</li>
       <li><span class="date">2026-07-12</span>M2 6단계 구현 — 본 판단 약 70규칙: 양방향 검사(람다·fix는 check 전용), row는 ambient 집합으로, forall은 inst로 즉석 인스턴스화, data/match는 Δ·Σ 시드 문맥으로. 종단 테스트 10개, verify 녹색</li>
+      <li><span class="date">2026-07-12</span>M2 7단계 구현 — <code>:infer(Lumo)</code> 픽스처가 parse | elab | judge 전체 파이프라인을 탄다. 레거시 8버킷 약 40케이스 이식, verify 녹색. <strong>M2 완료.</strong></li>
     </ul>
-    <a class="btn" href="#top">다음: 7단계 — :infer(Lumo) 배선</a>
+    <a class="btn" href="#top">M2 끝 — 다음은 M3 (e-graph 최적화)</a>
   </section>
 
 </body>
