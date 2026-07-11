@@ -255,21 +255,17 @@ impl Parser {
     fn parse_object_expr(&mut self) -> SyntaxNode {
         let mut children = Vec::new();
         self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
-        loop {
-            if self.c.at(SyntaxKind::IDENT) {
-                children.push(SyntaxElement::Node(Box::new(self.parse_object_prop())));
-                continue;
-            }
-            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
-                self.c.error_here("unexpected input".to_owned());
-                let mut bad = Vec::new();
-                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at(SyntaxKind::IDENT) {
-                    self.c.bump_into(&mut bad);
+        if self.c.at(SyntaxKind::IDENT) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_object_prop())));
+            while self.c.at(SyntaxKind::COMMA) {
+                self.c.bump_into(&mut children);
+                // Trailing separator is allowed.
+                if self.c.at(SyntaxKind::IDENT) {
+                    children.push(SyntaxElement::Node(Box::new(self.parse_object_prop())));
+                } else {
+                    break;
                 }
-                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
-                continue;
             }
-            break;
         }
         self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
         SyntaxNode::from_children(SyntaxKind::OBJECT_EXPR, children)
@@ -283,9 +279,6 @@ impl Parser {
         self.c.expect_into(SyntaxKind::IDENT, &mut children);
         self.c.expect_into(SyntaxKind::COLON, &mut children);
         children.push(SyntaxElement::Node(Box::new(self.parse_expr())));
-        if self.c.at(SyntaxKind::COMMA) {
-            self.c.expect_into(SyntaxKind::COMMA, &mut children);
-        }
         SyntaxNode::from_children(SyntaxKind::OBJECT_PROP, children)
     }
 

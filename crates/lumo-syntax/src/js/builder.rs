@@ -207,7 +207,10 @@ pub fn num_expr(value: &str) -> String {
 pub fn object_expr(props: &[&str]) -> String {
     let mut out = String::new();
     push(&mut out, "{");
-    for item in props {
+    for (i, item) in props.iter().enumerate() {
+        if i > 0 {
+            push(&mut out, ",");
+        }
         push(&mut out, item);
     }
     push(&mut out, "}");

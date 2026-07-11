@@ -26,6 +26,7 @@ pub struct ElabOps {
 
 pub static ELABS: &[ElabOps] = &[
     ElabOps { from: "Lumo", to: "MIR", elab_report: lumo_to_mir_elab_report },
+    ElabOps { from: "MIR", to: "JS", elab_report: mir_to_js_elab_report },
 ];
 
 pub fn elab(from: &str, to: &str) -> Option<&'static ElabOps> {
@@ -36,6 +37,12 @@ pub fn elab(from: &str, to: &str) -> Option<&'static ElabOps> {
 fn lumo_to_mir_elab_report(text: &str) -> ElabReport {
     let mut externs = crate::elab_externs::lumo_to_mir();
     crate::elab::lumo_to_mir::elab(text, externs.as_mut())
+}
+
+/// Externs come from the handwritten `crate::elab_externs::mir_to_js()`.
+fn mir_to_js_elab_report(text: &str) -> ElabReport {
+    let mut externs = crate::elab_externs::mir_to_js();
+    crate::elab::mir_to_js::elab(text, externs.as_mut())
 }
 
 fn js_report(text: &str) -> ParseReport {

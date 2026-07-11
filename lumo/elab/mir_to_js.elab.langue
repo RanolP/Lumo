@@ -1,0 +1,45 @@
+// MIR → JS emission (D-43): direct-style strict CBPV onto a JS subset.
+// ret / roll / unroll / parens / annotations are transparent; leaves map
+// 1:1. JS has one expression sort, so no coercion happens here.
+
+// Extern rules (D-01/D-38) host what derived rules cannot express —
+// singleton parameter lists, argument/arm folds, and ident → "string"
+// quoting (tags, cap names):
+//   thunk_lambda — ThunkV `() => c`, LamC `(x) => c`
+//   force_apply  — ForceC `v()`, CompPostfix `c(args…)`
+//   let_fix      — LetC `((x) => b)(c)`, FixC `function f() { return c; }()`
+//   case_arms    — CaseC as nested ternaries over `s.$ === "Tag"`,
+//                  binders as IIFEs over `s.args[i]`, else
+//                  `__lumo_match_error(s)`
+//   ctor_bundle  — CtorV `({ $: "Tag", args: […] })`, BundleV
+//                  `({ op: (p, q) => c })` (object literals are always
+//                  parenthesized — an arrow body `{…}` would read as a
+//                  block in real JS)
+//   caps         — PerformC `__lumo_perform("C")`, HandleC
+//                  `__lumo_handle("C", h, () => b)` (D-43 runtime)
+extern rule thunk_lambda from MIR to JS
+extern rule force_apply from MIR to JS
+extern rule let_fix from MIR to JS
+extern rule case_arms from MIR to JS
+extern rule ctor_bundle from MIR to JS
+extern rule caps from MIR to JS
+
+from MIR to JS {
+  File { defs: [$d*] } ==> JS::File { stmts: [$d* to JS] }
+  Def { name: $n, value: $v } ==> ConstDecl { name: $n, value: $v to JS }
+
+  VarV { name: $n } ==> IdentExpr { name: $n }
+  NumV { value: $v } ==> NumExpr { value: $v }
+  StrV { value: $v } ==> StrExpr { value: $v }
+
+  // F-intro, iso-recursion and grouping are erased: JS is untyped and
+  // the builders re-parenthesize by precedence.
+  RetC { value: $v } ==> $v to JS
+  RollV { value: $v } ==> $v to JS
+  UnrollV { value: $v } ==> $v to JS
+  ParenV { inner: $v } ==> $v to JS
+  ParenC { inner: $c } ==> $c to JS
+
+  SelC { value: $v, field: $f }
+    ==> ExprPostfix { op: '.', expr: $v to JS, member_name: MemberName { name: $f } }
+}

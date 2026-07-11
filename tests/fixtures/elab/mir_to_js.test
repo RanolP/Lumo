@@ -1,0 +1,98 @@
+=== leaves: defs of var, number, string ===
+:elab(MIR -> JS)
+
+def a = 1
+def b = "hi"
+def c = a
+
+---
+
+const a=1;const b="hi";const c=a;
+
+=== thunk is a zero-param arrow, force is a call ===
+:elab(MIR -> JS)
+
+def t = thunk { ret 1 }
+def u = thunk { force t }
+
+---
+
+const t=()=>1;const u=()=>t();
+
+=== lambda and curried application ===
+:elab(MIR -> JS)
+
+def id = thunk { fn (x) => ret x }
+def app = thunk { force id(1) }
+
+---
+
+const id=()=>(x)=>x;const app=()=>id()(1);
+
+=== multi-arg application ===
+:elab(MIR -> JS)
+
+def go = thunk { force f(1, 2) }
+
+---
+
+const go=()=>f()(1,2);
+
+=== let is an IIFE ===
+:elab(MIR -> JS)
+
+def t = thunk { let x = ret 1 in ret x }
+
+---
+
+const t=()=>((x)=>x)(1);
+
+=== fix is a named function expression ===
+:elab(MIR -> JS)
+
+def loop = thunk { fix f => force f() }
+
+---
+
+const loop=()=>function f(){return f()();}();
+
+=== ctors are tagged objects ===
+:elab(MIR -> JS)
+
+def nil = roll .Nil
+def cons = roll .Cons(1, nil)
+
+---
+
+const nil=({$:"Nil",args:[]});const cons=({$:"Cons",args:[1,nil]});
+
+=== case is nested ternaries with binder IIFEs ===
+:elab(MIR -> JS)
+
+def head = thunk { fn (l) => case unroll l { .Cons(h, t) => ret h, .Nil => ret 0, } }
+
+---
+
+const head=()=>(l)=>((__t1)=>(__t1.$==="Cons")?((h,t)=>h)(__t1.args[0],__t1.args[1]):(__t1.$==="Nil")?0:__lumo_match_error(__t1))(l);
+
+=== bundle, handle, perform, sel ===
+:elab(MIR -> JS)
+
+def h = bundle { fn info(m) => ret m; }
+def t = thunk { handle Log with h in let b = perform Log in sel b.info("x") }
+
+---
+
+const h=({info:(m)=>m});const t=()=>__lumo_handle("Log",h,()=>((b)=>b.info("x"))(__lumo_perform("Log")));
+
+=== roll, unroll, parens and annotations are erased ===
+:elab(MIR -> JS)
+
+def a = (1 : Number)
+def b = roll (unroll a)
+def c = thunk { (ret a) }
+
+---
+
+const a=1;const b=a;const c=()=>a;
+

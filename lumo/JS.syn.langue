@@ -44,8 +44,10 @@ StrExpr = value:lit.string
 // N-ary on purpose: `(a)` groups, `(a, b)` is an arrow parameter list,
 // `()` is an empty one (D-43).
 ParenExpr = '(' items:sep(Expr, ',')? ')'
-ObjectExpr = '{' props:ObjectProp* '}'
-ObjectProp = name:ident ':' value:Expr ','?
+// Props are a sep list — a canonical print must keep the commas
+// (optional commas canonicalize away, which real JS rejects).
+ObjectExpr = '{' props:sep(ObjectProp, ',')? '}'
+ObjectProp = name:ident ':' value:Expr
 ArrayExpr = '[' items:sep(Expr, ',')? ']'
 // Named function expression — the `fix` target: `f` scopes over the
 // body, `f()` re-enters it (D-43).

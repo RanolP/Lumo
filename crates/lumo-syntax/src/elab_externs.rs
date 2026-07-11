@@ -734,3 +734,244 @@ pub fn signature_type_c_text(
     }
     text
 }
+
+// === MIR → JS (M4, D-43) ===
+
+use crate::elab::mir_to_js as js_elab;
+use crate::js::builder as jsb;
+use crate::js::syntax_kind::SyntaxKind as JsKind;
+use crate::mir::lossless::SyntaxNode as MirNode;
+
+type JsFrag = js_elab::ToFrag;
+
+pub fn mir_to_js() -> Box<dyn js_elab::Externs> {
+    Box::new(MirToJs)
+}
+
+pub struct MirToJs;
+
+/// Wrap in the n-ary paren atom. The generated builder cannot
+/// auto-parenthesize (no single-required-field paren atom in the JS
+/// grammar, D-43), so risky operands are pre-wrapped here.
+fn js_paren(text: &str) -> JsFrag {
+    Frag::node(JsKind::PAREN_EXPR, jsb::paren_expr(&[text]))
+}
+
+fn js_operand(frag: &JsFrag) -> jsb::Operand<'_> {
+    jsb::Operand { text: &frag.text, kind: frag.kind }
+}
+
+/// Callee-safe: anything with a weak right edge (arrows) gets parens
+/// so a following postfix row binds to the whole expression.
+fn js_tight(frag: JsFrag) -> JsFrag {
+    match frag.kind {
+        Some(JsKind::EXPR_INFIX) => js_paren(&frag.text),
+        _ => frag,
+    }
+}
+
+impl MirToJs {
+    fn comp(&mut self, ctx: &mut ElabCtx, c: &m::Comp<'_>) -> Option<JsFrag> {
+        js_elab::elab_node(ctx, self, c.syntax())
+    }
+
+    fn value(&mut self, ctx: &mut ElabCtx, v: &m::Value<'_>) -> Option<JsFrag> {
+        js_elab::elab_node(ctx, self, v.syntax())
+    }
+
+    /// `(p1, p2) => body`
+    fn arrow(&self, params: &[&str], body: &JsFrag) -> JsFrag {
+        let idents: Vec<String> = params.iter().map(|p| jsb::ident_expr(p)).collect();
+        let refs: Vec<&str> = idents.iter().map(String::as_str).collect();
+        let lhs = jsb::paren_expr(&refs);
+        let text = jsb::expr_infix_1(
+            jsb::Operand { text: &lhs, kind: Some(JsKind::PAREN_EXPR) },
+            "=>",
+            js_operand(body),
+        );
+        Frag::node(JsKind::EXPR_INFIX, text)
+    }
+
+    /// `callee(args…)`
+    fn call(&self, callee: JsFrag, args: &[&str]) -> JsFrag {
+        let callee = js_tight(callee);
+        let text = jsb::expr_postfix_1(js_operand(&callee), &jsb::call_args(args));
+        Frag::node(JsKind::EXPR_POSTFIX, text)
+    }
+
+    fn runtime_call(&self, name: &str, args: &[&str]) -> JsFrag {
+        self.call(Frag::node(JsKind::IDENT_EXPR, jsb::ident_expr(name)), args)
+    }
+}
+
+/// An ident token as a JS string literal (`Cons` → `"Cons"`).
+fn js_quoted(name: &str) -> String {
+    jsb::str_expr(&format!("{name:?}"))
+}
+
+impl js_elab::Externs for MirToJs {
+    // The SCC/use passes are Lumo→MIR concerns (D-12/D-30); they are
+    // declared project-wide, so this pair implements them as no-ops.
+    fn pass_scc_fix(&mut self, _phase: PassPhase, _text: &str) -> Option<String> {
+        None
+    }
+
+    fn pass_use_require(&mut self, _phase: PassPhase, _text: &str) -> Option<String> {
+        None
+    }
+
+    fn rule_thunk_lambda(&mut self, ctx: &mut ElabCtx, node: &MirNode) -> Option<JsFrag> {
+        if let Some(t) = m::ThunkV::cast(node) {
+            let body = self.comp(ctx, &t.body()?)?;
+            return Some(self.arrow(&[], &body));
+        }
+        if let Some(l) = m::LamC::cast(node) {
+            let body = self.comp(ctx, &l.body()?)?;
+            return Some(self.arrow(&[&l.param()?.text], &body));
+        }
+        None
+    }
+
+    fn rule_force_apply(&mut self, ctx: &mut ElabCtx, node: &MirNode) -> Option<JsFrag> {
+        if let Some(f) = m::ForceC::cast(node) {
+            let v = self.value(ctx, &f.value()?)?;
+            return Some(self.call(v, &[]));
+        }
+        if let Some(a) = m::CompPostfix::cast(node) {
+            let callee = self.comp(ctx, &a.expr()?)?;
+            let mut args = Vec::new();
+            if let Some(va) = a.value_args() {
+                for arg in va.args() {
+                    args.push(self.value(ctx, &arg)?.text);
+                }
+            }
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            return Some(self.call(callee, &refs));
+        }
+        None
+    }
+
+    fn rule_let_fix(&mut self, ctx: &mut ElabCtx, node: &MirNode) -> Option<JsFrag> {
+        if let Some(l) = m::LetC::cast(node) {
+            let value = self.comp(ctx, &l.value()?)?;
+            let body = self.comp(ctx, &l.body()?)?;
+            let arrow = self.arrow(&[&l.name()?.text], &body);
+            return Some(self.call(arrow, &[&value.text]));
+        }
+        if let Some(f) = m::FixC::cast(node) {
+            let body = self.comp(ctx, &f.body()?)?;
+            let fn_expr =
+                Frag::node(JsKind::FN_EXPR, jsb::fn_expr(&f.name()?.text, &body.text));
+            return Some(self.call(fn_expr, &[]));
+        }
+        None
+    }
+
+    fn rule_case_arms(&mut self, ctx: &mut ElabCtx, node: &MirNode) -> Option<JsFrag> {
+        let case = m::CaseC::cast(node)?;
+        let scrut = self.value(ctx, &case.scrutinee()?)?;
+        let s = ctx.fresh();
+        let s_ident = jsb::ident_expr(&s);
+        let s_operand = || jsb::Operand { text: &s_ident, kind: Some(JsKind::IDENT_EXPR) };
+        // Innermost alternative: the non-exhaustive fallthrough.
+        let mut chain = self
+            .runtime_call("__lumo_match_error", &[&s_ident])
+            .text;
+        let arms: Vec<_> = case.arms().collect();
+        for arm in arms.iter().rev() {
+            let tag = arm.tag()?;
+            let body = self.comp(ctx, &arm.body()?)?;
+            let binders: Vec<String> = arm
+                .binders()
+                .map(|b| b.names().map(|t| t.text.clone()).collect())
+                .unwrap_or_default();
+            let then_text = if binders.is_empty() {
+                body.text.clone()
+            } else {
+                // `((b1, b2) => body)(s.args[0], s.args[1])`
+                let refs: Vec<&str> = binders.iter().map(String::as_str).collect();
+                let arrow = self.arrow(&refs, &body);
+                let args_member = jsb::expr_postfix_0(s_operand(), &jsb::member_name("args"));
+                let payloads: Vec<String> = (0..binders.len())
+                    .map(|i| {
+                        jsb::expr_postfix_2(
+                            jsb::Operand {
+                                text: &args_member,
+                                kind: Some(JsKind::EXPR_POSTFIX),
+                            },
+                            &jsb::index_arg(&jsb::num_expr(&i.to_string())),
+                        )
+                    })
+                    .collect();
+                let payload_refs: Vec<&str> = payloads.iter().map(String::as_str).collect();
+                self.call(arrow, &payload_refs).text
+            };
+            // `(s.$ === "Tag") ? then : chain` — the test is wrapped
+            // because the builder cannot auto-parenthesize (D-43).
+            let s_tag = jsb::expr_postfix_0(s_operand(), &jsb::member_name("$"));
+            let tag_str = js_quoted(&tag.text);
+            let eq = jsb::expr_infix_0(
+                jsb::Operand { text: &s_tag, kind: Some(JsKind::EXPR_POSTFIX) },
+                "===",
+                jsb::Operand { text: &tag_str, kind: Some(JsKind::STR_EXPR) },
+            );
+            let eq_paren = jsb::paren_expr(&[&eq]);
+            chain = jsb::expr_postfix_3(
+                jsb::Operand { text: &eq_paren, kind: Some(JsKind::PAREN_EXPR) },
+                &jsb::ternary_tail(&then_text, &chain),
+            );
+        }
+        let chain_frag = Frag::node(JsKind::EXPR_POSTFIX, chain);
+        let dispatcher = self.arrow(&[&s], &chain_frag);
+        Some(self.call(dispatcher, &[&scrut.text]))
+    }
+
+    fn rule_ctor_bundle(&mut self, ctx: &mut ElabCtx, node: &MirNode) -> Option<JsFrag> {
+        if let Some(c) = m::CtorV::cast(node) {
+            let tag = c.tag()?;
+            let mut args = Vec::new();
+            if let Some(ctor_args) = c.args() {
+                for arg in ctor_args.args() {
+                    args.push(self.value(ctx, &arg)?.text);
+                }
+            }
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            let tag_prop = jsb::object_prop("$", &js_quoted(&tag.text));
+            let args_prop = jsb::object_prop("args", &jsb::array_expr(&arg_refs));
+            let obj = jsb::object_expr(&[&tag_prop, &args_prop]);
+            // Parenthesized: `{…}` as an arrow body reads as a block
+            // in real JS (D-43).
+            return Some(js_paren(&obj));
+        }
+        if let Some(b) = m::BundleV::cast(node) {
+            let mut props = Vec::new();
+            for clause in b.clauses() {
+                let name = clause.name()?;
+                let params: Vec<String> = clause.params().map(|t| t.text.clone()).collect();
+                let refs: Vec<&str> = params.iter().map(String::as_str).collect();
+                let body = self.comp(ctx, &clause.body()?)?;
+                let arrow = self.arrow(&refs, &body);
+                props.push(jsb::object_prop(&name.text, &arrow.text));
+            }
+            let prop_refs: Vec<&str> = props.iter().map(String::as_str).collect();
+            return Some(js_paren(&jsb::object_expr(&prop_refs)));
+        }
+        None
+    }
+
+    fn rule_caps(&mut self, ctx: &mut ElabCtx, node: &MirNode) -> Option<JsFrag> {
+        if let Some(p) = m::PerformC::cast(node) {
+            return Some(self.runtime_call("__lumo_perform", &[&js_quoted(&p.cap()?.text)]));
+        }
+        if let Some(h) = m::HandleC::cast(node) {
+            let handler = self.value(ctx, &h.handler()?)?;
+            let body = self.comp(ctx, &h.body()?)?;
+            let thunk = self.arrow(&[], &body);
+            return Some(self.runtime_call(
+                "__lumo_handle",
+                &[&js_quoted(&h.cap()?.text), &handler.text, &thunk.text],
+            ));
+        }
+        None
+    }
+}

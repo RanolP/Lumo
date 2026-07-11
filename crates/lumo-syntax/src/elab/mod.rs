@@ -3,3 +3,4 @@
 //! Generated elab modules, one per `from A to B` pair.
 
 pub mod lumo_to_mir;
+pub mod mir_to_js;
