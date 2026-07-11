@@ -1,17 +1,9 @@
 [workspace]
 members = [
-    "crates/span",
-    "crates/types",
-    "crates/lexer",
-    "crates/lst",
-    "crates/hir",
-    "crates/lir",
-    "crates/lir-memaware",
     "crates/compiler",
     "crates/lbs",
     "crates/lsp",
     "crates/playground-wasm",
-    "crates/simple-ts-ast",
 ]
 exclude = ["packages"]
 resolver = "2"
