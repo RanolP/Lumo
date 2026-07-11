@@ -3,6 +3,7 @@
 //! `langc gen lumo -o crates/lumo-syntax/src` — edit the `.langue` files
 //! at the repo-root `lumo/` directory instead, then regenerate.
 
+pub mod compile_driver;
 pub mod elab;
 pub mod elab_externs;
 pub mod js;

@@ -11,6 +11,13 @@ fn corpus() {
     let lookup =
         |lang: &str| lumo_syntax::registry::language(lang).map(|ops| ops.parse_report);
     let elab_lookup = |from: &str, to: &str| {
+        // End-to-end Lumo → JS chains the pipe's two elab stages
+        // through a handwritten driver (M4 step 4, D-43).
+        if from == "Lumo" && to == "JS" {
+            return Some(
+                lumo_syntax::compile_driver::compile_report as langc::corpus::ElabFn,
+            );
+        }
         lumo_syntax::registry::elab(from, to).map(|ops| ops.elab_report)
     };
     // The `:infer(Lumo)` driver is handwritten (M2 step 7) — it seeds

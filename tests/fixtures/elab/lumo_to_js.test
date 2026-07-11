@@ -1,0 +1,86 @@
+=== identity fn compiles end to end (the legacy M1 gate, in JS) ===
+:elab(Lumo -> JS)
+
+fn id(x) = x
+
+---
+
+const id=()=>(x)=>x;
+
+=== multi-param fns curry into arrow spines ===
+:elab(Lumo -> JS)
+
+fn konst(a, b) = a
+
+---
+
+const konst=()=>(a)=>(b)=>a;
+
+=== calls force the callee; computation args pass through the auto-let ===
+:elab(Lumo -> JS)
+
+fn go(g, h, x) = g(h(x))
+
+---
+
+const go=()=>(g)=>(h)=>(x)=>((__t1)=>g()(__t1))(h()(x));
+
+=== data ctors and match (legacy ctor+match emission intent) ===
+:elab(Lumo -> JS)
+
+data Nat {
+  .zero
+  .succ(Nat)
+}
+fn pred(n) = match n {
+  .zero => Nat.zero,
+  .succ(m) => m,
+}
+
+---
+
+const pred=()=>(n)=>((__t1)=>(__t1.$==="zero")?({$:"zero",args:[]}):(__t1.$==="succ")?((m)=>m)(__t1.args[0]):__lumo_match_error(__t1))(n);
+
+=== cap ops resolve through the handler bundle (legacy cap intent) ===
+:elab(Lumo -> JS)
+
+cap Console {
+  fn log(msg)
+}
+fn main() = handle Console with bundle { fn log(m) = m } in Console.log("x")
+
+---
+
+const main=()=>__lumo_handle("Console",({log:(m)=>m}),()=>((__t1)=>__t1.log("x"))(__lumo_perform("Console")));
+
+=== use lowers to require (D-30) ===
+:elab(Lumo -> JS)
+
+use foo.bar;
+fn go() = bar()
+
+---
+
+const bar=()=>((m)=>m.bar)(require()("foo"));const go=()=>bar()();
+
+=== self-recursion compiles through fix (legacy recursion intent) ===
+:elab(Lumo -> JS)
+
+fn spin(x) = spin(x)
+
+---
+
+const spin=()=>function spin(){return(x)=>spin()(x);}();
+
+=== blocks with let statements ===
+:elab(Lumo -> JS)
+
+fn b(x) = {
+  let y = x;
+  y
+}
+
+---
+
+const b=()=>(x)=>((y)=>y)(x);
+
