@@ -1,0 +1,36 @@
+=== u-beta: force of thunk cancels ===
+:optimize(MIR)
+
+def t = thunk { force thunk { ret 1 } }
+
+---
+
+def t=thunk{ret 1}
+
+=== f-beta: single-use let-ret substitutes ===
+:optimize(MIR)
+
+def t = thunk { let x = ret 1 in ret x }
+
+---
+
+def t=thunk{ret 1}
+
+=== paren strip ===
+:optimize(MIR)
+
+def t = thunk { (ret 1) }
+
+---
+
+def t=thunk{ret 1}
+
+=== no-op passthrough ===
+:optimize(MIR)
+
+def id = thunk { fn (x) => ret x }
+
+---
+
+def id=thunk{fn(x)=>ret x}
+

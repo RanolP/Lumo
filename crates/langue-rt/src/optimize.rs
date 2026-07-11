@@ -93,6 +93,26 @@ impl Optimizer {
     pub fn union_root(&mut self, term: &EggTerm) -> Result<(), String> {
         self.run_text(&format!("(union root {})", term.to_sexpr())).map(drop)
     }
+
+    /// Merge two host-computed equal terms.
+    pub fn union_terms(&mut self, a: &EggTerm, b: &EggTerm) -> Result<(), String> {
+        self.run_text(&format!("(union {} {})", a.to_sexpr(), b.to_sexpr())).map(drop)
+    }
+
+    /// Every row of table `name` as a call term — arguments are
+    /// min-cost extractions of the row's argument e-classes. This is
+    /// how host-side tactics see their pending work: a high-cost
+    /// tactic constructor never wins extraction, so its calls are read
+    /// off the table instead (D-42).
+    pub fn table_calls(&mut self, name: &str) -> Result<Vec<EggTerm>, String> {
+        let outputs = self.run_text(&format!("(print-function {name} {})", u32::MAX))?;
+        for output in outputs {
+            if let CommandOutput::PrintFunction(_, dag, rows, _) = output {
+                return rows.iter().map(|(call, _)| walk(&dag, *call)).collect();
+            }
+        }
+        Err(format!("egglog: (print-function {name}) produced no output"))
+    }
 }
 
 fn walk(dag: &TermDag, id: TermId) -> Result<EggTerm, String> {
@@ -110,25 +130,40 @@ fn walk(dag: &TermDag, id: TermId) -> Result<EggTerm, String> {
     }
 }
 
-/// The D-42 loop: saturate, extract, reduce host-side tactics, union the
-/// reduction back, repeat. `reduce` returns `None` when the term has no
-/// tactic nodes left (it is the final answer) and `Some(reduced)` after
-/// rewriting at least one. Leftover tactics past `max_rounds` error.
+/// The D-42 loop: saturate, read the pending `tactic` calls off its
+/// table, reduce each host-side, union the reductions back (making the
+/// reduced forms extractable by true cost), and repeat until a round
+/// adds nothing new. `reduce` maps one call term (`(subst t b v)`) to
+/// its tactic-free reduction. No convergence within `max_rounds`, or a
+/// tactic node surviving into the final extraction, is an error.
 pub fn optimize_loop(
     program: &str,
     root_expr: &str,
     run_iterations: usize,
     max_rounds: usize,
-    reduce: impl Fn(&EggTerm) -> Result<Option<EggTerm>, String>,
+    tactic: &str,
+    reduce: impl Fn(&EggTerm) -> Result<EggTerm, String>,
 ) -> Result<EggTerm, String> {
     let mut opt = Optimizer::new(program)?;
     opt.define_root(root_expr)?;
+    let mut seen = std::collections::BTreeSet::new();
     for _ in 0..max_rounds {
         opt.run(run_iterations)?;
-        let term = opt.extract_root()?;
-        match reduce(&term)? {
-            None => return Ok(term),
-            Some(reduced) => opt.union_root(&reduced)?,
+        let mut progressed = false;
+        for call in opt.table_calls(tactic)? {
+            if !seen.insert(call.to_sexpr()) {
+                continue;
+            }
+            let reduced = reduce(&call)?;
+            opt.union_terms(&call, &reduced)?;
+            progressed = true;
+        }
+        if !progressed {
+            let term = opt.extract_root()?;
+            if term.contains_app(tactic) {
+                return Err(format!("optimize: `{tactic}` leaked into extraction"));
+            }
+            return Ok(term);
         }
     }
     Err(format!("optimize: tactic reduction did not converge in {max_rounds} rounds"))
@@ -138,14 +173,27 @@ pub fn optimize_loop(
 mod tests {
     use super::*;
 
+    // Toy grammar shaped like the real compiled programs: a rewrite
+    // introduces a high-cost host tactic (`host` strips one Shell).
     const TOY: &str = r#"
-; toy grammar: strings wrapped in high-cost shells
 (datatype Expr
   (Leaf String :cost 1)
   (Wrap Expr :cost 1000)
-  (Host Expr :cost 1000))
+  (Shell Expr :cost 1))
+(constructor host (Expr) Expr :cost 1000)
 (rewrite (Wrap e) e)
+(rewrite (Shell e) (host e))
 "#;
+
+    /// `(host e)` → `e` (the toy tactic's host-side reduction).
+    fn reduce_host(call: &EggTerm) -> Result<EggTerm, String> {
+        match call {
+            EggTerm::App(head, args) if head == "host" && args.len() == 1 => {
+                Ok(args[0].clone())
+            }
+            other => Err(format!("not a host call: {other:?}")),
+        }
+    }
 
     #[test]
     fn saturate_and_extract_picks_cheapest() {
@@ -157,40 +205,46 @@ mod tests {
     }
 
     #[test]
-    fn loop_reduces_host_nodes_via_union() {
-        // (Host e) has no egglog rule; the host callback strips it, the
-        // union makes the stripped form extractable by cost.
-        let reduce = |term: &EggTerm| -> Result<Option<EggTerm>, String> {
-            if !term.contains_app("Host") {
-                return Ok(None);
-            }
-            fn strip(t: &EggTerm) -> EggTerm {
-                match t {
-                    EggTerm::Str(_) => t.clone(),
-                    EggTerm::App(head, args) => {
-                        let args: Vec<EggTerm> = args.iter().map(strip).collect();
-                        if head == "Host" {
-                            match args.into_iter().next() {
-                                Some(inner) => inner,
-                                None => unreachable!("Host is unary"),
-                            }
-                        } else {
-                            EggTerm::App(head.clone(), args)
-                        }
-                    }
-                }
-            }
-            Ok(Some(strip(term)))
-        };
-        let term =
-            optimize_loop(TOY, r#"(Host (Wrap (Leaf "x")))"#, 10, 20, reduce).unwrap();
+    fn table_calls_sees_pending_tactic_work() {
+        let mut opt = Optimizer::new(TOY).unwrap();
+        opt.define_root(r#"(Shell (Leaf "x"))"#).unwrap();
+        opt.run(10).unwrap();
+        let calls = opt.table_calls("host").unwrap();
+        assert_eq!(
+            calls,
+            vec![EggTerm::app("host", vec![EggTerm::app("Leaf", vec![EggTerm::str("x")])])]
+        );
+    }
+
+    #[test]
+    fn loop_reduces_tactic_calls_until_dry() {
+        // Nested shells: each round's reduction can enable the next.
+        let term = optimize_loop(
+            TOY,
+            r#"(Shell (Wrap (Shell (Leaf "x"))))"#,
+            10,
+            20,
+            "host",
+            reduce_host,
+        )
+        .unwrap();
         assert_eq!(term, EggTerm::app("Leaf", vec![EggTerm::str("x")]));
     }
 
     #[test]
     fn non_converging_reduction_errors() {
-        let reduce = |term: &EggTerm| Ok(Some(term.clone()));
-        let err = optimize_loop(TOY, r#"(Host (Leaf "x"))"#, 1, 3, reduce).unwrap_err();
+        // A reduction that mints a fresh Shell each call keeps the
+        // tactic table growing — the loop has to give up.
+        let n = std::cell::Cell::new(0u32);
+        let reduce = |_: &EggTerm| {
+            n.set(n.get() + 1);
+            Ok(EggTerm::app(
+                "Shell",
+                vec![EggTerm::app("Leaf", vec![EggTerm::str(format!("x{}", n.get()))])],
+            ))
+        };
+        let err = optimize_loop(TOY, r#"(Shell (Leaf "x"))"#, 1, 3, "host", reduce)
+            .unwrap_err();
         assert!(err.contains("did not converge"), "{err}");
     }
 

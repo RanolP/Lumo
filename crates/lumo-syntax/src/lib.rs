@@ -8,4 +8,5 @@ pub mod elab_externs;
 pub mod judge_driver;
 pub mod lumo;
 pub mod mir;
+pub mod optimize_driver;
 pub mod registry;
