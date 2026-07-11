@@ -272,21 +272,42 @@ decision 43 (direct style, no CPS; runtime as free identifiers;
 "legacy golden parity" corrected: legacy has no full-text JS goldens —
 parity means porting emission *behaviors* as new-format fixtures).
 
-- [ ] Step 1 — decision 43 written; this breakdown.
-- [ ] Step 2 — `JS.syn.langue` (const decls; praat expression grammar
-      with `=>` as infix, call/member/index postfix, ternary payload
-      row, `===`, object literals, named function expressions);
-      `:parse(JS)` fixtures.
-- [ ] Step 3 — `elab MIR to JS` rules + `elab_externs::mir_to_js`
-      (extern rules host tag-quoting and arm/arg folds); manifest grows
-      `| elab MIR to JS`; `:elab(MIR -> JS)` fixtures per construct.
-- [ ] Step 4 — end-to-end `:elab(Lumo -> JS)` via a handwritten
-      chained driver in the corpus lookup; legacy-behavior fixtures
-      (identity/curry, force-then-apply, ctor+match, cap ops, bundles,
-      use/require, fix recursion).
-- [ ] Step 5 — close M4: PLAN.md, memory, deferred items (resume/CPS,
-      readability post-passes, exports/main, TS types, runtime prelude
-      shipping).
+- [x] Step 1 (2026-07-12) — decision 43 written; this breakdown.
+- [x] Step 2 (2026-07-12) — `JS.syn.langue`: const decls; praat
+      expression grammar where `(…)` is the n-ary ParenExpr (doubles
+      as an arrow parameter list) and `=>` is a right-associative
+      infix operator — no JS cover grammar in LL(1); call/member/index
+      postfix rows, `===`, ternary as a postfix row with a then/alt
+      payload, object/array literals, named function expressions.
+      12 `:parse(JS)` fixtures. Manifest pipe grew `| elab MIR to JS`.
+- [x] Step 3 (2026-07-12) — `elab MIR to JS`: derived rules for leaves
+      and transparents (ret/roll/unroll/parens/annotations erase),
+      `sel` as a member construction; six extern rules host singleton
+      param lists, arg/arm folds, and ident→"string" quoting
+      (thunk_lambda, force_apply, let_fix, case_arms, ctor_bundle,
+      caps). Grammar fix from blessing: object props are a sep list —
+      optional commas canonicalize away, which real JS rejects. The
+      generated JS builder cannot auto-parenthesize (the n-ary
+      ParenExpr is not a single-required-field paren atom), so externs
+      pre-wrap risky operands. 10 `:elab(MIR -> JS)` fixtures; outputs
+      run under node.
+- [x] Step 4 (2026-07-12) — end-to-end `:elab(Lumo -> JS)` through
+      `compile_driver` (chains the pipe's elab stages) in the corpus
+      lookup; 8 legacy-behavior fixtures (identity gate, curry spines,
+      auto-let calls, data+match, cap ops through handle/bundle,
+      use→require, fix recursion, blocks); functional check under node
+      with the minimal D-43 runtime.
+- [x] Step 5 (2026-07-12) — **M4 COMPLETE**; deferred below.
+
+Deferred from M4: `resume`/CPS (with D-39's resume); readability
+post-passes (IIFE flattening, const collapsing, arity-based
+uncurrying — the contract is correctness, not prettiness, D-43);
+exports/`main` entry wrapper; TypeScript type emission; shipping the
+runtime prelude (`__lumo_perform`/`__lumo_handle`/`__lumo_match_error`
+/`require` stay host-provided free identifiers); the M2 elab-gap
+backlog (if/else, impl dispatch, nested patterns, mutual recursion)
+which needs Lumo→MIR work before it reaches JS; `:optimize` between
+the pipe's elab stages (compile_driver goes straight through today).
 
 ## Cross-cutting rules
 
