@@ -45,3 +45,48 @@ fn unbound_variable_bails_softly() {
     let bail = judgments::solve("infer_V", value.syntax(), Contexts::new());
     assert!(!bail.unwrap_err().hard);
 }
+
+/// Navigate to the annotated type of the first def: `(v : U(<fn>))`.
+fn fn_type_of(parsed: &lumo_syntax::mir::lossless::ParseOutput) -> m::FnTypeC<'_> {
+    let file = m::File::cast(&parsed.root).unwrap();
+    let m::Value::ParenV(paren) = file.defs().next().unwrap().value().unwrap() else {
+        panic!("expected an annotated def")
+    };
+    let m::TypeV::UTypeV(u) = paren.ty().unwrap() else { panic!() };
+    let m::TypeC::FnTypeC(f) = u.inner().unwrap() else { panic!() };
+    f
+}
+
+#[test]
+fn hash_turns_cap_rows_into_sets() {
+    let parsed =
+        parser::parse("def g = (g : U(() -> F(String) / {State[Number], Console}))");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let f = fn_type_of(&parsed);
+    let m::TypeC::FTypeC(ft) = f.ret().unwrap() else { panic!() };
+    let row = ft.row().unwrap();
+    let derivation =
+        judgments::solve("row_of", row.syntax(), Contexts::new()).unwrap();
+    let entry = |sig: langue_rt::Term| app("CapEntry", vec![sig]);
+    let console = entry(app("CapSig", vec![atom("Console"), atom("#none")]));
+    let state = entry(app("CapSig", vec![
+        atom("State"),
+        app("TypeArgs", vec![app("#list", vec![number()])]),
+    ]));
+    // Canonical set order (by structural key), not source order.
+    assert_eq!(derivation.args[1], langue_rt::set(vec![console, state], None));
+}
+
+#[test]
+fn subst_monomorphizes_through_the_dsl() {
+    let parsed = parser::parse("def i = (i : U((a) -> F(a)))");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let f = fn_type_of(&parsed);
+    let derivation = judgments::solve("mono_a", f.syntax(), Contexts::new()).unwrap();
+    let a = app("NamedTypeV", vec![atom("a"), atom("#none")]);
+    let expected = app("FnTypeC", vec![
+        app("#list", vec![a]),
+        app("FTypeC", vec![number(), atom("#none")]),
+    ]);
+    assert_eq!(derivation.args[1], expected);
+}

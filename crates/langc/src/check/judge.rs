@@ -97,7 +97,14 @@ fn check_call(
     origin: &Origin,
     diags: &mut Vec<Diagnostic>,
 ) {
-    match def.judgments.get(&call.judgment).and_then(|j| j.arity()) {
+    // `hash` is the built-in row tactic (D-25): `(hash $list)` or
+    // `hash $list $set`.
+    let arity = if call.judgment == "hash" {
+        Some(2)
+    } else {
+        def.judgments.get(&call.judgment).and_then(|j| j.arity())
+    };
+    match arity {
         None => diags.push(Diagnostic::error(
             &origin.file,
             call.judgment_span,
@@ -141,7 +148,7 @@ fn check_term(
     diags: &mut Vec<Diagnostic>,
 ) {
     match term {
-        TermExpr::Var { .. } | TermExpr::Lit { .. } => {}
+        TermExpr::Var { .. } | TermExpr::Lit { .. } | TermExpr::Subst { .. } => {}
         TermExpr::CtxRead { ctx, key, span } => {
             if !def.contexts.contains_key(ctx) {
                 diags.push(Diagnostic::error(

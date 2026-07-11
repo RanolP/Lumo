@@ -23,3 +23,18 @@ infer_C RetC { value: $v } -> $t := $t = FTypeC { inner: (infer_V $v) }
 infer_C LetC { name: $n, value: $v, body: $b } -> $t
   := FTypeC { inner: $tv } = (infer_C $v),
      $t = (infer_C $b with Γ+{$n: $tv})
+
+// === Tactic seeds (M2 step 5; replaced by the real row/forall
+// judgments in step 6) ===
+
+// A capability row's entry list is a hash-keyed set (D-25/D-41).
+row_of MIR -> CapSet
+row_of CapRow { cap: CapSet { entries: $es } } -> $row := $row = (hash $es)
+
+// Subst demo (D-24): monomorphize the type variable `a` to Number in
+// a fn type's return.
+mono_a MIR -> TypeC
+mono_a FnTypeC { params: $ps, ret: $r } -> $t
+  := $n = NamedTypeV { name: 'a' },
+     $num = NamedTypeV { name: 'Number' },
+     $t = FnTypeC { params: $ps, ret: $r[$n := $num] }

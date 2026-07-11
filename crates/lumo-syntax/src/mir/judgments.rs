@@ -11,6 +11,8 @@ pub fn arity(judgment: &str) -> Option<usize> {
     match judgment {
         "infer_C" => Some(2),
         "infer_V" => Some(2),
+        "mono_a" => Some(2),
+        "row_of" => Some(2),
         _ => None,
     }
 }
@@ -79,6 +81,26 @@ pub fn rules() -> Vec<Rule> {
             body: vec![
                 Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(3)], extends: vec![] },
                 Goal::Unify(var(2), var(3)),
+            ],
+        },
+        Rule {
+            judgment: "mono_a".to_owned(),
+            params: vec![app("FnTypeC", vec![var(0), var(1)]), var(2)],
+            var_count: 6,
+            body: vec![
+                Goal::Unify(var(3), app("NamedTypeV", vec![atom("a"), atom("#none")])),
+                Goal::Unify(var(4), app("NamedTypeV", vec![atom("Number"), atom("#none")])),
+                Goal::Subst { target: var(1), needle: var(3), replacement: var(4), out: var(5) },
+                Goal::Unify(var(2), app("FnTypeC", vec![var(0), var(5)])),
+            ],
+        },
+        Rule {
+            judgment: "row_of".to_owned(),
+            params: vec![app("CapRow", vec![app("CapSet", vec![var(0)])]), var(1)],
+            var_count: 3,
+            body: vec![
+                Goal::Hash { input: var(0), out: var(2) },
+                Goal::Unify(var(1), var(2)),
             ],
         },
     ]

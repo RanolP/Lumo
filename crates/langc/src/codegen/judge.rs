@@ -179,6 +179,17 @@ impl Gen<'_> {
         match term {
             TermExpr::Var { name, .. } => format!("var({})", alloc.named(name)),
             TermExpr::Lit { text, .. } => format!("atom({text:?})"),
+            TermExpr::Subst { target, var, replacement, .. } => {
+                let target = alloc.named(target);
+                let needle = alloc.named(var);
+                let replacement = alloc.named(replacement);
+                let out = alloc.fresh();
+                goals.push(format!(
+                    "Goal::Subst {{ target: var({target}), needle: var({needle}), \
+                     replacement: var({replacement}), out: var({out}) }}"
+                ));
+                format!("var({out})")
+            }
             TermExpr::CtxRead { ctx, key, .. } => {
                 let key = self.lower_term(key, mode, goals, alloc);
                 let value = alloc.fresh();
@@ -222,6 +233,20 @@ impl Gen<'_> {
         goals: &mut Vec<String>,
         alloc: &mut VarAlloc,
     ) -> CallCode {
+        // `(hash $list)` is the built-in row tactic (D-25), not a
+        // judgment call.
+        if call.judgment == "hash" {
+            let mut args: Vec<String> = call
+                .args
+                .iter()
+                .map(|a| self.lower_term(a, Mode::Body, goals, alloc))
+                .collect();
+            while args.len() < 2 {
+                args.push(format!("var({})", alloc.fresh()));
+            }
+            let goal = format!("Goal::Hash {{ input: {}, out: {} }}", args[0], args[1]);
+            return CallCode { goal, value: args[1].clone() };
+        }
         let arity = self
             .def
             .judgments

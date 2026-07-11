@@ -940,6 +940,22 @@ impl Parser<'_> {
         match self.cur().kind.clone() {
             TokenKind::Var(name) => {
                 self.pos += 1;
+                // `$e[$b := $a]` — the built-in subst tactic (D-24),
+                // same surface as elab constructions.
+                if self.at_punct('[') {
+                    self.pos += 1;
+                    let var = self.expect_var("the bound metavariable")?;
+                    self.expect_sym(":=");
+                    let replacement = self.expect_var("the replacement metavariable")?;
+                    let end = self.cur().span;
+                    self.expect_punct(']');
+                    return Some(TermExpr::Subst {
+                        target: name,
+                        var,
+                        replacement,
+                        span: span.cover(end),
+                    });
+                }
                 Some(TermExpr::Var { name, span })
             }
             TokenKind::Str(text) => {

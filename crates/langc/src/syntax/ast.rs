@@ -308,6 +308,8 @@ pub enum TermExpr {
     /// `(check_V $e <- $t)` — as an expression its value is the last
     /// argument.
     Call(CallGoal),
+    /// `$e[$b := $a]` — the built-in subst tactic (D-24).
+    Subst { target: String, var: String, replacement: String, span: Span },
 }
 
 /// A judgment call: `(check_V $e <- $t with Γ+{a: b})` or the bare
@@ -344,7 +346,8 @@ impl TermExpr {
             TermExpr::Var { span, .. }
             | TermExpr::Node { span, .. }
             | TermExpr::Lit { span, .. }
-            | TermExpr::CtxRead { span, .. } => *span,
+            | TermExpr::CtxRead { span, .. }
+            | TermExpr::Subst { span, .. } => *span,
             TermExpr::Call(c) => c.span,
         }
     }

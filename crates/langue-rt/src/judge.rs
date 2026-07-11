@@ -25,12 +25,16 @@ pub type VarId = u32;
 
 /// A first-order term. Judgment codegen encodes syntax nodes, types,
 /// and literals as [`Term::Struct`]/[`Term::Atom`]; metavariables are
-/// [`Term::Var`].
+/// [`Term::Var`]. [`Term::Set`] is the capability-row value (D-25/
+/// D-41): a hash-keyed set — entries dedup by structural key, order
+/// is irrelevant — with an optional row tail (`rest`), so `{A | r}`
+/// unifies against `{A, B}` binding `r = {B}`.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Term {
     Var(VarId),
     Atom(String),
     Struct(String, Vec<Term>),
+    Set { entries: Vec<Term>, rest: Option<Box<Term>> },
 }
 
 pub fn var(id: VarId) -> Term {
@@ -45,6 +49,29 @@ pub fn app(functor: impl Into<String>, args: Vec<Term>) -> Term {
     Term::Struct(functor.into(), args)
 }
 
+pub fn set(entries: Vec<Term>, rest: Option<Term>) -> Term {
+    Term::Set { entries, rest: rest.map(Box::new) }
+}
+
+/// The structural key entries hash to (D-25: a map is a set when the
+/// key is a hash). Stable for ground terms; variables key by id.
+fn skey(term: &Term) -> String {
+    match term {
+        Term::Var(v) => format!("${v}"),
+        Term::Atom(a) => format!("a:{a}"),
+        Term::Struct(f, args) => {
+            let args: Vec<String> = args.iter().map(skey).collect();
+            format!("s:{f}({})", args.join(","))
+        }
+        Term::Set { entries, rest } => {
+            let mut keys: Vec<String> = entries.iter().map(skey).collect();
+            keys.sort();
+            let rest = rest.as_ref().map(|r| skey(r)).unwrap_or_default();
+            format!("set:{{{}|{rest}}}", keys.join(","))
+        }
+    }
+}
+
 impl Term {
     /// Node count — the D-28 strict-subtree measure. Unbound variables
     /// count 1 (the check is conservative on partly-unresolved
@@ -53,6 +80,10 @@ impl Term {
         match self {
             Term::Var(_) | Term::Atom(_) => 1,
             Term::Struct(_, args) => 1 + args.iter().map(Term::size).sum::<usize>(),
+            Term::Set { entries, rest } => {
+                1 + entries.iter().map(Term::size).sum::<usize>()
+                    + rest.as_ref().map(|r| r.size()).unwrap_or(0)
+            }
         }
     }
 
@@ -65,6 +96,10 @@ impl Term {
             Term::Struct(f, args) => {
                 Term::Struct(f.clone(), args.iter().map(|a| a.offset(offset)).collect())
             }
+            Term::Set { entries, rest } => Term::Set {
+                entries: entries.iter().map(|e| e.offset(offset)).collect(),
+                rest: rest.as_ref().map(|r| Box::new(r.offset(offset))),
+            },
         }
     }
 
@@ -73,6 +108,12 @@ impl Term {
             Term::Var(v) => v + 1,
             Term::Atom(_) => 0,
             Term::Struct(_, args) => args.iter().map(Term::max_var).max().unwrap_or(0),
+            Term::Set { entries, rest } => entries
+                .iter()
+                .map(Term::max_var)
+                .chain(rest.iter().map(|r| r.max_var()))
+                .max()
+                .unwrap_or(0),
         }
     }
 }
@@ -88,6 +129,14 @@ pub enum Goal {
     Unify(Term, Term),
     /// `value = Γ.key` (D-16).
     CtxRead { ctx: String, key: Term, value: Term },
+    /// `out = $e[$b := $a]` (D-24): `target` with every subterm
+    /// structurally equal to `needle` replaced by `replacement`.
+    /// Naively structural — the rule writer avoids capture until
+    /// binders demand better.
+    Subst { target: Term, needle: Term, replacement: Term, out: Term },
+    /// `out = (hash input)` (D-25): a `#list` term as a hash-keyed
+    /// set (idempotent on sets).
+    Hash { input: Term, out: Term },
 }
 
 /// A `head := body` rule. `params`/`body` share one local variable
@@ -144,11 +193,35 @@ fn walk<'a>(subst: &'a Subst, mut term: &'a Term) -> &'a Term {
     term
 }
 
+/// Deep resolution. Sets canonicalize here: entries resolve and dedup
+/// by [`skey`] in sorted order, a rest bound to another set is
+/// absorbed (D-41), and an empty open set collapses to its rest.
 fn resolve(subst: &Subst, term: &Term) -> Term {
     let term = walk(subst, term);
     match term {
         Term::Struct(f, args) => {
             Term::Struct(f.clone(), args.iter().map(|a| resolve(subst, a)).collect())
+        }
+        Term::Set { entries, rest } => {
+            let mut out: Vec<Term> = entries.iter().map(|e| resolve(subst, e)).collect();
+            let mut tail: Option<Term> = None;
+            if let Some(rest) = rest {
+                match resolve(subst, rest) {
+                    Term::Set { entries, rest } => {
+                        out.extend(entries);
+                        tail = rest.map(|r| *r);
+                    }
+                    other => tail = Some(other),
+                }
+            }
+            out.sort_by_key(skey);
+            out.dedup_by_key(|e| skey(e));
+            if out.is_empty() {
+                if let Some(tail) = tail {
+                    return tail;
+                }
+            }
+            Term::Set { entries: out, rest: tail.map(Box::new) }
         }
         _ => term.clone(),
     }
@@ -159,10 +232,14 @@ fn occurs(subst: &Subst, var: VarId, term: &Term) -> bool {
         Term::Var(v) => *v == var,
         Term::Atom(_) => false,
         Term::Struct(_, args) => args.iter().any(|a| occurs(subst, var, a)),
+        Term::Set { entries, rest } => {
+            entries.iter().any(|e| occurs(subst, var, e))
+                || rest.as_ref().is_some_and(|r| occurs(subst, var, r))
+        }
     }
 }
 
-fn unify(subst: &mut Subst, a: &Term, b: &Term) -> bool {
+fn unify(subst: &mut Subst, next_var: &mut VarId, a: &Term, b: &Term) -> bool {
     let a = walk(subst, a).clone();
     let b = walk(subst, b).clone();
     match (&a, &b) {
@@ -178,9 +255,79 @@ fn unify(subst: &mut Subst, a: &Term, b: &Term) -> bool {
         (Term::Struct(f, xs), Term::Struct(g, ys)) => {
             f == g
                 && xs.len() == ys.len()
-                && xs.iter().zip(ys).all(|(x, y)| unify(subst, x, y))
+                && xs.iter().zip(ys).all(|(x, y)| unify(subst, next_var, x, y))
         }
+        (Term::Set { .. }, _) | (_, Term::Set { .. }) => unify_sets(subst, next_var, &a, &b),
         _ => false,
+    }
+}
+
+/// Row unification (D-25/D-41). Entries match greedily (first
+/// unifiable, deterministic under canonical order — no backtracking
+/// across matchings); leftovers flow into the other side's rest.
+/// `{A | r1} = {B | r2}` gives `r1 = {B | ρ}`, `r2 = {A | ρ}` with a
+/// shared fresh tail ρ.
+fn unify_sets(subst: &mut Subst, next_var: &mut VarId, a: &Term, b: &Term) -> bool {
+    let a = resolve(subst, a);
+    let b = resolve(subst, b);
+    let (Term::Set { entries: ea, rest: ta }, Term::Set { entries: eb, rest: tb }) = (&a, &b)
+    else {
+        // One side canonicalized away from a set (`{ | r}` → `r`).
+        return unify(subst, next_var, &a, &b);
+    };
+    let mut left_b: Vec<Term> = eb.clone();
+    let mut left_a: Vec<Term> = Vec::new();
+    for entry in ea {
+        let mut matched = false;
+        for j in 0..left_b.len() {
+            let saved = subst.clone();
+            if unify(subst, next_var, entry, &left_b[j]) {
+                left_b.remove(j);
+                matched = true;
+                break;
+            }
+            *subst = saved;
+        }
+        if !matched {
+            left_a.push(entry.clone());
+        }
+    }
+    match (ta, tb) {
+        (None, None) => left_a.is_empty() && left_b.is_empty(),
+        (Some(ta), None) => {
+            left_a.is_empty() && unify(subst, next_var, ta, &set(left_b, None))
+        }
+        (None, Some(tb)) => {
+            left_b.is_empty() && unify(subst, next_var, tb, &set(left_a, None))
+        }
+        (Some(ta), Some(tb)) => {
+            if ta == tb {
+                return left_a.is_empty() && left_b.is_empty();
+            }
+            let rho = Term::Var(*next_var);
+            *next_var += 1;
+            unify(subst, next_var, ta, &set(left_b, Some(rho.clone())))
+                && unify(subst, next_var, tb, &set(left_a, Some(rho)))
+        }
+    }
+}
+
+/// `target` with every subterm structurally equal to `needle`
+/// replaced by `replacement` (all three already resolved).
+fn substitute(target: &Term, needle: &Term, replacement: &Term) -> Term {
+    if target == needle {
+        return replacement.clone();
+    }
+    match target {
+        Term::Struct(f, args) => Term::Struct(
+            f.clone(),
+            args.iter().map(|a| substitute(a, needle, replacement)).collect(),
+        ),
+        Term::Set { entries, rest } => Term::Set {
+            entries: entries.iter().map(|e| substitute(e, needle, replacement)).collect(),
+            rest: rest.as_ref().map(|r| Box::new(substitute(r, needle, replacement))),
+        },
+        _ => target.clone(),
     }
 }
 
@@ -291,7 +438,7 @@ impl Solver<'_> {
         let offset = self.next_var;
         self.next_var += rule.var_count;
         for (param, arg) in rule.params.iter().zip(args) {
-            if !unify(&mut self.subst, &param.offset(offset), arg) {
+            if !unify(&mut self.subst, &mut self.next_var, &param.offset(offset), arg) {
                 return Err(fail());
             }
         }
@@ -299,7 +446,32 @@ impl Solver<'_> {
         for goal in &rule.body {
             match goal {
                 Goal::Unify(a, b) => {
-                    if !unify(&mut self.subst, &a.offset(offset), &b.offset(offset)) {
+                    let (a, b) = (a.offset(offset), b.offset(offset));
+                    if !unify(&mut self.subst, &mut self.next_var, &a, &b) {
+                        return Err(fail());
+                    }
+                }
+                Goal::Subst { target, needle, replacement, out } => {
+                    let result = substitute(
+                        &resolve(&self.subst, &target.offset(offset)),
+                        &resolve(&self.subst, &needle.offset(offset)),
+                        &resolve(&self.subst, &replacement.offset(offset)),
+                    );
+                    let out = out.offset(offset);
+                    if !unify(&mut self.subst, &mut self.next_var, &out, &result) {
+                        return Err(fail());
+                    }
+                }
+                Goal::Hash { input, out } => {
+                    let hashed = match resolve(&self.subst, &input.offset(offset)) {
+                        Term::Struct(f, items) if f == "#list" => {
+                            resolve(&self.subst, &set(items, None))
+                        }
+                        s @ Term::Set { .. } => s,
+                        _ => return Err(fail()),
+                    };
+                    let out = out.offset(offset);
+                    if !unify(&mut self.subst, &mut self.next_var, &out, &hashed) {
                         return Err(fail());
                     }
                 }
@@ -333,8 +505,8 @@ impl Solver<'_> {
         let entries = self.ctxs.get(ctx).cloned().unwrap_or_default();
         for (k, v) in entries.iter().rev() {
             let saved = self.subst.clone();
-            if unify(&mut self.subst, key, k) {
-                if unify(&mut self.subst, value, v) {
+            if unify(&mut self.subst, &mut self.next_var, key, k) {
+                if unify(&mut self.subst, &mut self.next_var, value, v) {
                     return Ok(());
                 }
                 self.subst = saved;
@@ -481,7 +653,95 @@ mod tests {
     #[test]
     fn occurs_check_rejects_infinite_terms() {
         let mut subst = Subst::new();
-        assert!(!unify(&mut subst, &var(0), &app("f", vec![var(0)])));
+        let mut next = 1;
+        assert!(!unify(&mut subst, &mut next, &var(0), &app("f", vec![var(0)])));
+    }
+
+    #[test]
+    fn sets_unify_regardless_of_order_and_duplicates() {
+        let mut subst = Subst::new();
+        let mut next = 0;
+        let ab = set(vec![atom("A"), atom("B")], None);
+        let baa = set(vec![atom("B"), atom("A"), atom("A")], None);
+        assert!(unify(&mut subst, &mut next, &ab, &baa));
+        // Closed rows with different entries do not unify.
+        let a = set(vec![atom("A")], None);
+        assert!(!unify(&mut subst, &mut next, &a, &ab));
+    }
+
+    #[test]
+    fn open_row_binds_its_rest_to_the_leftovers() {
+        let mut subst = Subst::new();
+        let mut next = 1;
+        let open = set(vec![atom("A")], Some(var(0)));
+        let full = set(vec![atom("A"), atom("B"), atom("C")], None);
+        assert!(unify(&mut subst, &mut next, &open, &full));
+        assert_eq!(
+            resolve(&subst, &var(0)),
+            set(vec![atom("B"), atom("C")], None)
+        );
+        // The bound-rest row now resolves equal to the full row.
+        assert_eq!(resolve(&subst, &open), resolve(&subst, &full));
+    }
+
+    #[test]
+    fn two_open_rows_share_a_fresh_tail() {
+        let mut subst = Subst::new();
+        let mut next = 2;
+        let left = set(vec![atom("A")], Some(var(0)));
+        let right = set(vec![atom("B")], Some(var(1)));
+        assert!(unify(&mut subst, &mut next, &left, &right));
+        // Both sides now contain A and B plus the shared tail.
+        let l = resolve(&subst, &left);
+        let r = resolve(&subst, &right);
+        assert_eq!(l, r);
+        let Term::Set { entries, rest } = l else { panic!("{l:?}") };
+        assert_eq!(entries, vec![atom("A"), atom("B")]);
+        assert!(rest.is_some());
+    }
+
+    #[test]
+    fn empty_open_set_collapses_to_its_rest() {
+        let mut subst = Subst::new();
+        let mut next = 1;
+        let hollow = set(vec![], Some(var(0)));
+        let full = set(vec![atom("A")], None);
+        assert!(unify(&mut subst, &mut next, &hollow, &full));
+        assert_eq!(resolve(&subst, &var(0)), full);
+    }
+
+    #[test]
+    fn subst_and_hash_goals() {
+        // subst: rewrite occurrences of a inside f(a, g(a), b).
+        let engine = Engine::new(vec![Rule {
+            judgment: "inst".into(),
+            params: vec![var(0), var(1)],
+            var_count: 2,
+            body: vec![Goal::Subst {
+                target: var(0),
+                needle: atom("a"),
+                replacement: atom("x"),
+                out: var(1),
+            }],
+        }]);
+        let target = app("f", vec![atom("a"), app("g", vec![atom("a")]), atom("b")]);
+        let d = engine.solve("inst", vec![target, var(0)], Contexts::new()).unwrap();
+        assert_eq!(
+            d.args[1],
+            app("f", vec![atom("x"), app("g", vec![atom("x")]), atom("b")])
+        );
+        // hash: a #list becomes a deduped set; non-lists fail softly.
+        let engine = Engine::new(vec![Rule {
+            judgment: "rowify".into(),
+            params: vec![var(0), var(1)],
+            var_count: 2,
+            body: vec![Goal::Hash { input: var(0), out: var(1) }],
+        }]);
+        let list = app("#list", vec![atom("B"), atom("A"), atom("B")]);
+        let d = engine.solve("rowify", vec![list, var(0)], Contexts::new()).unwrap();
+        assert_eq!(d.args[1], set(vec![atom("A"), atom("B")], None));
+        let bail = engine.solve("rowify", vec![atom("nope"), var(0)], Contexts::new());
+        assert!(!bail.unwrap_err().hard);
     }
 
     #[test]

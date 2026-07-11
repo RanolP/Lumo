@@ -162,9 +162,16 @@ capability rows = D-41; design artifact `design/m2-type-brainstorm.html`.
       absent = `#none`, lists = `#list`; heads wildcard omitted fields,
       bodies default them. Seed `MIR.type.langue` (infer_V/infer_C over
       Num/Str/Var/Thunk/Paren/Ret/Let) + 3 end-to-end smoke tests.
-- [ ] Step 5 — minimal built-in tactics: `subst`, `hash`; capability
-      rows as hash-keyed maps — a map is a set when the key is a hash,
-      no row datatype (D-24, D-25, D-41).
+- [x] Step 5 (2026-07-11) — minimal built-in tactics (D-24/25/41):
+      engine `Term::Set` — hash-keyed entries (dedup by structural
+      key, canonical order, rest absorption, `{|r}` collapse) with
+      open-row unification (`{A|r} = {A,B}` binds `r={B}`; two open
+      rows share a fresh tail; greedy entry matching, no backtracking
+      across matchings); `Goal::Subst` (naively structural — capture
+      is the rule writer's concern until binders demand better) and
+      `Goal::Hash` (`#list` → set, idempotent). DSL: `$e[$b := $a]`
+      terms and the reserved `(hash $list)` call. 6 engine tests +
+      2 DSL-through-generated-code tests on real MIR cap rows.
 - [ ] Step 6 — write the judgments: Fω slice (forall, spine-local
       instantiation, arity kinding per D-40), data/match typing,
       capability rows with one row variable (D-41); failures bail with
