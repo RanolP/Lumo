@@ -5,6 +5,7 @@
 
 pub mod elab;
 pub mod elab_externs;
+pub mod js;
 pub mod judge_driver;
 pub mod lumo;
 pub mod mir;

@@ -9,6 +9,7 @@ pub struct LanguageOps {
 }
 
 pub static LANGUAGES: &[LanguageOps] = &[
+    LanguageOps { name: "JS", parse_report: js_report },
     LanguageOps { name: "Lumo", parse_report: lumo_report },
     LanguageOps { name: "MIR", parse_report: mir_report },
 ];
@@ -35,6 +36,19 @@ pub fn elab(from: &str, to: &str) -> Option<&'static ElabOps> {
 fn lumo_to_mir_elab_report(text: &str) -> ElabReport {
     let mut externs = crate::elab_externs::lumo_to_mir();
     crate::elab::lumo_to_mir::elab(text, externs.as_mut())
+}
+
+fn js_report(text: &str) -> ParseReport {
+    let out = crate::js::parser::parse(text);
+    let canonical = crate::js::printer::canonical(&out.root);
+    let reparse = crate::js::parser::parse(&canonical);
+    ParseReport {
+        sexpr: crate::js::printer::sexpr(&out.root),
+        errors: out.errors.iter().map(|e| format!("{}: {}", e.span, e.message)).collect(),
+        lossless: out.root.text(),
+        round_trip_sexpr: crate::js::printer::sexpr(&reparse.root),
+        canonical,
+    }
 }
 
 fn lumo_report(text: &str) -> ParseReport {

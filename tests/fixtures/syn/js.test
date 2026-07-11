@@ -1,0 +1,116 @@
+=== const decl with a number ===
+:parse(JS)
+
+const x = 1;
+
+---
+
+(FILE (CONST_DECL (NUM_EXPR)))
+
+=== zero-param arrow (thunk) and call (force) ===
+:parse(JS)
+
+const f = () => 1;
+const y = f();
+
+---
+
+(FILE (CONST_DECL (EXPR_INFIX (PAREN_EXPR) (NUM_EXPR))) (CONST_DECL (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS))))
+
+=== one-param and curried arrows ===
+:parse(JS)
+
+const id = (x) => x;
+const konst = (a) => (b) => a;
+const bare = x => x;
+
+---
+
+(FILE (CONST_DECL (EXPR_INFIX (PAREN_EXPR (IDENT_EXPR)) (IDENT_EXPR))) (CONST_DECL (EXPR_INFIX (PAREN_EXPR (IDENT_EXPR)) (EXPR_INFIX (PAREN_EXPR (IDENT_EXPR)) (IDENT_EXPR)))) (CONST_DECL (EXPR_INFIX (IDENT_EXPR) (IDENT_EXPR))))
+
+=== multi-param arrow and multi-arg call ===
+:parse(JS)
+
+const add = (a, b) => js_add(a, b);
+
+---
+
+(FILE (CONST_DECL (EXPR_INFIX (PAREN_EXPR (IDENT_EXPR) (IDENT_EXPR)) (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (IDENT_EXPR) (IDENT_EXPR))))))
+
+=== let as an IIFE ===
+:parse(JS)
+
+const t = ((x) => x)(1);
+
+---
+
+(FILE (CONST_DECL (EXPR_POSTFIX (PAREN_EXPR (EXPR_INFIX (PAREN_EXPR (IDENT_EXPR)) (IDENT_EXPR))) (CALL_ARGS (NUM_EXPR)))))
+
+=== tagged ctor object and index access ===
+:parse(JS)
+
+const pair = { $: "Pair", args: [1, 2] };
+const first = pair.args[0];
+
+---
+
+(FILE (CONST_DECL (OBJECT_EXPR (OBJECT_PROP (STR_EXPR)) (OBJECT_PROP (ARRAY_EXPR (NUM_EXPR) (NUM_EXPR))))) (CONST_DECL (EXPR_POSTFIX (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)) (INDEX_ARG (NUM_EXPR)))))
+
+=== case as nested ternaries ===
+:parse(JS)
+
+const m = ((s) => s.$ === "Cons" ? ((h) => h)(s.args[0]) : s.$ === "Nil" ? 0 : __lumo_match_error(s))(scrut);
+
+---
+
+(FILE (CONST_DECL (EXPR_POSTFIX (PAREN_EXPR (EXPR_INFIX (PAREN_EXPR (IDENT_EXPR)) (EXPR_POSTFIX (EXPR_INFIX (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)) (STR_EXPR)) (TERNARY_TAIL (EXPR_POSTFIX (PAREN_EXPR (EXPR_INFIX (PAREN_EXPR (IDENT_EXPR)) (IDENT_EXPR))) (CALL_ARGS (EXPR_POSTFIX (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)) (INDEX_ARG (NUM_EXPR))))) (EXPR_POSTFIX (EXPR_INFIX (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)) (STR_EXPR)) (TERNARY_TAIL (NUM_EXPR) (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (IDENT_EXPR))))))))) (CALL_ARGS (IDENT_EXPR)))))
+
+=== named function expression (fix) ===
+:parse(JS)
+
+const fact = function f() { return (n) => n === 0 ? 1 : f()(n); };
+
+---
+
+(FILE (CONST_DECL (FN_EXPR (EXPR_INFIX (PAREN_EXPR (IDENT_EXPR)) (EXPR_POSTFIX (EXPR_INFIX (IDENT_EXPR) (NUM_EXPR)) (TERNARY_TAIL (NUM_EXPR) (EXPR_POSTFIX (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS)) (CALL_ARGS (IDENT_EXPR)))))))))
+
+=== handler bundle object, handle and perform ===
+:parse(JS)
+
+const h = { info: (m) => m };
+const t = __lumo_handle("Log", h, () => __lumo_perform("Log").info("hi"));
+
+---
+
+(FILE (CONST_DECL (OBJECT_EXPR (OBJECT_PROP (EXPR_INFIX (PAREN_EXPR (IDENT_EXPR)) (IDENT_EXPR))))) (CONST_DECL (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (STR_EXPR) (IDENT_EXPR) (EXPR_INFIX (PAREN_EXPR) (EXPR_POSTFIX (EXPR_POSTFIX (EXPR_POSTFIX (IDENT_EXPR) (CALL_ARGS (STR_EXPR))) (MEMBER_NAME)) (CALL_ARGS (STR_EXPR))))))))
+
+=== member chain and string literal ===
+:parse(JS)
+
+const s = mod.inner.name;
+const greeting = "hello \"world\"";
+
+---
+
+(FILE (CONST_DECL (EXPR_POSTFIX (EXPR_POSTFIX (IDENT_EXPR) (MEMBER_NAME)) (MEMBER_NAME))) (CONST_DECL (STR_EXPR)))
+
+=== arrow is right-associative and binds looser than ternary ===
+:parse(JS)
+
+const f = a => b => a === b ? a : b;
+
+---
+
+(FILE (CONST_DECL (EXPR_INFIX (IDENT_EXPR) (EXPR_INFIX (IDENT_EXPR) (EXPR_POSTFIX (EXPR_INFIX (IDENT_EXPR) (IDENT_EXPR)) (TERNARY_TAIL (IDENT_EXPR) (IDENT_EXPR)))))))
+
+=== empty object, empty array, empty parens ===
+:parse(JS)
+
+const o = {};
+const a = [];
+const u = () => {};
+
+---
+
+(FILE (CONST_DECL (OBJECT_EXPR)) (CONST_DECL (ARRAY_EXPR)) (CONST_DECL (EXPR_INFIX (PAREN_EXPR) (OBJECT_EXPR))))
+

@@ -1,8 +1,5 @@
-// Lumo project manifest (D-27, D-33). The pipe is the entry point.
-//
-// Full form once M2 lands:
-//   main = parse Lumo | elab Lumo to MIR | elab MIR to LIR | check_V LIR
-// M1 has parse + the first elab stage; later stages would reference
-// languages that do not exist yet.
+// Lumo project manifest (D-27, D-33). The pipe is the entry point:
+// parse Lumo, elaborate to MIR (M1), typecheck via judgments (M2),
+// optimize between MIR (M3, driven separately), emit JS (M4, D-43).
 
-main = parse Lumo | elab Lumo to MIR
+main = parse Lumo | elab Lumo to MIR | elab MIR to JS
