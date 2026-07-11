@@ -218,15 +218,34 @@ capability rows = D-41; design artifact `design/m2-type-brainstorm.html`.
 
 ## M3 — e-graph optimization
 
-Goal: the between rule groups optimize MIR/LIR under golden fixtures.
+Goal: the between rule groups optimize MIR under golden fixtures.
+Execution model = decision 42 (hybrid saturate/extract/reduce loop;
+host-side subst; `subst` as a `:cost 1000` constructor).
 
-- [ ] Same-language between groups run as saturation + extraction on
-      egglog (D-07, D-14, D-19, D-31).
-- [ ] `:optimize(L)` golden fixtures are the contract (D-32); port the
-      legacy LTO fixtures' intent.
-- [ ] Watch the known caveat: tree cost double-counts shared subterms —
-      if subst-style rewrites get mis-ranked, evaluate DAG-aware
-      extraction (D-31).
+- [ ] Step 1 — decision 42 written; this breakdown.
+- [ ] Step 2 — egglog 2.0 dependency in `langue-rt`;
+      `langue-rt::optimize` generic helpers (load program, define root,
+      run, extract to an owned term, union, loop skeleton with a
+      caller-supplied subst-reduction callback); smoke test executes the
+      real M1-compiled `between MIR` program for the first time; fix
+      `codegen/between.rs` where egglog 2.0 rejects the format (`subst`
+      becomes a `:cost 1000` constructor) and re-bless
+      `tests/fixtures/egglog/MIR.egg`.
+- [ ] Step 3 — `:optimize(L)` corpus attribute in `langc` (D-32):
+      `ElabReport`-shaped driver fn, canonicalize-then-compare like
+      `:elab`, `LANGC_UPDATE=1` blessing.
+- [ ] Step 4 — new `between MIR` rules: `ParenC` transparency and
+      handle/perform resolution (the local core of legacy LTO's
+      capability monomorphization); `langc gen` + re-bless.
+- [ ] Step 5 — handwritten MIR optimize driver
+      (`lumo-syntax::optimize_driver`, mirrors `judge_driver`): parse →
+      encode (D-42 optional-field rules) → loop → decode → reparse
+      canonical; wire into the corpus test; smoke fixtures under
+      `tests/fixtures/optimize/` (U-beta, F-beta, paren, no-op).
+- [ ] Step 6 — full fixture suite: nested beta chains, duplicating
+      subst (the D-31 caveat watchpoint), handle/perform cases modeled
+      on legacy LTO fixture intent, unencodable-input ERROR; record
+      deferred items (interprocedural LTO, binder-aware subst).
 
 ## M4 — JS emission
 
