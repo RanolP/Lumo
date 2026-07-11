@@ -3,7 +3,6 @@ members = [
     "crates/compiler",
     "crates/lbs",
     "crates/lsp",
-    "crates/playground-wasm",
 ]
 exclude = ["packages"]
 resolver = "2"

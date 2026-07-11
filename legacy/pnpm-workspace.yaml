@@ -1,5 +1,0 @@
-packages:
-  - apps/*
-
-catalog:
-  tsx:  '4.20.6'
