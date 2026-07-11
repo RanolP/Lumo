@@ -38,9 +38,11 @@ jobs:
 
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
+        working-directory: apps/playground
 
       - name: Build playground
-        run: pnpm --filter playground build:with-wasm
+        run: pnpm build:with-wasm
+        working-directory: apps/playground
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

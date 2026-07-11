@@ -4,8 +4,13 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["optimize"]
+# The egglog-backed `:optimize(MIR)` driver; off for wasm32.
+optimize = ["langue-rt/optimize"]
+
 [dependencies]
-langue-rt.workspace = true
+langue-rt = { path = "../langue-rt", default-features = false }
 
 [dev-dependencies]
 langc.workspace = true

@@ -4,6 +4,12 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["optimize"]
+# The egglog-backed optimizer; off for wasm32 (egglog's dep chain does
+# not build on wasm32-unknown-unknown).
+optimize = ["dep:egglog"]
+
 [dependencies]
-egglog = { version = "2.0.0", default-features = false }
+egglog = { version = "2.0.0", default-features = false, optional = true }
 regex-automata.workspace = true

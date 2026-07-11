@@ -10,5 +10,6 @@ pub mod js;
 pub mod judge_driver;
 pub mod lumo;
 pub mod mir;
+#[cfg(feature = "optimize")]
 pub mod optimize_driver;
 pub mod registry;

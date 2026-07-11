@@ -6,6 +6,7 @@ mod cursor;
 mod elab;
 mod judge;
 mod lexer;
+#[cfg(feature = "optimize")]
 mod optimize;
 mod print;
 mod span;
@@ -18,6 +19,7 @@ pub use elab::{
 };
 pub use judge::{app, atom, set, var, Bail, Contexts, Derivation, Engine, Goal, Rule, Term};
 pub use lexer::{regex_escape, LexDfa, RawToken};
+#[cfg(feature = "optimize")]
 pub use optimize::{optimize_loop, EggTerm, Optimizer};
 pub use print::{print_canonical, sexpr, ParseReport};
 pub use span::Span;
