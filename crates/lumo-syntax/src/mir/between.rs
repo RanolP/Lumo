@@ -92,5 +92,7 @@ pub static PROGRAM: &str = r#"
 (constructor subst (Comp String Value) Comp :cost 1000)
 (rewrite (ForceC (ThunkV c)) c)
 (rewrite (LetC b (RetC a) e) (subst e b a))
+(rewrite (ParenC c) c)
+(rewrite (HandleC c h (PerformC c)) (RetC h))
 
 "#;

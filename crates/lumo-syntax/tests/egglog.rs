@@ -35,6 +35,40 @@ fn between_mir_program_executes_u_beta() {
 }
 
 #[test]
+fn between_mir_paren_and_handle_perform_rules_execute() {
+    // M3 step 4 rules: paren transparency + perform resolution under a
+    // visible handle (nonlinear pattern — same cap twice).
+    let mut opt = Optimizer::new(lumo_syntax::mir::between::PROGRAM).unwrap();
+    opt.define_root(r#"(ParenC (HandleC "C" (VarV "h") (PerformC "C")))"#).unwrap();
+    opt.run(10).unwrap();
+    let term = opt.extract_root().unwrap();
+    assert_eq!(
+        term,
+        EggTerm::app("RetC", vec![EggTerm::app("VarV", vec![EggTerm::str("h")])])
+    );
+}
+
+#[test]
+fn between_mir_handle_of_other_cap_stays() {
+    // The nonlinear pattern must NOT fire across different caps.
+    let mut opt = Optimizer::new(lumo_syntax::mir::between::PROGRAM).unwrap();
+    opt.define_root(r#"(HandleC "C" (VarV "h") (PerformC "D"))"#).unwrap();
+    opt.run(10).unwrap();
+    let term = opt.extract_root().unwrap();
+    assert_eq!(
+        term,
+        EggTerm::app(
+            "HandleC",
+            vec![
+                EggTerm::str("C"),
+                EggTerm::app("VarV", vec![EggTerm::str("h")]),
+                EggTerm::app("PerformC", vec![EggTerm::str("D")]),
+            ]
+        )
+    );
+}
+
+#[test]
 fn between_mir_f_beta_keeps_subst_out_of_extraction() {
     // F-beta unions in `(subst body b a)`; its :cost 1000 keeps the
     // original `let` form the extraction winner until a host reduction

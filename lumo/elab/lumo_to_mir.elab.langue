@@ -66,10 +66,15 @@ from Lumo to MIR {
     ==> CompPostfix { expr: ForceC { value: $f to MIR }, value_args: ValueArgs { args: [$a* to MIR] } }
 }
 
-// Same-language MIR relations (D-14): compiled to egglog text in M1,
-// saturated/extracted in M3 (D-37). U-beta cancels force-of-thunk; F-beta
-// is the let-ret rule via the built-in subst tactic (D-24).
+// Same-language MIR relations (D-14): compiled to egglog and executed
+// by the D-42 saturate/extract/reduce loop. U-beta cancels
+// force-of-thunk; F-beta is the let-ret rule via the built-in subst
+// tactic (D-24, reduced host-side). Parens are syntax. A handle whose
+// body is exactly `perform` of the same cap returns the handler — the
+// local core of legacy LTO's capability monomorphization (D-42).
 between MIR {
   ForceC { value: ThunkV { body: $c } } === $c
   LetC { name: $b, value: RetC { value: $a }, body: $e } === $e[$b := $a]
+  ParenC { inner: $c } === $c
+  HandleC { cap: $c, handler: $h, body: PerformC { cap: $c } } === RetC { value: $h }
 }

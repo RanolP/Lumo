@@ -27,7 +27,9 @@ pub fn check_elabs(def: &Definition, diags: &mut Vec<Diagnostic>) {
         };
         for rel in &between.relations {
             let mut bindings = BTreeMap::new();
-            check_pattern_root(lang_name, lang, &rel.lhs, &rel.origin, &mut bindings, diags);
+            // Nonlinear patterns are fine here: egglog reads a repeated
+            // metavariable as an equality constraint.
+            check_pattern_root(lang_name, lang, &rel.lhs, &rel.origin, true, &mut bindings, diags);
             check_con(
                 &ConCtx { lang_name, lang, rec_target: None, bindings: &bindings },
                 &rel.rhs,
@@ -85,7 +87,7 @@ fn check_pair(
 
     for rule in &elab.rules {
         let mut bindings = BTreeMap::new();
-        check_pattern_root(from, from_lang, &rule.pattern, &rule.origin, &mut bindings, diags);
+        check_pattern_root(from, from_lang, &rule.pattern, &rule.origin, false, &mut bindings, diags);
         check_con(
             &ConCtx { lang_name: to, lang: to_lang, rec_target: Some(to), bindings: &bindings },
             &rule.construction,
@@ -138,16 +140,22 @@ impl Binding {
 
 /// The root of a pattern must be a concrete node — dispatch is by root
 /// kind, and it makes every capture a strict subtree (D-28).
+/// `nonlinear_ok`: between relations may bind a metavariable twice at
+/// the same shape (an egglog equality constraint); accessor-scheme
+/// from-rules cannot.
 fn check_pattern_root(
     lang_name: &str,
     lang: &Language,
     pat: &Pat,
     origin: &Origin,
+    nonlinear_ok: bool,
     bindings: &mut BTreeMap<String, Binding>,
     diags: &mut Vec<Diagnostic>,
 ) {
     match pat {
-        Pat::Node { .. } => check_pat(lang_name, lang, pat, None, origin, bindings, diags),
+        Pat::Node { .. } => {
+            check_pat(lang_name, lang, pat, None, origin, nonlinear_ok, bindings, diags)
+        }
         other => diags.push(Diagnostic::error(
             &origin.file,
             other.span(),
@@ -163,6 +171,7 @@ fn check_pat(
     pat: &Pat,
     expected: Option<&Field>,
     origin: &Origin,
+    nonlinear_ok: bool,
     bindings: &mut BTreeMap<String, Binding>,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -197,8 +206,10 @@ fn check_pat(
                 (false, false) => Binding::NodeScalar,
                 (false, true) => Binding::NodeList,
             };
-            if bindings.insert(name.clone(), kind).is_some() {
-                error(diags, *span, format!("metavariable `${name}` is bound twice"));
+            if let Some(prev) = bindings.insert(name.clone(), kind) {
+                if !(nonlinear_ok && prev == kind) {
+                    error(diags, *span, format!("metavariable `${name}` is bound twice"));
+                }
             }
         }
         Pat::Lit { text, span } => {
@@ -266,7 +277,7 @@ fn check_pat(
                     );
                     continue;
                 };
-                check_pat(lang_name, lang, sub, Some(field), origin, bindings, diags);
+                check_pat(lang_name, lang, sub, Some(field), origin, nonlinear_ok, bindings, diags);
             }
         }
     }
@@ -696,5 +707,35 @@ Var = name:ident
             msgs.iter().any(|m| m.contains("not available in `between`")),
             "{msgs:?}"
         );
+    }
+
+    #[test]
+    fn between_allows_nonlinear_patterns() {
+        // A repeated metavariable is an egglog equality constraint —
+        // legal in between relations, still an error in from-rules.
+        let files = [
+            LoadedFile {
+                path: "B.syn.langue".into(),
+                kind: FileKind::Syn { language: "B".into() },
+                text: TO_SYN.into(),
+            },
+            LoadedFile {
+                path: "b.elab.langue".into(),
+                kind: FileKind::Elab,
+                text: "between B {\n  Def { name: $x, value: Var { name: $x } } === Def { name: $x, value: Var { name: $x } }\n}".into(),
+            },
+            LoadedFile {
+                path: "p.langue".into(),
+                kind: FileKind::Manifest,
+                text: "main = parse B".into(),
+            },
+        ];
+        let (def, merge_diags) = merge_project(&files);
+        assert!(merge_diags.is_empty(), "{merge_diags:?}");
+        let msgs: Vec<String> = crate::check::check_definition(&dce(&def))
+            .into_iter()
+            .map(|d| d.message)
+            .collect();
+        assert!(!msgs.iter().any(|m| m.contains("bound twice")), "{msgs:?}");
     }
 }
