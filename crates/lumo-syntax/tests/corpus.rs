@@ -20,7 +20,9 @@ fn corpus() {
         (lang == "Lumo")
             .then_some(lumo_syntax::judge_driver::infer_report as langc::corpus::InferFn)
     };
-    match langc::corpus::run_dir(&root, lookup, elab_lookup, infer_lookup) {
+    // `:optimize(MIR)` driver lands in M3 step 5.
+    let optimize_lookup = |_: &str| None::<langc::corpus::OptimizeFn>;
+    match langc::corpus::run_dir(&root, lookup, elab_lookup, infer_lookup, optimize_lookup) {
         Ok(summary) => println!("corpus: {summary}"),
         Err(failures) => panic!("corpus failures\n{failures}"),
     }

@@ -25,6 +25,10 @@ pub type ElabFn = fn(&str) -> ElabReport;
 /// `:infer(L)` reuses the ElabReport shape: `output` is the
 /// `name : Type` lines, or `ERROR: …` when judging bails (D-26).
 pub type InferFn = fn(&str) -> ElabReport;
+/// `:optimize(L)` reuses the ElabReport shape: `output` is the
+/// optimized L-text, or `ERROR: …` (unencodable input, non-converging
+/// reduction; D-42).
+pub type OptimizeFn = fn(&str) -> ElabReport;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Attr {
@@ -37,6 +41,10 @@ pub enum Attr {
     /// expected is `name : Type` lines, or a line starting with
     /// `ERROR` for an expected bail (message free, D-26).
     Infer(String),
+    /// `:optimize(MIR)` — same-language saturation + extraction (D-42);
+    /// source and expected are both L-text, compared canonicalized like
+    /// `:elab`; a line starting with `ERROR` matches any error.
+    Optimize(String),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -129,6 +137,9 @@ fn parse_attr(line: &str) -> Option<Attr> {
     if let Some(lang) = inner(":infer(") {
         return Some(Attr::Infer(lang));
     }
+    if let Some(lang) = inner(":optimize(") {
+        return Some(Attr::Optimize(lang));
+    }
     None
 }
 
@@ -147,6 +158,7 @@ fn render_corpus(cases: &[Case]) -> String {
             Attr::Fails(l) => out.push_str(&format!(":fails({l})\n")),
             Attr::Elab { from, to } => out.push_str(&format!(":elab({from} -> {to})\n")),
             Attr::Infer(l) => out.push_str(&format!(":infer({l})\n")),
+            Attr::Optimize(l) => out.push_str(&format!(":optimize({l})\n")),
         }
         out.push('\n');
         out.push_str(&case.source);
@@ -167,13 +179,16 @@ fn normalize(sexpr: &str) -> String {
 
 /// Run every `**/*.test` under `root`. `lookup` resolves a language name
 /// to its generated parse-report fn and `elab_lookup` an elab pair to
-/// its generated elab-report fn (both from the registry). Bless with
-/// `LANGC_UPDATE=1`. Returns a summary or the combined failures.
+/// its generated elab-report fn (both from the registry);
+/// `infer_lookup`/`optimize_lookup` resolve a language to its
+/// handwritten driver. Bless with `LANGC_UPDATE=1`. Returns a summary
+/// or the combined failures.
 pub fn run_dir(
     root: &Path,
     lookup: impl Fn(&str) -> Option<ReportFn>,
     elab_lookup: impl Fn(&str, &str) -> Option<ElabFn>,
     infer_lookup: impl Fn(&str) -> Option<InferFn>,
+    optimize_lookup: impl Fn(&str) -> Option<OptimizeFn>,
 ) -> Result<String, String> {
     let update = std::env::var("LANGC_UPDATE").is_ok_and(|v| v == "1");
     let mut files = Vec::new();
@@ -301,9 +316,75 @@ pub fn run_dir(
                 }
                 continue;
             }
+            if let Attr::Optimize(lang) = &case.attr {
+                let Some(optimize_fn) = optimize_lookup(lang) else {
+                    fail(format!("no optimize driver for `{lang}`"), &mut failures);
+                    continue;
+                };
+                let Some(report_fn) = lookup(lang) else {
+                    fail(format!("unknown language `{lang}`"), &mut failures);
+                    continue;
+                };
+                let report = optimize_fn(&case.source);
+                if !report.errors.is_empty() {
+                    fail(format!("pipeline errors: {:?}", report.errors), &mut failures);
+                    continue;
+                }
+                match (&case.expected, update) {
+                    (Some(expected), _) => {
+                        // An expected error matches any error (D-26).
+                        if expected.starts_with("ERROR") {
+                            if !report.output.starts_with("ERROR") {
+                                fail(
+                                    format!(
+                                        "expected an ERROR, got: {}",
+                                        report.output.trim()
+                                    ),
+                                    &mut failures,
+                                );
+                            }
+                        } else {
+                            // Canonicalize-then-compare: the expected
+                            // block doubles as an L round-trip (D-32).
+                            let exp = report_fn(expected);
+                            if !exp.errors.is_empty() {
+                                fail(
+                                    format!(
+                                        "expected block does not parse as {lang}: {:?}",
+                                        exp.errors
+                                    ),
+                                    &mut failures,
+                                );
+                            } else if exp.canonical != report.output {
+                                fail(
+                                    format!(
+                                        "optimize output mismatch:\n  expected: {}\n  actual:   {}",
+                                        exp.canonical, report.output
+                                    ),
+                                    &mut failures,
+                                );
+                            }
+                        }
+                    }
+                    (None, true) => {
+                        case.expected = Some(report.output.clone());
+                        changed = true;
+                        blessed += 1;
+                    }
+                    (None, false) => {
+                        fail(
+                            "missing expected block — bless with LANGC_UPDATE=1".to_owned(),
+                            &mut failures,
+                        );
+                    }
+                }
+                continue;
+            }
             let lang = match &case.attr {
                 Attr::Parse(l) | Attr::Fails(l) => l.clone(),
-                Attr::Elab { .. } | Attr::Infer(_) => unreachable!("handled above"),
+                Attr::Elab { .. } | Attr::Infer(_) | Attr::Optimize(_) => {
+                    unreachable!("handled above")
+                }
             };
             let Some(report_fn) = lookup(&lang) else {
                 fail(format!("unknown language `{lang}`"), &mut failures);
@@ -311,7 +392,9 @@ pub fn run_dir(
             };
             let report = report_fn(&case.source);
             match &case.attr {
-                Attr::Elab { .. } | Attr::Infer(_) => unreachable!("handled above"),
+                Attr::Elab { .. } | Attr::Infer(_) | Attr::Optimize(_) => {
+                    unreachable!("handled above")
+                }
                 Attr::Fails(_) => {
                     if report.errors.is_empty() {
                         fail("expected parse errors, got a clean parse".to_owned(), &mut failures);
@@ -423,6 +506,28 @@ fn (
         assert_eq!(cases[1].attr, Attr::Fails("Lumo".into()));
         assert_eq!(cases[1].expected, None);
         // Round-trips through the renderer.
+        let rendered = render_corpus(&cases);
+        let reparsed = parse_corpus(Path::new("x.test"), &rendered).unwrap();
+        assert_eq!(cases, reparsed);
+    }
+
+    #[test]
+    fn parses_optimize_attr_and_renders_back() {
+        let text = "\
+=== beta ===
+:optimize(MIR)
+
+def t = thunk { force thunk { ret 1 } }
+
+---
+
+def t = thunk { ret 1 }
+";
+        let cases = parse_corpus(Path::new("x.test"), text).unwrap();
+        assert_eq!(cases.len(), 1);
+        assert_eq!(cases[0].attr, Attr::Optimize("MIR".into()));
+        assert_eq!(cases[0].source, "def t = thunk { force thunk { ret 1 } }");
+        assert_eq!(cases[0].expected.as_deref(), Some("def t = thunk { ret 1 }"));
         let rendered = render_corpus(&cases);
         let reparsed = parse_corpus(Path::new("x.test"), &rendered).unwrap();
         assert_eq!(cases, reparsed);
