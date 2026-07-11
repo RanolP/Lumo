@@ -267,13 +267,26 @@ mis-ranked, D-31/D-42).
 
 ## M4 — JS emission
 
-Goal: end-to-end Lumo → JS compilation; legacy golden parity.
+Goal: end-to-end Lumo → JS compilation. Scope and the CBPV→JS mapping =
+decision 43 (direct style, no CPS; runtime as free identifiers;
+"legacy golden parity" corrected: legacy has no full-text JS goldens —
+parity means porting emission *behaviors* as new-format fixtures).
 
-- [ ] Write `JS.syn.langue`; emission is pretty-printing the JS tree
-      (D-03).
-- [ ] `elab MIR/LIR -> JS` rules.
-- [ ] Bring over the remaining legacy golden fixtures
-      (`legacy/crates/compiler/tests/fixtures/`, D-32).
+- [ ] Step 1 — decision 43 written; this breakdown.
+- [ ] Step 2 — `JS.syn.langue` (const decls; praat expression grammar
+      with `=>` as infix, call/member/index postfix, ternary payload
+      row, `===`, object literals, named function expressions);
+      `:parse(JS)` fixtures.
+- [ ] Step 3 — `elab MIR to JS` rules + `elab_externs::mir_to_js`
+      (extern rules host tag-quoting and arm/arg folds); manifest grows
+      `| elab MIR to JS`; `:elab(MIR -> JS)` fixtures per construct.
+- [ ] Step 4 — end-to-end `:elab(Lumo -> JS)` via a handwritten
+      chained driver in the corpus lookup; legacy-behavior fixtures
+      (identity/curry, force-then-apply, ctor+match, cap ops, bundles,
+      use/require, fix recursion).
+- [ ] Step 5 — close M4: PLAN.md, memory, deferred items (resume/CPS,
+      readability post-passes, exports/main, TS types, runtime prelude
+      shipping).
 
 ## Cross-cutting rules
 
