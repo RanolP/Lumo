@@ -52,6 +52,114 @@ impl<'a> BundleV<'a> {
     }
 }
 
+pub struct CapEntry<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapEntry<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_ENTRY).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapEntry<'a> {
+    pub fn body(&self) -> Option<CapEntryBody<'a>> {
+        self.0.child_nodes().filter_map(CapEntryBody::cast).nth(0)
+    }
+}
+
+pub enum CapEntryBody<'a> {
+    CapSig(CapSig<'a>),
+    CapRest(CapRest<'a>),
+}
+
+impl<'a> AstNode<'a> for CapEntryBody<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        None
+            .or_else(|| CapSig::cast(node).map(Self::CapSig))
+            .or_else(|| CapRest::cast(node).map(Self::CapRest))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        match self {
+            Self::CapSig(n) => n.syntax(),
+            Self::CapRest(n) => n.syntax(),
+        }
+    }
+}
+
+pub struct CapRest<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapRest<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_REST).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapRest<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+}
+
+pub struct CapRow<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapRow<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_ROW).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapRow<'a> {
+    pub fn cap(&self) -> Option<CapSet<'a>> {
+        self.0.child_nodes().filter_map(CapSet::cast).nth(0)
+    }
+}
+
+pub struct CapSet<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapSet<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_SET).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapSet<'a> {
+    pub fn entries(&self) -> impl Iterator<Item = CapEntry<'a>> + 'a {
+        self.0.child_nodes().filter_map(CapEntry::cast).skip(0)
+    }
+}
+
+pub struct CapSig<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for CapSig<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::CAP_SIG).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> CapSig<'a> {
+    pub fn name(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn args(&self) -> Option<TypeArgs<'a>> {
+        self.0.child_nodes().filter_map(TypeArgs::cast).nth(0)
+    }
+}
+
 pub struct CaseArm<'a>(pub &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for CaseArm<'a> {
@@ -265,6 +373,10 @@ impl<'a> FTypeC<'a> {
     pub fn inner(&self) -> Option<TypeV<'a>> {
         self.0.child_nodes().filter_map(TypeV::cast).nth(0)
     }
+
+    pub fn row(&self) -> Option<CapRow<'a>> {
+        self.0.child_nodes().filter_map(CapRow::cast).nth(0)
+    }
 }
 
 pub struct File<'a>(pub &'a SyntaxNode);
@@ -322,6 +434,27 @@ impl<'a> FnTypeC<'a> {
     }
 
     pub fn ret(&self) -> Option<TypeC<'a>> {
+        self.0.child_nodes().filter_map(TypeC::cast).nth(0)
+    }
+}
+
+pub struct ForallTypeC<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for ForallTypeC<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::FORALL_TYPE_C).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> ForallTypeC<'a> {
+    pub fn params(&self) -> impl Iterator<Item = &'a Token> + 'a {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).skip(0)
+    }
+
+    pub fn body(&self) -> Option<TypeC<'a>> {
         self.0.child_nodes().filter_map(TypeC::cast).nth(0)
     }
 }
@@ -616,6 +749,7 @@ impl<'a> TypeArgs<'a> {
 pub enum TypeC<'a> {
     FTypeC(FTypeC<'a>),
     FnTypeC(FnTypeC<'a>),
+    ForallTypeC(ForallTypeC<'a>),
 }
 
 impl<'a> AstNode<'a> for TypeC<'a> {
@@ -623,11 +757,13 @@ impl<'a> AstNode<'a> for TypeC<'a> {
         None
             .or_else(|| FTypeC::cast(node).map(Self::FTypeC))
             .or_else(|| FnTypeC::cast(node).map(Self::FnTypeC))
+            .or_else(|| ForallTypeC::cast(node).map(Self::ForallTypeC))
     }
     fn syntax(&self) -> &'a SyntaxNode {
         match self {
             Self::FTypeC(n) => n.syntax(),
             Self::FnTypeC(n) => n.syntax(),
+            Self::ForallTypeC(n) => n.syntax(),
         }
     }
 }

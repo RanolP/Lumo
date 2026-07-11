@@ -51,6 +51,52 @@ pub fn bundle_v(clauses: &[&str]) -> String {
     out
 }
 
+/// Render a `CapEntry` node as reparseable text.
+pub fn cap_entry(body: &str) -> String {
+    let mut out = String::new();
+    push(&mut out, body);
+    out
+}
+
+/// Render a `CapRest` node as reparseable text.
+pub fn cap_rest(name: Option<&str>) -> String {
+    let mut out = String::new();
+    push(&mut out, "..");
+    if let Some(v) = name {
+        push(&mut out, v);
+    }
+    out
+}
+
+/// Render a `CapRow` node as reparseable text.
+pub fn cap_row(cap: &str) -> String {
+    let mut out = String::new();
+    push(&mut out, "/");
+    push(&mut out, cap);
+    out
+}
+
+/// Render a `CapSet` node as reparseable text.
+pub fn cap_set(entries: &[&str]) -> String {
+    let mut out = String::new();
+    push(&mut out, "{");
+    for item in entries {
+        push(&mut out, item);
+    }
+    push(&mut out, "}");
+    out
+}
+
+/// Render a `CapSig` node as reparseable text.
+pub fn cap_sig(name: &str, args: Option<&str>) -> String {
+    let mut out = String::new();
+    push(&mut out, name);
+    if let Some(v) = args {
+        push(&mut out, v);
+    }
+    out
+}
+
 /// Render a `CaseArm` node as reparseable text.
 pub fn case_arm(tag: &str, binders: Option<&str>, body: &str) -> String {
     let mut out = String::new();
@@ -176,12 +222,15 @@ pub fn def(name: &str, value: &str) -> String {
 }
 
 /// Render a `FTypeC` node as reparseable text.
-pub fn f_type_c(inner: &str) -> String {
+pub fn f_type_c(inner: &str, row: Option<&str>) -> String {
     let mut out = String::new();
     push(&mut out, "F");
     push(&mut out, "(");
     push(&mut out, inner);
     push(&mut out, ")");
+    if let Some(v) = row {
+        push(&mut out, v);
+    }
     out
 }
 
@@ -217,6 +266,21 @@ pub fn fn_type_c(params: &[&str], ret: &str) -> String {
     push(&mut out, ")");
     push(&mut out, "->");
     push(&mut out, ret);
+    out
+}
+
+/// Render a `ForallTypeC` node as reparseable text.
+pub fn forall_type_c(params: &[&str], body: &str) -> String {
+    let mut out = String::new();
+    push(&mut out, "forall");
+    for (i, item) in params.iter().enumerate() {
+        if i > 0 {
+            push(&mut out, ",");
+        }
+        push(&mut out, item);
+    }
+    push(&mut out, ".");
+    push(&mut out, body);
     out
 }
 

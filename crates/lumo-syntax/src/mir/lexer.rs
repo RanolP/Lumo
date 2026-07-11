@@ -18,11 +18,13 @@ static PATTERNS: &[&str] = &[
     ":", // colon
     ",", // comma
     "\\.", // dot
+    "\\.\\.", // dotdot
     "bundle", // keyword.bundle
     "case", // keyword.case
     "def", // keyword.def
     "fix", // keyword.fix
     "fn", // keyword.fn
+    "forall", // keyword.forall
     "force", // keyword.force
     "handle", // keyword.handle
     "in", // keyword.in
@@ -35,6 +37,7 @@ static PATTERNS: &[&str] = &[
     "unroll", // keyword.unroll
     "with", // keyword.with
     "=", // op.eq
+    "/", // op.slash
     "\\)", // paren.close
     "\\(", // paren.open
     ";", // semi
@@ -57,11 +60,13 @@ const KINDS: &[SyntaxKind] = &[
     SyntaxKind::COLON,
     SyntaxKind::COMMA,
     SyntaxKind::DOT,
+    SyntaxKind::DOTDOT,
     SyntaxKind::KEYWORD_BUNDLE,
     SyntaxKind::KEYWORD_CASE,
     SyntaxKind::KEYWORD_DEF,
     SyntaxKind::KEYWORD_FIX,
     SyntaxKind::KEYWORD_FN,
+    SyntaxKind::KEYWORD_FORALL,
     SyntaxKind::KEYWORD_FORCE,
     SyntaxKind::KEYWORD_HANDLE,
     SyntaxKind::KEYWORD_IN,
@@ -74,6 +79,7 @@ const KINDS: &[SyntaxKind] = &[
     SyntaxKind::KEYWORD_UNROLL,
     SyntaxKind::KEYWORD_WITH,
     SyntaxKind::OP_EQ,
+    SyntaxKind::OP_SLASH,
     SyntaxKind::PAREN_CLOSE,
     SyntaxKind::PAREN_OPEN,
     SyntaxKind::SEMI,

@@ -1,0 +1,20 @@
+# Fω depth for M2: foralls now, kinding is arity checking only
+
+Settled 2026-07-11 (decision B of `design/m2-type-brainstorm.html`).
+
+M2 adds `forall` and type application to the MIR type sub-language;
+polymorphic defs get real ∀-types and spine-local instantiation (D-08).
+
+Kinding is **arity checking, with no kind grammar**:
+
+- a `NamedTypeV` must be applied to exactly the arity its data
+  declaration fixes (`List` is arity 1, `Number` arity 0);
+- `forall` binders are arity-0 in M2 — no binder annotations;
+- there is no kind syntax, no type-level lambda, no higher-order
+  unification.
+
+Rationale: the 91 legacy cases never exercise HKT, so full Fω machinery
+would be built without a fixture able to falsify it. When a real
+program demands type operators, extend the grammar with kind
+annotations on `forall` binders — the judgment surface (D-17) does not
+change shape, only the rules grow.

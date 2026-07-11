@@ -19,6 +19,7 @@ token keyword.perform = 'perform'
 token keyword.handle  = 'handle'
 token keyword.with    = 'with'
 token keyword.sel     = 'sel'
+token keyword.forall  = 'forall'
 token type.u          = 'U'
 token type.f          = 'F'
 
@@ -36,6 +37,8 @@ token comma         = ','
 token semi          = ';'
 token colon         = ':'
 token dot           = '.'
+token dotdot        = '..'
+token op.slash      = '/'
 token arrow.fat     = '=>'
 token arrow.thin    = '->'
 token op.eq         = '='
@@ -107,5 +110,21 @@ TypeArgs = '[' args:sep(TypeV, ',')? ']'
 TypeC =
   | FTypeC
   | FnTypeC
-FTypeC = 'F' '(' inner:TypeV ')'
+  | ForallTypeC
+// Rows serialize on F only (D-41): defs are values, so printed types
+// are U(TypeC) with effects at the innermost F.
+FTypeC = 'F' '(' inner:TypeV ')' row:CapRow?
 FnTypeC = '(' params:sep(TypeV, ',')? ')' '->' ret:TypeC
+// Binders are arity-0, no kind annotations (D-40).
+ForallTypeC = 'forall' params:sep(ident, ',') '.' body:TypeC
+
+// The D-25 multimap's wire format, mirroring the Lumo surface
+// `/ { ..c, E1 }` (D-41). Canonical print: entries sorted, rest last.
+CapRow = '/' cap:CapSet
+CapSet = '{' entries:CapEntry* '}'
+CapEntry = body:CapEntryBody ','?
+CapEntryBody =
+  | CapSig
+  | CapRest
+CapSig = name:ident args:TypeArgs?
+CapRest = '..' name:ident?

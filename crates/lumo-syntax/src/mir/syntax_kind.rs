@@ -26,6 +26,8 @@ pub enum SyntaxKind { // language `MIR`
     COMMA,
     /// token `dot`
     DOT,
+    /// token `dotdot`
+    DOTDOT,
     /// token `keyword.bundle`
     KEYWORD_BUNDLE,
     /// token `keyword.case`
@@ -36,6 +38,8 @@ pub enum SyntaxKind { // language `MIR`
     KEYWORD_FIX,
     /// token `keyword.fn`
     KEYWORD_FN,
+    /// token `keyword.forall`
+    KEYWORD_FORALL,
     /// token `keyword.force`
     KEYWORD_FORCE,
     /// token `keyword.handle`
@@ -60,6 +64,8 @@ pub enum SyntaxKind { // language `MIR`
     KEYWORD_WITH,
     /// token `op.eq`
     OP_EQ,
+    /// token `op.slash`
+    OP_SLASH,
     /// token `paren.close`
     PAREN_CLOSE,
     /// token `paren.open`
@@ -84,6 +90,18 @@ pub enum SyntaxKind { // language `MIR`
     BUNDLE_CLAUSE,
     /// rule `BundleV`
     BUNDLE_V,
+    /// rule `CapEntry`
+    CAP_ENTRY,
+    /// rule `CapEntryBody`
+    CAP_ENTRY_BODY,
+    /// rule `CapRest`
+    CAP_REST,
+    /// rule `CapRow`
+    CAP_ROW,
+    /// rule `CapSet`
+    CAP_SET,
+    /// rule `CapSig`
+    CAP_SIG,
     /// rule `CaseArm`
     CASE_ARM,
     /// rule `CaseBinders`
@@ -108,6 +126,8 @@ pub enum SyntaxKind { // language `MIR`
     FIX_C,
     /// rule `FnTypeC`
     FN_TYPE_C,
+    /// rule `ForallTypeC`
+    FORALL_TYPE_C,
     /// rule `ForceC`
     FORCE_C,
     /// rule `HandleC`
@@ -173,6 +193,7 @@ impl SyntaxKind {
             SyntaxKind::KEYWORD_DEF => Some("keyword.def"),
             SyntaxKind::KEYWORD_FIX => Some("keyword.fix"),
             SyntaxKind::KEYWORD_FN => Some("keyword.fn"),
+            SyntaxKind::KEYWORD_FORALL => Some("keyword.forall"),
             SyntaxKind::KEYWORD_FORCE => Some("keyword.force"),
             SyntaxKind::KEYWORD_HANDLE => Some("keyword.handle"),
             SyntaxKind::KEYWORD_IN => Some("keyword.in"),
@@ -185,6 +206,7 @@ impl SyntaxKind {
             SyntaxKind::KEYWORD_UNROLL => Some("keyword.unroll"),
             SyntaxKind::KEYWORD_WITH => Some("keyword.with"),
             SyntaxKind::OP_EQ => Some("op.eq"),
+            SyntaxKind::OP_SLASH => Some("op.slash"),
             SyntaxKind::PAREN_CLOSE => Some("paren.close"),
             SyntaxKind::PAREN_OPEN => Some("paren.open"),
             SyntaxKind::TYPE_F => Some("type.f"),

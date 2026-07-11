@@ -109,6 +109,43 @@ def p = thunk { (ret x) }
 
 (FILE (DEF (THUNK_V (PAREN_C (RET_C (VAR_V))))))
 
+=== annotation with capability row on F ===
+:parse(MIR)
+
+def greet = (g : U(() -> F(String) / {Console}))
+
+---
+
+(FILE (DEF (PAREN_V (VAR_V) (U_TYPE_V (FN_TYPE_C (F_TYPE_C (NAMED_TYPE_V) (CAP_ROW (CAP_SET (CAP_ENTRY (CAP_SIG))))))))))
+
+=== row with parameterized cap and rest variable ===
+:parse(MIR)
+
+def st = (h : U((Number) -> F(Number) / {State[Number], ..c}))
+
+---
+
+(FILE (DEF (PAREN_V (VAR_V) (U_TYPE_V (FN_TYPE_C (NAMED_TYPE_V) (F_TYPE_C (NAMED_TYPE_V) (CAP_ROW (CAP_SET (CAP_ENTRY (CAP_SIG (TYPE_ARGS (NAMED_TYPE_V)))) (CAP_ENTRY (CAP_REST))))))))))
+
+=== bare row rest ===
+:parse(MIR)
+
+def any = (h : U(() -> F(Unit) / {..}))
+
+---
+
+(FILE (DEF (PAREN_V (VAR_V) (U_TYPE_V (FN_TYPE_C (F_TYPE_C (NAMED_TYPE_V) (CAP_ROW (CAP_SET (CAP_ENTRY (CAP_REST))))))))))
+
+=== forall with one and two binders ===
+:parse(MIR)
+
+def id2 = (i : U(forall a. (a) -> F(a)))
+def konst = (k : U(forall a, b. (a, b) -> F(a)))
+
+---
+
+(FILE (DEF (PAREN_V (VAR_V) (U_TYPE_V (FORALL_TYPE_C (FN_TYPE_C (NAMED_TYPE_V) (F_TYPE_C (NAMED_TYPE_V))))))) (DEF (PAREN_V (VAR_V) (U_TYPE_V (FORALL_TYPE_C (FN_TYPE_C (NAMED_TYPE_V) (NAMED_TYPE_V) (F_TYPE_C (NAMED_TYPE_V))))))))
+
 === broken def is an error ===
 :fails(MIR)
 

@@ -83,6 +83,92 @@ impl Parser {
         SyntaxNode::from_children(SyntaxKind::BUNDLE_V, children)
     }
 
+    fn can_parse_cap_entry(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::DOTDOT, SyntaxKind::IDENT])
+    }
+    fn parse_cap_entry(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        children.push(SyntaxElement::Node(Box::new(self.parse_cap_entry_body())));
+        if self.c.at(SyntaxKind::COMMA) {
+            self.c.expect_into(SyntaxKind::COMMA, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::CAP_ENTRY, children)
+    }
+
+    fn can_parse_cap_entry_body(&self) -> bool {
+        self.c.at_any(&[SyntaxKind::DOTDOT, SyntaxKind::IDENT])
+    }
+    fn parse_cap_entry_body(&mut self) -> SyntaxNode {
+        if self.can_parse_cap_sig() {
+            return self.parse_cap_sig();
+        }
+        if self.can_parse_cap_rest() {
+            return self.parse_cap_rest();
+        }
+        self.c.error_here("expected CapEntryBody".to_owned());
+        SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())
+    }
+
+    fn can_parse_cap_rest(&self) -> bool {
+        self.c.at(SyntaxKind::DOTDOT)
+    }
+    fn parse_cap_rest(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::DOTDOT, &mut children);
+        if self.c.at(SyntaxKind::IDENT) {
+            self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        }
+        SyntaxNode::from_children(SyntaxKind::CAP_REST, children)
+    }
+
+    fn can_parse_cap_row(&self) -> bool {
+        self.c.at(SyntaxKind::OP_SLASH)
+    }
+    fn parse_cap_row(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::OP_SLASH, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_cap_set())));
+        SyntaxNode::from_children(SyntaxKind::CAP_ROW, children)
+    }
+
+    fn can_parse_cap_set(&self) -> bool {
+        self.c.at(SyntaxKind::BRACE_OPEN)
+    }
+    fn parse_cap_set(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::BRACE_OPEN, &mut children);
+        loop {
+            if self.c.at_any(&[SyntaxKind::DOTDOT, SyntaxKind::IDENT]) {
+                children.push(SyntaxElement::Node(Box::new(self.parse_cap_entry())));
+                continue;
+            }
+            if !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) {
+                self.c.error_here("unexpected input".to_owned());
+                let mut bad = Vec::new();
+                while !self.c.eof() && !self.c.at(SyntaxKind::BRACE_CLOSE) && !self.c.at_any(&[SyntaxKind::DOTDOT, SyntaxKind::IDENT]) {
+                    self.c.bump_into(&mut bad);
+                }
+                children.push(SyntaxElement::Node(Box::new(SyntaxNode::from_children(SyntaxKind::ERROR, bad))));
+                continue;
+            }
+            break;
+        }
+        self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
+        SyntaxNode::from_children(SyntaxKind::CAP_SET, children)
+    }
+
+    fn can_parse_cap_sig(&self) -> bool {
+        self.c.at(SyntaxKind::IDENT)
+    }
+    fn parse_cap_sig(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        if self.c.at(SyntaxKind::BRACKET_OPEN) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_type_args())));
+        }
+        SyntaxNode::from_children(SyntaxKind::CAP_SIG, children)
+    }
+
     fn can_parse_case_arm(&self) -> bool {
         self.c.at(SyntaxKind::DOT)
     }
@@ -270,6 +356,9 @@ impl Parser {
         self.c.expect_into(SyntaxKind::PAREN_OPEN, &mut children);
         children.push(SyntaxElement::Node(Box::new(self.parse_type_v())));
         self.c.expect_into(SyntaxKind::PAREN_CLOSE, &mut children);
+        if self.c.at(SyntaxKind::OP_SLASH) {
+            children.push(SyntaxElement::Node(Box::new(self.parse_cap_row())));
+        }
         SyntaxNode::from_children(SyntaxKind::F_TYPE_C, children)
     }
 
@@ -331,6 +420,27 @@ impl Parser {
         self.c.expect_into(SyntaxKind::ARROW_THIN, &mut children);
         children.push(SyntaxElement::Node(Box::new(self.parse_type_c())));
         SyntaxNode::from_children(SyntaxKind::FN_TYPE_C, children)
+    }
+
+    fn can_parse_forall_type_c(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_FORALL)
+    }
+    fn parse_forall_type_c(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_FORALL, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        while self.c.at(SyntaxKind::COMMA) {
+            self.c.bump_into(&mut children);
+            // Trailing separator is allowed.
+            if self.c.at(SyntaxKind::IDENT) {
+                self.c.expect_into(SyntaxKind::IDENT, &mut children);
+            } else {
+                break;
+            }
+        }
+        self.c.expect_into(SyntaxKind::DOT, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_type_c())));
+        SyntaxNode::from_children(SyntaxKind::FORALL_TYPE_C, children)
     }
 
     fn can_parse_force_c(&self) -> bool {
@@ -518,7 +628,7 @@ impl Parser {
     }
 
     fn can_parse_type_c(&self) -> bool {
-        self.c.at_any(&[SyntaxKind::PAREN_OPEN, SyntaxKind::TYPE_F])
+        self.c.at_any(&[SyntaxKind::KEYWORD_FORALL, SyntaxKind::PAREN_OPEN, SyntaxKind::TYPE_F])
     }
     fn parse_type_c(&mut self) -> SyntaxNode {
         if self.can_parse_f_type_c() {
@@ -526,6 +636,9 @@ impl Parser {
         }
         if self.can_parse_fn_type_c() {
             return self.parse_fn_type_c();
+        }
+        if self.can_parse_forall_type_c() {
+            return self.parse_forall_type_c();
         }
         self.c.error_here("expected TypeC".to_owned());
         SyntaxNode::from_children(SyntaxKind::ERROR, Vec::new())

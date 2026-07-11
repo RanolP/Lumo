@@ -120,25 +120,41 @@ Goal: `elab Lumo -> MIR` runs end to end as generated Rust.
 
 ## M2 — type
 
-Goal: `LIR.type.langue` judgments typecheck Lumo programs.
+Goal: `MIR.type.langue` judgments typecheck Lumo programs — on MIR
+directly, no LIR (decision 39). Scope slice = D-39, Fω depth = D-40,
+capability rows = D-41; design artifact `design/m2-type-brainstorm.html`.
 
-- [ ] Relational engine, λProlog as the implementation reference (D-23):
-      goals, unification (`=`), contexts as multimaps
+- [x] Step 1 (2026-07-11) — MIR type sub-language grows rows + forall
+      (D-39/40/41): `FTypeC` takes an optional `CapRow` (rows serialize
+      on F only), `ForallTypeC` with arity-0 binders (no kind grammar),
+      CapRow/CapSet/CapSig/CapRest mirroring the Lumo surface
+      `/ { ..c, E1 }`; new `:parse(MIR)` fixtures; egglog golden
+      re-blessed.
+- [ ] Step 2 — elab preserves type information: def-level
+      `(thunk { … } : U(…))` annotations plus Lumo TypeExpr → MIR
+      TypeV translation rules (FnDecl signatures, CapAnnotation →
+      CapRow, GenericParams → forall).
+- [ ] Step 3 — relational engine, λProlog as the implementation
+      reference (D-23): goals, unification (`=`), contexts as multimaps
       (`context Γ = [Ident: TypeV]`, D-16), read `Γ.$name`, write
       `with Γ+{a: b}` (D-23); strictly decreasing recursion (D-23,
       D-28); exactly one rule may succeed per goal (D-23).
-- [ ] Judgment codegen (D-17, D-21): `infer_C LIR -> TypeC with Γ`
-      declarations (arrows are separators; type param is inout; names are
-      just names), `head := body` rules → Rust on the engine.
-- [ ] Minimal built-in tactics: `subst`, `hash`; capability rows as
-      hash-keyed maps — a map is a set when the key is a hash, no row
-      datatype (D-24, D-25).
-- [ ] Diagnostics: failures bail with a generic message — nothing more
-      for now (D-26).
-- [ ] Write the Fω + spine-local bidirectional + capability-row judgments
-      (D-08); port the legacy capability typing rules.
-- [ ] `:infer(L)` fixtures (`name : Type` lines, types printed by the
-      type sub-language's printer) and `:fails` fixtures (D-32).
+- [ ] Step 4 — judgment codegen (D-17, D-21): `infer_C MIR -> TypeC
+      with Γ` declarations (arrows are separators; type param is inout;
+      names are just names), `head := body` rules → Rust on the engine;
+      third `.langue` item kind following M1's step-2/3 pattern.
+- [ ] Step 5 — minimal built-in tactics: `subst`, `hash`; capability
+      rows as hash-keyed maps — a map is a set when the key is a hash,
+      no row datatype (D-24, D-25, D-41).
+- [ ] Step 6 — write the judgments: Fω slice (forall, spine-local
+      instantiation, arity kinding per D-40), data/match typing,
+      capability rows with one row variable (D-41); failures bail with
+      a generic message (D-26).
+- [ ] Step 7 — `:infer(Lumo)` fixtures run the full pipeline (parse,
+      elab, judge; `name : Type` lines printed by the MIR type
+      printer) plus `:fails` (D-32); migrate the in-scope legacy
+      buckets (D-39). Deferred with their machinery: resume, bounds,
+      assoc_types, cap_inference, match exhaustiveness.
 
 ## M3 — e-graph optimization
 

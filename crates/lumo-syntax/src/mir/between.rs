@@ -8,6 +8,10 @@ pub static PROGRAM: &str = r#"
 ; per constructor (D-31). M1 modeling notes: optional fields are
 ; required; list fields are Vec sorts; execution lands in M3 (D-37).
 (datatype*
+  (CapEntryBody
+    (CapRest String :cost 1)
+    (CapSig String TypeArgs :cost 1)
+  )
   (Comp
     (CaseC Value CaseArmVec :cost 1)
     (CompPostfix String Comp ValueArgs :cost 1)
@@ -22,8 +26,9 @@ pub static PROGRAM: &str = r#"
     (SelC Value String :cost 1)
   )
   (TypeC
-    (FTypeC TypeV :cost 1)
+    (FTypeC TypeV CapRow :cost 1)
     (FnTypeC TypeVVec TypeC :cost 1)
+    (ForallTypeC StringVec TypeC :cost 1)
   )
   (TypeV
     (NamedTypeV String TypeArgs :cost 1)
@@ -42,6 +47,15 @@ pub static PROGRAM: &str = r#"
   )
   (BundleClause
     (MkBundleClause String StringVec Comp :cost 1)
+  )
+  (CapEntry
+    (MkCapEntry CapEntryBody :cost 1)
+  )
+  (CapRow
+    (MkCapRow CapSet :cost 1)
+  )
+  (CapSet
+    (MkCapSet CapEntryVec :cost 1)
   )
   (CaseArm
     (MkCaseArm String CaseBinders Comp :cost 1)
@@ -65,6 +79,7 @@ pub static PROGRAM: &str = r#"
     (MkValueArgs ValueVec :cost 1)
   )
   (sort BundleClauseVec (Vec BundleClause))
+  (sort CapEntryVec (Vec CapEntry))
   (sort CaseArmVec (Vec CaseArm))
   (sort DefVec (Vec Def))
   (sort StringVec (Vec String))

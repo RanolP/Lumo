@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>M2: 타입은 판단이다</title>
+  <style>
+    :root {
+      --accent: #0071e3;
+      --gray-50: #f9f9f9;
+      --gray-200: #e5e5e5;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-900: #111;
+      --code-bg: #f4f4f5;
+      --danger: #e11d48;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: #fff;
+      color: var(--gray-900);
+      line-height: 1.5;
+    }
+    section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 6rem 2rem;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .eyebrow { font-size: .875rem; letter-spacing: .15em; text-transform: uppercase; color: var(--gray-400); margin-bottom: 1.5rem; }
+    .h1 { font-size: clamp(3rem, 8vw, 5.5rem); font-weight: 700; letter-spacing: -.03em; line-height: 1; margin-bottom: 1.5rem; }
+    .h2 { font-size: clamp(1.8rem, 5vw, 3.2rem); font-weight: 700; letter-spacing: -.02em; line-height: 1.15; margin-bottom: 2rem; }
+    .hero-number { font-size: clamp(5rem, 18vw, 9rem); font-weight: 700; line-height: 1; color: var(--accent); }
+    .lead { font-size: clamp(1.05rem, 2.5vw, 1.3rem); color: var(--gray-500); max-width: 38rem; }
+    .caption { font-size: .95rem; color: var(--gray-400); max-width: 34rem; margin-top: 1.5rem; }
+    .bg-white  { background: #fff; }
+    .bg-muted  { background: var(--gray-50); }
+    .bg-dark   { background: var(--gray-900); color: #fff; }
+    .bg-dark .lead, .bg-dark .caption { color: var(--gray-400); }
+    .bg-accent-fill { background: var(--accent); color: #fff; }
+    .bg-accent-fill .lead { color: rgba(255,255,255,.8); }
+    section + section { border-top: 1px solid var(--gray-200); }
+    .bg-dark + section, section + .bg-dark,
+    .bg-accent-fill + section, section + .bg-accent-fill { border-top: none; }
+    .btn {
+      display: inline-block;
+      margin-top: 2.5rem;
+      padding: .875rem 2.5rem;
+      border-radius: 9999px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      background: #fff;
+      color: var(--accent);
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .mt-sm { margin-top: 1rem; }
+    .mt-md { margin-top: 1.5rem; }
+    .mt-lg { margin-top: 2.5rem; }
+    /* Code blocks */
+    .code {
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: clamp(.75rem, 1.8vw, .95rem);
+      text-align: left;
+      background: var(--code-bg);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      max-width: 100%;
+      overflow-x: auto;
+      line-height: 1.7;
+      white-space: pre;
+    }
+    .bg-dark .code { background: #1c1c1e; color: #e5e5e5; }
+    .code .hl { color: var(--accent); font-weight: 600; }
+    .code .miss { color: var(--danger); font-weight: 600; }
+    .code .dim { color: var(--gray-400); }
+    /* Two-panel compare */
+    .compare { display: flex; gap: 1.5rem; flex-wrap: wrap; justify-content: center; width: 100%; }
+    .compare > div { flex: 1 1 340px; min-width: 0; text-align: left; }
+    .panel-label { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-400); margin-bottom: .6rem; text-align: left; }
+    /* Option cards */
+    .options { display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 44rem; }
+    .option {
+      border: 1px solid var(--gray-200);
+      border-radius: 16px;
+      padding: 1.5rem 1.75rem;
+      text-align: left;
+      background: #fff;
+    }
+    .option.rec { border: 2px solid var(--accent); position: relative; }
+    .badge {
+      display: inline-block;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #fff;
+      background: var(--accent);
+      border-radius: 9999px;
+      padding: .2rem .7rem;
+      margin-bottom: .6rem;
+    }
+    .option h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: .35rem; }
+    .option p { font-size: .95rem; color: var(--gray-500); }
+    /* Changelog */
+    .changelog { text-align: left; max-width: 34rem; width: 100%; }
+    .changelog li { list-style: none; font-size: .95rem; padding: .4rem 0; color: rgba(255,255,255,.85); }
+    .changelog .date { font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: rgba(255,255,255,.55); margin-right: .75rem; }
+  </style>
+</head>
+<body>
+
+  <!-- Slide 1: Title -->
+  <section class="bg-white">
+    <p class="eyebrow">Lumo &middot; M2 설계 갱신</p>
+    <h1 class="h1">타입은<br/>판단이다</h1>
+    <p class="lead">엔진은 Lumo를 모른다. M2는 새 코드가 아니라,
+    MIR 위에서 도는 판단 규칙을 쓰는 일이다.</p>
+  </section>
+
+  <!-- Slide 2: Big number -->
+  <section class="bg-muted">
+    <p class="eyebrow">legacy fixtures/type &middot; 15개 버킷</p>
+    <p class="hero-number">91</p>
+    <p class="lead mt-md">레거시 타입 테스트 케이스.
+    M2의 성공 기준은 이 의도가 살아남는 것이다.</p>
+    <p class="caption">basics &middot; data &middot; match &middot; cap_row &middot; bounds &middot; resume &middot; assoc_types &hellip; 전부가 1차 범위는 아니다. 어디까지 자를지가 결정 A.</p>
+  </section>
+
+  <!-- Slide 3: What's locked -->
+  <section class="bg-white">
+    <h2 class="h2">규칙 언어는 이미 잠겨 있다</h2>
+    <div class="code">infer_C MIR -&gt; TypeC <span class="hl">with</span> &Gamma;
+
+infer_V Ident { name: $name } -&gt; $return
+  := $return = <span class="hl">&Gamma;.$name</span>
+
+infer_V TypeAssignment { expr: $e, ty: $t } -&gt; $inferred
+  := $inferred = (check_V $e &lt;- $t)</div>
+    <p class="caption">D-08/16/17/23/24/25: &lambda;Prolog식 관계 규칙, <code>with &Gamma;+{a: b}</code> 확장,
+    골당 정확히 한 규칙 성공, 엄격 감소 재귀, 태틱은 subst와 hash 둘뿐. 이 표면은 건드리지 않는다.</p>
+  </section>
+
+  <!-- Slide 4: Gap 1 — MIR type grammar (dark contrast) -->
+  <section class="bg-dark">
+    <p class="eyebrow">Gap 1 &middot; MIR.syn.langue</p>
+    <h2 class="h2">MIR 타입 문법에는<br/>row도 forall도 없다</h2>
+    <div class="compare mt-md">
+      <div>
+        <p class="panel-label">지금 (D-36)</p>
+        <div class="code">TypeV = U(TypeC) | named[args]
+TypeC = F(TypeV)
+      | (TypeV, &hellip;) -&gt; TypeC</div>
+      </div>
+      <div>
+        <p class="panel-label">확정 문법 (D-41 &middot; 2026-07-11 반영)</p>
+        <div class="code">TypeC = F(TypeV) <span class="hl">/ {Cap[args], ..r}?</span>
+      | (TypeV, &hellip;) -&gt; TypeC
+      | <span class="hl">forall a, &hellip;.</span> TypeC
+<span class="dim">kind 문법 없음 — arity 검사만 (D-40)</span></div>
+      </div>
+    </div>
+    <p class="caption">해소됨: row는 F에만 직렬화(D-41), forall은 arity-0 바인더(D-40).
+    Lumo 표면의 <code>/ {&hellip;}</code> 표기를 MIR이 그대로 따른다.</p>
+  </section>
+
+  <!-- Slide 5: Gap 2 — annotations dropped -->
+  <section class="bg-white">
+    <p class="eyebrow">Gap 2 &middot; elab</p>
+    <h2 class="h2">elab이 타입 표기를 버린다</h2>
+    <div class="compare mt-sm">
+      <div>
+        <p class="panel-label">M1 elab: (x : Number) &rarr; ret x</p>
+        <div class="code">fn id(x: Number) -&gt; Number
+  <span class="dim">&darr; elab 후 타입 정보 소멸</span>
+fix id = thunk { &lambda;x. ret x }</div>
+      </div>
+      <div>
+        <p class="panel-label">제안: def 단위 어노테이션 보존</p>
+        <div class="code">fix id = (thunk { &lambda;x. ret x }
+  : <span class="hl">U((Number) -&gt; F(Number))</span>)</div>
+      </div>
+    </div>
+    <p class="caption">spine-local 양방향 추론(D-08)은 def 서명에서 출발한다. Lumo 타입 표기를
+    MIR TypeV로 번역하는 규칙이 elab에 추가되어야 한다 — <code>(v : TypeV)</code> 자리는 이미 문법에 있다.</p>
+  </section>
+
+  <!-- Slide 6: Decision A — scope slice -->
+  <section class="bg-muted">
+    <p class="eyebrow">결정 A</p>
+    <h2 class="h2">M2 범위를 어디서 자르나</h2>
+    <div class="options">
+      <div class="option">
+        <h3>A1 &middot; 코어만</h3>
+        <p>basics + hof + recursion + annotation. 데이터 타입과 cap을 M3로.
+        판단 엔진 검증에는 충분하지만, 91케이스 중 절반이 다음 마일스톤으로 밀린다.</p>
+      </div>
+      <div class="option rec">
+        <span class="badge">채택 &middot; D-39</span>
+        <h3>A2 &middot; 코어 + data/match + cap-with-rows</h3>
+        <p>위에 더해 data 선언, match 분기 타입, capability row 검사까지.
+        resume &middot; bounds &middot; assoc_types &middot; match 완전성 &middot; cap 고정점 추론은 명시적으로 유예 —
+        이 다섯은 관계 규칙만으로 안 되고 extern 태틱이나 딕셔너리 기계가 필요하다.</p>
+      </div>
+      <div class="option">
+        <h3>A3 &middot; 레거시 전부</h3>
+        <p>15버킷 91케이스 전부. extern 태틱 설계가 M2 안으로 들어와
+        판단 표면 검증이라는 원래 목적이 흐려진다.</p>
+      </div>
+    </div>
+    <p class="caption">fixture 배선(Gap 5)은 범위와 무관하게 필요: <code>:infer(Lumo)</code>가
+    parse | elab | judge 전체 파이프라인을 타야 한다.</p>
+  </section>
+
+  <!-- Slide 7: Decision B — Fω depth -->
+  <section class="bg-white">
+    <p class="eyebrow">결정 B</p>
+    <h2 class="h2">F&omega;를 얼마나 깊이 파나</h2>
+    <div class="options">
+      <div class="option">
+        <h3>B1 &middot; 단형 + row만</h3>
+        <p>forall 없이 시작. 문법 변경이 최소지만 hof 버킷의 제네릭 케이스가 전멸하고,
+        D-08의 "F&omega;" 약속과 어긋난다.</p>
+      </div>
+      <div class="option rec">
+        <span class="badge">채택 &middot; D-40</span>
+        <h3>B2 &middot; arity 카인딩 + forall 지금, 나머지는 나중</h3>
+        <p>forall과 타입 적용을 넣되 kind는 인자 개수 검사(arity)로만.
+        kind 문법과 타입 레벨 람다는 레거시 91케이스가 한 번도 요구하지 않았다 —
+        필요해질 때 문법만 열면 된다.</p>
+      </div>
+      <div class="option">
+        <h3>B3 &middot; 완전한 F&omega; 지금</h3>
+        <p>kind 문법, 타입 레벨 람다, 고차 유니피케이션 근사까지.
+        검증할 fixture가 없는 기계를 먼저 짓는 셈이다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 8: Closing + changelog -->
+  <section class="bg-accent-fill">
+    <h2 class="h2">결정은 내려졌다.<br/>구현이 시작됐다.</h2>
+    <p class="lead">A2 + B2 + row 설계가 design/decisions/39&middot;40&middot;41로 확정.
+    M2는 PLAN.md의 7단계로 진행한다.</p>
+    <ul class="changelog mt-lg">
+      <li><span class="date">2026-07-11</span>설계 갱신 시작 — M1 완료, 조사에서 Gap 5개 확인, 결정 A/B 상정</li>
+      <li><span class="date">2026-07-11</span>row 논의: 값은 비구문(D-25 멀티맵) 유지, 직렬화 프로덕션 하나만 추가하기로</li>
+      <li><span class="date">2026-07-11</span>A2 &middot; B2 &middot; row 설계 채택 &rarr; decisions/39&middot;40&middot;41; LIR 없이 MIR 위 판단으로 확정</li>
+      <li><span class="date">2026-07-11</span>M2 1단계 구현 — MIR 타입 문법에 <code>/ {&hellip;}</code> row와 forall 추가, verify 녹색</li>
+    </ul>
+    <a class="btn" href="#top">다음: 2단계 — elab이 타입 표기를 보존</a>
+  </section>
+
+</body>
+</html>

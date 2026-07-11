@@ -85,7 +85,7 @@ fn case_ctor_and_optionals_round_trip() {
 fn annotated_value_with_types_round_trips() {
     let ty = b::u_type_v(&b::fn_type_c(
         &[&b::named_type_v("Number", None)],
-        &b::f_type_c(&b::named_type_v("List", Some(&b::type_args(&[&b::named_type_v("Number", None)])))),
+        &b::f_type_c(&b::named_type_v("List", Some(&b::type_args(&[&b::named_type_v("Number", None)]))), None),
     ));
     let text = b::file(&[&b::def("v", &b::paren_v(&b::var_v("f"), Some(&ty)))]);
     assert_reparses_to(
