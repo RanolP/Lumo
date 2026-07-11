@@ -130,10 +130,14 @@ capability rows = D-41; design artifact `design/m2-type-brainstorm.html`.
       CapRow/CapSet/CapSig/CapRest mirroring the Lumo surface
       `/ { ..c, E1 }`; new `:parse(MIR)` fixtures; egglog golden
       re-blessed.
-- [ ] Step 2 — elab preserves type information: def-level
-      `(thunk { … } : U(…))` annotations plus Lumo TypeExpr → MIR
-      TypeV translation rules (FnDecl signatures, CapAnnotation →
-      CapRow, GenericParams → forall).
+- [x] Step 2 (2026-07-11) — elab preserves type information: fully
+      annotated FnDecl signatures become def-level `(thunk { … } :
+      U(…))` annotations (types curried to match the term; nullary =
+      bare F; CapAnnotation → CapRow on the innermost F; GenericParams
+      → forall, cap params included); `(e : T)` survives as ParenV via
+      the new `paren_annot` extern rule; `scc_fix` keeps annotations
+      around `fix`. Partial signatures, assoc types, bounded generics,
+      and latent-effect arrows bail to inference (D-39/41).
 - [ ] Step 3 — relational engine, λProlog as the implementation
       reference (D-23): goals, unification (`=`), contexts as multimaps
       (`context Γ = [Ident: TypeV]`, D-16), read `Γ.$name`, write

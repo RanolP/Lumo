@@ -6,13 +6,21 @@
 
 // Extern rules (D-01/D-38) host what syntax-directed rules cannot:
 //   module           — File assembly: skips type-level items, collects defs
-//   fn_curry         — fn/lambda param lists fold into curried thunk spines
+//   fn_curry         — fn/lambda param lists fold into curried thunk spines;
+//                      a fully annotated fn signature also becomes a
+//                      def-level `(thunk {…} : U(…))` annotation — types
+//                      curried to match the term, CapAnnotation → CapRow
+//                      on the innermost F, GenericParams → forall (M2
+//                      step 2; D-39/40/41)
+//   paren_annot      — `(e : T)` keeps its annotation as ParenV when the
+//                      type translates; plain parens stay transparent
 //   block            — block statements fold into nested `let`
 //   match_arm        — optional binder lists (no absent-field patterns)
 //   member_classify  — data ctor vs cap op vs value method (needs decls)
 //   use_decl         — `use` → require-derived defs (D-30)
 extern rule module from Lumo to MIR
 extern rule fn_curry from Lumo to MIR
+extern rule paren_annot from Lumo to MIR
 extern rule block from Lumo to MIR
 extern rule match_arm from Lumo to MIR
 extern rule member_classify from Lumo to MIR
@@ -32,8 +40,7 @@ from Lumo to MIR {
   ForceExpr { expr: $e } ==> ForceC { value: $e to MIR }
   PerformExpr { name: $c } ==> PerformC { cap: $c }
 
-  // Parens and `= expr` fn bodies are transparent.
-  ParenExpr { inner: $e } ==> $e to MIR
+  // `= expr` fn bodies are transparent (parens live in paren_annot).
   ExprBody { body: $e } ==> $e to MIR
 
   // match auto-unrolls its scrutinee (legacy mk_unroll).

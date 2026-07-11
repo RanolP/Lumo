@@ -159,11 +159,70 @@ use foo.g;
 def g = thunk { let m = force require("foo") in sel m.g }
 def f = thunk { fn(x) => force g(x) }
 
-=== annotated parens elaborate transparently ===
+=== expression annotations survive as ParenV (M2 step 2) ===
 :elab(Lumo -> MIR)
 
 fn a(x) = (x : Number)
 
 ---
 
-def a = thunk { fn(x) => ret x }
+def a = thunk { fn(x) => ret (x : Number) }
+
+=== fully annotated signatures become def-level annotations (M2 step 2) ===
+:elab(Lumo -> MIR)
+
+fn inc(x: Number): Number = x
+
+---
+
+def inc = (thunk { fn(x) => ret x } : U((Number) -> F(Number)))
+
+=== partial signatures leave the def to inference ===
+:elab(Lumo -> MIR)
+
+fn f(x: Number) = x
+fn g(x): Number = x
+
+---
+
+def f = thunk { fn(x) => ret x }
+def g = thunk { fn(x) => ret x }
+
+=== cap annotations become rows on the innermost F (D-41) ===
+:elab(Lumo -> MIR)
+
+cap Console {
+  fn log(msg)
+}
+fn hi(x: String): String / {Console} = Console.log(x)
+
+---
+
+def hi = (thunk { fn(x) => let __t1 = perform Console in sel __t1.log(x) } : U((String) -> F(String) / {Console}))
+
+=== generic params become forall binders (D-40) ===
+:elab(Lumo -> MIR)
+
+fn id[A](x: A): A = x
+
+---
+
+def id = (thunk { fn(x) => ret x } : U(forall A. (A) -> F(A)))
+
+=== cap-row variables carry over as row rests (D-41) ===
+:elab(Lumo -> MIR)
+
+fn go[cap c](x: thunk Number): Number / {..c} = force x
+
+---
+
+def go = (thunk { fn(x) => force x } : U(forall c. (U(F(Number))) -> F(Number) / {..c}))
+
+=== annotated self-recursion keeps the annotation around fix ===
+:elab(Lumo -> MIR)
+
+fn spin(x: Number): Number = spin(x)
+
+---
+
+def spin = (thunk { fix spin => fn(x) => force spin(x) } : U((Number) -> F(Number)))

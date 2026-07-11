@@ -44,6 +44,9 @@ pub trait Externs {
     /// `extern rule fn_curry from Lumo to MIR`
     fn rule_fn_curry(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
 
+    /// `extern rule paren_annot from Lumo to MIR`
+    fn rule_paren_annot(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
     /// `extern rule block from Lumo to MIR`
     fn rule_block(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
 
@@ -111,6 +114,9 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
     if let Some(frag) = externs.rule_fn_curry(ctx, node) {
         return Some(frag);
     }
+    if let Some(frag) = externs.rule_paren_annot(ctx, node) {
+        return Some(frag);
+    }
     if let Some(frag) = externs.rule_block(ctx, node) {
         return Some(frag);
     }
@@ -125,35 +131,35 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
     }
     match node.kind {
         FromKind::BIND_PATTERN => {
-            if let Some(frag) = rule_13(ctx, externs, node) {
+            if let Some(frag) = rule_12(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `BIND_PATTERN`: {}", crate::lumo::printer::canonical(node)));
             None
         }
         FromKind::BUNDLE_ENTRY => {
-            if let Some(frag) = rule_11(ctx, externs, node) {
+            if let Some(frag) = rule_10(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `BUNDLE_ENTRY`: {}", crate::lumo::printer::canonical(node)));
             None
         }
         FromKind::BUNDLE_EXPR => {
-            if let Some(frag) = rule_10(ctx, externs, node) {
+            if let Some(frag) = rule_9(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `BUNDLE_EXPR`: {}", crate::lumo::printer::canonical(node)));
             None
         }
         FromKind::EXPR_BODY => {
-            if let Some(frag) = rule_7(ctx, externs, node) {
+            if let Some(frag) = rule_6(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `EXPR_BODY`: {}", crate::lumo::printer::canonical(node)));
             None
         }
         FromKind::EXPR_POSTFIX => {
-            if let Some(frag) = rule_16(ctx, externs, node) {
+            if let Some(frag) = rule_15(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `EXPR_POSTFIX`: {}", crate::lumo::printer::canonical(node)));
@@ -167,7 +173,7 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
             None
         }
         FromKind::HANDLE_EXPR => {
-            if let Some(frag) = rule_9(ctx, externs, node) {
+            if let Some(frag) = rule_8(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `HANDLE_EXPR`: {}", crate::lumo::printer::canonical(node)));
@@ -181,14 +187,14 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
             None
         }
         FromKind::IDENT_PATTERN => {
-            if let Some(frag) = rule_14(ctx, externs, node) {
+            if let Some(frag) = rule_13(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `IDENT_PATTERN`: {}", crate::lumo::printer::canonical(node)));
             None
         }
         FromKind::MATCH_EXPR => {
-            if let Some(frag) = rule_8(ctx, externs, node) {
+            if let Some(frag) = rule_7(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `MATCH_EXPR`: {}", crate::lumo::printer::canonical(node)));
@@ -202,17 +208,10 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
             None
         }
         FromKind::PARAM => {
-            if let Some(frag) = rule_12(ctx, externs, node) {
+            if let Some(frag) = rule_11(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `PARAM`: {}", crate::lumo::printer::canonical(node)));
-            None
-        }
-        FromKind::PAREN_EXPR => {
-            if let Some(frag) = rule_6(ctx, externs, node) {
-                return Some(frag);
-            }
-            ctx.error(format!("no rule matched `PAREN_EXPR`: {}", crate::lumo::printer::canonical(node)));
             None
         }
         FromKind::PERFORM_EXPR => {
@@ -237,7 +236,7 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
             None
         }
         FromKind::WILDCARD_PATTERN => {
-            if let Some(frag) = rule_15(ctx, externs, node) {
+            if let Some(frag) = rule_14(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `WILDCARD_PATTERN`: {}", crate::lumo::printer::canonical(node)));
@@ -367,18 +366,8 @@ fn rule_5(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opti
     Some(r3)
 }
 
-/// Rule 6: `ParenExpr` ==> …
+/// Rule 6: `ExprBody` ==> …
 fn rule_6(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
-    if node.kind != FromKind::PAREN_EXPR {
-        return None;
-    }
-    let b_e = langue_rt::nth_node_in(node, &[FromKind::BLOCK_EXPR, FromKind::BUNDLE_EXPR, FromKind::EXPR_INFIX, FromKind::EXPR_POSTFIX, FromKind::EXPR_PREFIX, FromKind::FORCE_EXPR, FromKind::HANDLE_EXPR, FromKind::IDENT_EXPR, FromKind::IF_ELSE_EXPR, FromKind::LAMBDA_EXPR, FromKind::MATCH_EXPR, FromKind::NUMBER_EXPR, FromKind::PAREN_EXPR, FromKind::PERFORM_EXPR, FromKind::STRING_EXPR, FromKind::THUNK_EXPR], 0)?;
-    let mut c0 = elab_node(ctx, externs, b_e)?;
-    Some(c0)
-}
-
-/// Rule 7: `ExprBody` ==> …
-fn rule_7(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::EXPR_BODY {
         return None;
     }
@@ -387,8 +376,8 @@ fn rule_7(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opti
     Some(c0)
 }
 
-/// Rule 8: `MatchExpr` ==> …
-fn rule_8(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 7: `MatchExpr` ==> …
+fn rule_7(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::MATCH_EXPR {
         return None;
     }
@@ -415,8 +404,8 @@ fn rule_8(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opti
     Some(r6)
 }
 
-/// Rule 9: `HandleExpr` ==> …
-fn rule_9(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 8: `HandleExpr` ==> …
+fn rule_8(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::HANDLE_EXPR {
         return None;
     }
@@ -437,8 +426,8 @@ fn rule_9(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opti
     Some(r5)
 }
 
-/// Rule 10: `BundleExpr` ==> …
-fn rule_10(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 9: `BundleExpr` ==> …
+fn rule_9(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::BUNDLE_EXPR {
         return None;
     }
@@ -458,8 +447,8 @@ fn rule_10(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opt
     Some(r3)
 }
 
-/// Rule 11: `BundleEntry` ==> …
-fn rule_11(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 10: `BundleEntry` ==> …
+fn rule_10(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::BUNDLE_ENTRY {
         return None;
     }
@@ -490,8 +479,8 @@ fn rule_11(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opt
     Some(r7)
 }
 
-/// Rule 12: `Param` ==> …
-fn rule_12(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 11: `Param` ==> …
+fn rule_11(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::PARAM {
         return None;
     }
@@ -504,8 +493,8 @@ fn rule_12(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opt
     Some(r3)
 }
 
-/// Rule 13: `BindPattern` ==> …
-fn rule_13(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 12: `BindPattern` ==> …
+fn rule_12(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::BIND_PATTERN {
         return None;
     }
@@ -518,8 +507,8 @@ fn rule_13(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opt
     Some(r3)
 }
 
-/// Rule 14: `IdentPattern` ==> …
-fn rule_14(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 13: `IdentPattern` ==> …
+fn rule_13(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::IDENT_PATTERN {
         return None;
     }
@@ -532,8 +521,8 @@ fn rule_14(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opt
     Some(r3)
 }
 
-/// Rule 15: `WildcardPattern` ==> …
-fn rule_15(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 14: `WildcardPattern` ==> …
+fn rule_14(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::WILDCARD_PATTERN {
         return None;
     }
@@ -544,8 +533,8 @@ fn rule_15(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opt
     Some(r2)
 }
 
-/// Rule 16: `ExprPostfix` ==> …
-fn rule_16(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 15: `ExprPostfix` ==> …
+fn rule_15(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::EXPR_POSTFIX {
         return None;
     }

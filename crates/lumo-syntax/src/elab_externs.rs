@@ -116,6 +116,138 @@ impl LumoToMir {
         Frag::node(MirKind::THUNK_V, builder::thunk_v(&text))
     }
 
+    /// Lumo TypeExpr → MIR TypeV text. `None` = not spellable in MIR
+    /// (assoc types are deferred, D-39) — the caller drops the
+    /// annotation and leaves the def to inference.
+    fn type_v(&mut self, ty: &l::TypeExpr<'_>) -> Option<String> {
+        match ty {
+            l::TypeExpr::NamedTypeExpr(n) => {
+                if n.assoc().is_some() {
+                    return None;
+                }
+                let name = n.name()?.text.clone();
+                let args = match n.generic_args() {
+                    None => None,
+                    Some(args) => Some(self.type_args(args)?),
+                };
+                Some(builder::named_type_v(&name, args.as_deref()))
+            }
+            // `thunk T` is U of T-as-computation.
+            l::TypeExpr::ThunkTypeExpr(t) => {
+                let inner = self.type_c(&t.inner()?)?;
+                Some(builder::u_type_v(&inner))
+            }
+            // A fn type in value position is an implicit thunk.
+            l::TypeExpr::FnTypeExpr(f) => {
+                let inner = self.fn_type_c(f)?;
+                Some(builder::u_type_v(&inner))
+            }
+        }
+    }
+
+    /// Lumo TypeExpr → MIR TypeC text: fn types curry, anything else
+    /// is a returner `F(V)`.
+    fn type_c(&mut self, ty: &l::TypeExpr<'_>) -> Option<String> {
+        match ty {
+            l::TypeExpr::FnTypeExpr(f) => self.fn_type_c(f),
+            _ => Some(builder::f_type_c(&self.type_v(ty)?, None)),
+        }
+    }
+
+    /// `(A, B) -> R / {row}` curries one param per arrow to mirror
+    /// `curry()`; zero params yield the bare `F` (a nullary fn is just
+    /// a thunk). The row sits on the innermost F (D-41).
+    fn fn_type_c(&mut self, f: &l::FnTypeExpr<'_>) -> Option<String> {
+        let params: Vec<l::TypeExpr<'_>> = f.params().collect();
+        let row = match f.cap_annotation() {
+            None => None,
+            Some(a) => Some(self.cap_row(a)?),
+        };
+        let ret = f.return_type()?;
+        let mut text = match (&ret, &row) {
+            (l::TypeExpr::FnTypeExpr(_), None) => self.type_c(&ret)?,
+            // A row on an arrow is the latent-effect case — not
+            // spellable in MIR (D-41).
+            (l::TypeExpr::FnTypeExpr(_), Some(_)) => return None,
+            _ => builder::f_type_c(&self.type_v(&ret)?, row.as_deref()),
+        };
+        for param in params.iter().rev() {
+            text = builder::fn_type_c(&[&self.type_v(param)?], &text);
+        }
+        Some(text)
+    }
+
+    fn type_args(&mut self, args: l::GenericArgs<'_>) -> Option<String> {
+        let mut texts: Vec<String> = Vec::new();
+        for arg in args.args() {
+            texts.push(self.type_v(&arg)?);
+        }
+        let refs: Vec<&str> = texts.iter().map(String::as_str).collect();
+        Some(builder::type_args(&refs))
+    }
+
+    /// CapAnnotation → CapRow: `/ { State[Number], ..c }` carries over
+    /// entry by entry (D-41).
+    fn cap_row(&mut self, annotation: l::CapAnnotation<'_>) -> Option<String> {
+        let mut entries: Vec<String> = Vec::new();
+        for entry in annotation.cap()?.entries() {
+            let body = match entry.body()? {
+                l::CapEntryBody::CapSig(sig) => {
+                    let name = sig.name()?.text.clone();
+                    let args = match sig.generic_args() {
+                        None => None,
+                        Some(args) => Some(self.type_args(args)?),
+                    };
+                    builder::cap_sig(&name, args.as_deref())
+                }
+                l::CapEntryBody::CapRest(rest) => {
+                    builder::cap_rest(rest.name().map(|t| t.text.as_str()))
+                }
+            };
+            entries.push(builder::cap_entry(&body));
+        }
+        let refs: Vec<&str> = entries.iter().map(String::as_str).collect();
+        Some(builder::cap_row(&builder::cap_set(&refs)))
+    }
+
+    /// The def-level annotation for a fully annotated fn signature
+    /// (M2 step 2): every param typed and a return type present —
+    /// otherwise `None` and the def is left to inference. Bounded
+    /// generics also bail (bounds are deferred, D-39).
+    fn fn_signature_type(&mut self, f: &l::FnDecl<'_>) -> Option<String> {
+        let ret = f.return_type()?;
+        let mut param_types: Vec<String> = Vec::new();
+        for param in f.param_list()?.params() {
+            param_types.push(self.type_v(&param.ty()?)?);
+        }
+        let row = match f.cap_annotation() {
+            None => None,
+            Some(a) => Some(self.cap_row(a)?),
+        };
+        let mut text = match (&ret, &row) {
+            (l::TypeExpr::FnTypeExpr(_), None) => self.type_c(&ret)?,
+            (l::TypeExpr::FnTypeExpr(_), Some(_)) => return None,
+            _ => builder::f_type_c(&self.type_v(&ret)?, row.as_deref()),
+        };
+        for ty in param_types.iter().rev() {
+            text = builder::fn_type_c(&[ty], &text);
+        }
+        if let Some(generics) = f.generic_params() {
+            let mut binders: Vec<String> = Vec::new();
+            for param in generics.params() {
+                if param.constraint().is_some() {
+                    return None;
+                }
+                binders.push(param.name()?.text.clone());
+            }
+            if !binders.is_empty() {
+                let refs: Vec<&str> = binders.iter().map(String::as_str).collect();
+                text = builder::forall_type_c(&refs, &text);
+            }
+        }
+        Some(builder::u_type_v(&text))
+    }
+
     /// Legacy member classification: data ctor / cap op / value method.
     fn classify_member(
         &mut self,
@@ -321,7 +453,13 @@ impl Externs for LumoToMir {
                     .collect();
                 let body = self.elab_body(ctx, f.body()?)?;
                 let value = self.curry(&params, body);
-                Some(Frag::node(MirKind::DEF, builder::def(&name, &value.text)))
+                // M2 step 2: a fully annotated signature survives as a
+                // def-level `(thunk {…} : U(…))` annotation.
+                let text = match self.fn_signature_type(&f) {
+                    Some(ty) => builder::paren_v(&value.text, Some(&ty)),
+                    None => value.text,
+                };
+                Some(Frag::node(MirKind::DEF, builder::def(&name, &text)))
             }
             LumoKind::LAMBDA_EXPR => {
                 let f = l::LambdaExpr::cast(node)?;
@@ -335,6 +473,22 @@ impl Externs for LumoToMir {
             }
             _ => None,
         }
+    }
+
+    /// `(e : T)` keeps its annotation as a ParenV when the type
+    /// translates (D-17's judgments consume it); plain parens and
+    /// untranslatable types stay transparent. A computation inner
+    /// coerces through a fresh binder first (D-38).
+    fn rule_paren_annot(&mut self, ctx: &mut ElabCtx, node: &FromNodeAlias) -> Option<ToFrag> {
+        let p = l::ParenExpr::cast(node)?;
+        let inner = elab_node(ctx, self, p.inner()?.syntax())?;
+        let Some(ty) = p.ty() else { return Some(inner) };
+        let Some(tv) = self.type_v(&ty) else { return Some(inner) };
+        let value = self.to_value(ctx, inner);
+        let mut frag =
+            Frag::node(MirKind::PAREN_V, builder::paren_v(&value.text, Some(&tv)));
+        frag.pending = value.pending;
+        Some(frag)
     }
 
     /// Blocks fold right-to-left: `let x = e;` becomes `let x = c in …`,
@@ -480,6 +634,23 @@ impl Externs for LumoToMir {
                     let body = crate::mir::printer::canonical(thunk.body()?.syntax());
                     let fixed = builder::thunk_v(&builder::fix_c(&name.text, &body));
                     defs.push(builder::def(&name.text, &fixed));
+                    changed = true;
+                }
+                // An annotated def keeps its annotation around the fix.
+                (m::Value::ParenV(paren), true) => {
+                    let (Some(m::Value::ThunkV(thunk)), Some(ty)) =
+                        (paren.inner(), paren.ty())
+                    else {
+                        defs.push(crate::mir::printer::canonical(def.syntax()));
+                        continue;
+                    };
+                    let body = crate::mir::printer::canonical(thunk.body()?.syntax());
+                    let fixed = builder::thunk_v(&builder::fix_c(&name.text, &body));
+                    let ty = crate::mir::printer::canonical(ty.syntax());
+                    defs.push(builder::def(
+                        &name.text,
+                        &builder::paren_v(&fixed, Some(&ty)),
+                    ));
                     changed = true;
                 }
                 _ => defs.push(crate::mir::printer::canonical(def.syntax())),
