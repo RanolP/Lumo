@@ -850,13 +850,11 @@ impl Parser<'_> {
     /// A goal: a bare call (`check_C $a $b with Γ+{a: b}`), a
     /// parenthesized call, or a unification `a = b`.
     fn parse_body_goal(&mut self) -> Option<BodyGoal> {
-        // Bare call: a Name directly followed by a term start that is
-        // not `{` (which would open the Name's own field block).
+        // Bare call: a Name directly followed by a `$var`/`'lit'`
+        // argument. `Name {` opens the Name's own field block and
+        // `Name (` is a raw functor term — both unify-goal heads.
         if matches!(self.cur().kind, TokenKind::Name(_))
-            && matches!(
-                self.nth(1).kind,
-                TokenKind::Var(_) | TokenKind::Str(_) | TokenKind::Punct('(')
-            )
+            && matches!(self.nth(1).kind, TokenKind::Var(_) | TokenKind::Str(_))
         {
             return Some(BodyGoal::Call(self.parse_bare_call(false)?));
         }
@@ -904,7 +902,11 @@ impl Parser<'_> {
 
     fn at_term_start(&self, allow_name: bool) -> bool {
         match &self.cur().kind {
-            TokenKind::Var(_) | TokenKind::Str(_) | TokenKind::Punct('(') => true,
+            TokenKind::Var(_)
+            | TokenKind::Str(_)
+            | TokenKind::Punct('(')
+            | TokenKind::Punct('[')
+            | TokenKind::Punct('{') => true,
             // `with` ends the argument list either way.
             TokenKind::Name(n) => allow_name && n != "with",
             _ => false,
@@ -941,8 +943,9 @@ impl Parser<'_> {
             TokenKind::Var(name) => {
                 self.pos += 1;
                 // `$e[$b := $a]` — the built-in subst tactic (D-24),
-                // same surface as elab constructions.
-                if self.at_punct('[') {
+                // same surface as elab constructions. The `[` must be
+                // adjacent — `f $x [] …` is a var then a list argument.
+                if self.at_punct('[') && self.cur().span.start == span.end {
                     self.pos += 1;
                     let var = self.expect_var("the bound metavariable")?;
                     self.expect_sym(":=");
@@ -970,9 +973,57 @@ impl Parser<'_> {
                 self.expect_punct(')');
                 Some(TermExpr::Call(CallGoal { span: span.cover(end), ..call }))
             }
+            // `[]` / `[$h | $t]` — cons lists.
+            TokenKind::Punct('[') => {
+                self.pos += 1;
+                if self.at_punct(']') {
+                    let end = self.bump().span;
+                    return Some(TermExpr::List { head: None, span: span.cover(end) });
+                }
+                let head = self.parse_term_expr()?;
+                self.expect_punct('|');
+                let tail = self.parse_term_expr()?;
+                let end = self.cur().span;
+                self.expect_punct(']');
+                Some(TermExpr::List {
+                    head: Some(Box::new((head, tail))),
+                    span: span.cover(end),
+                })
+            }
+            // `{ a, b | rest }` — a hash-keyed set, optionally open.
+            TokenKind::Punct('{') => {
+                self.pos += 1;
+                let mut entries = Vec::new();
+                while !self.at_punct('}') && !self.at_punct('|') && !self.at_eof() {
+                    entries.push(self.parse_term_expr()?);
+                    if !self.eat_punct(',') {
+                        break;
+                    }
+                }
+                let rest = if self.eat_punct('|') {
+                    Some(Box::new(self.parse_term_expr()?))
+                } else {
+                    None
+                };
+                let end = self.cur().span;
+                self.expect_punct('}');
+                Some(TermExpr::SetExt { entries, rest, span: span.cover(end) })
+            }
             TokenKind::Name(name) => {
                 self.pos += 1;
-                // `Γ.$name` — a context read (D-16).
+                // The lexer joins dotted names (`Σ.Op`); in term
+                // position the first segment is a context name (D-16),
+                // so split the read back apart.
+                if let Some((ctx, rest)) = name.split_once('.') {
+                    let key = self.parse_named_term(rest.to_owned(), span)?;
+                    let end = key.span();
+                    return Some(TermExpr::CtxRead {
+                        ctx: ctx.to_owned(),
+                        key: Box::new(key),
+                        span: span.cover(end),
+                    });
+                }
+                // `Γ.$name` — a context read with a metavariable key.
                 if self.eat_punct('.') {
                     let key = self.parse_term_expr()?;
                     let end = key.span();
@@ -982,32 +1033,50 @@ impl Parser<'_> {
                         span: span.cover(end),
                     });
                 }
-                let mut fields = Vec::new();
-                let mut end = span;
-                if self.eat_punct('{') {
-                    while !self.at_punct('}') && !self.at_eof() {
-                        let (field, _) = self.expect_name("a field label");
-                        if field.is_empty() {
-                            self.recover_rule_body();
-                            break;
-                        }
-                        self.expect_punct(':');
-                        let value = self.parse_term_expr()?;
-                        fields.push((field, value));
-                        if !self.eat_punct(',') {
-                            break;
-                        }
-                    }
-                    end = self.cur().span;
-                    self.expect_punct('}');
-                }
-                Some(TermExpr::Node { name, fields, span: span.cover(end) })
+                self.parse_named_term(name, span)
             }
             other => {
                 self.error_here(format!("expected a term, found {}", other.describe()));
                 None
             }
         }
+    }
+
+    /// A term starting with an already-consumed name: a raw functor
+    /// (`Variant($o, $ps)`), a node with fields, or a bare node.
+    fn parse_named_term(&mut self, name: String, span: Span) -> Option<TermExpr> {
+        if self.eat_punct('(') {
+            let mut args = Vec::new();
+            while !self.at_punct(')') && !self.at_eof() {
+                args.push(self.parse_term_expr()?);
+                if !self.eat_punct(',') {
+                    break;
+                }
+            }
+            let end = self.cur().span;
+            self.expect_punct(')');
+            return Some(TermExpr::Apply { name, args, span: span.cover(end) });
+        }
+        let mut fields = Vec::new();
+        let mut end = span;
+        if self.eat_punct('{') {
+            while !self.at_punct('}') && !self.at_eof() {
+                let (field, _) = self.expect_name("a field label");
+                if field.is_empty() {
+                    self.recover_rule_body();
+                    break;
+                }
+                self.expect_punct(':');
+                let value = self.parse_term_expr()?;
+                fields.push((field, value));
+                if !self.eat_punct(',') {
+                    break;
+                }
+            }
+            end = self.cur().span;
+            self.expect_punct('}');
+        }
+        Some(TermExpr::Node { name, fields, span: span.cover(end) })
     }
 
     // === patterns and constructions (D-35) ===

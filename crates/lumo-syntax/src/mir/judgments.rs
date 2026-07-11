@@ -9,10 +9,32 @@ use super::syntax_kind::SyntaxKind;
 
 pub fn arity(judgment: &str) -> Option<usize> {
     match judgment {
-        "infer_C" => Some(2),
+        "annot" => Some(3),
+        "apply" => Some(4),
+        "arm_bind" => Some(5),
+        "binds" => Some(5),
+        "case_arm" => Some(4),
+        "case_arms" => Some(4),
+        "check_C" => Some(3),
+        "check_V" => Some(2),
+        "check_args" => Some(2),
+        "clause_names" => Some(2),
+        "clauses_check" => Some(2),
+        "coerce_c" => Some(2),
+        "coerce_v" => Some(2),
+        "ctor" => Some(3),
+        "ctor_args" => Some(3),
+        "infer_C" => Some(3),
         "infer_V" => Some(2),
-        "mono_a" => Some(2),
-        "row_of" => Some(2),
+        "inst" => Some(3),
+        "match_c" => Some(2),
+        "norm_args" => Some(2),
+        "norm_c" => Some(2),
+        "norm_list" => Some(2),
+        "norm_row" => Some(2),
+        "norm_sigs" => Some(3),
+        "norm_v" => Some(2),
+        "op_check" => Some(3),
         _ => None,
     }
 }
@@ -21,23 +43,531 @@ pub fn arity(judgment: &str) -> Option<usize> {
 pub fn rules() -> Vec<Rule> {
     vec![
         Rule {
-            judgment: "infer_C".to_owned(),
-            params: vec![app("RetC", vec![var(0)]), var(1)],
+            judgment: "annot".to_owned(),
+            params: vec![var(0), atom("#none"), var(1)],
             var_count: 3,
             body: vec![
                 Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(2)], extends: vec![] },
-                Goal::Unify(var(1), app("FTypeC", vec![var(2), atom("#none")])),
+                Goal::Unify(var(1), var(2)),
+            ],
+        },
+        Rule {
+            judgment: "annot".to_owned(),
+            params: vec![var(0), app("UTypeV", vec![var(1)]), var(2)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "norm_v".to_owned(), args: vec![app("UTypeV", vec![var(1)]), var(4)], extends: vec![] },
+                Goal::Unify(var(3), var(4)),
+                Goal::Call { judgment: "check_V".to_owned(), args: vec![var(0), var(3)], extends: vec![] },
+                Goal::Unify(var(2), var(3)),
+            ],
+        },
+        Rule {
+            judgment: "annot".to_owned(),
+            params: vec![var(0), app("NamedTypeV", vec![var(1), var(2)]), var(3)],
+            var_count: 6,
+            body: vec![
+                Goal::Call { judgment: "norm_v".to_owned(), args: vec![app("NamedTypeV", vec![var(1), var(2)]), var(5)], extends: vec![] },
+                Goal::Unify(var(4), var(5)),
+                Goal::Call { judgment: "check_V".to_owned(), args: vec![var(0), var(4)], extends: vec![] },
+                Goal::Unify(var(3), var(4)),
+            ],
+        },
+        Rule {
+            judgment: "apply".to_owned(),
+            params: vec![app("ForallTypeC", vec![var(0), var(1)]), var(2), var(3), var(4)],
+            var_count: 6,
+            body: vec![
+                Goal::Call { judgment: "inst".to_owned(), args: vec![var(0), var(1), var(5)], extends: vec![] },
+                Goal::Call { judgment: "apply".to_owned(), args: vec![var(5), var(2), var(3), var(4)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "apply".to_owned(),
+            params: vec![app("FnTypeC", vec![app("#cons", vec![var(0), atom("#nil")]), var(1)]), app("#cons", vec![var(2), var(3)]), var(4), var(5)],
+            var_count: 6,
+            body: vec![
+                Goal::Call { judgment: "check_V".to_owned(), args: vec![var(2), var(0)], extends: vec![] },
+                Goal::Call { judgment: "apply".to_owned(), args: vec![var(1), var(3), var(4), var(5)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "apply".to_owned(),
+            params: vec![app("FnTypeC", vec![app("#cons", vec![var(0), atom("#nil")]), var(1)]), atom("#nil"), var(2), var(3)],
+            var_count: 4,
+            body: vec![
+                Goal::Unify(var(2), app("FnTypeC", vec![app("#cons", vec![var(0), atom("#nil")]), var(1)])),
+            ],
+        },
+        Rule {
+            judgment: "apply".to_owned(),
+            params: vec![app("FTypeC", vec![var(0), var(1)]), atom("#nil"), var(2), var(3)],
+            var_count: 4,
+            body: vec![
+                Goal::Subset { sub: var(1), superset: var(3) },
+                Goal::Unify(var(2), app("FTypeC", vec![var(0), var(1)])),
+            ],
+        },
+        Rule {
+            judgment: "arm_bind".to_owned(),
+            params: vec![atom("#none"), var(0), var(1), var(2), var(3)],
+            var_count: 4,
+            body: vec![
+                Goal::Unify(var(0), atom("#nil")),
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(1), var(2), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "arm_bind".to_owned(),
+            params: vec![app("CaseBinders", vec![var(0)]), var(1), var(2), var(3), var(4)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "binds".to_owned(), args: vec![var(0), var(1), var(2), var(3), var(4)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "binds".to_owned(),
+            params: vec![atom("#nil"), atom("#nil"), var(0), var(1), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(0), var(1), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "binds".to_owned(),
+            params: vec![app("#cons", vec![var(0), var(1)]), app("#cons", vec![var(2), var(3)]), var(4), var(5), var(6)],
+            var_count: 7,
+            body: vec![
+                Goal::Call { judgment: "binds".to_owned(), args: vec![var(1), var(3), var(4), var(5), var(6)], extends: vec![("Γ".to_owned(), var(0), var(2))] },
+            ],
+        },
+        Rule {
+            judgment: "case_arm".to_owned(),
+            params: vec![app("CaseArm", vec![var(0), var(1), var(2)]), var(3), var(4), var(5)],
+            var_count: 13,
+            body: vec![
+                Goal::CtxRead { ctx: "Δ".to_owned(), key: var(0), value: var(9) },
+                Goal::Unify(app("Variant", vec![var(6), var(7), var(8)]), var(9)),
+                Goal::Call { judgment: "inst".to_owned(), args: vec![var(7), app("P", vec![var(6), var(8)]), var(12)], extends: vec![] },
+                Goal::Unify(app("P", vec![var(10), var(11)]), var(12)),
+                Goal::Unify(var(10), var(3)),
+                Goal::Call { judgment: "arm_bind".to_owned(), args: vec![var(1), var(11), var(2), var(4), var(5)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "case_arms".to_owned(),
+            params: vec![atom("#nil"), var(0), var(1), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Unify(atom("#nil"), atom("#nil")),
+            ],
+        },
+        Rule {
+            judgment: "case_arms".to_owned(),
+            params: vec![app("#cons", vec![var(0), var(1)]), var(2), var(3), var(4)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "case_arm".to_owned(), args: vec![var(0), var(2), var(3), var(4)], extends: vec![] },
+                Goal::Call { judgment: "case_arms".to_owned(), args: vec![var(1), var(2), var(3), var(4)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("LamC", vec![var(0), var(1)]), app("FnTypeC", vec![app("#cons", vec![var(2), atom("#nil")]), var(3)]), var(4)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(1), var(3), var(4)], extends: vec![("Γ".to_owned(), var(0), var(2))] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("FixC", vec![var(0), var(1)]), var(2), var(3)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(1), var(2), var(3)], extends: vec![("Γ".to_owned(), var(0), app("UTypeV", vec![var(2)]))] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("RetC", vec![var(0)]), app("FTypeC", vec![var(1), var(2)]), var(3)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "check_V".to_owned(), args: vec![var(0), var(1)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("LetC", vec![var(0), var(1), var(2)]), app("FTypeC", vec![var(3), var(4)]), var(5)],
+            var_count: 9,
+            body: vec![
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(1), var(6), var(4)], extends: vec![] },
+                Goal::Unify(var(6), app("FTypeC", vec![var(7), var(8)])),
+                Goal::Subset { sub: var(8), superset: var(4) },
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(2), app("FTypeC", vec![var(3), var(4)]), var(4)], extends: vec![("Γ".to_owned(), var(0), var(7))] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("CaseC", vec![var(0), var(1)]), app("FTypeC", vec![var(2), var(3)]), var(4)],
+            var_count: 7,
+            body: vec![
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(6)], extends: vec![] },
+                Goal::Unify(var(5), var(6)),
+                Goal::Call { judgment: "case_arms".to_owned(), args: vec![var(1), var(5), app("FTypeC", vec![var(2), var(3)]), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("ForceC", vec![var(0)]), var(1), var(2)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(4)], extends: vec![] },
+                Goal::Unify(app("UTypeV", vec![var(3)]), var(4)),
+                Goal::Call { judgment: "match_c".to_owned(), args: vec![var(3), var(1)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("CompPostfix", vec![var(0), app("ValueArgs", vec![var(1)])]), var(2), var(3)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![app("CompPostfix", vec![var(0), app("ValueArgs", vec![var(1)])]), var(4), var(3)], extends: vec![] },
+                Goal::Call { judgment: "match_c".to_owned(), args: vec![var(4), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("PerformC", vec![var(0)]), app("FTypeC", vec![var(1), var(2)]), var(3)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![app("PerformC", vec![var(0)]), var(4), var(2)], extends: vec![] },
+                Goal::Call { judgment: "match_c".to_owned(), args: vec![var(4), app("FTypeC", vec![var(1), var(2)])], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("SelC", vec![var(0), var(1)]), var(2), var(3)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![app("SelC", vec![var(0), var(1)]), var(4), var(3)], extends: vec![] },
+                Goal::Call { judgment: "match_c".to_owned(), args: vec![var(4), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("HandleC", vec![var(0), var(1), var(2)]), app("FTypeC", vec![var(3), var(4)]), var(5)],
+            var_count: 7,
+            body: vec![
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![app("HandleC", vec![var(0), var(1), var(2)]), var(6), var(4)], extends: vec![] },
+                Goal::Call { judgment: "match_c".to_owned(), args: vec![var(6), app("FTypeC", vec![var(3), var(4)])], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_C".to_owned(),
+            params: vec![app("ParenC", vec![var(0)]), var(1), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(0), var(1), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("NumV", vec![var(0)]), var(1)],
+            var_count: 2,
+            body: vec![
+                Goal::Unify(var(1), app("NamedTypeV", vec![atom("Number"), atom("#none")])),
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("StrV", vec![var(0)]), var(1)],
+            var_count: 2,
+            body: vec![
+                Goal::Unify(var(1), app("NamedTypeV", vec![atom("String"), atom("#none")])),
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("VarV", vec![var(0)]), var(1)],
+            var_count: 4,
+            body: vec![
+                Goal::CtxRead { ctx: "Γ".to_owned(), key: var(0), value: var(3) },
+                Goal::Unify(var(2), var(3)),
+                Goal::Call { judgment: "coerce_v".to_owned(), args: vec![var(2), var(1)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("ThunkV", vec![var(0)]), app("UTypeV", vec![app("FTypeC", vec![var(1), var(2)])])],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(0), app("FTypeC", vec![var(1), var(2)]), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("ThunkV", vec![var(0)]), app("UTypeV", vec![app("FnTypeC", vec![var(1), var(2)])])],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(0), app("FnTypeC", vec![var(1), var(2)]), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("ThunkV", vec![var(0)]), app("UTypeV", vec![app("ForallTypeC", vec![var(1), var(2)])])],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(0), var(2), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("RollV", vec![var(0)]), var(1)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![app("RollV", vec![var(0)]), var(2)], extends: vec![] },
+                Goal::Unify(var(1), var(2)),
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("UnrollV", vec![var(0)]), var(1)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![app("UnrollV", vec![var(0)]), var(2)], extends: vec![] },
+                Goal::Unify(var(1), var(2)),
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("ParenV", vec![var(0), var(1)]), var(2)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![app("ParenV", vec![var(0), var(1)]), var(3)], extends: vec![] },
+                Goal::Unify(var(2), var(3)),
+            ],
+        },
+        Rule {
+            judgment: "check_V".to_owned(),
+            params: vec![app("BundleV", vec![var(0)]), app("NamedTypeV", vec![var(1), var(2)])],
+            var_count: 8,
+            body: vec![
+                Goal::Call { judgment: "clause_names".to_owned(), args: vec![var(0), var(4)], extends: vec![] },
+                Goal::Unify(var(3), var(4)),
+                Goal::Hash { input: var(3), out: var(6) },
+                Goal::Unify(var(5), var(6)),
+                Goal::CtxRead { ctx: "Σ".to_owned(), key: app("Ops", vec![var(1)]), value: var(7) },
+                Goal::Unify(var(5), var(7)),
+                Goal::Call { judgment: "clauses_check".to_owned(), args: vec![var(0), var(1)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "check_args".to_owned(),
+            params: vec![atom("#nil"), atom("#nil")],
+            var_count: 0,
+            body: vec![
+                Goal::Unify(atom("#nil"), atom("#nil")),
+            ],
+        },
+        Rule {
+            judgment: "check_args".to_owned(),
+            params: vec![app("#cons", vec![var(0), var(1)]), app("#cons", vec![var(2), var(3)])],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "check_V".to_owned(), args: vec![var(0), var(2)], extends: vec![] },
+                Goal::Call { judgment: "check_args".to_owned(), args: vec![var(1), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "clause_names".to_owned(),
+            params: vec![atom("#nil"), var(0)],
+            var_count: 1,
+            body: vec![
+                Goal::Unify(var(0), atom("#nil")),
+            ],
+        },
+        Rule {
+            judgment: "clause_names".to_owned(),
+            params: vec![app("#cons", vec![app("BundleClause", vec![var(0), var(1), var(2)]), var(3)]), var(4)],
+            var_count: 6,
+            body: vec![
+                Goal::Call { judgment: "clause_names".to_owned(), args: vec![var(3), var(5)], extends: vec![] },
+                Goal::Unify(var(4), app("#cons", vec![var(0), var(5)])),
+            ],
+        },
+        Rule {
+            judgment: "clauses_check".to_owned(),
+            params: vec![atom("#nil"), var(0)],
+            var_count: 1,
+            body: vec![
+                Goal::Unify(atom("#nil"), atom("#nil")),
+            ],
+        },
+        Rule {
+            judgment: "clauses_check".to_owned(),
+            params: vec![app("#cons", vec![app("BundleClause", vec![var(0), var(1), var(2)]), var(3)]), var(4)],
+            var_count: 7,
+            body: vec![
+                Goal::CtxRead { ctx: "Σ".to_owned(), key: app("Op", vec![var(4), var(0)]), value: var(6) },
+                Goal::Unify(var(5), var(6)),
+                Goal::Call { judgment: "op_check".to_owned(), args: vec![var(1), var(5), var(2)], extends: vec![] },
+                Goal::Call { judgment: "clauses_check".to_owned(), args: vec![var(3), var(4)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "coerce_c".to_owned(),
+            params: vec![app("ForallTypeC", vec![var(0), var(1)]), var(2)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "inst".to_owned(), args: vec![var(0), var(1), var(3)], extends: vec![] },
+                Goal::Call { judgment: "coerce_c".to_owned(), args: vec![var(3), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "coerce_c".to_owned(),
+            params: vec![app("FTypeC", vec![var(0), var(1)]), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Unify(var(2), app("FTypeC", vec![var(0), var(1)])),
+            ],
+        },
+        Rule {
+            judgment: "coerce_c".to_owned(),
+            params: vec![app("FnTypeC", vec![var(0), var(1)]), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Unify(var(2), app("FnTypeC", vec![var(0), var(1)])),
+            ],
+        },
+        Rule {
+            judgment: "coerce_v".to_owned(),
+            params: vec![app("UTypeV", vec![var(0)]), var(1)],
+            var_count: 3,
+            body: vec![
+                Goal::Unify(var(1), app("UTypeV", vec![var(2)])),
+                Goal::Call { judgment: "coerce_c".to_owned(), args: vec![var(0), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "coerce_v".to_owned(),
+            params: vec![app("NamedTypeV", vec![var(0), var(1)]), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Unify(var(2), app("NamedTypeV", vec![var(0), var(1)])),
+            ],
+        },
+        Rule {
+            judgment: "ctor".to_owned(),
+            params: vec![var(0), atom("#none"), var(1)],
+            var_count: 2,
+            body: vec![
+                Goal::Call { judgment: "ctor_args".to_owned(), args: vec![var(0), atom("#nil"), var(1)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "ctor".to_owned(),
+            params: vec![var(0), app("CtorArgs", vec![var(1)]), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "ctor_args".to_owned(), args: vec![var(0), var(1), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "ctor_args".to_owned(),
+            params: vec![var(0), var(1), var(2)],
+            var_count: 10,
+            body: vec![
+                Goal::CtxRead { ctx: "Δ".to_owned(), key: var(0), value: var(6) },
+                Goal::Unify(app("Variant", vec![var(3), var(4), var(5)]), var(6)),
+                Goal::Call { judgment: "inst".to_owned(), args: vec![var(4), app("P", vec![var(3), var(5)]), var(9)], extends: vec![] },
+                Goal::Unify(app("P", vec![var(7), var(8)]), var(9)),
+                Goal::Call { judgment: "check_args".to_owned(), args: vec![var(1), var(8)], extends: vec![] },
+                Goal::Unify(var(2), var(7)),
             ],
         },
         Rule {
             judgment: "infer_C".to_owned(),
-            params: vec![app("LetC", vec![var(0), var(1), var(2)]), var(3)],
-            var_count: 7,
+            params: vec![app("RetC", vec![var(0)]), var(1), var(2)],
+            var_count: 4,
             body: vec![
-                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(1), var(5)], extends: vec![] },
-                Goal::Unify(app("FTypeC", vec![var(4), atom("#none")]), var(5)),
-                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(2), var(6)], extends: vec![("Γ".to_owned(), var(0), var(4))] },
-                Goal::Unify(var(3), var(6)),
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(3)], extends: vec![] },
+                Goal::Unify(var(1), app("FTypeC", vec![var(3), langue_rt::set(vec![], None)])),
+            ],
+        },
+        Rule {
+            judgment: "infer_C".to_owned(),
+            params: vec![app("LetC", vec![var(0), var(1), var(2)]), var(3), var(4)],
+            var_count: 8,
+            body: vec![
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(1), var(5), var(4)], extends: vec![] },
+                Goal::Unify(var(5), app("FTypeC", vec![var(6), var(7)])),
+                Goal::Subset { sub: var(7), superset: var(4) },
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(2), var(3), var(4)], extends: vec![("Γ".to_owned(), var(0), var(6))] },
+            ],
+        },
+        Rule {
+            judgment: "infer_C".to_owned(),
+            params: vec![app("ForceC", vec![var(0)]), var(1), var(2)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(3)], extends: vec![] },
+                Goal::Unify(app("UTypeV", vec![var(1)]), var(3)),
+            ],
+        },
+        Rule {
+            judgment: "infer_C".to_owned(),
+            params: vec![app("CompPostfix", vec![var(0), app("ValueArgs", vec![var(1)])]), var(2), var(3)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(0), var(4), var(3)], extends: vec![] },
+                Goal::Call { judgment: "apply".to_owned(), args: vec![var(4), var(1), var(2), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "infer_C".to_owned(),
+            params: vec![app("PerformC", vec![var(0)]), var(1), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Subset { sub: langue_rt::set(vec![var(0)], None), superset: var(2) },
+                Goal::Unify(var(1), app("FTypeC", vec![app("NamedTypeV", vec![var(0), atom("#none")]), langue_rt::set(vec![], None)])),
+            ],
+        },
+        Rule {
+            judgment: "infer_C".to_owned(),
+            params: vec![app("SelC", vec![var(0), var(1)]), var(2), var(3)],
+            var_count: 8,
+            body: vec![
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(6)], extends: vec![] },
+                Goal::Unify(app("NamedTypeV", vec![var(4), var(5)]), var(6)),
+                Goal::CtxRead { ctx: "Σ".to_owned(), key: app("Op", vec![var(4), var(1)]), value: var(7) },
+                Goal::Unify(var(2), var(7)),
+            ],
+        },
+        Rule {
+            judgment: "infer_C".to_owned(),
+            params: vec![app("HandleC", vec![var(0), var(1), var(2)]), var(3), var(4)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "check_V".to_owned(), args: vec![var(1), app("NamedTypeV", vec![var(0), atom("#none")])], extends: vec![] },
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(2), var(3), langue_rt::set(vec![var(0)], Some(var(4)))], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "infer_C".to_owned(),
+            params: vec![app("CaseC", vec![var(0), var(1)]), var(2), var(3)],
+            var_count: 6,
+            body: vec![
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(5)], extends: vec![] },
+                Goal::Unify(var(4), var(5)),
+                Goal::Call { judgment: "case_arms".to_owned(), args: vec![var(1), var(4), var(2), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "infer_C".to_owned(),
+            params: vec![app("ParenC", vec![var(0)]), var(1), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(0), var(1), var(2)], extends: vec![] },
             ],
         },
         Rule {
@@ -68,39 +598,234 @@ pub fn rules() -> Vec<Rule> {
         Rule {
             judgment: "infer_V".to_owned(),
             params: vec![app("ThunkV", vec![var(0)]), var(1)],
-            var_count: 3,
+            var_count: 4,
             body: vec![
-                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(0), var(2)], extends: vec![] },
+                Goal::Call { judgment: "infer_C".to_owned(), args: vec![var(0), var(2), var(3)], extends: vec![] },
                 Goal::Unify(var(1), app("UTypeV", vec![var(2)])),
             ],
         },
         Rule {
             judgment: "infer_V".to_owned(),
             params: vec![app("ParenV", vec![var(0), var(1)]), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "annot".to_owned(), args: vec![var(0), var(1), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "infer_V".to_owned(),
+            params: vec![app("UnrollV", vec![var(0)]), var(1)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(2)], extends: vec![] },
+                Goal::Unify(var(1), var(2)),
+            ],
+        },
+        Rule {
+            judgment: "infer_V".to_owned(),
+            params: vec![app("RollV", vec![app("CtorV", vec![var(0), var(1)])]), var(2)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "ctor".to_owned(), args: vec![var(0), var(1), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "inst".to_owned(),
+            params: vec![atom("#nil"), var(0), var(1)],
+            var_count: 2,
+            body: vec![
+                Goal::Unify(var(1), var(0)),
+            ],
+        },
+        Rule {
+            judgment: "inst".to_owned(),
+            params: vec![app("#cons", vec![var(0), var(1)]), var(2), var(3)],
+            var_count: 13,
+            body: vec![
+                Goal::Unify(var(4), app("NamedTypeV", vec![var(0), atom("#none")])),
+                Goal::Subst { target: var(2), needle: var(4), replacement: var(6), out: var(7) },
+                Goal::Unify(var(5), var(7)),
+                Goal::Unify(var(8), app("RowVar", vec![var(0)])),
+                Goal::Subst { target: var(5), needle: var(8), replacement: var(10), out: var(11) },
+                Goal::Unify(var(9), var(11)),
+                Goal::Call { judgment: "inst".to_owned(), args: vec![var(1), var(9), var(12)], extends: vec![] },
+                Goal::Unify(var(3), var(12)),
+            ],
+        },
+        Rule {
+            judgment: "match_c".to_owned(),
+            params: vec![app("FTypeC", vec![var(0), var(1)]), app("FTypeC", vec![var(2), var(3)])],
             var_count: 4,
             body: vec![
-                Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(3)], extends: vec![] },
+                Goal::Unify(var(0), var(2)),
+                Goal::Subset { sub: var(1), superset: var(3) },
+            ],
+        },
+        Rule {
+            judgment: "match_c".to_owned(),
+            params: vec![app("FnTypeC", vec![app("#cons", vec![var(0), atom("#nil")]), var(1)]), app("FnTypeC", vec![app("#cons", vec![var(2), atom("#nil")]), var(3)])],
+            var_count: 4,
+            body: vec![
+                Goal::Unify(var(0), var(2)),
+                Goal::Call { judgment: "match_c".to_owned(), args: vec![var(1), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "match_c".to_owned(),
+            params: vec![app("ForallTypeC", vec![var(0), var(1)]), var(2)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "inst".to_owned(), args: vec![var(0), var(1), var(3)], extends: vec![] },
+                Goal::Call { judgment: "match_c".to_owned(), args: vec![var(3), var(2)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "norm_args".to_owned(),
+            params: vec![atom("#none"), var(0)],
+            var_count: 1,
+            body: vec![
+                Goal::Unify(var(0), atom("#none")),
+            ],
+        },
+        Rule {
+            judgment: "norm_args".to_owned(),
+            params: vec![app("TypeArgs", vec![var(0)]), var(1)],
+            var_count: 3,
+            body: vec![
+                Goal::Call { judgment: "norm_list".to_owned(), args: vec![var(0), var(2)], extends: vec![] },
+                Goal::Unify(var(1), app("TypeArgs", vec![var(2)])),
+            ],
+        },
+        Rule {
+            judgment: "norm_c".to_owned(),
+            params: vec![app("FTypeC", vec![var(0), var(1)]), var(2)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "norm_v".to_owned(), args: vec![var(0), var(3)], extends: vec![] },
+                Goal::Call { judgment: "norm_row".to_owned(), args: vec![var(1), var(4)], extends: vec![] },
+                Goal::Unify(var(2), app("FTypeC", vec![var(3), var(4)])),
+            ],
+        },
+        Rule {
+            judgment: "norm_c".to_owned(),
+            params: vec![app("FnTypeC", vec![var(0), var(1)]), var(2)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "norm_list".to_owned(), args: vec![var(0), var(3)], extends: vec![] },
+                Goal::Call { judgment: "norm_c".to_owned(), args: vec![var(1), var(4)], extends: vec![] },
+                Goal::Unify(var(2), app("FnTypeC", vec![var(3), var(4)])),
+            ],
+        },
+        Rule {
+            judgment: "norm_c".to_owned(),
+            params: vec![app("ForallTypeC", vec![var(0), var(1)]), var(2)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "norm_c".to_owned(), args: vec![var(1), var(3)], extends: vec![] },
+                Goal::Unify(var(2), app("ForallTypeC", vec![var(0), var(3)])),
+            ],
+        },
+        Rule {
+            judgment: "norm_list".to_owned(),
+            params: vec![atom("#nil"), var(0)],
+            var_count: 1,
+            body: vec![
+                Goal::Unify(var(0), atom("#nil")),
+            ],
+        },
+        Rule {
+            judgment: "norm_list".to_owned(),
+            params: vec![app("#cons", vec![var(0), var(1)]), var(2)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "norm_v".to_owned(), args: vec![var(0), var(3)], extends: vec![] },
+                Goal::Call { judgment: "norm_list".to_owned(), args: vec![var(1), var(4)], extends: vec![] },
+                Goal::Unify(var(2), app("#cons", vec![var(3), var(4)])),
+            ],
+        },
+        Rule {
+            judgment: "norm_row".to_owned(),
+            params: vec![atom("#none"), var(0)],
+            var_count: 1,
+            body: vec![
+                Goal::Unify(var(0), langue_rt::set(vec![], None)),
+            ],
+        },
+        Rule {
+            judgment: "norm_row".to_owned(),
+            params: vec![app("CapRow", vec![app("CapSet", vec![atom("#nil")])]), var(0)],
+            var_count: 1,
+            body: vec![
+                Goal::Unify(var(0), langue_rt::set(vec![], None)),
+            ],
+        },
+        Rule {
+            judgment: "norm_row".to_owned(),
+            params: vec![app("CapRow", vec![app("CapSet", vec![app("#cons", vec![app("CapEntry", vec![app("CapSig", vec![var(0), var(1)])]), var(2)])])]), var(3)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "norm_sigs".to_owned(), args: vec![var(2), langue_rt::set(vec![var(0)], None), var(4)], extends: vec![] },
+                Goal::Unify(var(3), var(4)),
+            ],
+        },
+        Rule {
+            judgment: "norm_row".to_owned(),
+            params: vec![app("CapRow", vec![app("CapSet", vec![app("#cons", vec![app("CapEntry", vec![app("CapRest", vec![var(0)])]), var(1)])])]), var(2)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "norm_sigs".to_owned(), args: vec![var(1), langue_rt::set(vec![], Some(app("RowVar", vec![var(0)]))), var(3)], extends: vec![] },
                 Goal::Unify(var(2), var(3)),
             ],
         },
         Rule {
-            judgment: "mono_a".to_owned(),
-            params: vec![app("FnTypeC", vec![var(0), var(1)]), var(2)],
-            var_count: 6,
+            judgment: "norm_sigs".to_owned(),
+            params: vec![atom("#nil"), var(0), var(1)],
+            var_count: 2,
             body: vec![
-                Goal::Unify(var(3), app("NamedTypeV", vec![atom("a"), atom("#none")])),
-                Goal::Unify(var(4), app("NamedTypeV", vec![atom("Number"), atom("#none")])),
-                Goal::Subst { target: var(1), needle: var(3), replacement: var(4), out: var(5) },
-                Goal::Unify(var(2), app("FnTypeC", vec![var(0), var(5)])),
+                Goal::Unify(var(1), var(0)),
             ],
         },
         Rule {
-            judgment: "row_of".to_owned(),
-            params: vec![app("CapRow", vec![app("CapSet", vec![var(0)])]), var(1)],
+            judgment: "norm_sigs".to_owned(),
+            params: vec![app("#cons", vec![app("CapEntry", vec![app("CapSig", vec![var(0), var(1)])]), var(2)]), var(3), var(4)],
+            var_count: 6,
+            body: vec![
+                Goal::Call { judgment: "norm_sigs".to_owned(), args: vec![var(2), langue_rt::set(vec![var(0)], Some(var(3))), var(5)], extends: vec![] },
+                Goal::Unify(var(4), var(5)),
+            ],
+        },
+        Rule {
+            judgment: "norm_v".to_owned(),
+            params: vec![app("UTypeV", vec![var(0)]), var(1)],
             var_count: 3,
             body: vec![
-                Goal::Hash { input: var(0), out: var(2) },
-                Goal::Unify(var(1), var(2)),
+                Goal::Call { judgment: "norm_c".to_owned(), args: vec![var(0), var(2)], extends: vec![] },
+                Goal::Unify(var(1), app("UTypeV", vec![var(2)])),
+            ],
+        },
+        Rule {
+            judgment: "norm_v".to_owned(),
+            params: vec![app("NamedTypeV", vec![var(0), var(1)]), var(2)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "norm_args".to_owned(), args: vec![var(1), var(3)], extends: vec![] },
+                Goal::Unify(var(2), app("NamedTypeV", vec![var(0), var(3)])),
+            ],
+        },
+        Rule {
+            judgment: "op_check".to_owned(),
+            params: vec![atom("#nil"), app("FTypeC", vec![var(0), var(1)]), var(2)],
+            var_count: 4,
+            body: vec![
+                Goal::Call { judgment: "check_C".to_owned(), args: vec![var(2), app("FTypeC", vec![var(0), var(1)]), var(3)], extends: vec![] },
+            ],
+        },
+        Rule {
+            judgment: "op_check".to_owned(),
+            params: vec![app("#cons", vec![var(0), var(1)]), app("FnTypeC", vec![app("#cons", vec![var(2), atom("#nil")]), var(3)]), var(4)],
+            var_count: 5,
+            body: vec![
+                Goal::Call { judgment: "op_check".to_owned(), args: vec![var(1), var(3), var(4)], extends: vec![("Γ".to_owned(), var(0), var(2))] },
             ],
         },
     ]
@@ -109,25 +834,25 @@ pub fn rules() -> Vec<Rule> {
 /// Encode a syntax node as a judgment term (see module docs).
 pub fn term_of(node: &SyntaxNode) -> Term {
     match node.kind {
-        SyntaxKind::BUNDLE_CLAUSE => app("BundleClause", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }, app("#list", langue_rt::tokens_of(node, SyntaxKind::IDENT, 1).into_iter().map(|t| atom(t.text.clone())).collect()), match langue_rt::nth_node_in(node, &[SyntaxKind::CASE_C, SyntaxKind::COMP_POSTFIX, SyntaxKind::FIX_C, SyntaxKind::FORCE_C, SyntaxKind::HANDLE_C, SyntaxKind::LAM_C, SyntaxKind::LET_C, SyntaxKind::PAREN_C, SyntaxKind::PERFORM_C, SyntaxKind::RET_C, SyntaxKind::SEL_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
-        SyntaxKind::BUNDLE_V => app("BundleV", vec![app("#list", langue_rt::nodes_in(node, &[SyntaxKind::BUNDLE_CLAUSE], 0).into_iter().map(term_of).collect())]),
+        SyntaxKind::BUNDLE_CLAUSE => app("BundleClause", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }, langue_rt::tokens_of(node, SyntaxKind::IDENT, 1).into_iter().rev().fold(atom("#nil"), |t, x| app("#cons", vec![atom(x.text.clone()), t])), match langue_rt::nth_node_in(node, &[SyntaxKind::CASE_C, SyntaxKind::COMP_POSTFIX, SyntaxKind::FIX_C, SyntaxKind::FORCE_C, SyntaxKind::HANDLE_C, SyntaxKind::LAM_C, SyntaxKind::LET_C, SyntaxKind::PAREN_C, SyntaxKind::PERFORM_C, SyntaxKind::RET_C, SyntaxKind::SEL_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
+        SyntaxKind::BUNDLE_V => app("BundleV", vec![langue_rt::nodes_in(node, &[SyntaxKind::BUNDLE_CLAUSE], 0).into_iter().rev().fold(atom("#nil"), |t, n| app("#cons", vec![term_of(n), t]))]),
         SyntaxKind::CAP_ENTRY => app("CapEntry", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::CAP_REST, SyntaxKind::CAP_SIG], 0) { Some(n) => term_of(n), None => atom("#none") }]),
         SyntaxKind::CAP_REST => app("CapRest", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }]),
         SyntaxKind::CAP_ROW => app("CapRow", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::CAP_SET], 0) { Some(n) => term_of(n), None => atom("#none") }]),
-        SyntaxKind::CAP_SET => app("CapSet", vec![app("#list", langue_rt::nodes_in(node, &[SyntaxKind::CAP_ENTRY], 0).into_iter().map(term_of).collect())]),
+        SyntaxKind::CAP_SET => app("CapSet", vec![langue_rt::nodes_in(node, &[SyntaxKind::CAP_ENTRY], 0).into_iter().rev().fold(atom("#nil"), |t, n| app("#cons", vec![term_of(n), t]))]),
         SyntaxKind::CAP_SIG => app("CapSig", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::TYPE_ARGS], 0) { Some(n) => term_of(n), None => atom("#none") }]),
         SyntaxKind::CASE_ARM => app("CaseArm", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::CASE_BINDERS], 0) { Some(n) => term_of(n), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::CASE_C, SyntaxKind::COMP_POSTFIX, SyntaxKind::FIX_C, SyntaxKind::FORCE_C, SyntaxKind::HANDLE_C, SyntaxKind::LAM_C, SyntaxKind::LET_C, SyntaxKind::PAREN_C, SyntaxKind::PERFORM_C, SyntaxKind::RET_C, SyntaxKind::SEL_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
-        SyntaxKind::CASE_BINDERS => app("CaseBinders", vec![app("#list", langue_rt::tokens_of(node, SyntaxKind::IDENT, 0).into_iter().map(|t| atom(t.text.clone())).collect())]),
-        SyntaxKind::CASE_C => app("CaseC", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0) { Some(n) => term_of(n), None => atom("#none") }, app("#list", langue_rt::nodes_in(node, &[SyntaxKind::CASE_ARM], 0).into_iter().map(term_of).collect())]),
+        SyntaxKind::CASE_BINDERS => app("CaseBinders", vec![langue_rt::tokens_of(node, SyntaxKind::IDENT, 0).into_iter().rev().fold(atom("#nil"), |t, x| app("#cons", vec![atom(x.text.clone()), t]))]),
+        SyntaxKind::CASE_C => app("CaseC", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0) { Some(n) => term_of(n), None => atom("#none") }, langue_rt::nodes_in(node, &[SyntaxKind::CASE_ARM], 0).into_iter().rev().fold(atom("#nil"), |t, n| app("#cons", vec![term_of(n), t]))]),
         SyntaxKind::COMP_POSTFIX => app("CompPostfix", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::CASE_C, SyntaxKind::COMP_POSTFIX, SyntaxKind::FIX_C, SyntaxKind::FORCE_C, SyntaxKind::HANDLE_C, SyntaxKind::LAM_C, SyntaxKind::LET_C, SyntaxKind::PAREN_C, SyntaxKind::PERFORM_C, SyntaxKind::RET_C, SyntaxKind::SEL_C], 0) { Some(n) => term_of(n), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::VALUE_ARGS], 0) { Some(n) => term_of(n), None => atom("#none") }]),
-        SyntaxKind::CTOR_ARGS => app("CtorArgs", vec![app("#list", langue_rt::nodes_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0).into_iter().map(term_of).collect())]),
+        SyntaxKind::CTOR_ARGS => app("CtorArgs", vec![langue_rt::nodes_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0).into_iter().rev().fold(atom("#nil"), |t, n| app("#cons", vec![term_of(n), t]))]),
         SyntaxKind::CTOR_V => app("CtorV", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::CTOR_ARGS], 0) { Some(n) => term_of(n), None => atom("#none") }]),
         SyntaxKind::DEF => app("Def", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0) { Some(n) => term_of(n), None => atom("#none") }]),
         SyntaxKind::F_TYPE_C => app("FTypeC", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::NAMED_TYPE_V, SyntaxKind::U_TYPE_V], 0) { Some(n) => term_of(n), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::CAP_ROW], 0) { Some(n) => term_of(n), None => atom("#none") }]),
-        SyntaxKind::FILE => app("File", vec![app("#list", langue_rt::nodes_in(node, &[SyntaxKind::DEF], 0).into_iter().map(term_of).collect())]),
+        SyntaxKind::FILE => app("File", vec![langue_rt::nodes_in(node, &[SyntaxKind::DEF], 0).into_iter().rev().fold(atom("#nil"), |t, n| app("#cons", vec![term_of(n), t]))]),
         SyntaxKind::FIX_C => app("FixC", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::CASE_C, SyntaxKind::COMP_POSTFIX, SyntaxKind::FIX_C, SyntaxKind::FORCE_C, SyntaxKind::HANDLE_C, SyntaxKind::LAM_C, SyntaxKind::LET_C, SyntaxKind::PAREN_C, SyntaxKind::PERFORM_C, SyntaxKind::RET_C, SyntaxKind::SEL_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
-        SyntaxKind::FN_TYPE_C => app("FnTypeC", vec![app("#list", langue_rt::nodes_in(node, &[SyntaxKind::NAMED_TYPE_V, SyntaxKind::U_TYPE_V], 0).into_iter().map(term_of).collect()), match langue_rt::nth_node_in(node, &[SyntaxKind::F_TYPE_C, SyntaxKind::FN_TYPE_C, SyntaxKind::FORALL_TYPE_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
-        SyntaxKind::FORALL_TYPE_C => app("ForallTypeC", vec![app("#list", langue_rt::tokens_of(node, SyntaxKind::IDENT, 0).into_iter().map(|t| atom(t.text.clone())).collect()), match langue_rt::nth_node_in(node, &[SyntaxKind::F_TYPE_C, SyntaxKind::FN_TYPE_C, SyntaxKind::FORALL_TYPE_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
+        SyntaxKind::FN_TYPE_C => app("FnTypeC", vec![langue_rt::nodes_in(node, &[SyntaxKind::NAMED_TYPE_V, SyntaxKind::U_TYPE_V], 0).into_iter().rev().fold(atom("#nil"), |t, n| app("#cons", vec![term_of(n), t])), match langue_rt::nth_node_in(node, &[SyntaxKind::F_TYPE_C, SyntaxKind::FN_TYPE_C, SyntaxKind::FORALL_TYPE_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
+        SyntaxKind::FORALL_TYPE_C => app("ForallTypeC", vec![langue_rt::tokens_of(node, SyntaxKind::IDENT, 0).into_iter().rev().fold(atom("#nil"), |t, x| app("#cons", vec![atom(x.text.clone()), t])), match langue_rt::nth_node_in(node, &[SyntaxKind::F_TYPE_C, SyntaxKind::FN_TYPE_C, SyntaxKind::FORALL_TYPE_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
         SyntaxKind::FORCE_C => app("ForceC", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0) { Some(n) => term_of(n), None => atom("#none") }]),
         SyntaxKind::HANDLE_C => app("HandleC", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0) { Some(n) => term_of(n), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::CASE_C, SyntaxKind::COMP_POSTFIX, SyntaxKind::FIX_C, SyntaxKind::FORCE_C, SyntaxKind::HANDLE_C, SyntaxKind::LAM_C, SyntaxKind::LET_C, SyntaxKind::PAREN_C, SyntaxKind::PERFORM_C, SyntaxKind::RET_C, SyntaxKind::SEL_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
         SyntaxKind::LAM_C => app("LamC", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }, match langue_rt::nth_node_in(node, &[SyntaxKind::CASE_C, SyntaxKind::COMP_POSTFIX, SyntaxKind::FIX_C, SyntaxKind::FORCE_C, SyntaxKind::HANDLE_C, SyntaxKind::LAM_C, SyntaxKind::LET_C, SyntaxKind::PAREN_C, SyntaxKind::PERFORM_C, SyntaxKind::RET_C, SyntaxKind::SEL_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
@@ -142,10 +867,10 @@ pub fn term_of(node: &SyntaxNode) -> Term {
         SyntaxKind::SEL_C => app("SelC", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0) { Some(n) => term_of(n), None => atom("#none") }, match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }]),
         SyntaxKind::STR_V => app("StrV", vec![match langue_rt::nth_token_of(node, SyntaxKind::LIT_STRING, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }]),
         SyntaxKind::THUNK_V => app("ThunkV", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::CASE_C, SyntaxKind::COMP_POSTFIX, SyntaxKind::FIX_C, SyntaxKind::FORCE_C, SyntaxKind::HANDLE_C, SyntaxKind::LAM_C, SyntaxKind::LET_C, SyntaxKind::PAREN_C, SyntaxKind::PERFORM_C, SyntaxKind::RET_C, SyntaxKind::SEL_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
-        SyntaxKind::TYPE_ARGS => app("TypeArgs", vec![app("#list", langue_rt::nodes_in(node, &[SyntaxKind::NAMED_TYPE_V, SyntaxKind::U_TYPE_V], 0).into_iter().map(term_of).collect())]),
+        SyntaxKind::TYPE_ARGS => app("TypeArgs", vec![langue_rt::nodes_in(node, &[SyntaxKind::NAMED_TYPE_V, SyntaxKind::U_TYPE_V], 0).into_iter().rev().fold(atom("#nil"), |t, n| app("#cons", vec![term_of(n), t]))]),
         SyntaxKind::U_TYPE_V => app("UTypeV", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::F_TYPE_C, SyntaxKind::FN_TYPE_C, SyntaxKind::FORALL_TYPE_C], 0) { Some(n) => term_of(n), None => atom("#none") }]),
         SyntaxKind::UNROLL_V => app("UnrollV", vec![match langue_rt::nth_node_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0) { Some(n) => term_of(n), None => atom("#none") }]),
-        SyntaxKind::VALUE_ARGS => app("ValueArgs", vec![app("#list", langue_rt::nodes_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0).into_iter().map(term_of).collect())]),
+        SyntaxKind::VALUE_ARGS => app("ValueArgs", vec![langue_rt::nodes_in(node, &[SyntaxKind::BUNDLE_V, SyntaxKind::CTOR_V, SyntaxKind::NUM_V, SyntaxKind::PAREN_V, SyntaxKind::ROLL_V, SyntaxKind::STR_V, SyntaxKind::THUNK_V, SyntaxKind::UNROLL_V, SyntaxKind::VAR_V], 0).into_iter().rev().fold(atom("#nil"), |t, n| app("#cons", vec![term_of(n), t]))]),
         SyntaxKind::VAR_V => app("VarV", vec![match langue_rt::nth_token_of(node, SyntaxKind::IDENT, 0) { Some(t) => atom(t.text.clone()), None => atom("#none") }]),
         _ => atom("#error"),
     }

@@ -134,9 +134,15 @@ pub enum Goal {
     /// Naively structural — the rule writer avoids capture until
     /// binders demand better.
     Subst { target: Term, needle: Term, replacement: Term, out: Term },
-    /// `out = (hash input)` (D-25): a `#list` term as a hash-keyed
-    /// set (idempotent on sets).
+    /// `out = (hash input)` (D-25): a `#cons`/`#nil` list as a
+    /// hash-keyed set (idempotent on sets).
     Hash { input: Term, out: Term },
+    /// `(subset sub superset)`: every entry of `sub` is in
+    /// `superset` — row unification of `superset` against `sub`
+    /// opened with a fresh tail, so a closed superset rejects extra
+    /// entries and an open one absorbs them. An unbound `sub` is the
+    /// empty row (no constraint).
+    Subset { sub: Term, superset: Term },
 }
 
 /// A `head := body` rule. `params`/`body` share one local variable
@@ -272,8 +278,16 @@ fn unify_sets(subst: &mut Subst, next_var: &mut VarId, a: &Term, b: &Term) -> bo
     let b = resolve(subst, b);
     let (Term::Set { entries: ea, rest: ta }, Term::Set { entries: eb, rest: tb }) = (&a, &b)
     else {
-        // One side canonicalized away from a set (`{ | r}` → `r`).
-        return unify(subst, next_var, &a, &b);
+        return match (&a, &b) {
+            // One side canonicalized away from a set (`{ | r}` → `r`).
+            (Term::Set { .. }, Term::Var(_)) | (Term::Var(_), Term::Set { .. }) => {
+                unify(subst, next_var, &a, &b)
+            }
+            // A set never unifies with a rigid non-set (e.g. a rigid
+            // row tail rejecting extra entries).
+            (Term::Set { .. }, _) | (_, Term::Set { .. }) => false,
+            _ => unify(subst, next_var, &a, &b),
+        };
     };
     let mut left_b: Vec<Term> = eb.clone();
     let mut left_a: Vec<Term> = Vec::new();
@@ -308,6 +322,22 @@ fn unify_sets(subst: &mut Subst, next_var: &mut VarId, a: &Term, b: &Term) -> bo
             *next_var += 1;
             unify(subst, next_var, ta, &set(left_b, Some(rho.clone())))
                 && unify(subst, next_var, tb, &set(left_a, Some(rho)))
+        }
+    }
+}
+
+/// Collect a `#cons`/`#nil` chain into items; `None` if not a list.
+fn cons_items(term: &Term) -> Option<Vec<Term>> {
+    let mut items = Vec::new();
+    let mut cur = term;
+    loop {
+        match cur {
+            Term::Atom(a) if a == "#nil" => return Some(items),
+            Term::Struct(f, args) if f == "#cons" && args.len() == 2 => {
+                items.push(args[0].clone());
+                cur = &args[1];
+            }
+            _ => return None,
         }
     }
 }
@@ -463,15 +493,35 @@ impl Solver<'_> {
                     }
                 }
                 Goal::Hash { input, out } => {
-                    let hashed = match resolve(&self.subst, &input.offset(offset)) {
-                        Term::Struct(f, items) if f == "#list" => {
-                            resolve(&self.subst, &set(items, None))
-                        }
-                        s @ Term::Set { .. } => s,
-                        _ => return Err(fail()),
+                    let input = resolve(&self.subst, &input.offset(offset));
+                    let hashed = match cons_items(&input) {
+                        Some(items) => resolve(&self.subst, &set(items, None)),
+                        None => match input {
+                            s @ Term::Set { .. } => s,
+                            _ => return Err(fail()),
+                        },
                     };
                     let out = out.offset(offset);
                     if !unify(&mut self.subst, &mut self.next_var, &out, &hashed) {
+                        return Err(fail());
+                    }
+                }
+                Goal::Subset { sub, superset } => {
+                    let opened = match resolve(&self.subst, &sub.offset(offset)) {
+                        Term::Set { entries, rest } => {
+                            let rest = rest.map(|r| *r).unwrap_or_else(|| {
+                                let rho = Term::Var(self.next_var);
+                                self.next_var += 1;
+                                rho
+                            });
+                            Term::Set { entries, rest: Some(Box::new(rest)) }
+                        }
+                        // An unbound row is empty — no constraint.
+                        Term::Var(_) => continue,
+                        _ => return Err(fail()),
+                    };
+                    let superset = superset.offset(offset);
+                    if !unify(&mut self.subst, &mut self.next_var, &superset, &opened) {
                         return Err(fail());
                     }
                 }
@@ -730,18 +780,58 @@ mod tests {
             d.args[1],
             app("f", vec![atom("x"), app("g", vec![atom("x")]), atom("b")])
         );
-        // hash: a #list becomes a deduped set; non-lists fail softly.
+        // hash: a cons list becomes a deduped set; non-lists fail softly.
         let engine = Engine::new(vec![Rule {
             judgment: "rowify".into(),
             params: vec![var(0), var(1)],
             var_count: 2,
             body: vec![Goal::Hash { input: var(0), out: var(1) }],
         }]);
-        let list = app("#list", vec![atom("B"), atom("A"), atom("B")]);
+        let list = cons(vec![atom("B"), atom("A"), atom("B")]);
         let d = engine.solve("rowify", vec![list, var(0)], Contexts::new()).unwrap();
         assert_eq!(d.args[1], set(vec![atom("A"), atom("B")], None));
         let bail = engine.solve("rowify", vec![atom("nope"), var(0)], Contexts::new());
         assert!(!bail.unwrap_err().hard);
+    }
+
+    fn cons(items: Vec<Term>) -> Term {
+        items
+            .into_iter()
+            .rev()
+            .fold(atom("#nil"), |tail, head| app("#cons", vec![head, tail]))
+    }
+
+    #[test]
+    fn subset_respects_closed_and_open_supersets() {
+        let rules = vec![Rule {
+            judgment: "sub".into(),
+            params: vec![var(0), var(1)],
+            var_count: 2,
+            body: vec![Goal::Subset { sub: var(0), superset: var(1) }],
+        }];
+        let engine = Engine::new(rules);
+        let solve = |sub: Term, sup: Term| engine.solve("sub", vec![sub, sup], Contexts::new());
+        // {A} ⊆ {A, B} — closed superset with the entry present.
+        assert!(solve(set(vec![atom("A")], None), set(vec![atom("A"), atom("B")], None)).is_ok());
+        // {C} ⊄ {A, B} — closed superset rejects extras.
+        assert!(solve(set(vec![atom("C")], None), set(vec![atom("A"), atom("B")], None)).is_err());
+        // {C} ⊆ {A | ρ} — an open superset absorbs.
+        assert!(solve(set(vec![atom("C")], None), set(vec![atom("A")], Some(var(2))))
+            .is_ok());
+        // {C} ⊄ {A | RigidRest} — a rigid (non-var) tail rejects.
+        assert!(solve(
+            set(vec![atom("C")], None),
+            set(vec![atom("A")], Some(app("RowVar", vec![atom("c")])))
+        )
+        .is_err());
+        // {C} ⊆ {C | RigidRest} — listed entries still pass.
+        assert!(solve(
+            set(vec![atom("C")], None),
+            set(vec![atom("C")], Some(app("RowVar", vec![atom("c")])))
+        )
+        .is_ok());
+        // An unbound sub is the empty row: no constraint.
+        assert!(solve(var(3), set(vec![], None)).is_ok());
     }
 
     #[test]

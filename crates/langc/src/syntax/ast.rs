@@ -310,6 +310,13 @@ pub enum TermExpr {
     Call(CallGoal),
     /// `$e[$b := $a]` — the built-in subst tactic (D-24).
     Subst { target: String, var: String, replacement: String, span: Span },
+    /// `[]` / `[$h | $t]` — cons-cell lists (`#cons`/`#nil` terms).
+    List { head: Option<Box<(TermExpr, TermExpr)>>, span: Span },
+    /// `{ a, b | rest }` — a hash-keyed set, optionally open (D-25).
+    SetExt { entries: Vec<TermExpr>, rest: Option<Box<TermExpr>>, span: Span },
+    /// `Variant($o, $ps)` — a raw functor term (seed-shape contracts
+    /// between the driver and the rules; not a syntax node).
+    Apply { name: String, args: Vec<TermExpr>, span: Span },
 }
 
 /// A judgment call: `(check_V $e <- $t with Γ+{a: b})` or the bare
@@ -347,7 +354,10 @@ impl TermExpr {
             | TermExpr::Node { span, .. }
             | TermExpr::Lit { span, .. }
             | TermExpr::CtxRead { span, .. }
-            | TermExpr::Subst { span, .. } => *span,
+            | TermExpr::Subst { span, .. }
+            | TermExpr::List { span, .. }
+            | TermExpr::SetExt { span, .. }
+            | TermExpr::Apply { span, .. } => *span,
             TermExpr::Call(c) => c.span,
         }
     }

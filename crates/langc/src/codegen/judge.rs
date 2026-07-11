@@ -6,8 +6,8 @@
 //! - a concrete node is `Struct(NodeName, fields)` with fields in
 //!   `node_fields` order, praat `<op>` fields skipped;
 //! - a token field is `Atom(text)`;
-//! - a missing optional field is `Atom("#none")`; a list field is
-//!   `Struct("#list", items)`.
+//! - a missing optional field is `Atom("#none")`; a list field is a
+//!   `#cons`/`#nil` chain (absent = `#nil`) so rules can recurse.
 //!
 //! Rule heads are patterns — omitted fields become fresh variables
 //! (D-35 omitted-is-wildcard); body terms are constructions — omitted
@@ -179,6 +179,34 @@ impl Gen<'_> {
         match term {
             TermExpr::Var { name, .. } => format!("var({})", alloc.named(name)),
             TermExpr::Lit { text, .. } => format!("atom({text:?})"),
+            TermExpr::List { head, .. } => match head {
+                None => "atom(\"#nil\")".to_owned(),
+                Some(pair) => {
+                    let h = self.lower_term(&pair.0, mode, goals, alloc);
+                    let t = self.lower_term(&pair.1, mode, goals, alloc);
+                    format!("app(\"#cons\", vec![{h}, {t}])")
+                }
+            },
+            TermExpr::SetExt { entries, rest, .. } => {
+                let entries: Vec<String> = entries
+                    .iter()
+                    .map(|e| self.lower_term(e, mode, goals, alloc))
+                    .collect();
+                let rest = match rest {
+                    Some(rest) => {
+                        format!("Some({})", self.lower_term(rest, mode, goals, alloc))
+                    }
+                    None => "None".to_owned(),
+                };
+                format!("langue_rt::set(vec![{}], {rest})", entries.join(", "))
+            }
+            TermExpr::Apply { name, args, .. } => {
+                let args: Vec<String> = args
+                    .iter()
+                    .map(|a| self.lower_term(a, mode, goals, alloc))
+                    .collect();
+                format!("app({name:?}, vec![{}])", args.join(", "))
+            }
             TermExpr::Subst { target, var, replacement, .. } => {
                 let target = alloc.named(target);
                 let needle = alloc.named(var);
@@ -214,7 +242,7 @@ impl Gen<'_> {
                     let code = match (named, mode) {
                         (Some((_, sub)), _) => self.lower_term(sub, mode, goals, alloc),
                         (None, Mode::Head) => format!("var({})", alloc.fresh()),
-                        (None, Mode::Body) if field.many => "app(\"#list\", vec![])".to_owned(),
+                        (None, Mode::Body) if field.many => "atom(\"#nil\")".to_owned(),
                         (None, Mode::Body) => "atom(\"#none\")".to_owned(),
                     };
                     args.push(code);
@@ -233,9 +261,9 @@ impl Gen<'_> {
         goals: &mut Vec<String>,
         alloc: &mut VarAlloc,
     ) -> CallCode {
-        // `(hash $list)` is the built-in row tactic (D-25), not a
-        // judgment call.
-        if call.judgment == "hash" {
+        // `(hash $list)` and `(subset $r $amb)` are the built-in row
+        // tactics (D-25), not judgment calls.
+        if call.judgment == "hash" || call.judgment == "subset" {
             let mut args: Vec<String> = call
                 .args
                 .iter()
@@ -244,7 +272,11 @@ impl Gen<'_> {
             while args.len() < 2 {
                 args.push(format!("var({})", alloc.fresh()));
             }
-            let goal = format!("Goal::Hash {{ input: {}, out: {} }}", args[0], args[1]);
+            let goal = if call.judgment == "hash" {
+                format!("Goal::Hash {{ input: {}, out: {} }}", args[0], args[1])
+            } else {
+                format!("Goal::Subset {{ sub: {}, superset: {} }}", args[0], args[1])
+            };
             return CallCode { goal, value: args[1].clone() };
         }
         let arity = self
@@ -327,8 +359,8 @@ impl Gen<'_> {
                 };
                 if field.many {
                     format!(
-                        "app(\"#list\", langue_rt::tokens_of(node, SyntaxKind::{kind}, {})\
-                         .into_iter().map(|t| atom(t.text.clone())).collect())",
+                        "langue_rt::tokens_of(node, SyntaxKind::{kind}, {}).into_iter()\
+                         .rev().fold(atom(\"#nil\"), |t, x| app(\"#cons\", vec![atom(x.text.clone()), t]))",
                         field.skip
                     )
                 } else {
@@ -347,8 +379,8 @@ impl Gen<'_> {
                 let kinds = format!("&[{}]", kinds.join(", "));
                 if field.many {
                     format!(
-                        "app(\"#list\", langue_rt::nodes_in(node, {kinds}, {})\
-                         .into_iter().map(term_of).collect())",
+                        "langue_rt::nodes_in(node, {kinds}, {}).into_iter()\
+                         .rev().fold(atom(\"#nil\"), |t, n| app(\"#cons\", vec![term_of(n), t]))",
                         field.skip
                     )
                 } else {

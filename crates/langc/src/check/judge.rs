@@ -97,9 +97,8 @@ fn check_call(
     origin: &Origin,
     diags: &mut Vec<Diagnostic>,
 ) {
-    // `hash` is the built-in row tactic (D-25): `(hash $list)` or
-    // `hash $list $set`.
-    let arity = if call.judgment == "hash" {
+    // `hash` and `subset` are built-in row tactics (D-25).
+    let arity = if call.judgment == "hash" || call.judgment == "subset" {
         Some(2)
     } else {
         def.judgments.get(&call.judgment).and_then(|j| j.arity())
@@ -149,6 +148,26 @@ fn check_term(
 ) {
     match term {
         TermExpr::Var { .. } | TermExpr::Lit { .. } | TermExpr::Subst { .. } => {}
+        TermExpr::List { head, .. } => {
+            if let Some(pair) = head {
+                check_term(def, lang, &pair.0, origin, diags);
+                check_term(def, lang, &pair.1, origin, diags);
+            }
+        }
+        TermExpr::SetExt { entries, rest, .. } => {
+            for entry in entries {
+                check_term(def, lang, entry, origin, diags);
+            }
+            if let Some(rest) = rest {
+                check_term(def, lang, rest, origin, diags);
+            }
+        }
+        // Raw functor terms are seed-shape contracts — args only.
+        TermExpr::Apply { args, .. } => {
+            for arg in args {
+                check_term(def, lang, arg, origin, diags);
+            }
+        }
         TermExpr::CtxRead { ctx, key, span } => {
             if !def.contexts.contains_key(ctx) {
                 diags.push(Diagnostic::error(

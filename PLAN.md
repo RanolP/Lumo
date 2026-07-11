@@ -172,10 +172,28 @@ capability rows = D-41; design artifact `design/m2-type-brainstorm.html`.
       `Goal::Hash` (`#list` → set, idempotent). DSL: `$e[$b := $a]`
       terms and the reserved `(hash $list)` call. 6 engine tests +
       2 DSL-through-generated-code tests on real MIR cap rows.
-- [ ] Step 6 — write the judgments: Fω slice (forall, spine-local
-      instantiation, arity kinding per D-40), data/match typing,
-      capability rows with one row variable (D-41); failures bail with
-      a generic message (D-26).
+- [x] Step 6 (2026-07-12) — the real judgments (~70 rules in
+      `MIR.type.langue`): spine-local bidirectional (D-08) — lambdas
+      and fix type in check mode only, off annotations; `annot`
+      normalizes syntactic types to semantic (rows become engine sets,
+      `..c` a rigid `RowVar` tail); rows thread as an *ambient*
+      permission set on `infer_C`/`check_C` — performs need `subset`
+      membership, `handle` extends the ambient, F-elimination sites
+      (`let`, `apply`, `match_c`) pay row subsumption; foralls
+      instantiate via `inst` (subst per binder as type var + row var)
+      at application/coercion, and unwrap rigid at the annotated-thunk
+      boundary (strict-decrease-safe); data ctors/match instantiate
+      `Δ.tag = Variant(owner, binders, params)` against the scrutinee;
+      bundles check clause-name sets (`hash`) and bodies against
+      `Σ.Op`/`Σ.Ops`. Infra this forced: cons-list term encoding +
+      `[]`/`[$h | $t]` patterns, `{…| rest}` set terms, raw functor
+      terms, engine `Goal::Subset`, and a dotted-name split for
+      `Σ.Op(...)` reads. 10 end-to-end tests (annotated checking,
+      rows incl. discharge + rigid tails, data/match, forall
+      instantiation, bundle completeness). Known edge: checking a
+      thunk against an unconstrained type bails hard (three U-rules) —
+      annotate the spine. Unannotated lambdas/fix bail (cap and type
+      inference of bare defs deferred with D-39's cap_inference).
 - [ ] Step 7 — `:infer(Lumo)` fixtures run the full pipeline (parse,
       elab, judge; `name : Type` lines printed by the MIR type
       printer) plus `:fails` (D-32); migrate the in-scope legacy

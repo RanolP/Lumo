@@ -1,40 +1,263 @@
-// MIR type judgments — M2 step 4 seed. This file proves the judgment
-// surface (D-16/D-17/D-23) end to end: context read/write, calls with
-// inout type parameters, and construction of type terms. The full
-// Fω-slice + data/match + capability-row judgments land in step 6
-// (scope = D-39, depth = D-40, rows = D-41).
+// MIR type judgments — M2 step 6 (scope D-39, Fω depth D-40, rows
+// D-41). The bidirectional split is spine-local (D-08): infer where
+// the form dictates its type, check where annotations push types in
+// (lambdas and fix only type in check mode). Rows are engine sets
+// threaded as an *ambient* permission row on computations: performs
+// need membership (`subset`), `handle` extends the ambient, declared
+// rows enter at F-types. Data variants (Δ) and cap operation
+// signatures (Σ) are seeded by the driver from the Lumo tree — MIR
+// itself has no type-level declarations.
+//
+// Seed-shape contracts (raw terms):
+//   Δ.tag       = Variant(owner-TypeV, binders-list, param-TypeV-list)
+//   Σ.Op(c, f)  = the operation's comp type (semantic, rows as sets)
+//   Σ.Ops(c)    = the set of the cap's operation names
+//   RowVar(n)   = a rigid declared row tail (`..c`; `..` = RowVar('#none'))
+//
+// Known edge: checking a thunk against an *unconstrained* type is
+// ambiguous (three U-rules) and bails hard — annotate the spine.
 
 context Γ = [Ident: TypeV]
+context Δ = [Ident: MIR]
+context Σ = [MIR: MIR]
 
-infer_V MIR -> TypeV with Γ
-infer_C MIR -> TypeC with Γ
+// === Declarations ===
 
-// === Values ===
+infer_V MIR -> TypeV with Γ, Δ, Σ
+check_V MIR <- TypeV with Γ, Δ, Σ
+infer_C MIR -> TypeC -> CapSet with Γ, Δ, Σ
+check_C MIR <- TypeC -> CapSet with Γ, Δ, Σ
+
+annot MIR -> MIR -> TypeV with Γ, Δ, Σ
+coerce_v MIR -> MIR with Γ, Δ, Σ
+coerce_c MIR -> MIR with Γ, Δ, Σ
+match_c MIR -> MIR with Γ, Δ, Σ
+inst MIR -> MIR -> MIR with Γ
+apply MIR -> MIR -> TypeC -> CapSet with Γ, Δ, Σ
+ctor MIR -> MIR -> TypeV with Γ, Δ, Σ
+ctor_args MIR -> MIR -> TypeV with Γ, Δ, Σ
+check_args MIR -> MIR with Γ, Δ, Σ
+case_arms MIR -> TypeV -> TypeC -> CapSet with Γ, Δ, Σ
+case_arm MIR -> TypeV -> TypeC -> CapSet with Γ, Δ, Σ
+arm_bind MIR -> MIR -> MIR -> TypeC -> CapSet with Γ, Δ, Σ
+binds MIR -> MIR -> MIR -> TypeC -> CapSet with Γ, Δ, Σ
+clause_names MIR -> MIR with Γ, Σ
+clauses_check MIR -> MIR with Γ, Δ, Σ
+op_check MIR -> MIR -> MIR with Γ, Δ, Σ
+norm_v MIR -> TypeV with Γ
+norm_c MIR -> TypeC with Γ
+norm_args MIR -> MIR with Γ
+norm_list MIR -> MIR with Γ
+norm_row MIR -> CapSet with Γ
+norm_sigs MIR -> CapSet -> CapSet with Γ
+
+// === Values: infer ===
 
 infer_V NumV -> $t := $t = NamedTypeV { name: 'Number' }
 infer_V StrV -> $t := $t = NamedTypeV { name: 'String' }
 infer_V VarV { name: $n } -> $t := $t = Γ.$n
-infer_V ThunkV { body: $b } -> $t := $t = UTypeV { inner: (infer_C $b) }
-infer_V ParenV { inner: $v } -> $t := $t = (infer_V $v)
+// A bare thunk infers with an unconstrained ambient (cap inference
+// is deferred, D-39); lambdas inside still need annotations.
+infer_V ThunkV { body: $b } -> $t := infer_C $b $tc $amb, $t = UTypeV { inner: $tc }
+infer_V ParenV { inner: $v, ty: $ty } -> $t := annot $v $ty $t
+// Iso-recursion is shallow: roll/unroll keep the named type (D-39).
+infer_V UnrollV { value: $v } -> $t := $t = (infer_V $v)
+infer_V RollV { value: CtorV { tag: $g, args: $cas } } -> $t := ctor $g $cas $t
 
-// === Computations ===
+// === Annotations: normalize, then check ===
 
-infer_C RetC { value: $v } -> $t := $t = FTypeC { inner: (infer_V $v) }
-infer_C LetC { name: $n, value: $v, body: $b } -> $t
-  := FTypeC { inner: $tv } = (infer_C $v),
-     $t = (infer_C $b with Γ+{$n: $tv})
+annot $v '#none' -> $t := $t = (infer_V $v)
+annot $v UTypeV { inner: $c } -> $t
+  := $tn = (norm_v UTypeV { inner: $c }), check_V $v $tn, $t = $tn
+annot $v NamedTypeV { name: $n, args: $as } -> $t
+  := $tn = (norm_v NamedTypeV { name: $n, args: $as }), check_V $v $tn, $t = $tn
 
-// === Tactic seeds (M2 step 5; replaced by the real row/forall
-// judgments in step 6) ===
+// === Values: check ===
 
-// A capability row's entry list is a hash-keyed set (D-25/D-41).
-row_of MIR -> CapSet
-row_of CapRow { cap: CapSet { entries: $es } } -> $row := $row = (hash $es)
+check_V NumV <- $t := $t = NamedTypeV { name: 'Number' }
+check_V StrV <- $t := $t = NamedTypeV { name: 'String' }
+check_V VarV { name: $n } <- $t := $g = Γ.$n, coerce_v $g $t
+// Foralls unwrap here — binders stay rigid atoms while checking.
+check_V ThunkV { body: $b } <- UTypeV { inner: FTypeC { inner: $i, row: $r } }
+  := (check_C $b FTypeC { inner: $i, row: $r } $amb)
+check_V ThunkV { body: $b } <- UTypeV { inner: FnTypeC { params: $ps, ret: $r } }
+  := (check_C $b FnTypeC { params: $ps, ret: $r } $amb)
+check_V ThunkV { body: $b } <- UTypeV { inner: ForallTypeC { params: $bs, body: $c } }
+  := check_C $b $c $amb
+check_V RollV { value: $cv } <- $t := $t = (infer_V RollV { value: $cv })
+check_V UnrollV { value: $v } <- $t := $t = (infer_V UnrollV { value: $v })
+check_V ParenV { inner: $v, ty: $ty } <- $t := $t = (infer_V ParenV { inner: $v, ty: $ty })
+check_V BundleV { clauses: $cs } <- NamedTypeV { name: $c, args: $x }
+  := $ns = (clause_names $cs),
+     $hs = (hash $ns),
+     $hs = Σ.Ops($c),
+     clauses_check $cs $c
 
-// Subst demo (D-24): monomorphize the type variable `a` to Number in
-// a fn type's return.
-mono_a MIR -> TypeC
-mono_a FnTypeC { params: $ps, ret: $r } -> $t
-  := $n = NamedTypeV { name: 'a' },
-     $num = NamedTypeV { name: 'Number' },
-     $t = FnTypeC { params: $ps, ret: $r[$n := $num] }
+// === Γ-type against expected: instantiate foralls, then unify ===
+
+coerce_v UTypeV { inner: $c } $t := $t = UTypeV { inner: $c2 }, coerce_c $c $c2
+coerce_v NamedTypeV { name: $n, args: $as } $t := $t = NamedTypeV { name: $n, args: $as }
+
+coerce_c ForallTypeC { params: $bs, body: $b } $t := (coerce_c (inst $bs $b) $t)
+coerce_c FTypeC { inner: $i, row: $r } $t := $t = FTypeC { inner: $i, row: $r }
+coerce_c FnTypeC { params: $ps, ret: $r } $t := $t = FnTypeC { params: $ps, ret: $r }
+
+// Inferred against expected: rows subsume instead of unifying.
+match_c FTypeC { inner: $i, row: $r } FTypeC { inner: $i2, row: $r2 } := $i = $i2, subset $r $r2
+match_c FnTypeC { params: [$p | []], ret: $r } FnTypeC { params: [$p2 | []], ret: $r2 }
+  := $p = $p2, match_c $r $r2
+match_c ForallTypeC { params: $bs, body: $b } $t := (match_c (inst $bs $b) $t)
+
+// === Forall instantiation (D-40): binders are arity-0; each binder
+// name substitutes as a type var and as a rigid row tail ===
+
+inst [] $x -> $o := $o = $x
+inst [$b | $bs] $x -> $o
+  := $tv = NamedTypeV { name: $b },
+     $y = $x[$tv := $f],
+     $rv = RowVar($b),
+     $z = $y[$rv := $f2],
+     $o = (inst $bs $z)
+
+// === Computations: infer ===
+
+infer_C RetC { value: $v } -> $t $amb := $t = FTypeC { inner: (infer_V $v), row: {} }
+infer_C LetC { name: $n, value: $v, body: $b } -> $t $amb
+  := infer_C $v $tv $amb,
+     $tv = FTypeC { inner: $ti, row: $r },
+     subset $r $amb,
+     infer_C $b $t $amb with Γ+{$n: $ti}
+infer_C ForceC { value: $v } -> $t $amb := UTypeV { inner: $t } = (infer_V $v)
+infer_C CompPostfix { expr: $f, value_args: ValueArgs { args: $as } } -> $t $amb
+  := infer_C $f $tf $amb,
+     apply $tf $as $t $amb
+infer_C PerformC { cap: $c } -> $t $amb
+  := (subset { $c } $amb),
+     $t = FTypeC { inner: NamedTypeV { name: $c }, row: {} }
+infer_C SelC { value: $v, field: $f } -> $t $amb
+  := NamedTypeV { name: $c, args: $x } = (infer_V $v),
+     $t = Σ.Op($c, $f)
+infer_C HandleC { cap: $c, handler: $h, body: $b } -> $t $amb
+  := (check_V $h NamedTypeV { name: $c }),
+     infer_C $b $t { $c | $amb }
+infer_C CaseC { scrutinee: $s, arms: $arms } -> $t $amb
+  := $ts = (infer_V $s),
+     case_arms $arms $ts $t $amb
+infer_C ParenC { inner: $c } -> $t $amb := infer_C $c $t $amb
+// LamC and FixC have no infer rules on purpose: they type only in
+// check mode, off an annotation (spine-local bidirectionality, D-08).
+
+// === Computations: check ===
+
+check_C LamC { param: $x, body: $b } <- FnTypeC { params: [$p | []], ret: $r } -> $amb
+  := check_C $b $r $amb with Γ+{$x: $p}
+check_C FixC { name: $f, body: $b } <- $t -> $amb
+  := check_C $b $t $amb with Γ+{$f: UTypeV { inner: $t }}
+check_C RetC { value: $v } <- FTypeC { inner: $i, row: $r } -> $amb := check_V $v $i
+check_C LetC { name: $n, value: $v, body: $b } <- FTypeC { inner: $i, row: $r } -> $amb
+  := infer_C $v $tv $r,
+     $tv = FTypeC { inner: $ti, row: $r2 },
+     subset $r2 $r,
+     (check_C $b FTypeC { inner: $i, row: $r } $r with Γ+{$n: $ti})
+check_C CaseC { scrutinee: $s, arms: $arms } <- FTypeC { inner: $i, row: $r } -> $amb
+  := $ts = (infer_V $s),
+     (case_arms $arms $ts FTypeC { inner: $i, row: $r } $r)
+check_C ForceC { value: $v } <- $t -> $amb
+  := UTypeV { inner: $tc } = (infer_V $v),
+     match_c $tc $t
+check_C CompPostfix { expr: $f, value_args: ValueArgs { args: $as } } <- $t -> $amb
+  := (infer_C CompPostfix { expr: $f, value_args: ValueArgs { args: $as } } $tc $amb),
+     match_c $tc $t
+check_C PerformC { cap: $c } <- FTypeC { inner: $i, row: $r } -> $amb
+  := (infer_C PerformC { cap: $c } $tc $r),
+     (match_c $tc FTypeC { inner: $i, row: $r })
+check_C SelC { value: $v, field: $f } <- $t -> $amb
+  := (infer_C SelC { value: $v, field: $f } $tc $amb),
+     match_c $tc $t
+check_C HandleC { cap: $c, handler: $h, body: $b } <- FTypeC { inner: $i, row: $r } -> $amb
+  := (infer_C HandleC { cap: $c, handler: $h, body: $b } $tc $r),
+     (match_c $tc FTypeC { inner: $i, row: $r })
+check_C ParenC { inner: $c } <- $t -> $amb := check_C $c $t $amb
+
+// === Application spines: instantiate, check args one by one, and
+// pay the row at the final F ===
+
+apply ForallTypeC { params: $bs, body: $b } $as -> $t $amb := (apply (inst $bs $b) $as $t $amb)
+apply FnTypeC { params: [$p | []], ret: $r } [$a | $as] -> $t $amb
+  := check_V $a $p,
+     apply $r $as $t $amb
+apply FnTypeC { params: [$p | []], ret: $r } [] -> $t $amb
+  := $t = FnTypeC { params: [$p | []], ret: $r }
+apply FTypeC { inner: $i, row: $r } [] -> $t $amb
+  := subset $r $amb,
+     $t = FTypeC { inner: $i, row: $r }
+
+// === Data constructors (Δ) ===
+
+ctor $g '#none' -> $t := ctor_args $g [] $t
+ctor $g CtorArgs { args: $as } -> $t := ctor_args $g $as $t
+ctor_args $g $as -> $t
+  := Variant($o, $vbs, $ps) = Δ.$g,
+     P($o2, $ps2) = (inst $vbs P($o, $ps)),
+     check_args $as $ps2,
+     $t = $o2
+
+check_args [] [] := [] = []
+check_args [$a | $as] [$p | $ps] := check_V $a $p, check_args $as $ps
+
+// === Match arms: every arm's variant instantiates against the
+// scrutinee type; all bodies check against one result ===
+
+case_arms [] $ts $t $amb := [] = []
+case_arms [$arm | $arms] $ts $t $amb
+  := case_arm $arm $ts $t $amb,
+     case_arms $arms $ts $t $amb
+case_arm CaseArm { tag: $g, binders: $bs, body: $b } $ts $t $amb
+  := Variant($o, $vbs, $ps) = Δ.$g,
+     P($o2, $ps2) = (inst $vbs P($o, $ps)),
+     $o2 = $ts,
+     arm_bind $bs $ps2 $b $t $amb
+arm_bind '#none' $ps $b $t $amb := $ps = [], check_C $b $t $amb
+arm_bind CaseBinders { names: $ns } $ps $b $t $amb := binds $ns $ps $b $t $amb
+binds [] [] $b $t $amb := check_C $b $t $amb
+binds [$n | $ns] [$p | $ps] $b $t $amb := binds $ns $ps $b $t $amb with Γ+{$n: $p}
+
+// === Handler bundles (Σ): clause names must equal the cap's
+// operation set; each clause body checks against its op type ===
+
+clause_names [] -> $o := $o = []
+clause_names [BundleClause { name: $n } | $cs] -> $o := $o = [$n | (clause_names $cs)]
+clauses_check [] $c := [] = []
+clauses_check [BundleClause { name: $n, params: $xs, body: $b } | $cs] $c
+  := $ot = Σ.Op($c, $n),
+     op_check $xs $ot $b,
+     clauses_check $cs $c
+op_check [] FTypeC { inner: $i, row: $r } $b := (check_C $b FTypeC { inner: $i, row: $r } $amb)
+op_check [$x | $xs] FnTypeC { params: [$p | []], ret: $r } $b
+  := op_check $xs $r $b with Γ+{$x: $p}
+
+// === Normalization: syntactic annotation types → semantic types
+// (rows become engine sets; `..c` becomes a rigid RowVar tail) ===
+
+norm_v UTypeV { inner: $c } -> $o := $o = UTypeV { inner: (norm_c $c) }
+norm_v NamedTypeV { name: $n, args: $as } -> $o := $o = NamedTypeV { name: $n, args: (norm_args $as) }
+
+norm_args '#none' -> $o := $o = '#none'
+norm_args TypeArgs { args: $as } -> $o := $o = TypeArgs { args: (norm_list $as) }
+
+norm_list [] -> $o := $o = []
+norm_list [$t | $ts] -> $o := $o = [(norm_v $t) | (norm_list $ts)]
+
+norm_c FTypeC { inner: $i, row: $r } -> $o := $o = FTypeC { inner: (norm_v $i), row: (norm_row $r) }
+norm_c FnTypeC { params: $ps, ret: $r } -> $o := $o = FnTypeC { params: (norm_list $ps), ret: (norm_c $r) }
+norm_c ForallTypeC { params: $bs, body: $b } -> $o := $o = ForallTypeC { params: $bs, body: (norm_c $b) }
+
+norm_row '#none' -> $o := $o = {}
+norm_row CapRow { cap: CapSet { entries: [] } } -> $o := $o = {}
+norm_row CapRow { cap: CapSet { entries: [CapEntry { body: CapSig { name: $n } } | $es] } } -> $o
+  := $o = (norm_sigs $es { $n })
+norm_row CapRow { cap: CapSet { entries: [CapEntry { body: CapRest { name: $r } } | $es] } } -> $o
+  := $o = (norm_sigs $es { | RowVar($r) })
+
+norm_sigs [] $acc -> $o := $o = $acc
+norm_sigs [CapEntry { body: CapSig { name: $n } } | $es] $acc -> $o := $o = (norm_sigs $es { $n | $acc })
