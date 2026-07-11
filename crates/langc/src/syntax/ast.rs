@@ -26,6 +26,12 @@ pub enum Item {
     ExternRule(ExternRule),
     /// `extern pass scc_fix` (D-01/D-38)
     ExternPass(ExternPass),
+    /// `context Γ = [Ident: TypeV]` (type files, D-16)
+    ContextDecl(ContextDecl),
+    /// `infer_C MIR -> TypeC with Γ` (type files, D-17)
+    JudgmentDecl(JudgmentDecl),
+    /// `infer_V Ident { name: $n } -> $t := $t = Γ.$n` (type files, D-17)
+    JudgmentRule(JudgmentRule),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -249,6 +255,99 @@ pub enum Con {
     Subst { target: String, var: String, replacement: String, span: Span },
     /// `'literal'`
     Lit { text: String, span: Span },
+}
+
+// === type items (D-16/D-17/D-23) ===
+
+/// `context Γ = [Ident: TypeV]` — a named multimap (D-16).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ContextDecl {
+    pub name: String,
+    pub name_span: Span,
+    pub key_sort: String,
+    pub value_sort: String,
+    pub span: Span,
+}
+
+/// `infer_C MIR -> TypeC with Γ` — arrows are separators, both sides
+/// are parameters (D-17). The first parameter names the subject
+/// language; the rest are its node sorts.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct JudgmentDecl {
+    pub name: String,
+    pub name_span: Span,
+    pub params: Vec<(String, Span)>,
+    pub contexts: Vec<(String, Span)>,
+    pub span: Span,
+}
+
+/// `head := body` — head params are patterns (omitted fields are
+/// wildcards, D-35); body terms are constructions (omitted optional
+/// fields are absent).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct JudgmentRule {
+    pub judgment: String,
+    pub judgment_span: Span,
+    pub params: Vec<TermExpr>,
+    pub body: Vec<BodyGoal>,
+    pub span: Span,
+}
+
+/// A term of the judgment language — used on both sides of `=`, so
+/// unlike elab there is no pattern/construction split in the grammar.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum TermExpr {
+    /// `$x`
+    Var { name: String, span: Span },
+    /// `NamedTypeV { name: 'Number' }` / bare `NumV`
+    Node { name: String, fields: Vec<(String, TermExpr)>, span: Span },
+    /// `'Number'` — a token's text.
+    Lit { text: String, span: Span },
+    /// `Γ.$name` (D-16).
+    CtxRead { ctx: String, key: Box<TermExpr>, span: Span },
+    /// `(check_V $e <- $t)` — as an expression its value is the last
+    /// argument.
+    Call(CallGoal),
+}
+
+/// A judgment call: `(check_V $e <- $t with Γ+{a: b})` or the bare
+/// goal form `check_C $a $b with Γ+{a: b}` (D-23).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct CallGoal {
+    pub judgment: String,
+    pub judgment_span: Span,
+    pub args: Vec<TermExpr>,
+    pub extends: Vec<CtxExt>,
+    pub span: Span,
+}
+
+/// `Γ+{a: b}` on a call (D-23).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct CtxExt {
+    pub ctx: String,
+    pub ctx_span: Span,
+    pub key: TermExpr,
+    pub value: TermExpr,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum BodyGoal {
+    /// `a = b`
+    Unify(TermExpr, TermExpr),
+    /// A call for its success alone.
+    Call(CallGoal),
+}
+
+impl TermExpr {
+    pub fn span(&self) -> Span {
+        match self {
+            TermExpr::Var { span, .. }
+            | TermExpr::Node { span, .. }
+            | TermExpr::Lit { span, .. }
+            | TermExpr::CtxRead { span, .. } => *span,
+            TermExpr::Call(c) => c.span,
+        }
+    }
 }
 
 impl Pat {

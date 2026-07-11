@@ -5,6 +5,7 @@
 pub mod ast;
 pub mod between;
 pub mod builder;
+pub mod judgments;
 pub mod lexer;
 pub mod lossless;
 pub mod parser;

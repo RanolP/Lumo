@@ -148,10 +148,20 @@ capability rows = D-41; design artifact `design/m2-type-brainstorm.html`.
       size (D-28) — non-decreasing rules bail instead of diverging;
       derivation trees with args resolved once the whole proof
       succeeds (assignment propagates up, D-17). 7 unit tests.
-- [ ] Step 4 — judgment codegen (D-17, D-21): `infer_C MIR -> TypeC
-      with Γ` declarations (arrows are separators; type param is inout;
-      names are just names), `head := body` rules → Rust on the engine;
-      third `.langue` item kind following M1's step-2/3 pattern.
+- [x] Step 4 (2026-07-11) — judgment codegen (D-17, D-21): `.type.langue`
+      is the third item kind — `context Γ = [Ident: TypeV]` decls,
+      `infer_C MIR -> TypeC with Γ` declarations (first sort = subject
+      language; arrows are separators), `head := body` rules with goals
+      (unify, `Γ.$k` reads, calls with `with Γ+{k: v}`; a call as an
+      expression pads trailing args and evaluates to its last one).
+      Full slice: lexer (unicode names, `->`/`<-`, `.`), parser,
+      merge (decl collisions strict, rules additive), `check/judge.rs`,
+      `codegen/judge.rs` emitting `<lang>/judgments.rs` (rule table +
+      canonical tree→term encoder + `solve`). Term contract: node =
+      `Struct(Name, fields in node_fields order)`, tokens = `Atom(text)`,
+      absent = `#none`, lists = `#list`; heads wildcard omitted fields,
+      bodies default them. Seed `MIR.type.langue` (infer_V/infer_C over
+      Num/Str/Var/Thunk/Paren/Ret/Let) + 3 end-to-end smoke tests.
 - [ ] Step 5 — minimal built-in tactics: `subst`, `hash`; capability
       rows as hash-keyed maps — a map is a set when the key is a hash,
       no row datatype (D-24, D-25, D-41).

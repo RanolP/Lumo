@@ -2,6 +2,7 @@
 //! definition. Collision errors are emitted earlier, during merge.
 
 pub mod elab;
+pub mod judge;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -18,6 +19,7 @@ pub fn check_definition(def: &Definition) -> Vec<Diagnostic> {
         check_language(lang_name, lang, &mut diags);
     }
     elab::check_elabs(def, &mut diags);
+    judge::check_judgments(def, &mut diags);
     diags.sort();
     diags
 }

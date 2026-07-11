@@ -8,7 +8,8 @@ use crate::syntax::parser;
 
 use super::loader::{FileKind, LoadedFile};
 use super::model::{
-    Definition, ElabRuleDef, Language, Origin, PipelineDef, RelationDef, RuleDef, TokenDef,
+    ContextDef, Definition, ElabRuleDef, JudgmentRuleDef, Language, Origin, PipelineDef,
+    RelationDef, RuleDef, TokenDef,
 };
 
 /// M0 stdlib (D-29): starts empty; grows only on proven need. Each entry
@@ -24,21 +25,13 @@ pub struct ParsedFile {
     pub ast: ast::File,
 }
 
-/// Parse one file according to its kind. Type files parse to an empty
-/// AST with a warning until M2.
+/// Parse one file according to its kind.
 pub fn parse_file(path: &str, kind: &FileKind, text: &str) -> (ast::File, Vec<Diagnostic>) {
     match kind {
         FileKind::Syn { .. } => parser::parse_syn_file(path, text),
         FileKind::Manifest => parser::parse_manifest(path, text),
         FileKind::Elab => parser::parse_elab_file(path, text),
-        FileKind::Type => (
-            ast::File::default(),
-            vec![Diagnostic::warning(
-                path,
-                langue_rt::Span::default(),
-                "type files are ignored until M2",
-            )],
-        ),
+        FileKind::Type => parser::parse_type_file(path, text),
     }
 }
 
@@ -65,7 +58,9 @@ pub fn merge_asts(files: &[ParsedFile]) -> (Definition, Vec<Diagnostic>) {
             FileKind::Elab => {
                 merge_elab_file(&mut def, &file.path, file.ast, &mut diags);
             }
-            FileKind::Type => {}
+            FileKind::Type => {
+                merge_type_file(&mut def, &file.path, file.ast, &mut diags);
+            }
         }
     }
 
@@ -152,6 +147,13 @@ fn merge_syn_file(
                     "elab items may only appear in .elab.langue files",
                 ));
             }
+            Item::ContextDecl(_) | Item::JudgmentDecl(_) | Item::JudgmentRule(_) => {
+                diags.push(Diagnostic::error(
+                    path,
+                    langue_rt::Span::default(),
+                    "type items may only appear in .type.langue files",
+                ));
+            }
         }
     }
 }
@@ -222,6 +224,74 @@ fn merge_elab_file(
                     path,
                     langue_rt::Span::default(),
                     "only elab items may appear in .elab.langue files",
+                ));
+            }
+        }
+    }
+}
+
+fn merge_type_file(
+    def: &mut Definition,
+    path: &str,
+    ast: ast::File,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for item in ast.items {
+        match item {
+            Item::ContextDecl(c) => {
+                let origin = Origin { file: path.to_owned(), span: c.name_span };
+                if let Some(prev) = def.contexts.get(&c.name) {
+                    diags.push(Diagnostic::error(
+                        path,
+                        c.name_span,
+                        format!(
+                            "duplicate context `{}` (first declared in {} at {})",
+                            c.name, prev.origin.file, prev.origin.span
+                        ),
+                    ));
+                } else {
+                    def.contexts.insert(
+                        c.name.clone(),
+                        ContextDef {
+                            name: c.name,
+                            key_sort: c.key_sort,
+                            value_sort: c.value_sort,
+                            origin,
+                        },
+                    );
+                }
+            }
+            Item::JudgmentDecl(d) => {
+                let origin = Origin { file: path.to_owned(), span: d.name_span };
+                let judgment = def.judgments.entry(d.name.clone()).or_default();
+                if let Some((_, prev)) = &judgment.decl {
+                    diags.push(Diagnostic::error(
+                        path,
+                        d.name_span,
+                        format!(
+                            "duplicate judgment declaration `{}` (first declared in {} at {})",
+                            d.name, prev.file, prev.span
+                        ),
+                    ));
+                } else {
+                    judgment.decl =
+                        Some((d.params.into_iter().map(|(p, _)| p).collect(), origin));
+                    judgment.contexts = d.contexts.into_iter().map(|(c, _)| c).collect();
+                }
+            }
+            Item::JudgmentRule(r) => {
+                let judgment = def.judgments.entry(r.judgment.clone()).or_default();
+                judgment.rules.push(JudgmentRuleDef {
+                    params: r.params,
+                    body: r.body,
+                    origin: Origin { file: path.to_owned(), span: r.span },
+                });
+            }
+            _ => {
+                diags.push(Diagnostic::error(
+                    path,
+                    langue_rt::Span::default(),
+                    "only type items may appear in .type.langue files",
                 ));
             }
         }

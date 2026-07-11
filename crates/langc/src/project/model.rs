@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use langue_rt::Span;
 
-use crate::syntax::ast::{Con, Pat, RuleBody, Stage, TokenPattern};
+use crate::syntax::ast::{BodyGoal, Con, Pat, RuleBody, Stage, TermExpr, TokenPattern};
 
 /// Every generated parser starts at this rule; a language that appears in a
 /// `parse` stage must declare it.
@@ -89,6 +89,45 @@ pub struct BetweenDef {
     pub relations: Vec<RelationDef>,
 }
 
+/// `context Γ = [Ident: TypeV]` (D-16).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ContextDef {
+    pub name: String,
+    pub key_sort: String,
+    pub value_sort: String,
+    pub origin: Origin,
+}
+
+/// One `head := body` rule with provenance (D-17).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct JudgmentRuleDef {
+    pub params: Vec<TermExpr>,
+    pub body: Vec<BodyGoal>,
+    pub origin: Origin,
+}
+
+/// A judgment: its declaration plus every rule for it across all type
+/// files (additive merge, D-05/D-17).
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct JudgmentDef {
+    /// `(sort names, origin)` — set by the declaration; `None` until
+    /// (and unless) one is seen, which check reports.
+    pub decl: Option<(Vec<String>, Origin)>,
+    pub contexts: Vec<String>,
+    pub rules: Vec<JudgmentRuleDef>,
+}
+
+impl JudgmentDef {
+    /// The declared subject language (first declared sort).
+    pub fn subject_lang(&self) -> Option<&str> {
+        self.decl.as_ref().and_then(|(params, _)| params.first()).map(String::as_str)
+    }
+
+    pub fn arity(&self) -> Option<usize> {
+        self.decl.as_ref().map(|(params, _)| params.len())
+    }
+}
+
 /// The whole merged project. Top-level names (languages, pipelines) share
 /// one global namespace (design §1.2); rule/token names live under their
 /// language and are qualified as `Lang::Rule` elsewhere.
@@ -103,4 +142,8 @@ pub struct Definition {
     /// `extern pass` names — global, applied by the Rust registration
     /// (D-38); declaration order preserved.
     pub extern_passes: Vec<(String, Origin)>,
+    /// `context` declarations — one global namespace (D-16).
+    pub contexts: BTreeMap<String, ContextDef>,
+    /// Judgments by name — declarations + rules merged (D-17).
+    pub judgments: BTreeMap<String, JudgmentDef>,
 }

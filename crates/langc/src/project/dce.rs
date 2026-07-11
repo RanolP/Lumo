@@ -45,6 +45,10 @@ pub fn dce(def: &Definition) -> Definition {
         // Passes have no from/to of their own; the Rust registration
         // decides where they apply, so they are never pruned.
         extern_passes: def.extern_passes.clone(),
+        // Contexts and judgments survive whole — their subject
+        // language's liveness is already decided by the stages above.
+        contexts: def.contexts.clone(),
+        judgments: def.judgments.clone(),
     };
     for (name, lang) in &def.languages {
         if live_langs.contains(name.as_str()) {

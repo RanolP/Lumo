@@ -37,6 +37,14 @@ pub fn parse_elab_file(file: &str, text: &str) -> (File, Vec<Diagnostic>) {
     (ast, diags)
 }
 
+pub fn parse_type_file(file: &str, text: &str) -> (File, Vec<Diagnostic>) {
+    let (tokens, mut diags) = lexer::lex(file, text);
+    let mut p = Parser { file, tokens, pos: 0, diags: Vec::new() };
+    let ast = p.parse_type();
+    diags.append(&mut p.diags);
+    (ast, diags)
+}
+
 struct Parser<'f> {
     file: &'f str,
     tokens: Vec<Token>,
@@ -659,6 +667,333 @@ impl Parser<'_> {
         None
     }
 
+    // === type files (D-16/D-17/D-23) ===
+
+    fn parse_type(&mut self) -> File {
+        let mut items = Vec::new();
+        while !self.at_eof() {
+            let before = self.pos;
+            if let Some(item) = self.parse_type_item() {
+                items.push(item);
+            }
+            if self.pos == before {
+                self.error_here(format!(
+                    "expected `context`, a judgment declaration, or a rule, found {}",
+                    self.cur().kind.describe()
+                ));
+                self.pos += 1;
+                self.recover_to_type_item();
+            }
+        }
+        File { items }
+    }
+
+    fn recover_to_type_item(&mut self) {
+        while !self.at_eof() {
+            if self.at_name("context") || matches!(self.cur().kind, TokenKind::Name(_)) {
+                return;
+            }
+            self.pos += 1;
+        }
+    }
+
+    fn parse_type_item(&mut self) -> Option<Item> {
+        if self.at_name("context") {
+            return self.parse_context_decl();
+        }
+        if !matches!(self.cur().kind, TokenKind::Name(_)) {
+            return None;
+        }
+        if self.at_judgment_decl() {
+            return self.parse_judgment_decl();
+        }
+        self.parse_judgment_rule()
+    }
+
+    /// `context Γ = [Ident: TypeV]`
+    fn parse_context_decl(&mut self) -> Option<Item> {
+        let start = self.bump().span; // context
+        let (name, name_span) = self.expect_name("a context name");
+        self.expect_punct('=');
+        self.expect_punct('[');
+        let (key_sort, _) = self.expect_name("a key sort");
+        self.expect_punct(':');
+        let (value_sort, _) = self.expect_name("a value sort");
+        let end = self.cur().span;
+        self.expect_punct(']');
+        Some(Item::ContextDecl(ContextDecl {
+            name,
+            name_span,
+            key_sort,
+            value_sort,
+            span: start.cover(end),
+        }))
+    }
+
+    fn at_arrow(&self) -> bool {
+        matches!(self.cur().kind, TokenKind::Sym("->" | "<-"))
+    }
+
+    /// Lookahead: a declaration is `Name Name (arrow Name)+ (with Name
+    /// (, Name)*)?` followed by another item start (a Name or EOF) —
+    /// a rule always continues with `:=` instead (D-17).
+    fn at_judgment_decl(&self) -> bool {
+        let name_at = |j: usize| matches!(self.nth(j).kind, TokenKind::Name(_));
+        if !name_at(0) || !name_at(1) {
+            return false;
+        }
+        let mut j = 2;
+        let mut arrows = 0;
+        while matches!(self.nth(j).kind, TokenKind::Sym("->" | "<-")) {
+            if !name_at(j + 1) {
+                return false;
+            }
+            arrows += 1;
+            j += 2;
+        }
+        if arrows == 0 {
+            return false;
+        }
+        if matches!(&self.nth(j).kind, TokenKind::Name(n) if n == "with") {
+            if !name_at(j + 1) {
+                return false;
+            }
+            j += 2;
+            while self.nth(j).kind == TokenKind::Punct(',') {
+                if !name_at(j + 1) {
+                    return false;
+                }
+                j += 2;
+            }
+        }
+        matches!(self.nth(j).kind, TokenKind::Name(_) | TokenKind::Eof)
+    }
+
+    /// `infer_C MIR -> TypeC with Γ`
+    fn parse_judgment_decl(&mut self) -> Option<Item> {
+        let (name, name_span) = self.expect_name("a judgment name");
+        let mut params = vec![{
+            let (p, s) = self.expect_name("a sort");
+            (p, s)
+        }];
+        let mut end = params[0].1;
+        while self.at_arrow() {
+            self.bump();
+            let (p, s) = self.expect_name("a sort");
+            end = s;
+            params.push((p, s));
+        }
+        let mut contexts = Vec::new();
+        if self.at_name("with") {
+            self.bump();
+            loop {
+                let (c, s) = self.expect_name("a context name");
+                end = s;
+                contexts.push((c, s));
+                if !self.eat_punct(',') {
+                    break;
+                }
+            }
+        }
+        Some(Item::JudgmentDecl(JudgmentDecl {
+            name,
+            name_span,
+            params,
+            contexts,
+            span: name_span.cover(end),
+        }))
+    }
+
+    /// `head := goal, goal, …`
+    fn parse_judgment_rule(&mut self) -> Option<Item> {
+        let (judgment, judgment_span) = self.expect_name("a judgment name");
+        let mut params = Vec::new();
+        while !self.at_sym(":=") && !self.at_eof() {
+            if self.at_arrow() {
+                self.bump(); // arrows are separators (D-17)
+                continue;
+            }
+            let before = self.pos;
+            let Some(param) = self.parse_term_expr() else {
+                self.recover_to_type_item();
+                return None;
+            };
+            params.push(param);
+            if self.pos == before {
+                self.pos += 1;
+            }
+        }
+        if !self.expect_sym(":=") {
+            return None;
+        }
+        let mut body = Vec::new();
+        loop {
+            let Some(goal) = self.parse_body_goal() else {
+                self.recover_to_type_item();
+                break;
+            };
+            body.push(goal);
+            if !self.eat_punct(',') {
+                break;
+            }
+        }
+        let end = body.last().map(goal_span).unwrap_or(judgment_span);
+        Some(Item::JudgmentRule(JudgmentRule {
+            judgment,
+            judgment_span,
+            params,
+            body,
+            span: judgment_span.cover(end),
+        }))
+    }
+
+    /// A goal: a bare call (`check_C $a $b with Γ+{a: b}`), a
+    /// parenthesized call, or a unification `a = b`.
+    fn parse_body_goal(&mut self) -> Option<BodyGoal> {
+        // Bare call: a Name directly followed by a term start that is
+        // not `{` (which would open the Name's own field block).
+        if matches!(self.cur().kind, TokenKind::Name(_))
+            && matches!(
+                self.nth(1).kind,
+                TokenKind::Var(_) | TokenKind::Str(_) | TokenKind::Punct('(')
+            )
+        {
+            return Some(BodyGoal::Call(self.parse_bare_call(false)?));
+        }
+        let lhs = self.parse_term_expr()?;
+        if self.eat_punct('=') {
+            let rhs = self.parse_term_expr()?;
+            return Some(BodyGoal::Unify(lhs, rhs));
+        }
+        match lhs {
+            TermExpr::Call(call) => Some(BodyGoal::Call(call)),
+            other => {
+                self.diags.push(Diagnostic::error(
+                    self.file,
+                    other.span(),
+                    "a goal must be a judgment call or a unification `a = b`",
+                ));
+                None
+            }
+        }
+    }
+
+    /// A judgment call after its name. Unbounded (top-level) calls
+    /// only take `$var`/`'lit'`/`(…)` arguments — a bare Name would be
+    /// ambiguous with the next item's start; the parenthesized form
+    /// (`bounded`) allows node-pattern arguments too.
+    fn parse_bare_call(&mut self, bounded: bool) -> Option<CallGoal> {
+        let (judgment, judgment_span) = self.expect_name("a judgment name");
+        let mut args = Vec::new();
+        let mut end = judgment_span;
+        loop {
+            if self.at_arrow() {
+                self.bump();
+                continue;
+            }
+            if !self.at_term_start(bounded) {
+                break;
+            }
+            let arg = self.parse_term_expr()?;
+            end = arg.span();
+            args.push(arg);
+        }
+        let extends = self.parse_ctx_exts(&mut end)?;
+        Some(CallGoal { judgment, judgment_span, args, extends, span: judgment_span.cover(end) })
+    }
+
+    fn at_term_start(&self, allow_name: bool) -> bool {
+        match &self.cur().kind {
+            TokenKind::Var(_) | TokenKind::Str(_) | TokenKind::Punct('(') => true,
+            // `with` ends the argument list either way.
+            TokenKind::Name(n) => allow_name && n != "with",
+            _ => false,
+        }
+    }
+
+    /// `with Γ+{a: b} (, Δ+{c: d})*` — empty when there is no `with`.
+    fn parse_ctx_exts(&mut self, end: &mut Span) -> Option<Vec<CtxExt>> {
+        let mut extends = Vec::new();
+        if !self.at_name("with") {
+            return Some(extends);
+        }
+        self.bump();
+        loop {
+            let (ctx, ctx_span) = self.expect_name("a context name");
+            self.expect_punct('+');
+            self.expect_punct('{');
+            let key = self.parse_term_expr()?;
+            self.expect_punct(':');
+            let value = self.parse_term_expr()?;
+            *end = self.cur().span;
+            self.expect_punct('}');
+            extends.push(CtxExt { ctx, ctx_span, key, value });
+            if !self.eat_punct(',') {
+                break;
+            }
+        }
+        Some(extends)
+    }
+
+    fn parse_term_expr(&mut self) -> Option<TermExpr> {
+        let span = self.cur().span;
+        match self.cur().kind.clone() {
+            TokenKind::Var(name) => {
+                self.pos += 1;
+                Some(TermExpr::Var { name, span })
+            }
+            TokenKind::Str(text) => {
+                self.pos += 1;
+                Some(TermExpr::Lit { text, span })
+            }
+            // `(check_V $e <- $t)` — a parenthesized judgment call.
+            TokenKind::Punct('(') => {
+                self.pos += 1;
+                let call = self.parse_bare_call(true)?;
+                let end = self.cur().span;
+                self.expect_punct(')');
+                Some(TermExpr::Call(CallGoal { span: span.cover(end), ..call }))
+            }
+            TokenKind::Name(name) => {
+                self.pos += 1;
+                // `Γ.$name` — a context read (D-16).
+                if self.eat_punct('.') {
+                    let key = self.parse_term_expr()?;
+                    let end = key.span();
+                    return Some(TermExpr::CtxRead {
+                        ctx: name,
+                        key: Box::new(key),
+                        span: span.cover(end),
+                    });
+                }
+                let mut fields = Vec::new();
+                let mut end = span;
+                if self.eat_punct('{') {
+                    while !self.at_punct('}') && !self.at_eof() {
+                        let (field, _) = self.expect_name("a field label");
+                        if field.is_empty() {
+                            self.recover_rule_body();
+                            break;
+                        }
+                        self.expect_punct(':');
+                        let value = self.parse_term_expr()?;
+                        fields.push((field, value));
+                        if !self.eat_punct(',') {
+                            break;
+                        }
+                    }
+                    end = self.cur().span;
+                    self.expect_punct('}');
+                }
+                Some(TermExpr::Node { name, fields, span: span.cover(end) })
+            }
+            other => {
+                self.error_here(format!("expected a term, found {}", other.describe()));
+                None
+            }
+        }
+    }
+
     // === patterns and constructions (D-35) ===
 
     fn parse_pat(&mut self) -> Option<Pat> {
@@ -911,6 +1246,13 @@ impl StageKind {
     }
 }
 
+fn goal_span(goal: &BodyGoal) -> Span {
+    match goal {
+        BodyGoal::Unify(a, b) => a.span().cover(b.span()),
+        BodyGoal::Call(c) => c.span,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -919,6 +1261,46 @@ mod tests {
         let (ast, diags) = parse_syn_file("t.syn.langue", text);
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         ast
+    }
+
+    fn ty(text: &str) -> File {
+        let (ast, diags) = parse_type_file("t.type.langue", text);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        ast
+    }
+
+    #[test]
+    fn type_file_decls_and_rules() {
+        let ast = ty("\
+context Γ = [Ident: TypeV]
+infer_V MIR -> TypeV with Γ
+infer_V NumV -> $t := $t = NamedTypeV { name: 'Number' }
+infer_V VarV { name: $n } -> $t := $t = Γ.$n
+infer_V ThunkV { body: $b } -> $t := $t = UTypeV { inner: (infer_C $b) }
+check_C $a $b := check_C $a $b with Γ+{$a: $b}
+");
+        assert_eq!(ast.items.len(), 6);
+        let Item::ContextDecl(c) = &ast.items[0] else { panic!("{:?}", ast.items[0]) };
+        assert_eq!((c.name.as_str(), c.key_sort.as_str(), c.value_sort.as_str()),
+            ("Γ", "Ident", "TypeV"));
+        let Item::JudgmentDecl(d) = &ast.items[1] else { panic!("{:?}", ast.items[1]) };
+        assert_eq!(d.params.len(), 2);
+        assert_eq!(d.contexts[0].0, "Γ");
+        let Item::JudgmentRule(r) = &ast.items[2] else { panic!("{:?}", ast.items[2]) };
+        assert_eq!(r.params.len(), 2);
+        assert!(matches!(&r.body[0], BodyGoal::Unify(_, _)));
+        let Item::JudgmentRule(r) = &ast.items[3] else { panic!("{:?}", ast.items[3]) };
+        let BodyGoal::Unify(_, rhs) = &r.body[0] else { panic!() };
+        assert!(matches!(rhs, TermExpr::CtxRead { ctx, .. } if ctx == "Γ"));
+        let Item::JudgmentRule(r) = &ast.items[4] else { panic!("{:?}", ast.items[4]) };
+        let BodyGoal::Unify(_, rhs) = &r.body[0] else { panic!() };
+        let TermExpr::Node { fields, .. } = rhs else { panic!() };
+        assert!(matches!(&fields[0].1, TermExpr::Call(c) if c.judgment == "infer_C"));
+        let Item::JudgmentRule(r) = &ast.items[5] else { panic!("{:?}", ast.items[5]) };
+        let BodyGoal::Call(call) = &r.body[0] else { panic!() };
+        assert_eq!(call.args.len(), 2);
+        assert_eq!(call.extends.len(), 1);
+        assert_eq!(call.extends[0].ctx, "Γ");
     }
 
     #[test]

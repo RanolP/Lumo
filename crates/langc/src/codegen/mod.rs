@@ -5,6 +5,7 @@ pub mod ast;
 pub mod between;
 pub mod builder;
 pub mod elab;
+pub mod judge;
 pub mod lexer;
 pub mod lossless;
 pub mod naming;
@@ -25,11 +26,21 @@ pub fn generate(def: &Definition) -> Vec<(String, String)> {
     for (lang_name, lang) in &def.languages {
         let module = naming::module_name(lang_name);
         let between_def = def.betweens.get(lang_name);
-        files.push((format!("{module}/mod.rs"), language_mod(lang_name, between_def.is_some())));
+        let has_judgments = !judge::judgments_of(def, lang_name).is_empty();
+        files.push((
+            format!("{module}/mod.rs"),
+            language_mod(lang_name, between_def.is_some(), has_judgments),
+        ));
         if let Some(between_def) = between_def {
             files.push((
                 format!("{module}/between.rs"),
                 between::generate(lang_name, lang, between_def),
+            ));
+        }
+        if has_judgments {
+            files.push((
+                format!("{module}/judgments.rs"),
+                judge::generate(def, lang_name, lang),
             ));
         }
         files.push((
@@ -56,7 +67,7 @@ pub fn generate(def: &Definition) -> Vec<(String, String)> {
     files
 }
 
-fn language_mod(lang_name: &str, has_between: bool) -> String {
+fn language_mod(lang_name: &str, has_between: bool, has_judgments: bool) -> String {
     let mut buf = Buf::new();
     buf.line(&format!("//! Generated modules for language `{lang_name}`."));
     buf.blank();
@@ -65,6 +76,9 @@ fn language_mod(lang_name: &str, has_between: bool) -> String {
         buf.line("pub mod between;");
     }
     buf.line("pub mod builder;");
+    if has_judgments {
+        buf.line("pub mod judgments;");
+    }
     buf.line("pub mod lexer;");
     buf.line("pub mod lossless;");
     buf.line("pub mod parser;");

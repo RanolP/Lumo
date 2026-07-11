@@ -19,9 +19,9 @@ pub enum TokenKind {
     Regex(String),
     /// Binding power: `100`.
     Num(u16),
-    /// One of `= | ? * + ( ) { } [ ] , : @`.
+    /// One of `= | ? * + ( ) { } [ ] , : @ .`.
     Punct(char),
-    /// `==>` `===` `::` `:=` — multi-char symbols (elab files).
+    /// `==>` `===` `::` `:=` (elab files), `->` `<-` (type files).
     Sym(&'static str),
     /// `$x` — a metavariable (elab files).
     Var(String),
@@ -79,6 +79,20 @@ pub fn lex(file: &str, text: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                     span: Span::new(start as u32, i as u32),
                 });
             }
+            b'-' if bytes.get(i + 1) == Some(&b'>') => {
+                i += 2;
+                tokens.push(Token {
+                    kind: TokenKind::Sym("->"),
+                    span: Span::new(start as u32, i as u32),
+                });
+            }
+            b'<' if bytes.get(i + 1) == Some(&b'-') => {
+                i += 2;
+                tokens.push(Token {
+                    kind: TokenKind::Sym("<-"),
+                    span: Span::new(start as u32, i as u32),
+                });
+            }
             b'$' => {
                 i += 1;
                 if i < bytes.len() && is_name_start(bytes[i]) {
@@ -99,7 +113,7 @@ pub fn lex(file: &str, text: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                 }
             }
             b'=' | b'|' | b'?' | b'*' | b'+' | b'(' | b')' | b'{' | b'}' | b'[' | b']'
-            | b',' | b':' | b'@' => {
+            | b',' | b':' | b'@' | b'.' => {
                 i += 1;
                 tokens.push(Token {
                     kind: TokenKind::Punct(b as char),
@@ -200,11 +214,12 @@ pub fn lex(file: &str, text: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                     span: Span::new(start as u32, i as u32),
                 });
             }
-            b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
-                i += 1;
+            // Names may be non-ASCII (context names like `Γ`, D-16).
+            b'a'..=b'z' | b'A'..=b'Z' | b'_' | 0x80.. => {
+                i += utf8_len(b);
                 loop {
                     while i < bytes.len() && is_name_continue(bytes[i]) {
-                        i += 1;
+                        i += utf8_len(bytes[i]);
                     }
                     // A dot continues the name only when a name char follows:
                     // `keyword.fn` is one name, `Param.` is a name then `.`.
@@ -242,11 +257,11 @@ pub fn lex(file: &str, text: &str) -> (Vec<Token>, Vec<Diagnostic>) {
 }
 
 fn is_name_start(b: u8) -> bool {
-    b.is_ascii_alphabetic() || b == b'_'
+    b.is_ascii_alphabetic() || b == b'_' || b >= 0x80
 }
 
 fn is_name_continue(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
+    b.is_ascii_alphanumeric() || b == b'_' || b >= 0x80
 }
 
 fn utf8_len(first_byte: u8) -> usize {
@@ -319,9 +334,36 @@ mod tests {
     #[test]
     fn dot_does_not_join_without_following_name() {
         let (tokens, diags) = lex("t", "Param.");
+        assert!(diags.is_empty());
         assert_eq!(tokens[0].kind, TokenKind::Name("Param".into()));
-        // The bare `.` is not a valid token.
-        assert_eq!(diags.len(), 1);
+        // A bare `.` is a punct (context reads: `Γ.$name`).
+        assert_eq!(tokens[1].kind, TokenKind::Punct('.'));
+    }
+
+    #[test]
+    fn type_file_tokens() {
+        assert_eq!(
+            kinds("context Γ = [Ident: TypeV] infer_C MIR -> TypeC <- Γ.$n"),
+            vec![
+                TokenKind::Name("context".into()),
+                TokenKind::Name("Γ".into()),
+                TokenKind::Punct('='),
+                TokenKind::Punct('['),
+                TokenKind::Name("Ident".into()),
+                TokenKind::Punct(':'),
+                TokenKind::Name("TypeV".into()),
+                TokenKind::Punct(']'),
+                TokenKind::Name("infer_C".into()),
+                TokenKind::Name("MIR".into()),
+                TokenKind::Sym("->"),
+                TokenKind::Name("TypeC".into()),
+                TokenKind::Sym("<-"),
+                TokenKind::Name("Γ".into()),
+                TokenKind::Punct('.'),
+                TokenKind::Var("n".into()),
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]

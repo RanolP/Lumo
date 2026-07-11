@@ -1,0 +1,25 @@
+// MIR type judgments — M2 step 4 seed. This file proves the judgment
+// surface (D-16/D-17/D-23) end to end: context read/write, calls with
+// inout type parameters, and construction of type terms. The full
+// Fω-slice + data/match + capability-row judgments land in step 6
+// (scope = D-39, depth = D-40, rows = D-41).
+
+context Γ = [Ident: TypeV]
+
+infer_V MIR -> TypeV with Γ
+infer_C MIR -> TypeC with Γ
+
+// === Values ===
+
+infer_V NumV -> $t := $t = NamedTypeV { name: 'Number' }
+infer_V StrV -> $t := $t = NamedTypeV { name: 'String' }
+infer_V VarV { name: $n } -> $t := $t = Γ.$n
+infer_V ThunkV { body: $b } -> $t := $t = UTypeV { inner: (infer_C $b) }
+infer_V ParenV { inner: $v } -> $t := $t = (infer_V $v)
+
+// === Computations ===
+
+infer_C RetC { value: $v } -> $t := $t = FTypeC { inner: (infer_V $v) }
+infer_C LetC { name: $n, value: $v, body: $b } -> $t
+  := FTypeC { inner: $tv } = (infer_C $v),
+     $t = (infer_C $b with Γ+{$n: $tv})
