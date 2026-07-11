@@ -34,3 +34,85 @@ def id = thunk { fn (x) => ret x }
 
 def id=thunk{fn(x)=>ret x}
 
+=== nested beta chain: force-thunk of let-ret ===
+:optimize(MIR)
+
+def t = thunk { force thunk { let x = ret 1 in ret x } }
+
+---
+
+def t=thunk{ret 1}
+
+=== nested beta chain: let of let ===
+:optimize(MIR)
+
+def t = thunk { let x = ret 1 in let y = ret x in ret y }
+
+---
+
+def t=thunk{ret 1}
+
+=== f-beta duplicating a cheap value substitutes ===
+:optimize(MIR)
+
+def t = thunk { let x = ret 1 in ret .Two(x, x) }
+
+---
+
+def t=thunk{ret.Two(1,1)}
+
+=== f-beta duplicating a big value keeps the let (D-31 watchpoint) ===
+:optimize(MIR)
+
+def t = thunk { let x = ret thunk { ret .Pair(1, 2) } in ret .Two(x, x) }
+
+---
+
+def t=thunk{let x=ret thunk{ret.Pair(1,2)}in ret.Two(x,x)}
+
+=== handle of perform resolves to the handler bundle (legacy 01_trivial_leaf intent) ===
+:optimize(MIR)
+
+def t = thunk { handle Log with bundle { fn info(m) => ret m; } in perform Log }
+
+---
+
+def t=thunk{ret bundle{fn info(m)=>ret m;}}
+
+=== handler visible through a force-thunk chain (legacy 03_fixed_point_chain intent) ===
+:optimize(MIR)
+
+def t = thunk { handle Log with h in force thunk { force thunk { perform Log } } }
+
+---
+
+def t=thunk{ret h}
+
+=== handle survives when the body is not its perform ===
+:optimize(MIR)
+
+def t = thunk { handle Log with h in perform Other }
+
+---
+
+def t=thunk{handle Log with h in perform Other}
+
+=== two defs optimize independently ===
+:optimize(MIR)
+
+def a = thunk { force thunk { ret 1 } }
+def b = thunk { (perform Log) }
+
+---
+
+def a=thunk{ret 1}def b=thunk{perform Log}
+
+=== unencodable input: an F type without a cap row ===
+:optimize(MIR)
+
+def t = (x : U(F(Number)))
+
+---
+
+ERROR: unencodable: `FTypeC` is missing a field the egglog grammar requires (D-42)
+

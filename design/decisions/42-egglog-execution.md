@@ -12,15 +12,22 @@ owned term — no s-expression re-parsing.
 **Substitution is host-side.** egglog has no capture-avoiding
 substitution; embedders either encode de Bruijn rulesets or evaluate on
 the host. We take host-side, matching the M2 judge tactic (D-24). The
-driver loop:
+driver loop (as landed — a high-cost `subst` never wins extraction, so
+pending calls are read off its function table instead of out of
+extracted terms):
 
 1. encode the input tree as an egglog expression, `(let root <expr>)`;
 2. run the compiled `between` program + `(run N)` (bounded);
-3. `(extract root)` → lowest-cost term;
-4. if the extracted term contains `subst` nodes, reduce them host-side
-   (innermost-first), `(union root <reduced>)`, go to 2 — bounded
-   rounds; leftover `subst` at the bound is an error;
-5. decode to surface text; reparse for the canonical output.
+3. read every `subst` row via `(print-function subst …)` — each comes
+   back as a call term whose arguments are min-cost extractions of the
+   row's argument e-classes;
+4. reduce each not-yet-seen call host-side (innermost-first) and
+   `(union <call> <reduced>)` — the reduced form joins the e-class the
+   F-beta rewrite created the call in, becoming extractable by true
+   cost; go to 2 while any round made progress, bounded rounds;
+5. `(extract root)` — a `subst` surviving into the extraction, or no
+   convergence within the bound, is an error;
+6. decode to surface text; reparse for the canonical output.
 
 **`subst` is a high-cost constructor**, not an uninterpreted function:
 `(constructor subst (Comp String Value) Comp :cost 1000)` (the proven
@@ -44,11 +51,14 @@ Deferred: binder markers or an alpha-uniqueness invariant from elab.
   "unencodable" — types only appear inside annotations, out of M3
   fixture scope.
 
-**Update to D-31's caveat**: egglog 2.0's built-in extractor is
-Bellman-Ford over the hypergraph — effectively DAG cost with sharing,
-so "tree cost double-counts shared subterms" is not expected to bite.
-The duplicating-subst fixture is the watchpoint; whichever way it
-lands is recorded there.
+**Update to D-31's caveat (how the watchpoint landed)**: egglog 2.0's
+`extract` uses `TreeAdditiveCostModel` — plain tree cost, *not* DAG
+cost with sharing; the caveat stands. It lands in our favor: a subst
+that would duplicate a large value makes the substituted form cost
+more than the `let`, so extraction keeps the `let` — a free size-based
+inlining heuristic (fixture: "duplicating a big value keeps the let").
+Cheap values (fixture: "duplicating a cheap value") still substitute.
+Revisit DAG-aware extraction only if genuine sharing gets mis-ranked.
 
 **Not ported from legacy LTO** (deferred to M4+): anything
 interprocedural — resolution maps across defs, inline/clone heuristics,

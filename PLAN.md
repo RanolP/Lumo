@@ -222,30 +222,48 @@ Goal: the between rule groups optimize MIR under golden fixtures.
 Execution model = decision 42 (hybrid saturate/extract/reduce loop;
 host-side subst; `subst` as a `:cost 1000` constructor).
 
-- [ ] Step 1 — decision 42 written; this breakdown.
-- [ ] Step 2 — egglog 2.0 dependency in `langue-rt`;
-      `langue-rt::optimize` generic helpers (load program, define root,
-      run, extract to an owned term, union, loop skeleton with a
-      caller-supplied subst-reduction callback); smoke test executes the
-      real M1-compiled `between MIR` program for the first time; fix
-      `codegen/between.rs` where egglog 2.0 rejects the format (`subst`
-      becomes a `:cost 1000` constructor) and re-bless
-      `tests/fixtures/egglog/MIR.egg`.
-- [ ] Step 3 — `:optimize(L)` corpus attribute in `langc` (D-32):
-      `ElabReport`-shaped driver fn, canonicalize-then-compare like
-      `:elab`, `LANGC_UPDATE=1` blessing.
-- [ ] Step 4 — new `between MIR` rules: `ParenC` transparency and
-      handle/perform resolution (the local core of legacy LTO's
-      capability monomorphization); `langc gen` + re-bless.
-- [ ] Step 5 — handwritten MIR optimize driver
-      (`lumo-syntax::optimize_driver`, mirrors `judge_driver`): parse →
-      encode (D-42 optional-field rules) → loop → decode → reparse
-      canonical; wire into the corpus test; smoke fixtures under
-      `tests/fixtures/optimize/` (U-beta, F-beta, paren, no-op).
-- [ ] Step 6 — full fixture suite: nested beta chains, duplicating
-      subst (the D-31 caveat watchpoint), handle/perform cases modeled
-      on legacy LTO fixture intent, unencodable-input ERROR; record
-      deferred items (interprocedural LTO, binder-aware subst).
+- [x] Step 1 (2026-07-12) — decision 42 written; this breakdown.
+- [x] Step 2 (2026-07-12) — egglog 2.0 dependency in `langue-rt`
+      (default-features off, pure Rust); `langue-rt::optimize`:
+      `Optimizer` (load program, define root, run, extract to an owned
+      `EggTerm`, union, read a tactic table's pending calls) + the D-42
+      loop. First real execution of the M1-compiled format; egglog 2.0
+      rejects merge-less `function`s, so `codegen/between.rs` emits
+      `subst` as a `:cost 1000` constructor (extraction steering);
+      `tests/fixtures/egglog/MIR.egg` re-blessed.
+- [x] Step 3 (2026-07-12) — `:optimize(L)` corpus attribute in `langc`
+      (D-32): `ElabReport`-shaped driver fn, canonicalize-then-compare
+      like `:elab`, `ERROR` expected matches any error,
+      `LANGC_UPDATE=1` blessing.
+- [x] Step 4 (2026-07-12) — new `between MIR` rules: `ParenC`
+      transparency and handle/perform resolution (the local core of
+      legacy LTO's capability monomorphization). The checker now allows
+      nonlinear patterns in between relations (egglog equality
+      constraints); from-rules still reject them.
+- [x] Step 5 (2026-07-12) — handwritten MIR optimize driver
+      (`lumo-syntax::optimize_driver`, mirrors `judge_driver`): encode
+      rides the generated `judgments::term_of` (Mk structs,
+      vec-of/vec-empty, D-42 optional-field rules, bare-paren
+      transparency); host-side naive subst; handwritten MIR printer +
+      reparse for canonical output; wired into the corpus test; smoke
+      fixtures (U-beta, F-beta, paren, no-op).
+- [x] Step 6 (2026-07-12) — full fixture suite
+      (`tests/fixtures/optimize/mir.test`, 14 cases): nested beta
+      chains, duplicating subst both ways (the D-31 caveat stands —
+      egglog 2.0 extract is tree-cost — and lands as a free size-based
+      inlining heuristic: big values keep the let), handle/perform
+      cases on legacy `01_trivial_leaf`/`03_fixed_point_chain` intent
+      (incl. through force-thunk chains, plus the negative case),
+      multi-def files, unencodable-input `ERROR`.
+
+Deferred from M3: everything interprocedural from legacy LTO
+(cross-def resolution maps, inline/clone heuristics, DCE, `resume`
+stripping — needs def-level context beyond a single-term e-graph;
+revisit at/after M4); binder-aware subst (shadow-stopping needs binder
+markers or an alpha-uniqueness invariant from elab, D-42); a generated
+optimize driver (the encode/decode walk is handwritten like the M2
+judge driver); DAG-aware extraction (only if genuine sharing gets
+mis-ranked, D-31/D-42).
 
 ## M4 — JS emission
 
