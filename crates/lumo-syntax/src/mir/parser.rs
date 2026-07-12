@@ -27,6 +27,17 @@ struct Parser {
 }
 
 impl Parser {
+    fn can_parse_abort_c(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_ABORT)
+    }
+    fn parse_abort_c(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_ABORT, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_value())));
+        SyntaxNode::from_children(SyntaxKind::ABORT_C, children)
+    }
+
     fn can_parse_bundle_clause(&self) -> bool {
         self.c.at(SyntaxKind::KEYWORD_FN)
     }
@@ -238,7 +249,7 @@ impl Parser {
     }
 
     fn can_parse_comp(&self) -> bool {
-        self.c.at_any(&[SyntaxKind::KEYWORD_CASE, SyntaxKind::KEYWORD_FIX, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_LET, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_RET, SyntaxKind::KEYWORD_SEL, SyntaxKind::PAREN_OPEN])
+        self.c.at_any(&[SyntaxKind::KEYWORD_ABORT, SyntaxKind::KEYWORD_CASE, SyntaxKind::KEYWORD_FIX, SyntaxKind::KEYWORD_FN, SyntaxKind::KEYWORD_FORCE, SyntaxKind::KEYWORD_HANDLE, SyntaxKind::KEYWORD_LET, SyntaxKind::KEYWORD_PERFORM, SyntaxKind::KEYWORD_RET, SyntaxKind::KEYWORD_SEL, SyntaxKind::KEYWORD_TRY, SyntaxKind::PAREN_OPEN])
     }
     fn parse_comp(&mut self) -> SyntaxNode {
         self.parse_comp_bp(0)
@@ -285,6 +296,12 @@ impl Parser {
         }
         if self.can_parse_sel_c() {
             return self.parse_sel_c();
+        }
+        if self.can_parse_try_c() {
+            return self.parse_try_c();
+        }
+        if self.can_parse_abort_c() {
+            return self.parse_abort_c();
         }
         if self.can_parse_paren_c() {
             return self.parse_paren_c();
@@ -603,6 +620,18 @@ impl Parser {
         children.push(SyntaxElement::Node(Box::new(self.parse_comp())));
         self.c.expect_into(SyntaxKind::BRACE_CLOSE, &mut children);
         SyntaxNode::from_children(SyntaxKind::THUNK_V, children)
+    }
+
+    fn can_parse_try_c(&self) -> bool {
+        self.c.at(SyntaxKind::KEYWORD_TRY)
+    }
+    fn parse_try_c(&mut self) -> SyntaxNode {
+        let mut children = Vec::new();
+        self.c.expect_into(SyntaxKind::KEYWORD_TRY, &mut children);
+        self.c.expect_into(SyntaxKind::IDENT, &mut children);
+        self.c.expect_into(SyntaxKind::KEYWORD_IN, &mut children);
+        children.push(SyntaxElement::Node(Box::new(self.parse_comp())));
+        SyntaxNode::from_children(SyntaxKind::TRY_C, children)
     }
 
     fn can_parse_type_args(&self) -> bool {

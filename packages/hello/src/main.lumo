@@ -19,6 +19,6 @@ fn main() = {
   IO.println(("hi" + "!").len().to_string());
   IO.println("  pad  ".trim() + "|" + (21).to_string());
   IO.println(list_length(List.cons(1, List.cons(2, List.nil)).map(fn(n: Number) = n * 10)).to_string());
-  handle IO with bundle { fn println(m) = IO.println("[quiet] " + m) } in IO.println("handled");
+  handle IO with bundle { fn println(m) = resume(IO.println("[quiet] " + m)) } in IO.println("handled");
   IO.println(if is_even(10) { "10 is even" } else { "10 is odd" })
 }

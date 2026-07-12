@@ -1,7 +1,7 @@
 // Ported from legacy/packages/libcore/src#js/number.lumo (D-45).
 // Legacy bound these externs to JS operators via #[extern(operator)]
 // attrs; the new backend has no extern mapping, so the bindings live
-// in runtime/js/prelude.js. `resume` wrappers dropped (D-44).
+// in runtime/js/prelude.js. Tail `resume` wrappers restored (D-54).
 
 extern fn __num_add(a: Number, b: Number): Number;
 extern fn __num_sub(a: Number, b: Number): Number;
@@ -14,20 +14,20 @@ extern fn __num_eq(a: Number, b: Number): Bool;
 extern fn __num_lt(a: Number, b: Number): Bool;
 
 impl NumOps {
-  fn add(a: Number, b: Number): Number = __num_add(a, b)
-  fn sub(a: Number, b: Number): Number = __num_sub(a, b)
-  fn mul(a: Number, b: Number): Number = __num_mul(a, b)
-  fn div(a: Number, b: Number): Number = __num_div(a, b)
-  fn mod_(a: Number, b: Number): Number = __num_mod(a, b)
-  fn neg(a: Number): Number = __num_neg(a)
-  fn floor(a: Number): Number = __num_floor(a)
-  fn eq(a: Number, b: Number): Bool = __num_eq(a, b)
+  fn add(a: Number, b: Number): Number = resume(__num_add(a, b))
+  fn sub(a: Number, b: Number): Number = resume(__num_sub(a, b))
+  fn mul(a: Number, b: Number): Number = resume(__num_mul(a, b))
+  fn div(a: Number, b: Number): Number = resume(__num_div(a, b))
+  fn mod_(a: Number, b: Number): Number = resume(__num_mod(a, b))
+  fn neg(a: Number): Number = resume(__num_neg(a))
+  fn floor(a: Number): Number = resume(__num_floor(a))
+  fn eq(a: Number, b: Number): Bool = resume(__num_eq(a, b))
   fn cmp(a: Number, b: Number): Ordering =
     match __num_lt(a, b) {
-      .true => Ordering.less,
+      .true => resume(Ordering.less),
       .false => match __num_eq(a, b) {
-        .true => Ordering.equal,
-        .false => Ordering.greater,
+        .true => resume(Ordering.equal),
+        .false => resume(Ordering.greater),
       },
     }
 }

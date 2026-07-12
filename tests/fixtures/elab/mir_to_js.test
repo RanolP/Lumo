@@ -96,3 +96,11 @@ def c = thunk { (ret a) }
 
 const a=1;const b=a;const c=()=>a;
 
+
+=== try is a prelude boundary call; abort throws to it (D-54) ===
+:elab(MIR -> JS)
+
+def t = thunk { try __tok1 in let h = ret (bundle { fn throw(m) => abort __tok1 0; } : Exc) in ret 1 }
+
+---
+const t=()=>__lumo_boundary((__tok1)=>((h)=>1)(({throw:(m)=>__lumo_abort(__tok1,0)})));

@@ -2,7 +2,7 @@
 :infer(Lumo)
 
 cap E { fn op(x: A): A }
-impl E { fn op(x) = x }
+impl E { fn op(x) = resume(x) }
 
 ---
 
@@ -12,7 +12,7 @@ __impl_E : E
 :infer(Lumo)
 
 cap E { fn op(x: A): A }
-impl E { fn op(x) = x }
+impl E { fn op(x) = resume(x) }
 fn use_it(a: A): A / {} { E.op(a) }
 
 ---
@@ -24,7 +24,7 @@ use_it : U((A) -> F(A))
 :infer(Lumo)
 
 cap E { fn op1(x: A): A; fn op2(x: A): A }
-impl E { fn op1(x) = x }
+impl E { fn op1(x) = resume(x) }
 
 ---
 
@@ -34,7 +34,7 @@ ERROR
 :infer(Lumo)
 
 cap E { fn op(x: A): A }
-impl E { fn op(x) = x; fn bogus(x) = x }
+impl E { fn op(x) = resume(x); fn bogus(x) = resume(x) }
 
 ---
 

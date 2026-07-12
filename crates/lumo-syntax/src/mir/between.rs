@@ -14,6 +14,7 @@ pub static PROGRAM: &str = r#"
     (CapSig String TypeArgs :cost 1)
   )
   (Comp
+    (AbortC String Value :cost 1)
     (CaseC Value CaseArmVec :cost 1)
     (CompPostfix String Comp ValueArgs :cost 1)
     (FixC String Comp :cost 1)
@@ -25,6 +26,7 @@ pub static PROGRAM: &str = r#"
     (PerformC String :cost 1)
     (RetC Value :cost 1)
     (SelC Value String :cost 1)
+    (TryC String Comp :cost 1)
   )
   (TypeC
     (FTypeC TypeV CapRow :cost 1)

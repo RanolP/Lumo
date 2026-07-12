@@ -5,7 +5,7 @@ extern type String;
 extern type Number;
 extern fn __str_len(s: String): Number;
 impl String {
-  fn len(self): Number = __str_len(self)
+  fn len(self): Number = resume(__str_len(self))
 }
 
 ---
@@ -21,8 +21,8 @@ extern type Number;
 extern fn __str_len(s: String): Number;
 extern fn __str_concat(a: String, b: String): String;
 impl String {
-  fn len(self): Number = __str_len(self)
-  fn append(self, other: String): String = __str_concat(self, other)
+  fn len(self): Number = resume(__str_len(self))
+  fn append(self, other: String): String = resume(__str_concat(self, other))
 }
 fn n(s: String): Number / {} { s.len() }
 fn chain(s: String): Number / {} { s.append("!").len() }
@@ -41,7 +41,7 @@ chain : U((String) -> F(Number))
 extern type String;
 extern type Number;
 impl String {
-  fn len(self): Number = self
+  fn len(self): Number = resume(self)
 }
 
 ---
@@ -55,7 +55,7 @@ extern type String;
 extern type Number;
 extern fn __str_len(s: String): Number;
 impl String {
-  fn len(self): Number = __str_len(self)
+  fn len(self): Number = resume(__str_len(self))
 }
 fn bad(s: String): Number / {} { s.bogus() }
 
@@ -71,8 +71,8 @@ data List[A] { .nil, .cons(A, List[A]) }
 impl[T] List[T] {
   fn map[R](self: List[T], mapper: (T) -> R): List[R] =
     match self {
-      .nil => List.nil,
-      .cons(h, t) => List.cons(mapper(h), t.map(mapper))
+      .nil => resume(List.nil),
+      .cons(h, t) => resume(List.cons(mapper(h), t.map(mapper)))
     }
 }
 fn bump(xs: List[Number]): List[Number] / {} { xs.map(fn(n: Number) = n) }
@@ -90,8 +90,8 @@ data List[A] { .nil, .cons(A, List[A]) }
 impl[T] List[T] {
   fn map[R](self: List[T], mapper: (T) -> R): List[R] =
     match self {
-      .nil => List.cons(1, List.nil),
-      .cons(h, t) => List.cons(mapper(h), t.map(mapper))
+      .nil => resume(List.cons(1, List.nil)),
+      .cons(h, t) => resume(List.cons(mapper(h), t.map(mapper)))
     }
 }
 

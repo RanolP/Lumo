@@ -146,6 +146,15 @@ def konst = (k : U(forall a, b. (a, b) -> F(a)))
 
 (FILE (DEF (PAREN_V (VAR_V) (U_TYPE_V (FORALL_TYPE_C (FN_TYPE_C (NAMED_TYPE_V) (F_TYPE_C (NAMED_TYPE_V))))))) (DEF (PAREN_V (VAR_V) (U_TYPE_V (FORALL_TYPE_C (FN_TYPE_C (NAMED_TYPE_V) (NAMED_TYPE_V) (F_TYPE_C (NAMED_TYPE_V))))))))
 
+=== try binds a token; abort exits to it (D-54) ===
+:parse(MIR)
+
+def t = thunk { try __tok1 in let h = ret (bundle { fn throw(m) => abort __tok1 0; } : Exc) in force body(h) }
+
+---
+
+(FILE (DEF (THUNK_V (TRY_C (LET_C (RET_C (PAREN_V (BUNDLE_V (BUNDLE_CLAUSE (ABORT_C (NUM_V)))) (NAMED_TYPE_V))) (COMP_POSTFIX (FORCE_C (VAR_V)) (VALUE_ARGS (VAR_V))))))))
+
 === broken def is an error ===
 :fails(MIR)
 

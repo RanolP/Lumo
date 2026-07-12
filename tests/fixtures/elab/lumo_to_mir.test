@@ -121,7 +121,7 @@ def b = thunk { fn(x) => let y = ret x in ret y }
 cap Console {
   fn log(msg)
 }
-fn main() = handle Console with bundle { fn log(m) = m } in Console.log("x")
+fn main() = handle Console with bundle { fn log(m) = resume(m) } in Console.log("x")
 
 ---
 
@@ -234,7 +234,7 @@ cap Console {
   fn log(msg)
 }
 impl Console {
-  fn log(m) = m
+  fn log(m) = resume(m)
 }
 
 ---
@@ -248,7 +248,7 @@ cap Console {
   fn log(msg)
 }
 impl Console {
-  fn log(m) = m
+  fn log(m) = resume(m)
 }
 fn main() = Console.log("hi")
 
@@ -265,8 +265,8 @@ cap Pair {
   fn second(a, b)
 }
 impl Pair {
-  fn first(a, b) = a
-  fn second(a, b) = b
+  fn first(a, b) = resume(a)
+  fn second(a, b) = resume(b)
 }
 fn snd(x, y) = Pair.second(x, y)
 
@@ -314,7 +314,7 @@ def pick = thunk { fn(a) => fn(b) =>
 extern type Number;
 cap Add { fn add(a: Self, b: Self): Self }
 extern fn __num_add(a: Number, b: Number): Number;
-impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+impl Number: Add { fn add(self, other: Self): Self = resume(__num_add(self, other)) }
 
 ---
 
@@ -326,7 +326,7 @@ def __impl_Add_Number = (bundle { fn add(self, other) => force __num_add(self, o
 extern type Number;
 cap Add { fn add(a: Self, b: Self): Self }
 extern fn __num_add(a: Number, b: Number): Number;
-impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+impl Number: Add { fn add(self, other: Self): Self = resume(__num_add(self, other)) }
 fn three() = 1 + 2
 fn inc(x: Number) = x + 1
 
@@ -361,8 +361,8 @@ cap PartialOrd { fn cmp(a: Self, b: Self): Ordering }
 extern fn __num_lt(a: Number, b: Number): Bool;
 impl Number: PartialOrd {
   fn cmp(self, other: Self): Ordering = match __num_lt(self, other) {
-    .true => Ordering.less,
-    .false => Ordering.greater,
+    .true => resume(Ordering.less),
+    .false => resume(Ordering.greater),
   }
 }
 fn below(a: Number, b: Number) = a < b
@@ -392,7 +392,7 @@ extern type String;
 extern type Number;
 extern fn __str_len(s: String): Number;
 impl String {
-  fn len(self): Number = __str_len(self)
+  fn len(self): Number = resume(__str_len(self))
 }
 
 ---
@@ -407,8 +407,8 @@ extern type Number;
 extern fn __str_len(s: String): Number;
 extern fn __str_concat(a: String, b: String): String;
 impl String {
-  fn len(self): Number = __str_len(self)
-  fn append(self, other: String): String = __str_concat(self, other)
+  fn len(self): Number = resume(__str_len(self))
+  fn append(self, other: String): String = resume(__str_concat(self, other))
 }
 fn chain(s: String) = s.append("!").len()
 
@@ -430,8 +430,8 @@ data List[A] { .nil, .cons(A, List[A]) }
 impl[T] List[T] {
   fn map[R](self: List[T], mapper: (T) -> R): List[R] =
     match self {
-      .nil => List.nil,
-      .cons(h, t) => List.cons(mapper(h), t.map(mapper))
+      .nil => resume(List.nil),
+      .cons(h, t) => resume(List.cons(mapper(h), t.map(mapper)))
     }
 }
 
@@ -466,9 +466,9 @@ cap Console {
   fn log(m)
 }
 impl Console {
-  fn log(m) = m
+  fn log(m) = resume(m)
 }
-fn main() = handle Console with bundle { fn log(m) = m } in Console.log("x")
+fn main() = handle Console with bundle { fn log(m) = resume(m) } in Console.log("x")
 
 ---
 
@@ -506,3 +506,61 @@ def is_even = (thunk { fn(n) =>
 def is_odd = (thunk { fn(n) =>
   let __t4 = force __grp_is_even_is_odd in sel __t4.is_odd(n)
 } : U((Nat) -> F(Bool)))
+
+=== abortive clauses abort to a try boundary (D-54) ===
+:elab(Lumo -> MIR)
+
+cap Console {
+  fn log(msg)
+}
+fn main() = handle Console with bundle { fn log(m) = m } in Console.log("x")
+
+---
+
+def main = thunk {
+  try __tok1 in
+  let __t2 = ret (bundle { fn log(m) => abort __tok1 m } : Console) in
+  sel __t2.log("x")
+}
+
+=== mixed tail and abortive clauses share the boundary (D-54) ===
+:elab(Lumo -> MIR)
+
+cap E {
+  fn op1(x)
+  fn op2(x)
+}
+fn main(a) = handle E with bundle { fn op1(x) = resume(x); fn op2(x) = x } in E.op2(a)
+
+---
+
+def main = thunk { fn(a) =>
+  try __tok1 in
+  let __t2 = ret (bundle { fn op1(x) => ret x fn op2(x) => abort __tok1 x } : E) in
+  sel __t2.op2(a)
+}
+
+=== resume strips through if/else and block tails (D-54) ===
+:elab(Lumo -> MIR)
+
+data Bool { .true, .false }
+cap E {
+  fn op(x)
+}
+fn main(c, a) = handle E with bundle { fn op(x) = {
+  let y = x;
+  if c { resume(y) } else { resume(a) }
+} } in E.op(a)
+
+---
+
+def main = thunk { fn(c) => fn(a) =>
+  let __t1 = ret (bundle { fn op(x) =>
+    let y = ret x in
+    case unroll c {
+      .true => ret y
+      .false => ret a
+    }
+  } : E) in
+  sel __t1.op(a)
+}

@@ -367,7 +367,7 @@ fn rule_9(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opti
     if node.kind != FromKind::PAREN_C {
         return None;
     }
-    let b_c = langue_rt::nth_node_in(node, &[FromKind::CASE_C, FromKind::COMP_POSTFIX, FromKind::FIX_C, FromKind::FORCE_C, FromKind::HANDLE_C, FromKind::LAM_C, FromKind::LET_C, FromKind::PAREN_C, FromKind::PERFORM_C, FromKind::RET_C, FromKind::SEL_C], 0)?;
+    let b_c = langue_rt::nth_node_in(node, &[FromKind::ABORT_C, FromKind::CASE_C, FromKind::COMP_POSTFIX, FromKind::FIX_C, FromKind::FORCE_C, FromKind::HANDLE_C, FromKind::LAM_C, FromKind::LET_C, FromKind::PAREN_C, FromKind::PERFORM_C, FromKind::RET_C, FromKind::SEL_C, FromKind::TRY_C], 0)?;
     let mut c0 = elab_node(ctx, externs, b_c)?;
     Some(c0)
 }

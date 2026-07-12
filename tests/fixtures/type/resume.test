@@ -1,0 +1,59 @@
+=== tail resume types as the plain clause value (D-54) ===
+:infer(Lumo)
+
+cap E { fn op(): A }
+fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in E.op }
+
+---
+
+f : U((A) -> F(A))
+
+=== an abortive clause exits with the handle's result type (D-54) ===
+:infer(Lumo)
+
+cap E { fn op(): A }
+fn f(a: A): A / {} { handle E with bundle { fn op() { a } } in E.op }
+
+---
+
+f : U((A) -> F(A))
+
+=== tail resume with typed op params (legacy resume case 3) ===
+:infer(Lumo)
+
+cap E { fn op(x: A): B }
+fn f(a: A, b: B): B / {} { handle E with bundle { fn op(x) { resume(b) } } in E.op(a) }
+
+---
+
+f : U((A) -> (B) -> F(B))
+
+=== abortive exit through a let-bound op (legacy resume case 4) ===
+:infer(Lumo)
+
+cap Choose { fn choose(): A }
+fn f(a: A): A / {} { handle Choose with bundle { fn choose() { a } } in { let x = Choose.choose; x } }
+
+---
+
+f : U((A) -> F(A))
+
+=== an abort must match the boundary, not the op (legacy case 5, corrected) ===
+:infer(Lumo)
+
+cap E { fn op1(): A; fn op2(x: A): B }
+fn f(a: A, b: B): A / {} { handle E with bundle { fn op1() { resume(a) }; fn op2(x) { b } } in E.op1 }
+
+---
+
+ERROR
+
+=== mixed clauses type when the abort matches the boundary (D-54) ===
+:infer(Lumo)
+
+cap E { fn op1(): A; fn op2(x: B): B }
+fn f(a: A, b: B): A / {} { handle E with bundle { fn op1() { resume(a) }; fn op2(x) { a } } in E.op1 }
+
+---
+
+f : U((A) -> (B) -> F(A))

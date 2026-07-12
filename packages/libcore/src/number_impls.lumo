@@ -1,35 +1,35 @@
 // Ported from the impl half of legacy/packages/libcore/src/number.lumo
-// (D-45/D-48; `resume` dropped per D-44). Ordered after the NumOps
+// (D-45/D-48; tail `resume` restored per D-54). Ordered after the NumOps
 // backend bundle in stdlib.manifest — these delegate to __impl_NumOps.
 
 impl Number: PartialEq {
-  fn eq(self, other: Self): Bool = NumOps.eq(self, other)
+  fn eq(self, other: Self): Bool = resume(NumOps.eq(self, other))
 }
 
 impl Number: PartialOrd {
-  fn cmp(self, other: Self): Ordering = NumOps.cmp(self, other)
+  fn cmp(self, other: Self): Ordering = resume(NumOps.cmp(self, other))
 }
 
 impl Number: Add {
-  fn add(self, other: Self): Self = NumOps.add(self, other)
+  fn add(self, other: Self): Self = resume(NumOps.add(self, other))
 }
 
 impl Number: Sub {
-  fn sub(self, other: Self): Self = NumOps.sub(self, other)
+  fn sub(self, other: Self): Self = resume(NumOps.sub(self, other))
 }
 
 impl Number: Mul {
-  fn mul(self, other: Self): Self = NumOps.mul(self, other)
+  fn mul(self, other: Self): Self = resume(NumOps.mul(self, other))
 }
 
 impl Number: Div {
-  fn div(self, other: Self): Self = NumOps.div(self, other)
+  fn div(self, other: Self): Self = resume(NumOps.div(self, other))
 }
 
 impl Number: Mod {
-  fn mod_(self, other: Self): Self = NumOps.mod_(self, other)
+  fn mod_(self, other: Self): Self = resume(NumOps.mod_(self, other))
 }
 
 impl Number: Neg {
-  fn neg(self): Self = NumOps.neg(self)
+  fn neg(self): Self = resume(NumOps.neg(self))
 }

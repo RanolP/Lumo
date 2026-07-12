@@ -21,6 +21,15 @@ fn push(out: &mut String, s: &str) {
     out.push_str(s);
 }
 
+/// Render a `AbortC` node as reparseable text.
+pub fn abort_c(tok: &str, value: &str) -> String {
+    let mut out = String::new();
+    push(&mut out, "abort");
+    push(&mut out, tok);
+    push(&mut out, value);
+    out
+}
+
 /// Render a `BundleClause` node as reparseable text.
 pub fn bundle_clause(name: &str, params: &[&str], body: &str) -> String {
     let mut out = String::new();
@@ -141,7 +150,7 @@ pub fn case_c(scrutinee: &str, arms: &[&str]) -> String {
 fn comp_r_bound(kind: Option<SyntaxKind>) -> u16 {
     let Some(kind) = kind else { return 0 };
     match kind {
-        SyntaxKind::FIX_C | SyntaxKind::HANDLE_C | SyntaxKind::LAM_C | SyntaxKind::LET_C => 0,
+        SyntaxKind::FIX_C | SyntaxKind::HANDLE_C | SyntaxKind::LAM_C | SyntaxKind::LET_C | SyntaxKind::TRY_C => 0,
         _ => u16::MAX,
     }
 }
@@ -417,6 +426,16 @@ pub fn thunk_v(body: &str) -> String {
     push(&mut out, "{");
     push(&mut out, body);
     push(&mut out, "}");
+    out
+}
+
+/// Render a `TryC` node as reparseable text.
+pub fn try_c(tok: &str, body: &str) -> String {
+    let mut out = String::new();
+    push(&mut out, "try");
+    push(&mut out, tok);
+    push(&mut out, "in");
+    push(&mut out, body);
     out
 }
 

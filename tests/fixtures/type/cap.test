@@ -42,7 +42,7 @@ ERROR
 :infer(Lumo)
 
 cap E { fn op(): A }
-fn f(a: A): A / {} { handle E with bundle { fn op() { a } } in E.op }
+fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) } } in E.op }
 
 ---
 
@@ -63,7 +63,7 @@ f : U((E1) -> (E2) -> F(A))
 :infer(Lumo)
 
 cap Transform { fn apply(x: A): B }
-fn f(a: A, b: B): B / {} { handle Transform with bundle { fn apply(x) { b } } in Transform.apply(a) }
+fn f(a: A, b: B): B / {} { handle Transform with bundle { fn apply(x) { resume(b) } } in Transform.apply(a) }
 
 ---
 
@@ -73,7 +73,7 @@ f : U((A) -> (B) -> F(B))
 :infer(Lumo)
 
 cap E { fn op1(): A; fn op2(x: A): B }
-fn f(a: A, b: B): A / {} { handle E with bundle { fn op1() { a }; fn op2(x) { b } } in E.op1 }
+fn f(a: A, b: B): A / {} { handle E with bundle { fn op1() { resume(a) }; fn op2(x) { resume(b) } } in E.op1 }
 
 ---
 
@@ -83,7 +83,7 @@ f : U((A) -> (B) -> F(A))
 :infer(Lumo)
 
 cap E { fn op1(): A; fn op2(x: A): B }
-fn f(a: A): A / {} { handle E with bundle { fn op1() { a } } in E.op1 }
+fn f(a: A): A / {} { handle E with bundle { fn op1() { resume(a) } } in E.op1 }
 
 ---
 
@@ -93,7 +93,7 @@ ERROR
 :infer(Lumo)
 
 cap E { fn op(): A }
-fn f(a: A): A / {} { handle E with bundle { fn op() { a }; fn bogus() { a } } in E.op }
+fn f(a: A): A / {} { handle E with bundle { fn op() { resume(a) }; fn bogus() { resume(a) } } in E.op }
 
 ---
 

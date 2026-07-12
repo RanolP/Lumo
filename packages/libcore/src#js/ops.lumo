@@ -1,10 +1,10 @@
 // Ported from legacy/packages/libcore/src#js/ops.lumo (D-45/D-48;
-// `resume` dropped). Decl-only today: `!` desugars structurally over
+// tail `resume` restored, D-54). Decl-only today: `!` desugars structurally over
 // the Bool tags (D-48), so nothing selects this impl yet.
 
 impl Bool: Not {
   fn not(self): Self = match self {
-    .true => Bool.false,
-    .false => Bool.true,
+    .true => resume(Bool.false),
+    .false => resume(Bool.true),
   }
 }

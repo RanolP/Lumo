@@ -146,6 +146,11 @@ infer_C HandleC { cap: $c, handler: $h, body: $b } -> $t $amb
 infer_C CaseC { scrutinee: $s, arms: $arms } -> $t $amb
   := $ts = (infer_V $s),
      case_arms $arms $ts $t $amb
+// D-54: the boundary's token binds at the result *value* type — any
+// abort to it must produce exactly what the boundary returns.
+infer_C TryC { tok: $k, body: $b } -> $t $amb
+  := $t = FTypeC { inner: $i, row: $r },
+     (infer_C $b FTypeC { inner: $i, row: $r } $amb with Γ+{$k: $i})
 infer_C ParenC { inner: $c } -> $t $amb := infer_C $c $t $amb
 // LamC and FixC have no infer rules on purpose: they type only in
 // check mode, off an annotation (spine-local bidirectionality, D-08).
@@ -180,6 +185,15 @@ check_C SelC { value: $v, field: $f } <- $t -> $amb
 check_C HandleC { cap: $c, handler: $h, body: $b } <- FTypeC { inner: $i, row: $r } -> $amb
   := (infer_C HandleC { cap: $c, handler: $h, body: $b } $tc $r),
      (match_c $tc FTypeC { inner: $i, row: $r })
+check_C TryC { tok: $k, body: $b } <- FTypeC { inner: $i, row: $r } -> $amb
+  := (check_C $b FTypeC { inner: $i, row: $r } $amb with Γ+{$k: $i})
+// D-54: the aborted value checks against the token's binding; the
+// abort itself never returns, so it inhabits any F-type. No infer
+// rule on purpose — elab emits aborts only as clause-body tails,
+// which always type in check mode (op_check).
+check_C AbortC { tok: $k, value: $v } <- $t -> $amb
+  := $i = Γ.$k,
+     check_V $v $i
 check_C ParenC { inner: $c } <- $t -> $amb := check_C $c $t $amb
 
 // === Application spines: instantiate, check args one by one, and

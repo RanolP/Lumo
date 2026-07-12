@@ -1,6 +1,6 @@
 // Ported from legacy/packages/libstd/src#js.node/fs.lumo (D-45).
 // Legacy linked to node:fs via #[link(module)]; the bindings live in
-// runtime/js/prelude.js. `resume` dropped.
+// runtime/js/prelude.js. Tail `resume` restored (D-54).
 
 extern {
   fn readFileSync(path: String, encoding: String): String;
@@ -8,6 +8,6 @@ extern {
 }
 
 impl FS {
-  fn read_file(path: String): String = readFileSync(path, "utf8")
-  fn write_file(path: String, content: String) = writeFileSync(path, content, "utf8")
+  fn read_file(path: String): String = resume(readFileSync(path, "utf8"))
+  fn write_file(path: String, content: String) = resume(writeFileSync(path, content, "utf8"))
 }

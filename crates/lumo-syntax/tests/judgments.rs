@@ -235,6 +235,59 @@ fn forall_instantiates_at_application() {
     assert!(!bail.unwrap_err().hard);
 }
 
+fn exc_sigs() -> Contexts {
+    let mut ctxs = Contexts::new();
+    ctxs.insert(
+        "Σ".into(),
+        vec![
+            (
+                app("Op", vec![atom("E"), atom("op")]),
+                app("Sig", vec![atom("#nil"), pure_f(named("B"))]),
+            ),
+            (app("Ops", vec![atom("E")]), set(vec![atom("op")], None)),
+        ],
+    );
+    ctxs
+}
+
+#[test]
+fn abort_checks_against_the_boundary_not_the_op_return() {
+    // D-54: the clause's op returns B, but the abort exits with the
+    // boundary's result A — the abort inhabits any F-type.
+    let ty = infer_def(
+        "def f = (thunk { fn(a) => try __tok1 in \
+           let h = ret (bundle { fn op() => abort __tok1 a; } : E) in \
+           ret a } : U((A) -> F(A)))",
+        exc_sigs(),
+    )
+    .unwrap();
+    assert_eq!(ty, u(fnt(named("A"), pure_f(named("A")))));
+}
+
+#[test]
+fn abort_value_type_must_match_the_boundary_result() {
+    // The legacy resume.txt case-5 soundness hole, closed: aborting
+    // with B under a boundary of result A bails.
+    let bail = infer_def(
+        "def f = (thunk { fn(a) => fn(b) => try __tok1 in \
+           let h = ret (bundle { fn op() => abort __tok1 b; } : E) in \
+           ret a } : U((A) -> (B) -> F(A)))",
+        exc_sigs(),
+    );
+    assert!(!bail.unwrap_err().hard);
+}
+
+#[test]
+fn try_body_still_checks_against_the_boundary_result() {
+    // A body that completes normally must produce the boundary type.
+    let bail = infer_def(
+        "def f = (thunk { fn(a) => fn(b) => try __tok1 in ret b } \
+         : U((A) -> (B) -> F(A)))",
+        Contexts::new(),
+    );
+    assert!(!bail.unwrap_err().hard);
+}
+
 #[test]
 fn row_polymorphic_annotation_stays_rigid() {
     // pure_fn[cap c](a: A): A / {..c} — the body may not perform

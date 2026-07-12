@@ -1,0 +1,106 @@
+# Abortive handlers (zero-or-one resumption)
+
+Settled 2026-07-13. D-51 made every handler tail-resumptive: a clause
+returns normally and its value flows to the operation call site. This
+slice reintroduces `resume(v)` with the legacy/Effekt *implicit
+classification*, uniformly for handle bundles and impl methods, and
+adds the abortive (zero-resumption) case — still with **no
+continuation capture**; capabilities keep passing lexically.
+
+## Classification (per clause, syntactic, at elab)
+
+- **Tail-resumptive** — every control path of the clause body ends in
+  a tail call `resume(v)`: strip each `resume(v)` to `v` and compile
+  exactly as today (the D-51 zero-cost direct call).
+- **Abortive** — the body never mentions `resume`: the body's value
+  becomes the result of the *enclosing handle expression* (a one-shot
+  non-local exit past the handle's body).
+- **Non-tail / mixed / first-class `resume`** — loud elab error:
+  "non-tail resume not yet supported (D-54)". That fragment is the
+  future delimited-control slice.
+
+`resume` stays a plain identifier in the grammar (a hard keyword would
+break the legacy parse gate `fn resume() { force job }`); inside
+handler-clause and impl-method bodies it is reserved *contextually* —
+elab recognizes a call to the ident `resume` with exactly one
+argument, in tail position, through block tails, if/else branches,
+match arms, and parens.
+
+## Where each class is allowed
+
+| clause site | TailResumptive | Abortive |
+|---|---|---|
+| inline bundle in `handle E with bundle {…} in b` | strip → D-51 let-binding | try/abort lowering below |
+| standalone bundle literal / variable handler | strip | **error** — "abortive clause requires an enclosing handle (D-54)" |
+| impl method (bare / typeclass / inherent, D-44/48/49) | strip | **error** (same) |
+
+So variable handlers stay tail-resumptive by construction and
+`handle E with h in b` keeps the zero-cost let-binding.
+
+## MIR: a token-binder boundary (two new nodes)
+
+```
+TryC   = 'try' tok:ident 'in' body:Comp
+AbortC = 'abort' tok:ident value:Value
+```
+
+An abortive `handle E with bundle {…} in body` elaborates to
+
+```
+try __tokN in
+  let __tM = ret (bundle { …, opK => … abort __tokN v … } : E) in body′
+```
+
+The token binds lexically around both the bundle and the body, so
+scoping is self-contained in MIR — no bundle identity, no dynamic
+cap-name matching, and nested handles of the same cap stay precise.
+MIR remains pure CBPV; the legacy `HandleC`/`PerformC` escape hatch is
+untouched. Handles with only tail-resumptive clauses never emit `try`.
+
+## Judge: sound, local typing via the token binder
+
+`TryC` binds its token in Γ at the boundary's result *value* type;
+`AbortC` looks the token up and checks the aborted value against it;
+the abort itself inhabits any F-type (it never returns):
+
+- `infer_C TryC`: infer the body at `F(i) / r` with `tok : i` in Γ;
+  the whole try has the body's type.
+- `check_C TryC <- F(i) / r`: check the body under `tok : i`.
+- `AbortC`: `check_V v Γ.tok`; the result type is unconstrained.
+
+This closes the legacy soundness hole: legacy `type/resume.txt` case 5
+typed an abortive clause returning `b : B` under a handle whose result
+is `A`. Under the token rule that is now an ERROR (the ported fixture
+carries the corrected expectation plus an explicit negative case).
+
+## JS: prelude boundary helpers, no JS-grammar change
+
+Generated JS must stay inside `lumo/JS.syn.langue` (the `:elab`
+canonicalizer reparses it), which has no try/catch — so the try/catch
+lives in `packages/runtime/js/prelude.js`:
+
+```js
+const __lumo_boundary = (f) => { const tok = {};
+  try { return f(tok); }
+  catch (e) { if (e && e.__lumo_tok === tok) return e.value; throw e; } };
+const __lumo_abort = (tok, value) => { throw { __lumo_tok: tok, value }; };
+```
+
+Lowering: `TryC { token: k, body: b }` → `__lumo_boundary((k) => b′)`;
+`AbortC { token: k, value: v }` → `__lumo_abort(k, v′)` — both plain
+calls within the existing JS grammar. Only handles with an abortive
+clause pay the boundary; tail-resumptive handles keep today's output.
+
+## Stdlib restoration
+
+Every stdlib impl/handler method (`packages/**/*.lumo`) returns
+normally, so under implicit classification each would read as
+abortive. They get their legacy `resume(...)` wrappers back (the style
+D-45 stripped; the legacy parse-gate sources still spell it) — all
+become TailResumptive → stripped → byte-identical output.
+
+## Future slice
+
+Non-tail and first-class `resume` (generators, nondeterminism,
+multi-shot) need real delimited control — deferred; the elab error
+marks the boundary loudly.

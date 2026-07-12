@@ -59,3 +59,49 @@ fn self_recursion_gets_fix() {
         "def spin = thunk { fix spin => fn(x) => force spin(x) }",
     );
 }
+
+/// D-54 classification errors are elab errors (corpus `:elab` cases
+/// cannot expect them).
+fn elab_errors(source: &str) -> Vec<String> {
+    let ops = lumo_syntax::registry::elab("Lumo", "MIR").expect("Lumo -> MIR is registered");
+    (ops.elab_report)(source).errors
+}
+
+#[test]
+fn abortive_impl_method_is_an_error() {
+    let errors = elab_errors("cap E { fn op(x) }\nimpl E { fn op(x) = x }");
+    assert!(
+        errors.iter().any(|e| e.contains("never resumes")),
+        "expected the D-54 abortive-clause error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn non_tail_resume_is_an_error() {
+    let errors = elab_errors(
+        "cap E { fn op(x) }\n\
+         fn f(a) = handle E with bundle { fn op(x) = { let y = resume(x); y } } in E.op(a)",
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("non-tail `resume`")),
+        "expected the D-54 non-tail error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn mixed_paths_without_full_resume_are_an_error() {
+    // One match arm resumes, the other returns plainly — neither tail
+    // nor abortive.
+    let errors = elab_errors(
+        "data Bool { .true, .false }\n\
+         cap E { fn op(x) }\n\
+         fn f(c, a) = handle E with bundle { fn op(x) = match c {\n\
+           .true => resume(x),\n\
+           .false => x,\n\
+         } } in E.op(a)",
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("non-tail `resume`")),
+        "expected the D-54 non-tail error, got: {errors:?}"
+    );
+}

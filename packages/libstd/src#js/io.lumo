@@ -1,8 +1,8 @@
 // Ported from legacy/packages/libstd/src#js/io.lumo (D-45). Binding
-// (console.log) lives in runtime/js/prelude.js; `resume` dropped.
+// (console.log) lives in runtime/js/prelude.js; tail `resume` restored (D-54).
 
 extern fn __println(msg: String);
 
 impl IO {
-  fn println(msg: String) = __println(msg)
+  fn println(msg: String) = resume(__println(msg))
 }

@@ -28,6 +28,8 @@ pub enum SyntaxKind { // language `MIR`
     DOT,
     /// token `dotdot`
     DOTDOT,
+    /// token `keyword.abort`
+    KEYWORD_ABORT,
     /// token `keyword.bundle`
     KEYWORD_BUNDLE,
     /// token `keyword.case`
@@ -58,6 +60,8 @@ pub enum SyntaxKind { // language `MIR`
     KEYWORD_SEL,
     /// token `keyword.thunk`
     KEYWORD_THUNK,
+    /// token `keyword.try`
+    KEYWORD_TRY,
     /// token `keyword.unroll`
     KEYWORD_UNROLL,
     /// token `keyword.with`
@@ -86,6 +90,8 @@ pub enum SyntaxKind { // language `MIR`
     LIT_STRING,
     /// token `whitespace`
     WHITESPACE,
+    /// rule `AbortC`
+    ABORT_C,
     /// rule `BundleClause`
     BUNDLE_CLAUSE,
     /// rule `BundleV`
@@ -156,6 +162,8 @@ pub enum SyntaxKind { // language `MIR`
     STR_V,
     /// rule `ThunkV`
     THUNK_V,
+    /// rule `TryC`
+    TRY_C,
     /// rule `TypeArgs`
     TYPE_ARGS,
     /// rule `TypeC`
@@ -188,6 +196,7 @@ impl SyntaxKind {
             SyntaxKind::BRACE_OPEN => Some("brace.open"),
             SyntaxKind::BRACKET_CLOSE => Some("bracket.close"),
             SyntaxKind::BRACKET_OPEN => Some("bracket.open"),
+            SyntaxKind::KEYWORD_ABORT => Some("keyword.abort"),
             SyntaxKind::KEYWORD_BUNDLE => Some("keyword.bundle"),
             SyntaxKind::KEYWORD_CASE => Some("keyword.case"),
             SyntaxKind::KEYWORD_DEF => Some("keyword.def"),
@@ -203,6 +212,7 @@ impl SyntaxKind {
             SyntaxKind::KEYWORD_ROLL => Some("keyword.roll"),
             SyntaxKind::KEYWORD_SEL => Some("keyword.sel"),
             SyntaxKind::KEYWORD_THUNK => Some("keyword.thunk"),
+            SyntaxKind::KEYWORD_TRY => Some("keyword.try"),
             SyntaxKind::KEYWORD_UNROLL => Some("keyword.unroll"),
             SyntaxKind::KEYWORD_WITH => Some("keyword.with"),
             SyntaxKind::OP_EQ => Some("op.eq"),

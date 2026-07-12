@@ -19,6 +19,8 @@ token keyword.perform = 'perform'
 token keyword.handle  = 'handle'
 token keyword.with    = 'with'
 token keyword.sel     = 'sel'
+token keyword.try     = 'try'
+token keyword.abort   = 'abort'
 token keyword.forall  = 'forall'
 token type.u          = 'U'
 token type.f          = 'F'
@@ -87,12 +89,16 @@ FixC = 'fix' name:ident '=>' body:Comp
 PerformC = 'perform' cap:ident
 HandleC = 'handle' cap:ident 'with' handler:Value 'in' body:Comp
 SelC = 'sel' value:Value '.' field:ident
+// D-54 abortive-handler boundary: `try` binds a fresh token around a
+// handle's bundle+body; `abort` is the one-shot non-local exit to it.
+TryC = 'try' tok:ident 'in' body:Comp
+AbortC = 'abort' tok:ident value:Value
 ParenC = '(' inner:Comp ')'
 
 ValueArgs = args:sep(Value, ',')?
 
 Comp = praat {
-  simple = RetC | LetC | LamC | ForceC | CaseC | FixC | PerformC | HandleC | SelC | ParenC
+  simple = RetC | LetC | LamC | ForceC | CaseC | FixC | PerformC | HandleC | SelC | TryC | AbortC | ParenC
   operators {
     @110 '(' ValueArgs ')',
   }

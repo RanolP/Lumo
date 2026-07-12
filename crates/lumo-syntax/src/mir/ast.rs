@@ -10,6 +10,27 @@ pub trait AstNode<'a>: Sized {
     fn syntax(&self) -> &'a SyntaxNode;
 }
 
+pub struct AbortC<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for AbortC<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::ABORT_C).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> AbortC<'a> {
+    pub fn tok(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
+    pub fn value(&self) -> Option<Value<'a>> {
+        self.0.child_nodes().filter_map(Value::cast).nth(0)
+    }
+}
+
 pub struct BundleClause<'a>(pub &'a SyntaxNode);
 
 impl<'a> AstNode<'a> for BundleClause<'a> {
@@ -234,6 +255,8 @@ pub enum Comp<'a> {
     PerformC(PerformC<'a>),
     HandleC(HandleC<'a>),
     SelC(SelC<'a>),
+    TryC(TryC<'a>),
+    AbortC(AbortC<'a>),
     ParenC(ParenC<'a>),
 }
 
@@ -250,6 +273,8 @@ impl<'a> AstNode<'a> for Comp<'a> {
             .or_else(|| PerformC::cast(node).map(Self::PerformC))
             .or_else(|| HandleC::cast(node).map(Self::HandleC))
             .or_else(|| SelC::cast(node).map(Self::SelC))
+            .or_else(|| TryC::cast(node).map(Self::TryC))
+            .or_else(|| AbortC::cast(node).map(Self::AbortC))
             .or_else(|| ParenC::cast(node).map(Self::ParenC))
     }
     fn syntax(&self) -> &'a SyntaxNode {
@@ -264,6 +289,8 @@ impl<'a> AstNode<'a> for Comp<'a> {
             Self::PerformC(n) => n.syntax(),
             Self::HandleC(n) => n.syntax(),
             Self::SelC(n) => n.syntax(),
+            Self::TryC(n) => n.syntax(),
+            Self::AbortC(n) => n.syntax(),
             Self::ParenC(n) => n.syntax(),
         }
     }
@@ -724,6 +751,27 @@ impl<'a> AstNode<'a> for ThunkV<'a> {
 }
 
 impl<'a> ThunkV<'a> {
+    pub fn body(&self) -> Option<Comp<'a>> {
+        self.0.child_nodes().filter_map(Comp::cast).nth(0)
+    }
+}
+
+pub struct TryC<'a>(pub &'a SyntaxNode);
+
+impl<'a> AstNode<'a> for TryC<'a> {
+    fn cast(node: &'a SyntaxNode) -> Option<Self> {
+        (node.kind == SyntaxKind::TRY_C).then(|| Self(node))
+    }
+    fn syntax(&self) -> &'a SyntaxNode {
+        self.0
+    }
+}
+
+impl<'a> TryC<'a> {
+    pub fn tok(&self) -> Option<&'a Token> {
+        self.0.child_tokens().filter(|t| t.kind == SyntaxKind::IDENT).nth(0)
+    }
+
     pub fn body(&self) -> Option<Comp<'a>> {
         self.0.child_nodes().filter_map(Comp::cast).nth(0)
     }

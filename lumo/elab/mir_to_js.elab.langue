@@ -16,7 +16,9 @@
 //                  parenthesized — an arrow body `{…}` would read as a
 //                  block in real JS)
 //   caps         — PerformC `__lumo_perform("C")`, HandleC
-//                  `__lumo_handle("C", h, () => b)` (D-43 runtime)
+//                  `__lumo_handle("C", h, () => b)` (D-43 runtime);
+//                  TryC `__lumo_boundary((k) => b)`, AbortC
+//                  `__lumo_abort(k, v)` (D-54 boundary)
 extern rule thunk_lambda from MIR to JS
 extern rule force_apply from MIR to JS
 extern rule let_fix from MIR to JS

@@ -25,12 +25,19 @@ fixture suite green.
   inherent impls; D-51 capability passing (Effekt style, no
   continuations); D-52 mutual recursion (module fixpoint); D-53 build
   system slice 1 (`crates/lbs`, manifest-driven, `dist/{name}.js`).
+- **D-54 abortive handlers** (2026-07-13) — implicit clause
+  classification (tail `resume(v)` strips; resume-free clauses under an
+  inline handle bundle abort through a MIR `try`/`abort` token
+  boundary; anything else errors); token-typed judge rules close the
+  legacy resume soundness hole; JS via `__lumo_boundary`/`__lumo_abort`
+  prelude helpers; stdlib `resume(...)` wrappers restored.
 
 ## Backlog (deferred, by area)
 
 Type system / judge (D-39 buckets and later):
-- resume + non-tail-resumptive handlers (exceptions/generators) — needs
-  a delimited-control slice (D-51); abortive handlers first.
+- non-tail / first-class `resume` (generators, nondeterminism,
+  multi-shot) — needs real delimited control; abortive handlers landed
+  as D-54, the elab error marks the remaining boundary.
 - inference depth: unannotated lambdas/fix, cap_inference of bare defs.
 - bounds (bounded binders), assoc_types, exhaustiveness checking.
 - nested patterns in match arms.

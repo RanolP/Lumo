@@ -1,29 +1,29 @@
 // Ported from the impl half of legacy/packages/libcore/src/string.lumo
-// (D-45/D-48/D-49; `resume` dropped). Ordered after the StrOps backend
+// (D-45/D-48/D-49; tail `resume` restored, D-54). Ordered after the StrOps backend
 // bundle — everything here delegates to __impl_StrOps.
 
 impl String: Add {
-  fn add(self, other: Self): Self = StrOps.concat(self, other)
+  fn add(self, other: Self): Self = resume(StrOps.concat(self, other))
 }
 
 impl String: PartialEq {
-  fn eq(self, other: Self): Bool = StrOps.eq(self, other)
+  fn eq(self, other: Self): Bool = resume(StrOps.eq(self, other))
 }
 
 // UFCS method dispatch (D-49): `"hi".len()` → `__impl_String.len("hi")`.
 impl String {
-  fn len(self): Number = StrOps.len(self)
-  fn char_at(self, idx: Number): String = StrOps.char_at(self, idx)
-  fn slice(self, start: Number, end: Number): String = StrOps.slice(self, start, end)
-  fn starts_with(self, prefix: String): Bool = StrOps.starts_with(self, prefix)
-  fn contains(self, sub: String): Bool = StrOps.contains(self, sub)
-  fn index_of(self, sub: String): Number = StrOps.index_of(self, sub)
-  fn trim(self): String = StrOps.trim(self)
-  fn char_code_at(self, idx: Number): Number = StrOps.char_code_at(self, idx)
-  fn replace_all(self, from: String, to: String): String = StrOps.replace_all(self, from, to)
+  fn len(self): Number = resume(StrOps.len(self))
+  fn char_at(self, idx: Number): String = resume(StrOps.char_at(self, idx))
+  fn slice(self, start: Number, end: Number): String = resume(StrOps.slice(self, start, end))
+  fn starts_with(self, prefix: String): Bool = resume(StrOps.starts_with(self, prefix))
+  fn contains(self, sub: String): Bool = resume(StrOps.contains(self, sub))
+  fn index_of(self, sub: String): Number = resume(StrOps.index_of(self, sub))
+  fn trim(self): String = resume(StrOps.trim(self))
+  fn char_code_at(self, idx: Number): Number = resume(StrOps.char_code_at(self, idx))
+  fn replace_all(self, from: String, to: String): String = resume(StrOps.replace_all(self, from, to))
 }
 
 impl Number {
-  fn to_string(self): String = StrOps.num_to_string(self)
-  fn to_char(self): String = StrOps.from_char_code(self)
+  fn to_string(self): String = resume(StrOps.num_to_string(self))
+  fn to_char(self): String = resume(StrOps.from_char_code(self))
 }

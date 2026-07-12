@@ -24,9 +24,17 @@
 //                      selections (arith) or Bool/Ordering cases
 //                      (comparisons, &&, ||, !) — D-48
 //   handle_bind      — `handle E with h in b` → lexical capability
-//                      binding `let __tN = ret (h : E) in b` (D-51)
+//                      binding `let __tN = ret (h : E) in b` (D-51);
+//                      an inline bundle with an abortive clause wraps
+//                      the binding in a `try` token boundary (D-54)
 //   call_caps        — calls to fns with declared rows thread the
 //                      lexical capability values as leading args (D-51)
+//   resume_clause    — BundleEntry/ImplMethod → BundleClause with the
+//                      D-54 implicit classification: tail `resume(v)`
+//                      strips to `v`; a resume-free clause under an
+//                      inline handle bundle aborts to the boundary
+//                      token; elsewhere abortive clauses (and any
+//                      non-tail resume) are loud errors
 extern rule module from Lumo to MIR
 extern rule fn_curry from Lumo to MIR
 extern rule paren_annot from Lumo to MIR
@@ -38,6 +46,7 @@ extern rule if_else from Lumo to MIR
 extern rule operators from Lumo to MIR
 extern rule handle_bind from Lumo to MIR
 extern rule call_caps from Lumo to MIR
+extern rule resume_clause from Lumo to MIR
 
 // Extern passes (D-12/D-30): self-recursive defs get `fix`; require-
 // derived defs are hoisted first.
@@ -61,12 +70,8 @@ from Lumo to MIR {
     ==> CaseC { scrutinee: UnrollV { value: $s to MIR }, arms: [$a* to MIR] }
 
   BundleExpr { entries: [$e*] } ==> BundleV { clauses: [$e* to MIR] }
-  BundleEntry { name: $n, param_list: ParamList { params: [$p*] }, body: $b }
-    ==> BundleClause { name: $n, params: [$p* to MIR], body: $b to MIR }
-  // D-44: impl methods share the bundle-clause shape — bare cap impls
-  // assemble them into `def __impl_Cap = (bundle {…} : Cap)` in `module`.
-  ImplMethod { name: $n, param_list: ParamList { params: [$p*] }, body: $b }
-    ==> BundleClause { name: $n, params: [$p* to MIR], body: $b to MIR }
+  // BundleEntry and ImplMethod share the bundle-clause shape but carry
+  // the D-54 resume classification — they live in `resume_clause`.
   Param { name: $n } ==> VarV { name: $n }
 
   // Patterns become case binders (spliced as plain idents).

@@ -34,6 +34,8 @@ fn is_comp(kind: MirKind) -> bool {
             | MirKind::PERFORM_C
             | MirKind::HANDLE_C
             | MirKind::SEL_C
+            | MirKind::TRY_C
+            | MirKind::ABORT_C
             | MirKind::PAREN_C
             | MirKind::COMP_POSTFIX
     )
@@ -92,6 +94,104 @@ pub struct LumoToMir {
     /// While a group member's body elaborates: the group def name and
     /// member set — member calls route through the module (D-52).
     current_group: Option<(String, BTreeSet<String>)>,
+    /// While a tail-resumptive clause body elaborates: tail
+    /// `resume(v)` calls strip to `v` (D-54).
+    strip_resume: bool,
+    /// The enclosing inline-handle boundary token, visible to that
+    /// bundle's clauses only — cleared while clause bodies elaborate
+    /// (D-54).
+    abort_token: Option<String>,
+    /// Did a clause abort to `abort_token`? Decides the `try` wrap.
+    abort_used: bool,
+}
+
+/// D-54 implicit clause classification.
+enum ClauseClass {
+    /// Every control path ends in a tail `resume(v)` — strip to `v`.
+    Tail,
+    /// `resume` never appears — the body aborts the enclosing handle.
+    Abortive,
+    /// Anything else (non-tail, mixed, first-class) — a loud error.
+    NonTail,
+}
+
+fn is_resume_ident(node: &LumoNode) -> bool {
+    l::IdentExpr::cast(node)
+        .and_then(|i| i.name())
+        .is_some_and(|n| n.text == "resume")
+}
+
+fn mentions_resume(node: &LumoNode) -> bool {
+    is_resume_ident(node) || node.child_nodes().any(mentions_resume)
+}
+
+/// The argument of a `resume(v)` call shape, if `node` is one.
+fn resume_arg<'a>(node: &'a LumoNode) -> Option<l::Expr<'a>> {
+    let pf = l::ExprPostfix::cast(node)?;
+    if pf.member_name().is_some() || !pf.expr().is_some_and(|e| is_resume_ident(e.syntax())) {
+        return None;
+    }
+    let mut args = pf.call_args()?.args();
+    let arg = args.next()?;
+    args.next().is_none().then_some(arg)
+}
+
+/// Does every control path of `node` end in a tail `resume(v)` (with
+/// no other `resume` mention)? Tail positions thread through block
+/// tails, if/else branches, match arms, and parens (D-54).
+fn all_tails_resume(node: &LumoNode) -> bool {
+    if let Some(arg) = resume_arg(node) {
+        return !mentions_resume(arg.syntax());
+    }
+    if let Some(b) = l::BlockExpr::cast(node) {
+        let stmts: Vec<_> = b.stmts().collect();
+        let Some((last, init)) = stmts.split_last() else { return false };
+        if init.iter().any(|s| mentions_resume(s.syntax())) {
+            return false;
+        }
+        let l::BlockStmt::ExprStmt(e) = last else { return false };
+        return e.expr().is_some_and(|e| all_tails_resume(e.syntax()));
+    }
+    if let Some(i) = l::IfElseExpr::cast(node) {
+        if i.condition().is_none_or(|c| mentions_resume(c.syntax())) {
+            return false;
+        }
+        let else_ok = match i.else_clause() {
+            Some(l::ElseClause::IfElseExpr(e)) => all_tails_resume(e.syntax()),
+            Some(l::ElseClause::BlockExpr(b)) => all_tails_resume(b.syntax()),
+            None => false,
+        };
+        return else_ok && i.then_body().is_some_and(|b| all_tails_resume(b.syntax()));
+    }
+    if let Some(m) = l::MatchExpr::cast(node) {
+        if m.scrutinee().is_none_or(|s| mentions_resume(s.syntax())) {
+            return false;
+        }
+        return m
+            .arms()
+            .all(|a| a.body().is_some_and(|b| all_tails_resume(b.syntax())));
+    }
+    if let Some(p) = l::ParenExpr::cast(node) {
+        return p.inner().is_some_and(|e| all_tails_resume(e.syntax()));
+    }
+    false
+}
+
+fn classify_clause(body: &l::FnBody<'_>) -> ClauseClass {
+    let node = match body {
+        l::FnBody::BlockExpr(b) => b.syntax(),
+        l::FnBody::ExprBody(e) => match e.body() {
+            Some(inner) => inner.syntax(),
+            None => e.syntax(),
+        },
+    };
+    if !mentions_resume(node) {
+        ClauseClass::Abortive
+    } else if all_tails_resume(node) {
+        ClauseClass::Tail
+    } else {
+        ClauseClass::NonTail
+    }
 }
 
 /// The syntactic shape of an `impl` head (D-44/D-48/D-50). Membership
@@ -1450,7 +1550,9 @@ impl Externs for LumoToMir {
     /// D-51: `handle E with h in body` is a lexical capability
     /// binding — `let __tN = ret (h : E) in body` with `E ↦ __tN`
     /// while the body elaborates. The annotation routes the judge's
-    /// bundle-vs-cap check; nothing dynamic remains.
+    /// bundle-vs-cap check; nothing dynamic remains. An inline bundle
+    /// handler gets a boundary token; if a clause aborts to it, the
+    /// whole binding wraps in `try` (D-54).
     fn rule_handle_bind(&mut self, ctx: &mut ElabCtx, node: &FromNodeAlias) -> Option<ToFrag> {
         let h = l::HandleExpr::cast(node)?;
         let cap = h.cap_name()?.text.clone();
@@ -1458,8 +1560,25 @@ impl Externs for LumoToMir {
             ctx.error(format!("`handle {cap}`: unknown cap (D-51)"));
             return None;
         }
-        let handler = elab_node(ctx, self, h.handler()?.syntax())?;
-        let handler = self.to_value(ctx, handler);
+        let handler_expr = h.handler()?;
+        // The token exists only when a clause will abort to it —
+        // tail-only bundles keep the zero-cost D-51 binding (and its
+        // fresh-name numbering).
+        let needs_boundary = match &handler_expr {
+            l::Expr::BundleExpr(b) => b.entries().any(|e| {
+                e.body().is_some_and(|b| matches!(classify_clause(&b), ClauseClass::Abortive))
+            }),
+            _ => false,
+        };
+        let tok =
+            needs_boundary.then(|| format!("__tok{}", ctx.fresh().trim_start_matches("__t")));
+        let saved_token = std::mem::replace(&mut self.abort_token, tok.clone());
+        let saved_used = std::mem::replace(&mut self.abort_used, false);
+        let handler = elab_node(ctx, self, handler_expr.syntax());
+        let aborted = self.abort_used;
+        self.abort_token = saved_token;
+        self.abort_used = saved_used;
+        let handler = self.to_value(ctx, handler?);
         let annotated =
             builder::paren_v(&handler.text, Some(&builder::named_type_v(&cap, None)));
         let var = ctx.fresh();
@@ -1471,7 +1590,13 @@ impl Externs for LumoToMir {
         let mut body = self.to_comp(body?);
         pending.append(&mut body.pending);
         body.pending = pending;
-        Some(self.flush(body))
+        let flushed = self.flush(body);
+        match (aborted, tok) {
+            (true, Some(tok)) => {
+                Some(Frag::node(MirKind::TRY_C, builder::try_c(&tok, &flushed.text)))
+            }
+            _ => Some(flushed),
+        }
     }
 
     /// D-51: a call to a named fn with a declared row threads the
@@ -1517,6 +1642,75 @@ impl Externs for LumoToMir {
             None => Frag::node(MirKind::FORCE_C, builder::force_c(&builder::var_v(&fname))),
         };
         Some(self.apply(callee, Some(args)))
+    }
+
+    /// D-54: BundleEntry/ImplMethod → BundleClause under the implicit
+    /// resume classification, plus the tail-`resume(v)` strip itself.
+    /// Tail-resumptive clauses compile as before (D-51 zero-cost);
+    /// abortive clauses abort to the enclosing inline handle's
+    /// boundary token; everything else is a loud error.
+    fn rule_resume_clause(&mut self, ctx: &mut ElabCtx, node: &FromNodeAlias) -> Option<ToFrag> {
+        if self.strip_resume {
+            if let Some(arg) = resume_arg(node) {
+                return elab_node(ctx, self, arg.syntax());
+            }
+        }
+        let (name, param_list, body) = if let Some(e) = l::BundleEntry::cast(node) {
+            (e.name()?.text.clone(), e.param_list()?, e.body()?)
+        } else if let Some(m) = l::ImplMethod::cast(node) {
+            (m.name()?.text.clone(), m.param_list()?, m.body()?)
+        } else {
+            return None;
+        };
+        // The token is this bundle's alone: cleared while the clause
+        // body elaborates (nested bundles classify against their own
+        // handles), restored for sibling clauses.
+        let token = self.abort_token.take();
+        let strip_saved = self.strip_resume;
+        let comp = match classify_clause(&body) {
+            ClauseClass::Tail => {
+                self.strip_resume = true;
+                let comp = self.elab_body(ctx, body);
+                self.strip_resume = strip_saved;
+                self.abort_token = token;
+                comp?
+            }
+            ClauseClass::Abortive => {
+                let Some(tok) = token else {
+                    ctx.error(format!(
+                        "clause `{name}` never resumes — an abortive clause needs an \
+                         enclosing `handle … with bundle {{…}}` (D-54)"
+                    ));
+                    return None;
+                };
+                self.strip_resume = false;
+                let frag = elab_node(ctx, self, body.syntax());
+                self.strip_resume = strip_saved;
+                self.abort_token = Some(tok.clone());
+                let value = self.to_value(ctx, frag?);
+                let mut abort =
+                    Frag::node(MirKind::ABORT_C, builder::abort_c(&tok, &value.text));
+                abort.pending = value.pending;
+                self.abort_used = true;
+                self.flush(abort)
+            }
+            ClauseClass::NonTail => {
+                self.abort_token = token;
+                ctx.error(format!(
+                    "non-tail `resume` in clause `{name}` is not yet supported (D-54)"
+                ));
+                return None;
+            }
+        };
+        let params: Vec<String> = param_list
+            .params()
+            .filter_map(|p| p.name().map(|n| builder::var_v(&n.text)))
+            .collect();
+        let refs: Vec<&str> = params.iter().map(String::as_str).collect();
+        Some(Frag::node(
+            MirKind::BUNDLE_CLAUSE,
+            builder::bundle_clause(&name, &refs, &comp.text),
+        ))
     }
 
     /// `use` decls become require-derived defs (D-30).
@@ -1956,6 +2150,17 @@ impl js_elab::Externs for MirToJs {
                 "__lumo_handle",
                 &[&js_quoted(&h.cap()?.text), &handler.text, &thunk.text],
             ));
+        }
+        // D-54: the abortive-handler boundary — plain prelude calls,
+        // so generated JS stays inside the JS.syn grammar.
+        if let Some(t) = m::TryC::cast(node) {
+            let body = self.comp(ctx, &t.body()?)?;
+            let f = self.arrow(&[&t.tok()?.text], &body);
+            return Some(self.runtime_call("__lumo_boundary", &[&f.text]));
+        }
+        if let Some(a) = m::AbortC::cast(node) {
+            let value = self.value(ctx, &a.value()?)?;
+            return Some(self.runtime_call("__lumo_abort", &[&a.tok()?.text, &value.text]));
         }
         None
     }

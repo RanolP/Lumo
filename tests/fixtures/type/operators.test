@@ -4,7 +4,7 @@
 extern type Number;
 cap Add { fn add(a: Self, b: Self): Self }
 extern fn __num_add(a: Number, b: Number): Number;
-impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+impl Number: Add { fn add(self, other: Self): Self = resume(__num_add(self, other)) }
 
 ---
 
@@ -17,7 +17,7 @@ __impl_Add_Number : Add_Number
 extern type Number;
 cap Add { fn add(a: Self, b: Self): Self }
 extern fn __num_add(a: Number, b: Number): Number;
-impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+impl Number: Add { fn add(self, other: Self): Self = resume(__num_add(self, other)) }
 fn three(): Number / {} { 1 + 2 }
 fn inc(x: Number): Number / {} { x + 1 }
 
@@ -35,7 +35,7 @@ extern type Number;
 extern type String;
 cap Add { fn add(a: Self, b: Self): Self }
 extern fn __num_add(a: Number, b: Number): Number;
-impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+impl Number: Add { fn add(self, other: Self): Self = resume(__num_add(self, other)) }
 fn bad(): Number / {} { 1 + "x" }
 
 ---
@@ -49,7 +49,7 @@ extern type Number;
 data Bool { .true, .false }
 cap PartialEq { fn eq(a: Self, b: Self): Bool }
 extern fn __num_eq(a: Number, b: Number): Bool;
-impl Number: PartialEq { fn eq(self, other: Self): Bool = __num_eq(self, other) }
+impl Number: PartialEq { fn eq(self, other: Self): Bool = resume(__num_eq(self, other)) }
 fn same(a: Number, b: Number): Bool / {} { a == b }
 fn diff(a: Number, b: Number): Bool / {} { a != b }
 fn all(a: Bool, b: Bool): Bool / {} { a && !b || b }
@@ -72,8 +72,8 @@ cap PartialOrd { fn cmp(a: Self, b: Self): Ordering }
 extern fn __num_lt(a: Number, b: Number): Bool;
 impl Number: PartialOrd {
   fn cmp(self, other: Self): Ordering = match __num_lt(self, other) {
-    .true => Ordering.less,
-    .false => Ordering.greater,
+    .true => resume(Ordering.less),
+    .false => resume(Ordering.greater),
   }
 }
 fn below(a: Number, b: Number): Bool / {} { a <= b }

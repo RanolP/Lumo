@@ -13,6 +13,22 @@ function __lumo_match_error(value) {
   throw new Error(`match error: no arm matches ${JSON.stringify(value)}`);
 }
 
+// D-54 abortive-handler boundary: `try`/`abort` in MIR. The token is
+// a fresh object per boundary entry, so nested handles of the same
+// cap stay precise; foreign exceptions pass through.
+const __lumo_boundary = (f) => {
+  const tok = {};
+  try {
+    return f(tok);
+  } catch (e) {
+    if (e && e.__lumo_tok === tok) return e.value;
+    throw e;
+  }
+};
+const __lumo_abort = (tok, value) => {
+  throw { __lumo_tok: tok, value };
+};
+
 // Lumo Bool is the tagged `data Bool { .true, .false }` encoding.
 const __lumo_true = { $: "true", args: [] };
 const __lumo_false = { $: "false", args: [] };

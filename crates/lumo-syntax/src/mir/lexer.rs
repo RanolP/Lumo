@@ -19,6 +19,7 @@ static PATTERNS: &[&str] = &[
     ",", // comma
     "\\.", // dot
     "\\.\\.", // dotdot
+    "abort", // keyword.abort
     "bundle", // keyword.bundle
     "case", // keyword.case
     "def", // keyword.def
@@ -34,6 +35,7 @@ static PATTERNS: &[&str] = &[
     "roll", // keyword.roll
     "sel", // keyword.sel
     "thunk", // keyword.thunk
+    "try", // keyword.try
     "unroll", // keyword.unroll
     "with", // keyword.with
     "=", // op.eq
@@ -61,6 +63,7 @@ const KINDS: &[SyntaxKind] = &[
     SyntaxKind::COMMA,
     SyntaxKind::DOT,
     SyntaxKind::DOTDOT,
+    SyntaxKind::KEYWORD_ABORT,
     SyntaxKind::KEYWORD_BUNDLE,
     SyntaxKind::KEYWORD_CASE,
     SyntaxKind::KEYWORD_DEF,
@@ -76,6 +79,7 @@ const KINDS: &[SyntaxKind] = &[
     SyntaxKind::KEYWORD_ROLL,
     SyntaxKind::KEYWORD_SEL,
     SyntaxKind::KEYWORD_THUNK,
+    SyntaxKind::KEYWORD_TRY,
     SyntaxKind::KEYWORD_UNROLL,
     SyntaxKind::KEYWORD_WITH,
     SyntaxKind::OP_EQ,
