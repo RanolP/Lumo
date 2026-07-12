@@ -502,7 +502,6 @@ fn disjoint(a: &Pat, b: &Pat) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::project::dce::dce;
     use crate::project::loader::{FileKind, LoadedFile};
     use crate::project::merge::merge_project;

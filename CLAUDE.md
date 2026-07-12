@@ -9,14 +9,20 @@
   pnpm/turbo/biome JS scaffolding, and the lsp crate) were deleted —
   recover via git history if needed. What remains is still load-bearing
   or unported: `crates/compiler` (test-fixture gates + caps/LTO/query
-  reference), `packages/` (parse-gate sources + unported stdlib),
-  `crates/lbs`, `docs/`, `plans/`. The legacy workspace no longer builds.
+  reference), `packages/` (parse-gate sources; its stdlib is now fully
+  ported to root `packages/`), `crates/lbs`, `docs/`, `plans/`. The
+  legacy workspace no longer builds.
 - **`design/`** — design documents for the fresh, DSL-driven rewrite.
   Start with `design/langue.md` (Langue 2: full language-definition DSL).
 - The new implementation lives in the root Cargo workspace (`crates/`,
   `lumo/`, `tests/`). The browser playground is `apps/playground`
   (SolidJS + Monaco) over `crates/playground-wasm`; GitHub Pages deploys
   it via `.github/workflows/playground.yml`.
+- **`packages/`** (root) — the ported stdlib (D-45): one compilation
+  unit ordered by `packages/stdlib.manifest`, host bindings in
+  `packages/runtime/js/prelude.js`. Gates:
+  `crates/lumo-syntax/tests/stdlib.rs` and `scripts/stdlib_smoke.sh`
+  (compiles + runs the unit under node).
 
 ## Working rules for the rewrite
 

@@ -309,6 +309,154 @@ backlog (if/else, impl dispatch, nested patterns, mutual recursion)
 which needs Lumo→MIR work before it reaches JS; `:optimize` between
 the pipe's elab stages (compile_driver goes straight through today).
 
+## Post-M4 — feature backlog toward the stdlib port
+
+The stdlib port (legacy `packages/`) is blocked on `impl` blocks — every
+Tier-2/3 backend file opens with one. Rule: land the blocking feature
+first, port after.
+
+- [x] Impl slice 1 (2026-07-12) — bare cap impls, decision 44.
+      `impl Cap { fn op(…) = e; … }` ⟶
+      `def __impl_Cap = (bundle {…} : Cap)`; the ParenV annotation
+      rides the existing bundle-vs-cap judgment, MIR→JS is untouched.
+      `Cap.op(args)` with a bare impl in scope resolves statically to
+      `sel __impl_Cap . op` — no perform, empty-row callers typecheck
+      (legacy `resolve_default_cap_impls` parity). `handle` does not
+      override static resolution. Non-bare forms and assoc-type
+      bindings raise a loud elab error. Fixtures: 3 `:elab(Lumo ->
+      MIR)`, 4 `:infer(Lumo)` (`type/impl.test`), 1 end-to-end
+      `:elab(Lumo -> JS)` run under node.
+
+Deferred impl forms (subsequent slices): `impl T: Cap` / inherent /
+named / generic (need type-directed dispatch), value method dispatch
+(`x.method()`), operators, `resume`, if/else, multi-file. Stdlib
+porting resumes once its blocking features land.
+
+- [x] Stdlib port slice 1 (2026-07-12) — decision 45. The JS-target
+      subset of legacy `packages/` lives under root `packages/` as ONE
+      compilation unit (`packages/stdlib.manifest` order; `use` and
+      `lumo.toml` dropped — no build system yet): libcore
+      prelude/Ordering/NumOps/StrOps + bare impls, libstd
+      IO/FS/Process/List + bare impls, hello main. Host bindings live
+      in `packages/runtime/js/prelude.js` (extern-mapping attributes
+      are a deferred backend feature); `resume` dropped per D-44;
+      operator uses rewrote to NumOps calls. Gate:
+      `crates/lumo-syntax/tests/stdlib.rs` (parse + infer + compile);
+      smoke: `scripts/stdlib_smoke.sh` runs the unit under node
+      (strings, numbers, list fns, FS round-trip, process args — all
+      print correctly). Port-driven backend fixes: `_` case binders
+      uniquify at JS emission; empty application collapses over
+      `force` (judge-consistent; D-30 hosts now export plain values).
+      Known judge gap hit: nested matches bail on the D-28 `arm_bind`
+      guard (NumOps.cmp uses a helper fn; backlog below).
+
+Deferred from the stdlib port (D-45): Self-typed operator caps
+(`Add`…`Not`, PartialEq/PartialOrd) + all typeclass impls; inherent
+impls / UFCS (`impl String`, `List.map`); multi-file `use`
+resolution and an lbs successor; `src#rs` backends. (The legacy
+langue package is NOT a port target — langc is the toolchain.)
+
+- [x] Nested matches (2026-07-12) — decision 46: the D-28 runtime
+      guard is now amortized — a non-descending same-judgment
+      re-entry is allowed when a strict same-judgment descent is
+      active strictly between the frames (nested matches re-enter
+      `arm_bind`/`binds` through `check_C`'s descent); a 100k-frame
+      depth cap backstops rule sets that construct growing terms.
+      Engine-only change in `langue-rt` (+2 unit tests); two
+      `:infer` fixtures (binder-less and binder'd nesting);
+      `NumOps.cmp` back to the legacy nested shape.
+
+- [x] if/else (2026-07-12) — decision 47: desugars in one extern elab
+      rule to `case unroll c { .true => a .false => b }`; `Bool` is
+      whatever `data Bool` is in scope, not a builtin; else-if chains
+      recurse through ElseClause; else-less ifs are an elab error (no
+      Unit value in MIR yet). Fixtures: 2 `:elab(Lumo -> MIR)`, 2
+      `:infer` (agreement + branch-mismatch ERROR), 1 `:elab(Lumo ->
+      JS)` run under node. Accessor caveat: the generated
+      `else_clause()` matches the then-block first (M0 offset scheme)
+      — the extern takes the second ElseClause-shaped child.
+
+- [x] Typeclass impls + operators (2026-07-12) — decision 48.
+      `impl T: Cap` (ground targets) elaborates to
+      `def __impl_{Cap}_{T} = (bundle {…} : {Cap}_{T})`; the judge
+      driver seeds `{Cap}_{T}` as an ordinary ground instance cap with
+      `Self := T` in every op type — zero judge changes (Σ keys by
+      bare cap name). Operators desugar in elab: arith + `==` to
+      instance-cap selections dispatched on syntactic operand types
+      (literals, annotated params, ctor owners, fn/cap-op returns,
+      parens, operator recursion — unresolvable operands are a loud
+      elab error); `!=`/`!`/`&&`/`||` and comparisons desugar
+      structurally over the Bool/Ordering tag protocol (comparisons
+      via `PartialOrd.cmp`); `**` errors (no legacy cap). Stdlib port
+      grew: ops.lumo (7 operator caps), PartialEq/PartialOrd,
+      number_impls/string_impls (typeclass halves of legacy
+      number/string.lumo — split files because the judge needs
+      `__impl_NumOps` before impls that delegate to it), `impl Bool:
+      Not`; hello main exercises `+ * % / -` (unary too), `< <= &&`,
+      string `+`/`==` under node. Deferred: generic targets
+      (`impl List[A]: …`), `Self`-typed direct cap calls,
+      let-annotation scope, operators inside impl-method bodies;
+      instance-cap mangling is replaced by structured cap type-args
+      when generic impls land.
+
+- [x] Inherent impls + UFCS (2026-07-12) — decision 49. Same impl
+      syntax, disambiguated by the head name: `impl String {…}` where
+      `String` is not a cap is inherent. No cap decl exists, so the
+      judge driver derives the `{T}_impl` instance cap from the impl's
+      own method signatures (self ⟶ T, annotated params/returns,
+      untyped/generic methods stay out of Σ and bail loudly at the
+      bundle check); elab emits `def __impl_{T} = (bundle {…} :
+      {T}_impl)`. `x.m(args)` with `syn_type(x) = T` dispatches to
+      `sel __impl_T . m (x, args…)`; method returns join the D-48
+      syntactic table so chains resolve
+      (`("hi" + "!").len().to_string()`). Unknown-type objects fall
+      through to the old plain-sel path. Stdlib: `impl String {…}` +
+      `impl Number { to_string, to_char }` ported into
+      string_impls.lumo; smoke exercises chained UFCS under node.
+      Deferred: generic impls (`List.map` stays unported), typeclass
+      methods via dot, self-less static methods.
+
+- [x] Generic inherent impls (2026-07-12) — decision 50. Every `Σ.Op`
+      value is now `Sig(binders, type)` (ground = `Sig([], t)`): the
+      impl's bundle checks with binders held rigid (skolems — a `map`
+      body that fixes `R` errors), and every `sel` use site
+      instantiates them fresh via the existing `inst` (the data-ctor
+      pattern). Two judgment-rule edits (`clauses_check`,
+      `infer_C SelC`); `impl[T] List[T] { fn map[R] … }` seeds
+      `List_impl` from its own signatures with impl+method binders.
+      Two elab gaps closed: match-arm binders join the syntactic
+      scope with field heads from the (unambiguous) variant tag, and
+      the dispatch table stores type-constructor heads
+      (`xs: List[Number]` → `List`), so `t.map(mapper)` inside map's
+      own body dispatches; Γ pre-seeds every impl def since a method
+      body may reference its own def. `List.map` ported — the legacy
+      stdlib JS-target port is now COMPLETE; smoke runs a mapped list
+      under node. Deferred: generic typeclass impls and structured
+      cap type-args (need Σ keys that unify on args without
+      rigidifying skolems — the `{Cap}_{T}` naming survives until
+      then), bounded binders.
+
+- [x] Capability passing (2026-07-12) — decision 51, per direction:
+      Effekt's capability-passing style, tail-resumptive fragment, NO
+      continuations. Rows become leading capability params
+      (`fn hi(x): S / {Console}` ⟶ `fn(__cap_Console) => fn(x) => …`,
+      typed `U((Console) -> (S) -> …)` — rows leave types); `handle E
+      with h in b` is a lexical binding `let __tN = ret (h : E) in b`
+      (supersedes D-44's non-override: innermost lexical provider
+      wins — handle > row param > default impl > loud error); calls
+      to row'd fns thread capability values as leading args; lambdas
+      capture capabilities by closure, so `..c` rests are vestigial.
+      The elab never emits PerformC/HandleC (both stay for MIR-level
+      programs and the `perform` escape hatch); zero judge changes;
+      `__lumo_perform`/`__lumo_handle` removed from the stdlib
+      runtime prelude. Fixtures rewritten (perform/handle/row cases)
+      + new threading/override cases; smoke's 12th line runs a
+      lexical handle whose handler delegates to the default impl
+      under node. Sharp edges documented in D-51: first-class use of
+      row'd fns is not re-arranged; row'd fns want full signatures;
+      non-tail-resumptive handlers (exceptions/generators) deferred
+      to a future delimited-control slice.
+
 ## Cross-cutting rules
 
 - The definition is the source of truth; Rust is engines + generated

@@ -106,7 +106,7 @@ fn emit_program(out: &mut String, lang_name: &str, lang: &Language, between: &Be
 
     // Collect Vec sorts used by any constructor.
     let mut vec_sorts: BTreeSet<String> = BTreeSet::new();
-    let mut ctor_line = |node: &str, datatype: &str, vec_sorts: &mut BTreeSet<String>| {
+    let ctor_line = |node: &str, datatype: &str, vec_sorts: &mut BTreeSet<String>| {
         let fields = node_fields(lang, node).expect("concrete node has fields");
         let mut args = Vec::new();
         for f in &fields {
