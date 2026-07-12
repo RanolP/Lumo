@@ -2,13 +2,13 @@
 
 ## Repository layout (since 2026-07-09)
 
-- **`legacy/`** — sources from the previous implementation, kept only
-  as parse-gate corpora for `crates/lumo-syntax/tests/legacy_sources.rs`:
-  `crates/compiler/tests/fixtures/` (case sources) and
-  `packages/**/*.lumo`. Everything else (compiler/lbs/lsp crates, docs,
-  plans, apps, JS scaffolding, workspace manifests) was pruned
-  2026-07-12 — recover via git history if needed. Do not extend it;
-  nothing under `legacy/` builds.
+- **`tests/legacy/`** — read-only parse-gate corpora from the previous
+  implementation, read by `crates/lumo-syntax/tests/legacy_sources.rs`:
+  `fixtures/` (case sources; the unmigrated expectation buckets —
+  resume, bounds, assoc_types, cap_inference, exhaustiveness — also
+  live here) and `packages/**/*.lumo`. The rest of the old `legacy/`
+  tree was pruned 2026-07-12; recover via git history if needed.
+  Comments citing `legacy/...` paths refer to that history.
 - **`design/`** — design documents for the fresh, DSL-driven rewrite.
   Start with `design/langue.md` (Langue 2: full language-definition DSL).
 - The new implementation lives in the root Cargo workspace (`crates/`,

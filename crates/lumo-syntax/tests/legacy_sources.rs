@@ -25,7 +25,7 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
 #[test]
 fn legacy_fixture_sources_parse() {
     let root =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../legacy/crates/compiler/tests/fixtures");
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/legacy/fixtures");
     let mut files = Vec::new();
     for dir in ["syntax", "type", "lto"] {
         let mut group = Vec::new();
@@ -101,7 +101,7 @@ fn legacy_sources_parse_and_round_trip() {
     // The gate is the code the legacy compiler actually compiled: the
     // packages. (The one exclusion, apps/lumoc's ∑/μ/∀ sketch, was
     // pruned with the rest of legacy — it never parsed.)
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../legacy/packages");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/legacy/packages");
     let mut files = Vec::new();
     collect(&root, &mut files);
     files.sort();
