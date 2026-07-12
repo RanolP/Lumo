@@ -98,3 +98,40 @@ fn double(n: Nat): Nat / {} { match n { .zero => Nat.zero, .succ(let m) => Nat.s
 ---
 
 double : U((Nat) -> F(Nat))
+
+=== nested match in an arm body (D-46) ===
+:infer(Lumo)
+
+data Bool { .true, .false }
+data Ordering { .less, .equal, .greater }
+fn pick(a: Bool, b: Bool): Ordering / {} {
+  match a {
+    .true => Ordering.less,
+    .false => match b {
+      .true => Ordering.equal,
+      .false => Ordering.greater,
+    },
+  }
+}
+
+---
+
+pick : U((Bool) -> (Bool) -> F(Ordering))
+
+=== nested match binds at both levels (D-46) ===
+:infer(Lumo)
+
+data Nat { .zero, .succ(Nat) }
+fn two_deep(n: Nat): Nat / {} {
+  match n {
+    .zero => n,
+    .succ(let m) => match m {
+      .zero => m,
+      .succ(let k) => k,
+    },
+  }
+}
+
+---
+
+two_deep : U((Nat) -> F(Nat))

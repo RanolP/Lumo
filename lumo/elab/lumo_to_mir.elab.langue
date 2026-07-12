@@ -18,6 +18,15 @@
 //   match_arm        — optional binder lists (no absent-field patterns)
 //   member_classify  — data ctor vs cap op vs value method (needs decls)
 //   use_decl         — `use` → require-derived defs (D-30)
+//   if_else          — `if c {a} else {b}` → case on `.true`/`.false`
+//                      (D-47; else-less ifs error — no Unit value yet)
+//   operators        — infix/prefix operators → instance-cap
+//                      selections (arith) or Bool/Ordering cases
+//                      (comparisons, &&, ||, !) — D-48
+//   handle_bind      — `handle E with h in b` → lexical capability
+//                      binding `let __tN = ret (h : E) in b` (D-51)
+//   call_caps        — calls to fns with declared rows thread the
+//                      lexical capability values as leading args (D-51)
 extern rule module from Lumo to MIR
 extern rule fn_curry from Lumo to MIR
 extern rule paren_annot from Lumo to MIR
@@ -25,6 +34,10 @@ extern rule block from Lumo to MIR
 extern rule match_arm from Lumo to MIR
 extern rule member_classify from Lumo to MIR
 extern rule use_decl from Lumo to MIR
+extern rule if_else from Lumo to MIR
+extern rule operators from Lumo to MIR
+extern rule handle_bind from Lumo to MIR
+extern rule call_caps from Lumo to MIR
 
 // Extern passes (D-12/D-30): self-recursive defs get `fix`; require-
 // derived defs are hoisted first.
@@ -47,11 +60,12 @@ from Lumo to MIR {
   MatchExpr { scrutinee: $s, arms: [$a*] }
     ==> CaseC { scrutinee: UnrollV { value: $s to MIR }, arms: [$a* to MIR] }
 
-  HandleExpr { cap_name: $c, handler: $h, body: $b }
-    ==> HandleC { cap: $c, handler: $h to MIR, body: $b to MIR }
-
   BundleExpr { entries: [$e*] } ==> BundleV { clauses: [$e* to MIR] }
   BundleEntry { name: $n, param_list: ParamList { params: [$p*] }, body: $b }
+    ==> BundleClause { name: $n, params: [$p* to MIR], body: $b to MIR }
+  // D-44: impl methods share the bundle-clause shape — bare cap impls
+  // assemble them into `def __impl_Cap = (bundle {…} : Cap)` in `module`.
+  ImplMethod { name: $n, param_list: ParamList { params: [$p*] }, body: $b }
     ==> BundleClause { name: $n, params: [$p* to MIR], body: $b to MIR }
   Param { name: $n } ==> VarV { name: $n }
 

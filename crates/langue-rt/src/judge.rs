@@ -10,10 +10,14 @@
 //! - **exactly one rule may succeed** per goal — zero is a proof
 //!   failure (a generic bail, D-26), two or more is a hard definition
 //!   error;
-//! - **strictly decreasing recursion** (the D-28 measure): a nested
-//!   call of the same judgment must have a strictly smaller subject
-//!   (first argument, by term size) than the enclosing one — checked
-//!   at runtime, so a non-decreasing rule bails instead of diverging.
+//! - **strictly decreasing recursion** (the D-28 measure, amortized
+//!   per D-46): a nested call of the same judgment must have a
+//!   strictly smaller subject (first argument, by term size) than the
+//!   enclosing one, *unless* a strict same-judgment descent is active
+//!   strictly between the two frames (mutual recursion through a
+//!   descending judgment, e.g. nested matches through `check_C`) —
+//!   checked at runtime with a depth-cap backstop, so a
+//!   non-decreasing rule bails instead of diverging.
 //!
 //! Context reads are newest-first: the most recent entry whose key
 //! unifies is *the* binding (lexical shadowing); its value must unify
@@ -387,35 +391,88 @@ impl Engine {
             next_var,
             ctxs,
             active: HashMap::new(),
+            path_descents: 0,
+            depth: 0,
         };
         let derivation = solver.solve_call(judgment, &args)?;
         Ok(solver.finish(derivation))
     }
 }
 
+/// An active same-judgment frame of the D-28/D-46 guard.
+#[derive(Clone, Copy)]
+struct GuardFrame {
+    /// Subject (first argument) size at entry.
+    size: usize,
+    /// `path_descents` as of this frame's push (own descent included):
+    /// a later non-descending re-entry is allowed only if the count
+    /// has grown — a strict descent active strictly between (D-46).
+    descents_at_push: u64,
+    /// Whether this frame strictly descended (for the pop decrement).
+    descended: bool,
+}
+
+/// Divergence backstop (D-46): rules that construct growing terms
+/// could slip past the amortized guard; a depth cap converts any such
+/// divergence into a bail. Far above real derivations.
+const MAX_DEPTH: usize = 100_000;
+
 struct Solver<'e> {
     engine: &'e Engine,
     subst: Subst,
     next_var: VarId,
     ctxs: Contexts,
-    /// Per-judgment stack of active subject sizes (the D-28 guard).
-    active: HashMap<String, Vec<usize>>,
+    /// Per-judgment stack of active frames (the D-28/D-46 guard).
+    active: HashMap<String, Vec<GuardFrame>>,
+    /// Count of active frames that strictly descended vs their
+    /// same-judgment parent (the D-46 amortized measure).
+    path_descents: u64,
+    /// Total active frames (the D-46 backstop).
+    depth: usize,
 }
 
 impl Solver<'_> {
     fn solve_call(&mut self, judgment: &str, args: &[Term]) -> Result<Derivation, Bail> {
+        if self.depth >= MAX_DEPTH {
+            return Err(Bail::hard(format!(
+                "derivation depth limit exceeded at `{judgment}` (D-46)"
+            )));
+        }
         let subject_size =
             args.first().map(|a| resolve(&self.subst, a).size()).unwrap_or(0);
-        if let Some(&enclosing) = self.active.get(judgment).and_then(|s| s.last()) {
-            if subject_size >= enclosing {
+        let enclosing = self.active.get(judgment).and_then(|s| s.last()).copied();
+        let descended = enclosing.is_some_and(|f| subject_size < f.size);
+        if let Some(f) = enclosing {
+            // D-46: a non-descending re-entry is fine when a strict
+            // same-judgment descent is active between the frames — an
+            // infinite path would then need an unbounded strictly
+            // decreasing chain.
+            if !descended && self.path_descents == f.descents_at_push {
                 return Err(Bail::hard(format!(
                     "recursion on `{judgment}` does not strictly decrease (D-23/D-28)"
                 )));
             }
         }
-        self.active.entry(judgment.to_owned()).or_default().push(subject_size);
+        if descended {
+            self.path_descents += 1;
+        }
+        self.depth += 1;
+        self.active.entry(judgment.to_owned()).or_default().push(GuardFrame {
+            size: subject_size,
+            descents_at_push: self.path_descents,
+            descended,
+        });
         let result = self.trial_rules(judgment, args);
-        self.active.get_mut(judgment).expect("pushed above").pop();
+        let frame = self
+            .active
+            .get_mut(judgment)
+            .expect("pushed above")
+            .pop()
+            .expect("pushed above");
+        self.depth -= 1;
+        if frame.descended {
+            self.path_descents -= 1;
+        }
         result
     }
 
@@ -698,6 +755,46 @@ mod tests {
         }]);
         let bail = engine.solve("spin", vec![num()], Contexts::new());
         assert!(bail.unwrap_err().hard);
+    }
+
+    /// The D-46 shape: `hop` re-enters at the same subject size
+    /// (`#none`, like `arm_bind` on binder-less nested matches), but a
+    /// strict `walk` descent sits between the frames — allowed.
+    #[test]
+    fn equal_size_reentry_through_a_descending_judgment_is_allowed() {
+        let engine = Engine::new(vec![
+            // walk n(x) := hop #none x
+            Rule {
+                judgment: "walk".into(),
+                params: vec![app("n", vec![var(0)])],
+                var_count: 1,
+                body: vec![Goal::Call {
+                    judgment: "hop".into(),
+                    args: vec![atom("#none"), var(0)],
+                    extends: vec![],
+                }],
+            },
+            // walk leaf
+            Rule {
+                judgment: "walk".into(),
+                params: vec![atom("leaf")],
+                var_count: 0,
+                body: vec![],
+            },
+            // hop #none x := walk x
+            Rule {
+                judgment: "hop".into(),
+                params: vec![atom("#none"), var(0)],
+                var_count: 1,
+                body: vec![Goal::Call {
+                    judgment: "walk".into(),
+                    args: vec![var(0)],
+                    extends: vec![],
+                }],
+            },
+        ]);
+        let nested = app("n", vec![app("n", vec![atom("leaf")])]);
+        assert!(engine.solve("walk", vec![nested], Contexts::new()).is_ok());
     }
 
     #[test]

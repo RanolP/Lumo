@@ -71,17 +71,17 @@ def pred = thunk { fn(n) =>
   }
 }
 
-=== cap operations select from a bound perform ===
+=== cap ops select from the row's capability param (D-51) ===
 :elab(Lumo -> MIR)
 
 cap Console {
   fn log(msg)
 }
-fn main() = Console.log("hi")
+fn main() / {Console} = Console.log("hi")
 
 ---
 
-def main = thunk { let __t1 = perform Console in sel __t1.log("hi") }
+def main = thunk { fn(__cap_Console) => sel __cap_Console.log("hi") }
 
 === value methods select from the object ===
 :elab(Lumo -> MIR)
@@ -126,8 +126,8 @@ fn main() = handle Console with bundle { fn log(m) = m } in Console.log("x")
 ---
 
 def main = thunk {
-  handle Console with bundle { fn log(m) => ret m } in
-  let __t1 = perform Console in sel __t1.log("x")
+  let __t1 = ret (bundle { fn log(m) => ret m } : Console) in
+  sel __t1.log("x")
 }
 
 === lambdas become thunked spines too ===
@@ -188,7 +188,7 @@ fn g(x): Number = x
 def f = thunk { fn(x) => ret x }
 def g = thunk { fn(x) => ret x }
 
-=== cap annotations become rows on the innermost F (D-41) ===
+=== cap annotations become capability params (D-51) ===
 :elab(Lumo -> MIR)
 
 cap Console {
@@ -198,7 +198,7 @@ fn hi(x: String): String / {Console} = Console.log(x)
 
 ---
 
-def hi = (thunk { fn(x) => let __t1 = perform Console in sel __t1.log(x) } : U((String) -> F(String) / {Console}))
+def hi = (thunk { fn(__cap_Console) => fn(x) => sel __cap_Console.log(x) } : U((Console) -> (String) -> F(String)))
 
 === generic params become forall binders (D-40) ===
 :elab(Lumo -> MIR)
@@ -209,14 +209,14 @@ fn id[A](x: A): A = x
 
 def id = (thunk { fn(x) => ret x } : U(forall A. (A) -> F(A)))
 
-=== cap-row variables carry over as row rests (D-41) ===
+=== cap-row rests are vestigial under capability passing (D-51) ===
 :elab(Lumo -> MIR)
 
 fn go[cap c](x: thunk Number): Number / {..c} = force x
 
 ---
 
-def go = (thunk { fn(x) => force x } : U(forall c. (U(F(Number))) -> F(Number) / {..c}))
+def go = (thunk { fn(x) => force x } : U(forall c. (U(F(Number))) -> F(Number)))
 
 === annotated self-recursion keeps the annotation around fix ===
 :elab(Lumo -> MIR)
@@ -226,3 +226,254 @@ fn spin(x: Number): Number = spin(x)
 ---
 
 def spin = (thunk { fix spin => fn(x) => force spin(x) } : U((Number) -> F(Number)))
+
+=== bare cap impls become annotated bundle defs (D-44) ===
+:elab(Lumo -> MIR)
+
+cap Console {
+  fn log(msg)
+}
+impl Console {
+  fn log(m) = m
+}
+
+---
+
+def __impl_Console = (bundle { fn log(m) => ret m } : Console)
+
+=== cap ops resolve statically through a bare impl (D-44) ===
+:elab(Lumo -> MIR)
+
+cap Console {
+  fn log(msg)
+}
+impl Console {
+  fn log(m) = m
+}
+fn main() = Console.log("hi")
+
+---
+
+def __impl_Console = (bundle { fn log(m) => ret m } : Console)
+def main = thunk { sel __impl_Console.log("hi") }
+
+=== multi-method impls bundle every op (D-44) ===
+:elab(Lumo -> MIR)
+
+cap Pair {
+  fn first(a, b)
+  fn second(a, b)
+}
+impl Pair {
+  fn first(a, b) = a
+  fn second(a, b) = b
+}
+fn snd(x, y) = Pair.second(x, y)
+
+---
+
+def __impl_Pair = (bundle { fn first(a, b) => ret a fn second(a, b) => ret b } : Pair)
+def snd = thunk { fn(x) => fn(y) => sel __impl_Pair.second(x, y) }
+
+=== if/else desugars to a Bool match (D-47) ===
+:elab(Lumo -> MIR)
+
+data Bool { .true, .false }
+fn choose(b) = if b { 1 } else { 2 }
+
+---
+
+def choose = thunk { fn(b) =>
+  case unroll b {
+    .true => ret 1
+    .false => ret 2
+  }
+}
+
+=== else-if chains recurse (D-47) ===
+:elab(Lumo -> MIR)
+
+data Bool { .true, .false }
+fn pick(a, b) = if a { 1 } else if b { 2 } else { 3 }
+
+---
+
+def pick = thunk { fn(a) => fn(b) =>
+  case unroll a {
+    .true => ret 1
+    .false => case unroll b {
+      .true => ret 2
+      .false => ret 3
+    }
+  }
+}
+
+=== typeclass impls become instance-cap bundle defs (D-48) ===
+:elab(Lumo -> MIR)
+
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn __num_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+
+---
+
+def __impl_Add_Number = (bundle { fn add(self, other) => force __num_add(self, other) } : Add_Number)
+
+=== operators dispatch on syntactic operand types (D-48) ===
+:elab(Lumo -> MIR)
+
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn __num_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+fn three() = 1 + 2
+fn inc(x: Number) = x + 1
+
+---
+
+def __impl_Add_Number = (bundle { fn add(self, other) => force __num_add(self, other) } : Add_Number)
+def three = thunk { sel __impl_Add_Number.add(1, 2) }
+def inc = thunk { fn(x) => sel __impl_Add_Number.add(x, 1) }
+
+=== boolean operators are lazy Bool cases (D-48) ===
+:elab(Lumo -> MIR)
+
+data Bool { .true, .false }
+fn and(a: Bool, b: Bool) = a && b
+
+---
+
+def and = thunk { fn(a) => fn(b) =>
+  case unroll a {
+    .true => ret b
+    .false => ret roll .false
+  }
+}
+
+=== comparisons go through PartialOrd.cmp and an Ordering case (D-48) ===
+:elab(Lumo -> MIR)
+
+extern type Number;
+data Bool { .true, .false }
+data Ordering { .less, .equal, .greater }
+cap PartialOrd { fn cmp(a: Self, b: Self): Ordering }
+extern fn __num_lt(a: Number, b: Number): Bool;
+impl Number: PartialOrd {
+  fn cmp(self, other: Self): Ordering = match __num_lt(self, other) {
+    .true => Ordering.less,
+    .false => Ordering.greater,
+  }
+}
+fn below(a: Number, b: Number) = a < b
+
+---
+
+def __impl_PartialOrd_Number = (bundle { fn cmp(self, other) =>
+  let __t1 = force __num_lt(self, other) in
+  case unroll __t1 {
+    .true => ret roll .less
+    .false => ret roll .greater
+  }
+} : PartialOrd_Number)
+def below = thunk { fn(a) => fn(b) =>
+  let __t2 = sel __impl_PartialOrd_Number.cmp(a, b) in
+  case unroll __t2 {
+    .less => ret roll .true
+    .equal => ret roll .false
+    .greater => ret roll .false
+  }
+}
+
+=== inherent impls become instance-cap bundle defs (D-49) ===
+:elab(Lumo -> MIR)
+
+extern type String;
+extern type Number;
+extern fn __str_len(s: String): Number;
+impl String {
+  fn len(self): Number = __str_len(self)
+}
+
+---
+
+def __impl_String = (bundle { fn len(self) => force __str_len(self) } : String_impl)
+
+=== value methods dispatch on the syntactic type (D-49) ===
+:elab(Lumo -> MIR)
+
+extern type String;
+extern type Number;
+extern fn __str_len(s: String): Number;
+extern fn __str_concat(a: String, b: String): String;
+impl String {
+  fn len(self): Number = __str_len(self)
+  fn append(self, other: String): String = __str_concat(self, other)
+}
+fn chain(s: String) = s.append("!").len()
+
+---
+
+def __impl_String = (bundle {
+  fn len(self) => force __str_len(self)
+  fn append(self, other) => force __str_concat(self, other)
+} : String_impl)
+def chain = thunk { fn(s) =>
+  let __t1 = sel __impl_String.append(s, "!") in
+  sel __impl_String.len(__t1)
+}
+
+=== generic inherent impls dispatch through binder-typed match arms (D-50) ===
+:elab(Lumo -> MIR)
+
+data List[A] { .nil, .cons(A, List[A]) }
+impl[T] List[T] {
+  fn map[R](self: List[T], mapper: (T) -> R): List[R] =
+    match self {
+      .nil => List.nil,
+      .cons(h, t) => List.cons(mapper(h), t.map(mapper))
+    }
+}
+
+---
+
+def __impl_List = (bundle { fn map(self, mapper) =>
+  case unroll self {
+    .nil => ret roll .nil
+    .cons(h, t) =>
+      let __t1 = force mapper(h) in
+      let __t2 = sel __impl_List.map(t, mapper) in
+      ret roll .cons(__t1, __t2)
+  }
+} : List_impl)
+
+=== calls thread capabilities to row'd callees (D-51) ===
+:elab(Lumo -> MIR)
+
+cap Console { fn log(msg: String): String }
+fn hi(x: String): String / {Console} = Console.log(x)
+fn outer(y: String): String / {Console} = hi(y)
+
+---
+
+def hi = (thunk { fn(__cap_Console) => fn(x) => sel __cap_Console.log(x) } : U((Console) -> (String) -> F(String)))
+def outer = (thunk { fn(__cap_Console) => fn(y) => force hi(__cap_Console, y) } : U((Console) -> (String) -> F(String)))
+
+=== handle overrides the default impl (D-51) ===
+:elab(Lumo -> MIR)
+
+cap Console {
+  fn log(m)
+}
+impl Console {
+  fn log(m) = m
+}
+fn main() = handle Console with bundle { fn log(m) = m } in Console.log("x")
+
+---
+
+def __impl_Console = (bundle { fn log(m) => ret m } : Console)
+def main = thunk {
+  let __t1 = ret (bundle { fn log(m) => ret m } : Console) in
+  sel __t1.log("x")
+}

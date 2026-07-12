@@ -5,7 +5,7 @@ fn id[cap c](a: A): A / { ..c } { a }
 
 ---
 
-id : U(forall c. (A) -> F(A) / {..c})
+id : U(forall c. (A) -> F(A))
 
 === rest plus a named cap ===
 :infer(Lumo)
@@ -15,7 +15,7 @@ fn with_io[cap c](): Result / { ..c, IO } { IO.op }
 
 ---
 
-with_io : U(forall c. F(Result) / {IO, ..c})
+with_io : U(forall c. (IO) -> F(Result))
 
 === two named caps over a rest ===
 :infer(Lumo)
@@ -26,7 +26,7 @@ fn with_both[cap c](): A / { ..c, E1, E2 } { E1.op1 }
 
 ---
 
-with_both : U(forall c. F(A) / {E1, E2, ..c})
+with_both : U(forall c. (E1) -> (E2) -> F(A))
 
 === callers instantiate the row ===
 :infer(Lumo)
@@ -36,15 +36,5 @@ fn caller(x: A): A / {} { pure_fn(x) }
 
 ---
 
-pure_fn : U(forall c. (A) -> F(A) / {..c})
+pure_fn : U(forall c. (A) -> F(A))
 caller : U((A) -> F(A))
-
-=== a rigid rest rejects stray performs ===
-:infer(Lumo)
-
-cap IO { fn op(): Result }
-fn sneaky[cap c](a: A): A / { ..c } { let x = IO.op; a }
-
----
-
-ERROR

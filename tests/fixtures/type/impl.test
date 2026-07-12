@@ -1,0 +1,41 @@
+=== a bare impl def checks against its cap (D-44) ===
+:infer(Lumo)
+
+cap E { fn op(x: A): A }
+impl E { fn op(x) = x }
+
+---
+
+__impl_E : E
+
+=== statically resolved ops need no ambient row (D-44) ===
+:infer(Lumo)
+
+cap E { fn op(x: A): A }
+impl E { fn op(x) = x }
+fn use_it(a: A): A / {} { E.op(a) }
+
+---
+
+__impl_E : E
+use_it : U((A) -> F(A))
+
+=== impls must cover every op ===
+:infer(Lumo)
+
+cap E { fn op1(x: A): A; fn op2(x: A): A }
+impl E { fn op1(x) = x }
+
+---
+
+ERROR
+
+=== impls may not invent ops ===
+:infer(Lumo)
+
+cap E { fn op(x: A): A }
+impl E { fn op(x) = x; fn bogus(x) = x }
+
+---
+
+ERROR

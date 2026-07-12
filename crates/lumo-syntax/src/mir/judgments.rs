@@ -406,11 +406,11 @@ pub fn rules() -> Vec<Rule> {
         Rule {
             judgment: "clauses_check".to_owned(),
             params: vec![app("#cons", vec![app("BundleClause", vec![var(0), var(1), var(2)]), var(3)]), var(4)],
-            var_count: 7,
+            var_count: 8,
             body: vec![
-                Goal::CtxRead { ctx: "Σ".to_owned(), key: app("Op", vec![var(4), var(0)]), value: var(6) },
-                Goal::Unify(var(5), var(6)),
-                Goal::Call { judgment: "op_check".to_owned(), args: vec![var(1), var(5), var(2)], extends: vec![] },
+                Goal::CtxRead { ctx: "Σ".to_owned(), key: app("Op", vec![var(4), var(0)]), value: var(7) },
+                Goal::Unify(app("Sig", vec![var(5), var(6)]), var(7)),
+                Goal::Call { judgment: "op_check".to_owned(), args: vec![var(1), var(6), var(2)], extends: vec![] },
                 Goal::Call { judgment: "clauses_check".to_owned(), args: vec![var(3), var(4)], extends: vec![] },
             ],
         },
@@ -535,12 +535,14 @@ pub fn rules() -> Vec<Rule> {
         Rule {
             judgment: "infer_C".to_owned(),
             params: vec![app("SelC", vec![var(0), var(1)]), var(2), var(3)],
-            var_count: 8,
+            var_count: 11,
             body: vec![
                 Goal::Call { judgment: "infer_V".to_owned(), args: vec![var(0), var(6)], extends: vec![] },
                 Goal::Unify(app("NamedTypeV", vec![var(4), var(5)]), var(6)),
-                Goal::CtxRead { ctx: "Σ".to_owned(), key: app("Op", vec![var(4), var(1)]), value: var(7) },
-                Goal::Unify(var(2), var(7)),
+                Goal::CtxRead { ctx: "Σ".to_owned(), key: app("Op", vec![var(4), var(1)]), value: var(9) },
+                Goal::Unify(app("Sig", vec![var(7), var(8)]), var(9)),
+                Goal::Call { judgment: "inst".to_owned(), args: vec![var(7), var(8), var(10)], extends: vec![] },
+                Goal::Unify(var(2), var(10)),
             ],
         },
         Rule {

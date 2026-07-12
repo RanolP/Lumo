@@ -54,3 +54,23 @@ fn use_it(n: Nat): Nat / {} { id(n) }
 
 id : U(forall T. (T) -> F(T))
 use_it : U((Nat) -> F(Nat))
+
+=== if/else types both branches against one result (D-47) ===
+:infer(Lumo)
+
+data Bool { .true, .false }
+fn choose(b: Bool): Number / {} { if b { 1 } else { 2 } }
+
+---
+
+choose : U((Bool) -> F(Number))
+
+=== if/else branches must agree ===
+:infer(Lumo)
+
+data Bool { .true, .false }
+fn bad(b: Bool): Number / {} { if b { 1 } else { "two" } }
+
+---
+
+ERROR

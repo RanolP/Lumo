@@ -75,7 +75,8 @@ fn console_sigs() -> Contexts {
         vec![
             (
                 app("Op", vec![atom("Console"), atom("log")]),
-                fnt(named("String"), pure_f(named("String"))),
+                // D-50: sigs carry a binder list — none here.
+                app("Sig", vec![atom("#nil"), fnt(named("String"), pure_f(named("String")))]),
             ),
             (app("Ops", vec![atom("Console")]), set(vec![atom("log")], None)),
         ],
@@ -111,7 +112,10 @@ fn handle_discharges_the_row_and_bundles_check_against_sigs() {
     ctxs.insert(
         "Σ".into(),
         vec![
-            (app("Op", vec![atom("E"), atom("op")]), pure_f(named("A"))),
+            (
+                app("Op", vec![atom("E"), atom("op")]),
+                app("Sig", vec![atom("#nil"), pure_f(named("A"))]),
+            ),
             (app("Ops", vec![atom("E")]), set(vec![atom("op")], None)),
         ],
     );

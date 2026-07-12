@@ -134,9 +134,12 @@ infer_C CompPostfix { expr: $f, value_args: ValueArgs { args: $as } } -> $t $amb
 infer_C PerformC { cap: $c } -> $t $amb
   := (subset { $c } $amb),
      $t = FTypeC { inner: NamedTypeV { name: $c }, row: {} }
+// D-50: every use site instantiates the sig's binders fresh (the
+// data-ctor pattern) — ground sigs are the `Sig([], t)` identity.
 infer_C SelC { value: $v, field: $f } -> $t $amb
   := NamedTypeV { name: $c, args: $x } = (infer_V $v),
-     $t = Σ.Op($c, $f)
+     Sig($bs, $ot) = Σ.Op($c, $f),
+     $t = (inst $bs $ot)
 infer_C HandleC { cap: $c, handler: $h, body: $b } -> $t $amb
   := (check_V $h NamedTypeV { name: $c }),
      infer_C $b $t { $c | $amb }
@@ -230,8 +233,10 @@ binds [$n | $ns] [$p | $ps] $b $t $amb := binds $ns $ps $b $t $amb with Γ+{$n: 
 clause_names [] -> $o := $o = []
 clause_names [BundleClause { name: $n } | $cs] -> $o := $o = [$n | (clause_names $cs)]
 clauses_check [] $c := [] = []
+// D-50: sigs carry binders — held rigid (skolems) while the clause
+// body checks, so a generic method body cannot fix its binders.
 clauses_check [BundleClause { name: $n, params: $xs, body: $b } | $cs] $c
-  := $ot = Σ.Op($c, $n),
+  := Sig($bs, $ot) = Σ.Op($c, $n),
      op_check $xs $ot $b,
      clauses_check $cs $c
 op_check [] FTypeC { inner: $i, row: $r } $b := (check_C $b FTypeC { inner: $i, row: $r } $amb)

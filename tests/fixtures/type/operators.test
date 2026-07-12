@@ -1,0 +1,85 @@
+=== typeclass impls check against their ground instance cap (D-48) ===
+:infer(Lumo)
+
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn __num_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+
+---
+
+__num_add : U((Number) -> (Number) -> F(Number))
+__impl_Add_Number : Add_Number
+
+=== arithmetic operators type through the instance cap (D-48) ===
+:infer(Lumo)
+
+extern type Number;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn __num_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+fn three(): Number / {} { 1 + 2 }
+fn inc(x: Number): Number / {} { x + 1 }
+
+---
+
+__num_add : U((Number) -> (Number) -> F(Number))
+__impl_Add_Number : Add_Number
+three : U(F(Number))
+inc : U((Number) -> F(Number))
+
+=== mixed operand types are a type error ===
+:infer(Lumo)
+
+extern type Number;
+extern type String;
+cap Add { fn add(a: Self, b: Self): Self }
+extern fn __num_add(a: Number, b: Number): Number;
+impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+fn bad(): Number / {} { 1 + "x" }
+
+---
+
+ERROR
+
+=== equality, negation, and lazy booleans (D-48) ===
+:infer(Lumo)
+
+extern type Number;
+data Bool { .true, .false }
+cap PartialEq { fn eq(a: Self, b: Self): Bool }
+extern fn __num_eq(a: Number, b: Number): Bool;
+impl Number: PartialEq { fn eq(self, other: Self): Bool = __num_eq(self, other) }
+fn same(a: Number, b: Number): Bool / {} { a == b }
+fn diff(a: Number, b: Number): Bool / {} { a != b }
+fn all(a: Bool, b: Bool): Bool / {} { a && !b || b }
+
+---
+
+__num_eq : U((Number) -> (Number) -> F(Bool))
+__impl_PartialEq_Number : PartialEq_Number
+same : U((Number) -> (Number) -> F(Bool))
+diff : U((Number) -> (Number) -> F(Bool))
+all : U((Bool) -> (Bool) -> F(Bool))
+
+=== comparisons need Ordering and a PartialOrd impl (D-48) ===
+:infer(Lumo)
+
+extern type Number;
+data Bool { .true, .false }
+data Ordering { .less, .equal, .greater }
+cap PartialOrd { fn cmp(a: Self, b: Self): Ordering }
+extern fn __num_lt(a: Number, b: Number): Bool;
+impl Number: PartialOrd {
+  fn cmp(self, other: Self): Ordering = match __num_lt(self, other) {
+    .true => Ordering.less,
+    .false => Ordering.greater,
+  }
+}
+fn below(a: Number, b: Number): Bool / {} { a <= b }
+
+---
+
+__num_lt : U((Number) -> (Number) -> F(Bool))
+__impl_PartialOrd_Number : PartialOrd_Number
+below : U((Number) -> (Number) -> F(Bool))

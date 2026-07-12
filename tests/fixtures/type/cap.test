@@ -117,3 +117,17 @@ fn f(h: E): A / {} { handle E with h in E.bogus }
 ---
 
 ERROR
+
+=== capabilities thread through calls (D-51) ===
+:infer(Lumo)
+
+cap E { fn op(x: A): A }
+fn inner(x: A): A / {E} { E.op(x) }
+fn outer(x: A): A / {E} { inner(x) }
+fn top(h: E, x: A): A / {} { handle E with h in outer(x) }
+
+---
+
+inner : U((E) -> (A) -> F(A))
+outer : U((E) -> (A) -> F(A))
+top : U((E) -> (A) -> F(A))

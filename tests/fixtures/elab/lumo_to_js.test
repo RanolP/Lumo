@@ -41,7 +41,7 @@ fn pred(n) = match n {
 
 const pred=()=>(n)=>((__t1)=>(__t1.$==="zero")?({$:"zero",args:[]}):(__t1.$==="succ")?((m)=>m)(__t1.args[0]):__lumo_match_error(__t1))(n);
 
-=== cap ops resolve through the handler bundle (legacy cap intent) ===
+=== handle binds the capability lexically (D-51) ===
 :elab(Lumo -> JS)
 
 cap Console {
@@ -51,7 +51,7 @@ fn main() = handle Console with bundle { fn log(m) = m } in Console.log("x")
 
 ---
 
-const main=()=>__lumo_handle("Console",({log:(m)=>m}),()=>((__t1)=>__t1.log("x"))(__lumo_perform("Console")));
+const main=()=>((__t1)=>__t1.log("x"))(({log:(m)=>m}));
 
 === use lowers to require (D-30) ===
 :elab(Lumo -> JS)
@@ -61,7 +61,7 @@ fn go() = bar()
 
 ---
 
-const bar=()=>((m)=>m.bar)(require()("foo"));const go=()=>bar()();
+const bar=()=>((m)=>m.bar)(require()("foo"));const go=()=>bar();
 
 === self-recursion compiles through fix (legacy recursion intent) ===
 :elab(Lumo -> JS)
@@ -84,3 +84,61 @@ fn b(x) = {
 
 const b=()=>(x)=>((y)=>y)(x);
 
+=== bare cap impls resolve statically to a bundle const (D-44) ===
+:elab(Lumo -> JS)
+
+cap Console {
+  fn log(msg)
+}
+impl Console {
+  fn log(m) = m
+}
+fn main() = Console.log("hi")
+
+---
+
+const __impl_Console=({log:(m)=>m});const main=()=>__impl_Console.log("hi");
+
+
+=== if/else compiles to the ternary chain (D-47) ===
+:elab(Lumo -> JS)
+
+data Bool { .true, .false }
+fn choose(b) = if b { "yes" } else { "no" }
+
+---
+
+const choose=()=>(b)=>((__t1)=>(__t1.$==="true")?"yes":(__t1.$==="false")?"no":__lumo_match_error(__t1))(b);
+
+=== operators compile through instance-cap bundles (D-48) ===
+:elab(Lumo -> JS)
+
+extern type Number;
+data Bool { .true, .false }
+cap Add { fn add(a: Self, b: Self): Self }
+cap PartialEq { fn eq(a: Self, b: Self): Bool }
+extern fn __num_add(a: Number, b: Number): Number;
+extern fn __num_eq(a: Number, b: Number): Bool;
+impl Number: Add { fn add(self, other: Self): Self = __num_add(self, other) }
+impl Number: PartialEq { fn eq(self, other: Self): Bool = __num_eq(self, other) }
+fn main() = if 1 + 2 == 3 { "yes" } else { "no" }
+
+---
+
+
+const __impl_Add_Number=({add:(self,other)=>__num_add()(self,other)});const __impl_PartialEq_Number=({eq:(self,other)=>__num_eq()(self,other)});const main=()=>((__t2)=>((__t1)=>(__t1.$==="true")?"yes":(__t1.$==="false")?"no":__lumo_match_error(__t1))(__t2))(((__t1)=>__impl_PartialEq_Number.eq(__t1,3))(__impl_Add_Number.add(1,2)));
+
+=== value methods compile through the inherent bundle (D-49) ===
+:elab(Lumo -> JS)
+
+extern type String;
+extern type Number;
+extern fn __str_len(s: String): Number;
+impl String {
+  fn len(self): Number = __str_len(self)
+}
+fn main() = "abc".len()
+
+---
+
+const __impl_String=({len:(self)=>__str_len()(self)});const main=()=>__impl_String.len("abc");

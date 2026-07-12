@@ -59,6 +59,18 @@ pub trait Externs {
     /// `extern rule use_decl from Lumo to MIR`
     fn rule_use_decl(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
 
+    /// `extern rule if_else from Lumo to MIR`
+    fn rule_if_else(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
+    /// `extern rule operators from Lumo to MIR`
+    fn rule_operators(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
+    /// `extern rule handle_bind from Lumo to MIR`
+    fn rule_handle_bind(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
+    /// `extern rule call_caps from Lumo to MIR`
+    fn rule_call_caps(&mut self, ctx: &mut ElabCtx, node: &FromNode) -> Option<ToFrag>;
+
     /// `extern pass scc_fix` — offered both phases; `None` = skip.
     fn pass_scc_fix(&mut self, phase: PassPhase, text: &str) -> Option<String>;
 
@@ -129,6 +141,18 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
     if let Some(frag) = externs.rule_use_decl(ctx, node) {
         return Some(frag);
     }
+    if let Some(frag) = externs.rule_if_else(ctx, node) {
+        return Some(frag);
+    }
+    if let Some(frag) = externs.rule_operators(ctx, node) {
+        return Some(frag);
+    }
+    if let Some(frag) = externs.rule_handle_bind(ctx, node) {
+        return Some(frag);
+    }
+    if let Some(frag) = externs.rule_call_caps(ctx, node) {
+        return Some(frag);
+    }
     match node.kind {
         FromKind::BIND_PATTERN => {
             if let Some(frag) = rule_12(ctx, externs, node) {
@@ -138,14 +162,14 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
             None
         }
         FromKind::BUNDLE_ENTRY => {
-            if let Some(frag) = rule_10(ctx, externs, node) {
+            if let Some(frag) = rule_9(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `BUNDLE_ENTRY`: {}", crate::lumo::printer::canonical(node)));
             None
         }
         FromKind::BUNDLE_EXPR => {
-            if let Some(frag) = rule_9(ctx, externs, node) {
+            if let Some(frag) = rule_8(ctx, externs, node) {
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `BUNDLE_EXPR`: {}", crate::lumo::printer::canonical(node)));
@@ -172,13 +196,6 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
             ctx.error(format!("no rule matched `FORCE_EXPR`: {}", crate::lumo::printer::canonical(node)));
             None
         }
-        FromKind::HANDLE_EXPR => {
-            if let Some(frag) = rule_8(ctx, externs, node) {
-                return Some(frag);
-            }
-            ctx.error(format!("no rule matched `HANDLE_EXPR`: {}", crate::lumo::printer::canonical(node)));
-            None
-        }
         FromKind::IDENT_EXPR => {
             if let Some(frag) = rule_2(ctx, externs, node) {
                 return Some(frag);
@@ -191,6 +208,13 @@ pub fn elab_node(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) 
                 return Some(frag);
             }
             ctx.error(format!("no rule matched `IDENT_PATTERN`: {}", crate::lumo::printer::canonical(node)));
+            None
+        }
+        FromKind::IMPL_METHOD => {
+            if let Some(frag) = rule_10(ctx, externs, node) {
+                return Some(frag);
+            }
+            ctx.error(format!("no rule matched `IMPL_METHOD`: {}", crate::lumo::printer::canonical(node)));
             None
         }
         FromKind::MATCH_EXPR => {
@@ -404,30 +428,8 @@ fn rule_7(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opti
     Some(r6)
 }
 
-/// Rule 8: `HandleExpr` ==> …
+/// Rule 8: `BundleExpr` ==> …
 fn rule_8(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
-    if node.kind != FromKind::HANDLE_EXPR {
-        return None;
-    }
-    let t0 = langue_rt::nth_token_of(node, FromKind::IDENT, 0)?;
-    let b_c = t0;
-    let b_h = langue_rt::nth_node_in(node, &[FromKind::BLOCK_EXPR, FromKind::BUNDLE_EXPR, FromKind::EXPR_INFIX, FromKind::EXPR_POSTFIX, FromKind::EXPR_PREFIX, FromKind::FORCE_EXPR, FromKind::HANDLE_EXPR, FromKind::IDENT_EXPR, FromKind::IF_ELSE_EXPR, FromKind::LAMBDA_EXPR, FromKind::MATCH_EXPR, FromKind::NUMBER_EXPR, FromKind::PAREN_EXPR, FromKind::PERFORM_EXPR, FromKind::STRING_EXPR, FromKind::THUNK_EXPR], 0)?;
-    let b_b = langue_rt::nth_node_in(node, &[FromKind::BLOCK_EXPR, FromKind::BUNDLE_EXPR, FromKind::EXPR_INFIX, FromKind::EXPR_POSTFIX, FromKind::EXPR_PREFIX, FromKind::FORCE_EXPR, FromKind::HANDLE_EXPR, FromKind::IDENT_EXPR, FromKind::IF_ELSE_EXPR, FromKind::LAMBDA_EXPR, FromKind::MATCH_EXPR, FromKind::NUMBER_EXPR, FromKind::PAREN_EXPR, FromKind::PERFORM_EXPR, FromKind::STRING_EXPR, FromKind::THUNK_EXPR], 1)?;
-    let mut c2 = ToFrag::token(b_c.text.clone());
-    let mut c3 = elab_node(ctx, externs, b_h)?;
-    let mut c3 = expect_kind(ctx, externs, c3, &[ToKind::BUNDLE_V, ToKind::CTOR_V, ToKind::NUM_V, ToKind::PAREN_V, ToKind::ROLL_V, ToKind::STR_V, ToKind::THUNK_V, ToKind::UNROLL_V, ToKind::VAR_V], "Value")?;
-    let mut c4 = elab_node(ctx, externs, b_b)?;
-    let mut c4 = expect_kind(ctx, externs, c4, &[ToKind::CASE_C, ToKind::COMP_POSTFIX, ToKind::FIX_C, ToKind::FORCE_C, ToKind::HANDLE_C, ToKind::LAM_C, ToKind::LET_C, ToKind::PAREN_C, ToKind::PERFORM_C, ToKind::RET_C, ToKind::SEL_C], "Comp")?;
-    let mut r5 = ToFrag::node(ToKind::HANDLE_C, builder::handle_c(&c2.text, &c3.text, &c4.text));
-    r5.absorb(&mut c4);
-    r5.absorb(&mut c2);
-    r5.absorb(&mut c3);
-    flush_binders(externs, &mut r5);
-    Some(r5)
-}
-
-/// Rule 9: `BundleExpr` ==> …
-fn rule_9(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::BUNDLE_EXPR {
         return None;
     }
@@ -447,9 +449,41 @@ fn rule_9(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Opti
     Some(r3)
 }
 
-/// Rule 10: `BundleEntry` ==> …
-fn rule_10(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+/// Rule 9: `BundleEntry` ==> …
+fn rule_9(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
     if node.kind != FromKind::BUNDLE_ENTRY {
+        return None;
+    }
+    let t0 = langue_rt::nth_token_of(node, FromKind::IDENT, 0)?;
+    let b_n = t0;
+    let v1 = langue_rt::nth_node_in(node, &[FromKind::PARAM_LIST], 0)?;
+    if v1.kind != FromKind::PARAM_LIST {
+        return None;
+    }
+    let b_p = langue_rt::nodes_in(v1, &[FromKind::PARAM], 0);
+    let b_b = langue_rt::nth_node_in(node, &[FromKind::BLOCK_EXPR, FromKind::EXPR_BODY], 0)?;
+    let mut c3 = ToFrag::token(b_n.text.clone());
+    let mut l4: Vec<ToFrag> = Vec::new();
+    for n in &b_p {
+        let f = elab_node(ctx, externs, n)?;
+        l4.push(f);
+    }
+    let mut c5 = elab_node(ctx, externs, b_b)?;
+    let mut c5 = expect_kind(ctx, externs, c5, &[ToKind::CASE_C, ToKind::COMP_POSTFIX, ToKind::FIX_C, ToKind::FORCE_C, ToKind::HANDLE_C, ToKind::LAM_C, ToKind::LET_C, ToKind::PAREN_C, ToKind::PERFORM_C, ToKind::RET_C, ToKind::SEL_C], "Comp")?;
+    let texts6: Vec<&str> = l4.iter().map(|f| f.text.as_str()).collect();
+    let mut r7 = ToFrag::node(ToKind::BUNDLE_CLAUSE, builder::bundle_clause(&c3.text, &texts6, &c5.text));
+    r7.absorb(&mut c5);
+    r7.absorb(&mut c3);
+    for f in &mut l4 {
+        r7.absorb(f);
+    }
+    flush_binders(externs, &mut r7);
+    Some(r7)
+}
+
+/// Rule 10: `ImplMethod` ==> …
+fn rule_10(ctx: &mut ElabCtx, externs: &mut dyn Externs, node: &FromNode) -> Option<ToFrag> {
+    if node.kind != FromKind::IMPL_METHOD {
         return None;
     }
     let t0 = langue_rt::nth_token_of(node, FromKind::IDENT, 0)?;

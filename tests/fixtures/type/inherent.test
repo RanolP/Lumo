@@ -1,0 +1,100 @@
+=== inherent impls check against their derived instance cap (D-49) ===
+:infer(Lumo)
+
+extern type String;
+extern type Number;
+extern fn __str_len(s: String): Number;
+impl String {
+  fn len(self): Number = __str_len(self)
+}
+
+---
+
+__str_len : U((String) -> F(Number))
+__impl_String : String_impl
+
+=== value method calls dispatch and chain (D-49) ===
+:infer(Lumo)
+
+extern type String;
+extern type Number;
+extern fn __str_len(s: String): Number;
+extern fn __str_concat(a: String, b: String): String;
+impl String {
+  fn len(self): Number = __str_len(self)
+  fn append(self, other: String): String = __str_concat(self, other)
+}
+fn n(s: String): Number / {} { s.len() }
+fn chain(s: String): Number / {} { s.append("!").len() }
+
+---
+
+__str_len : U((String) -> F(Number))
+__str_concat : U((String) -> (String) -> F(String))
+__impl_String : String_impl
+n : U((String) -> F(Number))
+chain : U((String) -> F(Number))
+
+=== a method body that breaks its signature is caught (D-49) ===
+:infer(Lumo)
+
+extern type String;
+extern type Number;
+impl String {
+  fn len(self): Number = self
+}
+
+---
+
+ERROR
+
+=== unknown methods fall through and bail (D-49) ===
+:infer(Lumo)
+
+extern type String;
+extern type Number;
+extern fn __str_len(s: String): Number;
+impl String {
+  fn len(self): Number = __str_len(self)
+}
+fn bad(s: String): Number / {} { s.bogus() }
+
+---
+
+ERROR
+
+=== generic impls: rigid binders in the body, fresh at each use (D-50) ===
+:infer(Lumo)
+
+extern type Number;
+data List[A] { .nil, .cons(A, List[A]) }
+impl[T] List[T] {
+  fn map[R](self: List[T], mapper: (T) -> R): List[R] =
+    match self {
+      .nil => List.nil,
+      .cons(h, t) => List.cons(mapper(h), t.map(mapper))
+    }
+}
+fn bump(xs: List[Number]): List[Number] / {} { xs.map(fn(n: Number) = n) }
+
+---
+
+__impl_List : List_impl
+bump : U((List[Number]) -> F(List[Number]))
+
+=== a generic body may not fix its binders (D-50) ===
+:infer(Lumo)
+
+extern type Number;
+data List[A] { .nil, .cons(A, List[A]) }
+impl[T] List[T] {
+  fn map[R](self: List[T], mapper: (T) -> R): List[R] =
+    match self {
+      .nil => List.cons(1, List.nil),
+      .cons(h, t) => List.cons(mapper(h), t.map(mapper))
+    }
+}
+
+---
+
+ERROR

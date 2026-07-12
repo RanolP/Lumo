@@ -54,7 +54,7 @@ def loop = thunk { fix f => force f() }
 
 ---
 
-const loop=()=>function f(){return f()();}();
+const loop=()=>function f(){return f();}();
 
 === ctors are tagged objects ===
 :elab(MIR -> JS)
