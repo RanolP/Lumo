@@ -4,8 +4,6 @@ node_modules
 
 # Build outputs
 dist
-!packages/langue/dist/
-packages/langue/dist/Cargo.toml
 build
 .next
 out

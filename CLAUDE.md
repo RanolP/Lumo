@@ -2,16 +2,13 @@
 
 ## Repository layout (since 2026-07-09)
 
-- **`legacy/`** — the previous implementation, archived as read-only
-  reference; do not extend it. Pruned 2026-07-12: parts reimplemented by
-  the rewrite (lexer/lst/span/hir/lir/lir-memaware/types/simple-ts-ast
-  crates, apps/lumoc, scripts/, the playground app + wasm crate, the
-  pnpm/turbo/biome JS scaffolding, and the lsp crate) were deleted —
-  recover via git history if needed. What remains is still load-bearing
-  or unported: `crates/compiler` (test-fixture gates + caps/LTO/query
-  reference), `packages/` (parse-gate sources; its stdlib is now fully
-  ported to root `packages/`), `crates/lbs`, `docs/`, `plans/`. The
-  legacy workspace no longer builds.
+- **`legacy/`** — sources from the previous implementation, kept only
+  as parse-gate corpora for `crates/lumo-syntax/tests/legacy_sources.rs`:
+  `crates/compiler/tests/fixtures/` (case sources) and
+  `packages/**/*.lumo`. Everything else (compiler/lbs/lsp crates, docs,
+  plans, apps, JS scaffolding, workspace manifests) was pruned
+  2026-07-12 — recover via git history if needed. Do not extend it;
+  nothing under `legacy/` builds.
 - **`design/`** — design documents for the fresh, DSL-driven rewrite.
   Start with `design/langue.md` (Langue 2: full language-definition DSL).
 - The new implementation lives in the root Cargo workspace (`crates/`,

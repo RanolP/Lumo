@@ -1,7 +1,0 @@
-[package]
-name = "langue"
-targets = ["js.node"]
-
-[deps]
-libcore = "../libcore"
-libstd = "../libstd"

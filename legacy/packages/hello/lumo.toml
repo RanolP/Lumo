@@ -1,6 +1,0 @@
-[package]
-name = "hello"
-
-[deps]
-libcore = "../libcore"
-libstd = "../libstd"

@@ -98,9 +98,9 @@ fn collect_ext(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
 
 #[test]
 fn legacy_sources_parse_and_round_trip() {
-    // `legacy/apps/lumoc/main.lumo` is a type-theory sketch (∑/μ/∀) the
-    // legacy compiler never parsed either — the gate is the code that
-    // actually compiled: the packages.
+    // The gate is the code the legacy compiler actually compiled: the
+    // packages. (The one exclusion, apps/lumoc's ∑/μ/∀ sketch, was
+    // pruned with the rest of legacy — it never parsed.)
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../legacy/packages");
     let mut files = Vec::new();
     collect(&root, &mut files);
