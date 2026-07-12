@@ -1,0 +1,62 @@
+export const title = "RFC 0044 — Impl elaboration, slice 1: bare cap impls";
+
+# RFC 0044 — Impl elaboration, slice 1: bare cap impls
+
+Settled 2026-07-12. First slice of `impl` support in the new pipeline —
+the form every legacy stdlib Tier-2/3 backend file uses (`impl NumOps`,
+`impl StrOps`, `impl IO`, `impl FS`, `impl Process`).
+
+**The form.** `impl Cap { fn op(a, b) = e; … }` elaborates to
+
+```
+def __impl_Cap = (bundle { fn op(a, b) => [e]; … } : Cap)
+```
+
+— one bundle clause per method, n-ary params matching `op_check`'s
+curried peeling. The `ParenV` annotation routes the judge to the
+existing `check_V BundleV <- NamedTypeV` rule (Σ.Ops completeness +
+per-clause `op_check`), so a missing or extra op is a type error with
+no new judgment. MIR→JS already emits bundles as object literals and
+erases `ParenV`, so the backend is untouched.
+
+**Static resolution.** A `Cap.op(args)` call site, when `Cap` has a
+bare impl in the same file, elaborates to `sel __impl_Cap . op`
+applied to the args — no `perform`, hence no ambient-row obligation
+(`infer_C SelC` has no row side condition). This is legacy parity with
+`resolve_default_cap_impls`: a default impl turns cap ops into plain
+calls. Without an impl in scope, the existing
+`sel (perform Cap) . op` path is unchanged.
+
+**`handle` does not override.** Statically resolved uses stay resolved:
+`handle Cap with h in Cap.op(x)` still calls `__impl_Cap.op` when a
+bare impl exists, because resolution happens at elab time, before any
+handler is in sight. A dynamic-override story (handlers shadowing
+defaults) is a semantic design question deferred with the other impl
+forms.
+
+> **Superseded (same day) by D-51**: under capability passing, the
+> innermost *lexical* provider wins — handle binding, then row param,
+> then this default impl. The static-resolution mechanism itself
+> survives as the fallback tier.
+
+**Ordering.** Impl defs emit in file order, like fn defs; a use must
+follow the impl (same rule as fn dependencies — the judge reads defs
+top to bottom). No hoisting. Impl *registration* for static resolution
+is whole-file (an `impl Console` textually before `cap Console` still
+registers), matching how data/cap decls seed the elab.
+
+**Default-impl methods return normally.** No `resume` — that was the
+legacy handler protocol; in the new pipeline a bundle clause's body is
+an ordinary computation.
+
+**Limitations (this slice).**
+
+- Bare form only: `impl T: Cap`, inherent `impl T`, named
+  `impl Name = T: Cap`, and generic `impl[A] …` need type-directed
+  dispatch and raise a loud elab error, as do assoc-type bindings.
+- Type fixtures need fully typed cap ops: `seed_cap` skips Σ.Op for
+  untyped params, so `clauses_check` bails on the bundle.
+- Single file: impls resolve only against call sites in the same file
+  (multi-file is out of scope pipeline-wide).
+- Value method dispatch (`x.method()`), operators, and if/else stay in
+  the M2 elab-gap backlog.

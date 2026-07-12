@@ -1,0 +1,88 @@
+export const title = "RFC 0053 — Build system slice 1: lbs successor, manifest-driven whole-program";
+
+# RFC 0053 — Build system slice 1: lbs successor, manifest-driven whole-program
+
+Settled 2026-07-12. The stdlib port (D-45) compiles as one hand-ordered
+concatenation (`packages/stdlib.manifest`); the deferred item was
+"multi-file `use` resolution and an lbs successor". This slice ships the
+lbs successor. It is **manifest-driven, not use-driven**: the judge is
+strictly order-respecting and the namespace is one global scope, so the
+build system's job is to discover packages, order their sources
+deterministically, and drive the existing whole-program pipeline —
+nothing about scoping changes.
+
+## The tool
+
+`crates/lbs` (binary `lbs`) in the root workspace, over `lumo-syntax`'s
+drivers:
+
+- `lbs check [dir]` — assemble + parse + infer (judge).
+- `lbs build [dir]` — check, then compile to JS; a **bin** package (has
+  a `main` module) emits `dist/{name}.js` = dep `js-prelude`s (topo
+  order) + compiled unit + `main();`. A lib package stops after the
+  check (no artifact in this slice).
+- `lbs run [dir]` — build, then `node dist/{name}.js`.
+- `dir` defaults to cwd, walking up to the nearest `lumo.toml` (legacy
+  behavior). `--target SPEC` picks the target.
+
+Parse-error spans map back through the part table to
+`file:line:col` (the assembled unit remembers each file's offset
+range); judge/elab errors print as-is (they carry no spans yet).
+
+## `lumo.toml`
+
+Same minimal hand-rolled format as legacy lbs (no toml dependency):
+
+```
+[package]
+name = "libcore"                # required
+targets = ["js.node"]           # optional; first entry is the default
+modules = ["prelude", "cmp"]    # optional explicit order (see below)
+js-prelude = "js/prelude.js"    # optional host-binding file
+
+[deps]
+libcore = "../libcore"          # path-only, relative to this manifest
+```
+
+## Ordering (the crux — the judge binds top-down)
+
+- **Across packages**: post-order DFS over `[deps]` in declared order;
+  dependency cycles and two packages with the same name are errors
+  (D-22 spirit). The root package comes last.
+- **Within a package**: `modules` lists module names in binding order —
+  the D-45 manifest's job moves into the package that owns it. When
+  `modules` is omitted, module names found on disk sort
+  alphabetically (fine for single-module packages).
+- **Per module**: `src/{m}.lumo` first, then `src#{s}/{m}.lumo` for
+  each target-prefix suffix in order (spec `js.node` → suffixes
+  `js`, `js.node` — legacy rule). This is *per-module* merge, unlike
+  the D-45 manifest which parked all `src#` files at the end; the
+  stdlib's dependencies still resolve because each module's impl
+  half lands immediately after its cap half.
+
+Target base must be `js`; a module with only platform sources (e.g.
+`libstd/src#js.node/fs.lumo`… none today, `fs` has a common half) still
+participates via the suffix scan.
+
+## The runtime package
+
+`packages/runtime` becomes a real (source-less) package whose
+`lumo.toml` declares `js-prelude = "js/prelude.js"`. The bin package
+depends on it; `lbs build` concatenates dep preludes in topo order.
+Extern-mapping attributes on the packages that *declare* the externs
+remain the deferred D-43/D-45 backend feature.
+
+## Gates
+
+- The D-45 stdlib gate moves to `crates/lbs/tests/stdlib.rs` (the
+  assembly now belongs to lbs): assemble `packages/hello`, assert
+  parse + infer + compile, same content checks as before.
+- `scripts/stdlib_smoke.sh` becomes `lbs run` on `packages/hello`.
+- `packages/stdlib.manifest` and the `compile_stdlib` example are
+  deleted.
+
+**Deferred**: real `use` scoping / namespaces (global namespace
+stands; `use` stays the D-30 require escape hatch), demand-driven
+module loading, separate compilation and caching, `rs` targets,
+out-dir configuration, extern-mapping attributes, span-carrying
+judge/elab errors.

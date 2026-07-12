@@ -1,0 +1,17 @@
+export const title = "RFC 0023 — Context write, strict decreasing, exactly one success";
+
+# RFC 0023 — Context write, strict decreasing, exactly one success
+
+A goal can pass a locally **extended context** — writing is
+`with Γ + {a: b}` on the judgment call:
+
+```
+check_C a b with Γ+{a: b}
+```
+
+Judgment recursion follows the same discipline as elab: **strictly
+decreasing only**. And for a given goal, **only one rule may succeed** —
+matching several rules where more than one succeeds is an error.
+
+Implementation reference: **λProlog** (its proof search and hypothetical
+contexts are the model to follow).

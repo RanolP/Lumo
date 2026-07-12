@@ -1,0 +1,8 @@
+export const title = "RFC 0015 — The type AST is a syn sub-language";
+
+# RFC 0015 — The type AST is a syn sub-language
+
+Types have presentation, so the type AST itself is defined in
+`*.syn.langue` — it is a sub-language, with tokens and grammar like any
+language. This supports `TypeV` and `TypeC` (CBPV value/computation
+types) naturally, with a syntax-integrated AST.

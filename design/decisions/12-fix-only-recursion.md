@@ -1,7 +1,0 @@
-# Recursion via `fix` only
-
-There is no `letrec` core form. Elaboration lowers each mutually-recursive
-definition group (SCC) through a `fix` primitive —
-`fix (λ(f, g). (body_f, body_g))`, projected back out — and acyclic
-definitions lower to plain `let`. (A `fix` primitive, not a literal Y
-combinator: Y is untypeable in Fω.)

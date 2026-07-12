@@ -1,0 +1,57 @@
+export const title = "RFC 0051 — Capability-passing style (Effekt), no continuations";
+
+# RFC 0051 — Capability-passing style (Effekt), no continuations
+
+Settled 2026-07-12, per direction: adopt Effekt's capability-passing
+style for handlers, in the tail-resumptive fragment — handler
+operations return normally, `resume` never exists, and **no
+continuations are ever captured**. Capabilities are ordinary values
+(bundles checked against their cap, D-17's existing judgment); using
+an effect is a method call on a capability in lexical scope.
+
+## The elaboration
+
+| surface | capability-passing elab |
+|---|---|
+| `fn f(x: X): Y / {E1, E2}` | `f` takes leading capability params: `thunk { fn(__cap_E1) => fn(__cap_E2) => fn(x) => … }`, typed `U((E1) -> (E2) -> (X) -> F(Y))` — **the row leaves the type** |
+| `E.op(args)` | `sel <provider>.op(args)`, provider = innermost lexical binding |
+| `handle E with h in body` | `let __tN = ret (h : E) in body′` — a lexical binding; `body′` elaborates with `E ↦ __tN`. The annotation routes the judge's bundle-vs-cap check; nothing dynamic remains |
+| call `g(args)` where `g`'s declared row is `{E, …}` | `force g(<provider-of-E>, …, args…)` — capabilities thread through calls |
+| lambdas | nothing: closures capture `__cap_E` variables lexically — Effekt's answer to effect polymorphism, so `..c` rows are vestigial (ignored; no params, no row in the type) |
+
+**Provider priority** (innermost lexical first): `handle` binding →
+enclosing fn's row parameter → the default impl `__impl_E` (D-44) →
+loud elab error ("unhandled capability"). This *supersedes D-44's
+"handle does not override static resolution"*: with lexical
+capabilities, an enclosing `handle` is precisely an override.
+
+## What dies, what stays
+
+- The elab **never emits `PerformC`/`HandleC`**. Both stay in the MIR
+  grammar, judge, and JS backend for MIR-level fixtures and the
+  surface `perform` keyword (now a legacy dynamic escape hatch), but
+  `__lumo_perform`/`__lumo_handle` leave the stdlib runtime prelude —
+  generated stdlib JS uses neither.
+- The judge needs **zero rule changes**: capability params are values
+  of cap type (`fn f(h: E)` already typechecked), `sel` on them
+  already works, and emitted rows are simply empty. Row machinery
+  (subset, open rows) stays for type-position annotations
+  (`f: (A) -> B / {E}` remains a satisfiable upper bound) and for
+  MIR-level programs.
+- Handler bundles keep checking against Σ.Ops completeness via the
+  `(h : E)` annotation — including `Sig` binders (D-50).
+
+## Sharp edges (documented, not solved here)
+
+- Call-site threading is syntactic: it fires when the callee is a
+  *named fn with a declared row*. A row-annotated fn passed
+  first-class (through a HOF param) is not re-arranged — its value
+  now expects capability arguments the HOF will not pass. Prefer
+  lambdas (which close over capabilities) at HOF boundaries.
+- Row-annotated fns should carry full signatures; a partial signature
+  leaves `__cap_E`'s type to inference, which `sel` handles poorly.
+- Non-tail-resumptive handlers (exceptions, generators,
+  nondeterminism) need continuation capture by definition — out of
+  scope by direction; a future slice may add a delimited-control
+  story for exactly those.
+- Extern fns with rows are not threaded (none exist).

@@ -1,4 +1,0 @@
-# Capability rows: a map is a set when the key is a hash
-
-Rows ride on the existing multimap machinery — **a map is a set if its key
-is a hash**. `hash` is added as a built-in. No separate row datatype.

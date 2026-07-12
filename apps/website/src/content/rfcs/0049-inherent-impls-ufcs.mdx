@@ -1,0 +1,36 @@
+export const title = "RFC 0049 — Impl elaboration, slice 3: inherent impls + value method dispatch";
+
+# RFC 0049 — Impl elaboration, slice 3: inherent impls + value method dispatch
+
+Settled 2026-07-12. Third impl slice: `impl T { fn m(self, …) … }` for
+ground target types, and `x.m(args)` dispatching to it (UFCS).
+
+**Same syntax, disambiguated by the head name.** `impl Console {…}`
+where `Console` is a declared cap is a bare cap impl (D-44);
+`impl String {…}` where it is not names an inherent impl on type
+`String` — exactly legacy's reading.
+
+**Inherent impls are self-describing instance caps.** There is no cap
+decl to check against, so the judge driver derives one from the impl's
+own method signatures: methods whose first parameter is `self` get op
+type `(T) -> (annotated params…) -> F(annotated return | Unit)`
+(with `Self := T`, and the method's cap row if annotated), seeded as
+the ground instance cap `{T}_impl`. The elab emits
+`def __impl_{T} = (bundle {…} : {T}_impl)` — the same D-44/48 bundle
+judgment checks the bodies against the derived signatures. Methods
+with untyped or generic parameters stay out of Σ (their name is still
+in Σ.Ops, so an impl containing them fails to check loudly — the
+typed-ops caveat of D-44, sharpened).
+
+**Dispatch is D-48's syntactic typing.** `x.m(args)` where
+`syn_type(x) = T` and `T` has an inherent method `m` elaborates to
+`sel __impl_T . m (x, args…)` — self is prepended, n-ary like any
+clause. Method returns join the syntactic table, so chains type:
+`("hi" + "!").len().to_string()` resolves String → Number → String.
+An object whose type is not syntactically known falls through to the
+old plain-`sel` path (bundle member access), unchanged.
+
+**Deferred**: generic impls (`impl[T] List[T] { fn map[R] }` — needs
+non-ground instance types; `List.map` stays unported), typeclass
+methods via dot (`x.add(y)` — operators cover them), static/self-less
+methods (`T.m(…)`), dispatch on inferred (non-syntactic) types.

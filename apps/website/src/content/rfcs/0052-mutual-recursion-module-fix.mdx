@@ -1,0 +1,58 @@
+export const title = "RFC 0052 — Mutual recursion as a module fixpoint";
+
+# RFC 0052 — Mutual recursion as a module fixpoint
+
+Settled 2026-07-12, per direction: with `fix` in MIR, mutual recursion
+is the fixpoint of a *module* — a bundle of the group's definitions —
+with member references going through the module. No new MIR forms, no
+judge changes.
+
+## The encoding
+
+A mutually recursive group `{f, g}` (an SCC of size ≥ 2 in the
+syntactic fn-reference graph) elaborates, at the first member's
+position, to one group def plus projections:
+
+```
+def __grp_f_g = (thunk { fix __grp_f_g => ret bundle {
+    fn f(params_f) => body_f′
+    fn g(params_g) => body_g′
+  } } : U(F(Grp_f_g)))
+def f = (thunk { fn(params_f) =>
+  let __m = force __grp_f_g in sel __m.f(params_f) } : U(sig_f))
+def g = …
+```
+
+Inside a member body, a call to a member rewrites at elab time to
+`let __m = force __grp_f_g in sel __m.h(args…)` — the `fix` name is
+the self-thunk, forcing it re-enters and yields the bundle. Self-calls
+inside a group go through the module too; `scc_fix` learns to leave
+defs whose thunk body is already a `fix` of their own name.
+
+**Typing rides on existing machinery**: the judge driver derives the
+ground instance cap `Grp_f_g` from the members' declared signatures
+(`Σ.Op(Grp_f_g, f) = Sig([], sig_f)`, D-50 shape) — the same
+derivation the elab's projection annotations use, D-51 capability
+params included. `check_C FixC` binds `__grp_f_g : U(F(Grp_f_g))`,
+the bundle checks against `Σ.Ops` completeness, member calls are
+`sel` lookups. Defs stay strictly order-respecting: nothing
+forward-references, so the encoding works on any backend (a Rust
+backend's consts-in-order included), not just lazily-bound JS.
+
+Both the elab and the driver compute groups with one shared helper
+over the Lumo tree (SCCs of "fn body mentions fn name", the same
+shadowing-blind approximation as `mentions_var`).
+
+## Requirements (loud elab errors otherwise)
+
+- Group members need **full ground signatures** (typed params, return
+  type, no generic params): the group cap's op sigs come from them.
+- Members are used **fully applied** within the group. A first-class
+  reference to a member inside the group would need the projection
+  def, which the group def precedes — detected post-assembly
+  (`mentions_var` on the bundle) and rejected. Outside the group,
+  projections are ordinary defs; use them freely.
+
+**Deferred**: generic mutual groups (op sigs would need `Sig` binders
+plus forall-aware `op_check`), first-class member use inside the
+group (eta-expansion through the module), groups spanning impls.

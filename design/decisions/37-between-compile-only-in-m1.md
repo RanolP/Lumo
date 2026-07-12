@@ -1,8 +1,0 @@
-# `between` blocks: compile-to-egglog-text only in M1
-
-Settled 2026-07-11. In M1, `between L { lhs === rhs }` groups are
-parsed, checked, and compiled to egglog program text (D-19) under golden
-tests — but not executed. Saturation + extraction (per-constructor cost
-1, min-tree-cost extract, D-31) run in M3, which owns optimization
-(PLAN M3). This keeps the egglog dependency and its integration risk out
-of the elaboration milestone while still locking the compilation format.

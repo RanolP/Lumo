@@ -1,10 +1,11 @@
 # Langue 2 implementation plan
 
-Derived from the locked decisions in `design/decisions/`; the design
+Derived from the locked decisions in the RFCs
+(`apps/website/src/content/rfcs/`, D-NN = RFC 00NN); the design
 snapshot is `design/langue.md`. Every step keeps `langc check` + the
 fixture suite green.
 
-## Completed (details in git history and design/decisions/)
+## Completed (details in git history and the RFCs)
 
 - **M0** (2026-07-11) — langc core: project model, salsa, syn codegen,
   fixture harness, full legacy surface grammar, parse-level legacy
@@ -80,7 +81,8 @@ Parser (M0 known limits, revisit only if real grammars hit them):
   output, never the definition (D-01).
 - All three kinds are code-generated — edit, `langc gen`, commit; no
   interpreted rule tables (D-21).
-- Documents stay snapshots; new decisions get a new numbered file in
-  `design/decisions/` (D-10).
+- Documents stay snapshots; new decisions get a new numbered RFC in
+  `apps/website/src/content/rfcs/` (D-10; decisions migrated there
+  2026-07-13, D-NN = RFC 00NN).
 - stdlib and built-in tactics start minimal and grow only on proven need
   (D-24, D-29).

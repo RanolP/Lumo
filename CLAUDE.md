@@ -12,6 +12,9 @@
   history.
 - **`design/`** — design documents for the fresh, DSL-driven rewrite.
   Start with `design/langue.md` (Langue 2: full language-definition DSL).
+  The numbered decision files (`design/decisions/`) migrated to the
+  website RFCs 2026-07-13: `apps/website/src/content/rfcs/`, where
+  D-NN = RFC 00NN.
 - The new implementation lives in the root Cargo workspace (`crates/`,
   `lumo/`, `tests/`). The project website is `apps/website` (SolidJS +
   @solidjs/router): a promotional home with an embedded playground,
@@ -30,4 +33,6 @@
 
 - The language definition (`.langue` sections) is the source of truth; Rust
   code is engines and generated output, never the definition.
-- Design decisions go in `design/` before implementation.
+- Design decisions go in `apps/website/src/content/rfcs/` as numbered
+  MDX RFCs before implementation (next number = highest + 1; keep the
+  `export const title = "RFC 00NN — …"` header).
