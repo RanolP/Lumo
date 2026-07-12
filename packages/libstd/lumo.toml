@@ -1,0 +1,7 @@
+[package]
+name = "libstd"
+targets = ["js.node"]
+modules = ["io", "fs", "process", "list"]
+
+[deps]
+libcore = "../libcore"

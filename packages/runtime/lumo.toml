@@ -1,0 +1,5 @@
+# Source-less package: contributes only the JS host bindings for the
+# stdlib's externs (D-53; extern-mapping attributes stay deferred).
+[package]
+name = "runtime"
+js-prelude = "js/prelude.js"

@@ -477,6 +477,24 @@ langue package is NOT a port target — langc is the toolchain.)
       first-class member use (eta-expansion through the module),
       groups spanning impls.
 
+- [x] Build system slice 1 (2026-07-12) — decision 53, the lbs
+      successor: `crates/lbs` (`lbs <check|build|run> [dir]
+      [--target SPEC]`). Manifest-driven whole-program assembly, not
+      use-driven — per-package `lumo.toml` (name, targets, explicit
+      `modules` binding order, `js-prelude`, path `[deps]`), packages
+      topo-sorted over deps (cycles/name collisions error), platform
+      halves `src#{suffix}/` merged per module (spec `js.node` →
+      suffixes js, js.node), the unit fed to the existing drivers.
+      Parse errors map back to `file:line:col` through the part
+      table. Bin packages (a `main` module) emit `dist/{name}.js` =
+      dep preludes + compiled JS + `main();`; libs stop at the check.
+      `packages/stdlib.manifest` and the `compile_stdlib` example are
+      gone; the D-45 gate moved to `crates/lbs/tests/stdlib.rs`;
+      `stdlib_smoke.sh` = `lbs run packages/hello`. Deferred: real
+      `use` scoping/namespaces (global namespace stands), demand-
+      driven loading, separate compilation, `rs` targets, out-dir
+      config, extern-mapping attributes, span-carrying judge errors.
+
 ## Cross-cutting rules
 
 - The definition is the source of truth; Rust is engines + generated

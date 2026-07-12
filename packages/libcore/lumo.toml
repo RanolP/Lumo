@@ -1,0 +1,6 @@
+# Binding order matters: the judge binds top-down, and typeclass impls
+# come after the backend bundles they delegate to (D-48). Platform
+# halves (src#js/*) merge per module, right after the common half.
+[package]
+name = "libcore"
+modules = ["prelude", "cmp", "ops", "number", "string", "number_impls", "string_impls"]

@@ -1,0 +1,8 @@
+[package]
+name = "hello"
+targets = ["js.node"]
+
+[deps]
+libcore = "../libcore"
+libstd = "../libstd"
+runtime = "../runtime"

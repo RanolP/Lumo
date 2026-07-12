@@ -18,11 +18,12 @@
   `lumo/`, `tests/`). The browser playground is `apps/playground`
   (SolidJS + Monaco) over `crates/playground-wasm`; GitHub Pages deploys
   it via `.github/workflows/playground.yml`.
-- **`packages/`** (root) — the ported stdlib (D-45): one compilation
-  unit ordered by `packages/stdlib.manifest`, host bindings in
-  `packages/runtime/js/prelude.js`. Gates:
-  `crates/lumo-syntax/tests/stdlib.rs` and `scripts/stdlib_smoke.sh`
-  (compiles + runs the unit under node).
+- **`packages/`** (root) — the ported stdlib (D-45) as `lumo.toml`
+  packages built by `crates/lbs` (D-53: whole-program assembly,
+  `lbs <check|build|run>`); host bindings in
+  `packages/runtime/js/prelude.js`. Gates: `crates/lbs/tests/stdlib.rs`
+  and `scripts/stdlib_smoke.sh` (builds + runs `packages/hello` under
+  node).
 
 ## Working rules for the rewrite
 

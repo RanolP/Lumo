@@ -1,14 +1,8 @@
 #!/usr/bin/env bash
-# D-45 smoke: compile the ported stdlib unit and run it under node with
-# the runtime prelude. Keep -j 2 — parallel rustc OOMs this machine.
+# D-45/D-53 smoke: build the stdlib-backed hello package with lbs and
+# run it under node. Keep -j 2 — parallel rustc OOMs this machine.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-mkdir -p target
-{
-  cat packages/runtime/js/prelude.js
-  cargo run -j 2 -q -p lumo-syntax --example compile_stdlib
-  echo
-  echo "main();"
-} > target/stdlib-smoke.js
-node target/stdlib-smoke.js
+mkdir -p target  # hello's FS round-trip writes target/stdlib-smoke.txt
+cargo run -j 2 -q -p lbs -- run packages/hello
