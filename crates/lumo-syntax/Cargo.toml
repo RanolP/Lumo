@@ -14,3 +14,13 @@ langue-rt = { path = "../langue-rt", default-features = false }
 
 [dev-dependencies]
 langc.workspace = true
+
+# Both suites reach egglog-backed items; skip them without `optimize`
+# (the corpus includes `:optimize(MIR)` fixtures).
+[[test]]
+name = "corpus"
+required-features = ["optimize"]
+
+[[test]]
+name = "egglog"
+required-features = ["optimize"]
