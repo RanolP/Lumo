@@ -13,9 +13,12 @@
 - **`design/`** — design documents for the fresh, DSL-driven rewrite.
   Start with `design/langue.md` (Langue 2: full language-definition DSL).
 - The new implementation lives in the root Cargo workspace (`crates/`,
-  `lumo/`, `tests/`). The browser playground is `apps/playground`
-  (SolidJS + Monaco) over `crates/playground-wasm`; GitHub Pages deploys
-  it via `.github/workflows/playground.yml`.
+  `lumo/`, `tests/`). The project website is `apps/website` (SolidJS +
+  @solidjs/router): a promotional home with an embedded playground,
+  `/playground` (Monaco over `crates/playground-wasm`), `/docs` and
+  `/rfcs` (MDX under `src/content/`), and `/formalization` (generated
+  from root `formalization.typ` by `pnpm typst:build`). GitHub Pages
+  deploys it via `.github/workflows/website.yml`.
 - **`packages/`** (root) — the ported stdlib (D-45) as `lumo.toml`
   packages built by `crates/lbs` (D-53: whole-program assembly,
   `lbs <check|build|run>`); host bindings in

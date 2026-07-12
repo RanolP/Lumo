@@ -1,0 +1,36 @@
+export const title = "Getting started";
+
+# Getting started
+
+Lumo is an experimental programming language. There are no releases yet —
+everything lives in the [repository](https://github.com/RanolP/Lumo) and moves
+fast.
+
+## Try it without installing
+
+The [playground](/playground) runs the full compiler pipeline in your browser
+via WebAssembly: it parses Lumo, elaborates it to a call-by-push-value MIR,
+typechecks it with relational judgments, and emits runnable JavaScript.
+
+## Build from source
+
+You need a Rust toolchain and Node.js.
+
+```sh
+git clone https://github.com/RanolP/Lumo
+cd Lumo
+cargo run -p lbs -- run packages/hello
+```
+
+`lbs` is the Lumo build system: it assembles `lumo.toml` packages (with their
+dependencies) into one compilation unit, compiles it to JavaScript under
+`dist/`, and runs binary packages under node. `lbs check` and `lbs build` are
+the non-running variants.
+
+## Where things live
+
+- `packages/` — the standard library and the `hello` example, written in Lumo.
+- `lumo/*.langue` — the language definition itself: grammar, elaboration
+  rules, and typing judgments. The compiler is generated from these files by
+  `langc`.
+- `design/` — design documents and the numbered decision log.

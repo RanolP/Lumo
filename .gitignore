@@ -54,5 +54,9 @@ coverage
 Thumbs.db
 
 # Generated wasm bindgen output
-apps/playground/src/wasm
+apps/website/src/wasm
+
+# Generated typst output
+apps/website/public/formalization.body.html
+apps/website/public/*.tmp
 .refs/

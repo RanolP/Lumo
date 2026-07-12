@@ -2,7 +2,7 @@ import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import runtimePrelude from "./lumo-runtime.js?raw";
+import runtimePrelude from "../lumo-runtime.js?raw";
 
 declare global {
   interface Window {
@@ -164,7 +164,13 @@ function runGeneratedJs(code: string): Promise<string[]> {
   });
 }
 
-export default function App() {
+function getOrCreateModel(uri: monaco.Uri, value: string, language: string) {
+  return (
+    monaco.editor.getModel(uri) ?? monaco.editor.createModel(value, language, uri)
+  );
+}
+
+export default function Playground() {
   let sourceEditorRef: HTMLDivElement | undefined;
   let jsViewRef: HTMLDivElement | undefined;
   let sourceEditor: monaco.editor.IStandaloneCodeEditor | undefined;
@@ -182,7 +188,7 @@ export default function App() {
 
   onMount(async () => {
     try {
-      const wasm = await import("./wasm/lumo_playground_wasm.js");
+      const wasm = await import("../wasm/lumo_playground_wasm.js");
       await wasm.default();
 
       monaco.languages.register({ id: LANGUAGE_ID });
@@ -205,15 +211,15 @@ export default function App() {
         },
       });
 
-      const sourceModel = monaco.editor.createModel(
+      const sourceModel = getOrCreateModel(
+        monaco.Uri.parse("file:///main.lumo"),
         INITIAL_SOURCE,
         LANGUAGE_ID,
-        monaco.Uri.parse("file:///main.lumo"),
       );
-      const jsModel = monaco.editor.createModel(
+      const jsModel = getOrCreateModel(
+        monaco.Uri.parse("file:///out.js"),
         "",
         "javascript",
-        monaco.Uri.parse("file:///out.js"),
       );
 
       const compileNow = () => {
@@ -290,12 +296,7 @@ export default function App() {
   ];
 
   return (
-    <main class="app-root">
-      <header class="header">
-        <h1>Lumo Web Playground</h1>
-        <p>Write Lumo (left), inspect the pipeline output (right), run the emitted JS.</p>
-      </header>
-
+    <div class="playground">
       <section class="workspace">
         <section class="source-pane">
           <div class="editor" ref={sourceEditorRef} />
@@ -365,6 +366,6 @@ export default function App() {
           <Show when={error()}>{(message) => <p class="error">{message()}</p>}</Show>
         </aside>
       </section>
-    </main>
+    </div>
   );
 }

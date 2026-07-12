@@ -1,4 +1,4 @@
-name: Build Playground
+name: Build Website
 
 on:
   push:
@@ -38,11 +38,14 @@ jobs:
 
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
-        working-directory: apps/playground
+        working-directory: apps/website
 
-      - name: Build playground
+      - name: Build website
         run: pnpm build:with-wasm
-        working-directory: apps/playground
+        working-directory: apps/website
+        env:
+          # GitHub Pages serves project sites under /<repo>/.
+          BASE_PATH: /${{ github.event.repository.name }}/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -50,7 +53,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: apps/playground/dist
+          path: apps/website/dist
 
   deploy:
     environment:
