@@ -2,7 +2,6 @@
 members = [
     "crates/compiler",
     "crates/lbs",
-    "crates/lsp",
 ]
 exclude = ["packages"]
 resolver = "2"
