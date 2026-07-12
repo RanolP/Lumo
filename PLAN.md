@@ -457,6 +457,26 @@ langue package is NOT a port target — langc is the toolchain.)
       non-tail-resumptive handlers (exceptions/generators) deferred
       to a future delimited-control slice.
 
+- [x] Mutual recursion (2026-07-12) — decision 52, per direction:
+      the fixpoint of a *module*. An SCC (size ≥ 2) of the syntactic
+      fn-reference graph elaborates at its first member's position to
+      `def __grp_… = (thunk { fix __grp_… => ret bundle {…} } :
+      U(F(Grp_…)))` plus one annotated projection per member; member
+      calls inside the group route through `force __grp_…` + `sel`.
+      The judge driver seeds `Grp_…` from the members' declared
+      signatures (D-50 Sig shape, D-51 cap params included) — zero
+      judge changes; defs stay strictly order-respecting, so the
+      encoding is backend-agnostic (no reliance on JS lazy binding).
+      `scc_fix` learned to leave already-fixed defs. Requirements
+      (loud elab errors): full ground signatures; members fully
+      applied inside the group (first-class use detected via
+      `mentions_var` on the assembled bundle). Fixtures: even/odd in
+      `:elab(Lumo -> MIR)`, `:infer`, and `:elab(Lumo -> JS)` (run
+      under node); smoke line 13 checks `is_even(10)` through
+      operators + if/else. Deferred: generic mutual groups,
+      first-class member use (eta-expansion through the module),
+      groups spanning impls.
+
 ## Cross-cutting rules
 
 - The definition is the source of truth; Rust is engines + generated

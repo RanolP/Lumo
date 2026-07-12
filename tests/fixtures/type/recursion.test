@@ -7,3 +7,19 @@ fn add(n: Nat, m: Nat): Nat / {} { match n { .zero => m, .succ(let n) => { let n
 ---
 
 add : U((Nat) -> (Nat) -> F(Nat))
+
+=== mutual recursion through the module fixpoint (D-52) ===
+:infer(Lumo)
+
+data Nat { .zero, .succ(Nat) }
+data Bool { .true, .false }
+fn is_even(n: Nat): Bool / {} = match n { .zero => Bool.true, .succ(m) => is_odd(m) }
+fn is_odd(n: Nat): Bool / {} = match n { .zero => Bool.false, .succ(m) => is_even(m) }
+fn two_even(): Bool / {} { is_even(Nat.succ(Nat.succ(Nat.zero))) }
+
+---
+
+__grp_is_even_is_odd : U(F(Grp_is_even_is_odd))
+is_even : U((Nat) -> F(Bool))
+is_odd : U((Nat) -> F(Bool))
+two_even : U(F(Bool))

@@ -142,3 +142,17 @@ fn main() = "abc".len()
 ---
 
 const __impl_String=({len:(self)=>__str_len()(self)});const main=()=>__impl_String.len("abc");
+
+=== mutual recursion compiles through the module fixpoint (D-52) ===
+:elab(Lumo -> JS)
+
+data Nat { .zero, .succ(Nat) }
+data Bool { .true, .false }
+fn is_even(n: Nat): Bool / {} = match n { .zero => Bool.true, .succ(m) => is_odd(m) }
+fn is_odd(n: Nat): Bool / {} = match n { .zero => Bool.false, .succ(m) => is_even(m) }
+fn main(): Bool / {} { is_even(Nat.succ(Nat.succ(Nat.zero))) }
+
+---
+
+const __grp_is_even_is_odd=()=>function __grp_is_even_is_odd(){return({is_even:(n)=>((__t1)=>(__t1.$==="zero")?({$:"true",args:[]}):(__t1.$==="succ")?((m)=>((__t1)=>__t1.is_odd(m))(__grp_is_even_is_odd()))(__t1.args[0]):__lumo_match_error(__t1))(n),is_odd:(n)=>((__t2)=>(__t2.$==="zero")?({$:"false",args:[]}):(__t2.$==="succ")?((m)=>((__t3)=>__t3.is_even(m))(__grp_is_even_is_odd()))(__t2.args[0]):__lumo_match_error(__t2))(n)});}();const is_even=()=>(n)=>((__t2)=>__t2.is_even(n))(__grp_is_even_is_odd());const is_odd=()=>(n)=>((__t4)=>__t4.is_odd(n))(__grp_is_even_is_odd());const main=()=>is_even()(({$:"succ",args:[({$:"succ",args:[({$:"zero",args:[]})]})]}));
+

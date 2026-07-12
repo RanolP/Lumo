@@ -477,3 +477,32 @@ def main = thunk {
   let __t1 = ret (bundle { fn log(m) => ret m } : Console) in
   sel __t1.log("x")
 }
+
+=== mutual recursion is a module fixpoint plus projections (D-52) ===
+:elab(Lumo -> MIR)
+
+data Nat { .zero, .succ(Nat) }
+data Bool { .true, .false }
+fn is_even(n: Nat): Bool / {} = match n { .zero => Bool.true, .succ(m) => is_odd(m) }
+fn is_odd(n: Nat): Bool / {} = match n { .zero => Bool.false, .succ(m) => is_even(m) }
+
+---
+
+def __grp_is_even_is_odd = (thunk { fix __grp_is_even_is_odd => ret bundle {
+  fn is_even(n) =>
+    case unroll n {
+      .zero => ret roll .true
+      .succ(m) => let __t1 = force __grp_is_even_is_odd in sel __t1.is_odd(m)
+    }
+  fn is_odd(n) =>
+    case unroll n {
+      .zero => ret roll .false
+      .succ(m) => let __t3 = force __grp_is_even_is_odd in sel __t3.is_even(m)
+    }
+} } : U(F(Grp_is_even_is_odd)))
+def is_even = (thunk { fn(n) =>
+  let __t2 = force __grp_is_even_is_odd in sel __t2.is_even(n)
+} : U((Nat) -> F(Bool)))
+def is_odd = (thunk { fn(n) =>
+  let __t4 = force __grp_is_even_is_odd in sel __t4.is_odd(n)
+} : U((Nat) -> F(Bool)))

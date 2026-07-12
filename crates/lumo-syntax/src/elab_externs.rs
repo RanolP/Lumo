@@ -85,6 +85,13 @@ pub struct LumoToMir {
     /// When elaborating a typeclass impl: `Self` in types reads as
     /// this target (D-48).
     self_target: Option<String>,
+    /// Mutually recursive fn groups, members in file order (D-52).
+    groups: Vec<Vec<String>>,
+    /// fn name → its group's index in `groups` (D-52).
+    group_of: std::collections::BTreeMap<String, usize>,
+    /// While a group member's body elaborates: the group def name and
+    /// member set — member calls route through the module (D-52).
+    current_group: Option<(String, BTreeSet<String>)>,
 }
 
 /// The syntactic shape of an `impl` head (D-44/D-48/D-50). Membership
@@ -119,6 +126,111 @@ fn head_type_name(ty: &l::TypeExpr<'_>) -> Option<String> {
         return None;
     }
     Some(n.name()?.text.clone())
+}
+
+/// Mutually recursive fn groups (SCCs of size ≥ 2 in the syntactic
+/// fn-reference graph), members in file order (D-52). The same
+/// shadowing-blind approximation as `mentions_var`.
+pub fn mutual_groups(root: &LumoNode) -> Vec<Vec<String>> {
+    let Some(file) = l::File::cast(root) else { return Vec::new() };
+    let mut names: Vec<String> = Vec::new();
+    let mut bodies: Vec<&LumoNode> = Vec::new();
+    for item in file.items() {
+        if let Some(l::ItemBody::FnDecl(f)) = item.body() {
+            if let (Some(n), Some(b)) = (f.name(), f.body()) {
+                names.push(n.text.clone());
+                bodies.push(b.syntax());
+            }
+        }
+    }
+    let index: std::collections::BTreeMap<&str, usize> =
+        names.iter().enumerate().map(|(i, n)| (n.as_str(), i)).collect();
+    let mut edges: Vec<Vec<usize>> = vec![Vec::new(); names.len()];
+    fn mentions(node: &LumoNode, index: &std::collections::BTreeMap<&str, usize>, out: &mut Vec<usize>) {
+        if let Some(ident) = l::IdentExpr::cast(node) {
+            if let Some(n) = ident.name() {
+                if let Some(&i) = index.get(n.text.as_str()) {
+                    out.push(i);
+                }
+            }
+        }
+        for child in node.child_nodes() {
+            mentions(child, index, out);
+        }
+    }
+    for (i, body) in bodies.iter().enumerate() {
+        mentions(body, &index, &mut edges[i]);
+    }
+    // Tarjan's SCC, iterative enough for our sizes via recursion.
+    struct Tarjan<'a> {
+        edges: &'a [Vec<usize>],
+        index: Vec<Option<usize>>,
+        low: Vec<usize>,
+        on_stack: Vec<bool>,
+        stack: Vec<usize>,
+        next: usize,
+        sccs: Vec<Vec<usize>>,
+    }
+    impl Tarjan<'_> {
+        fn visit(&mut self, v: usize) {
+            self.index[v] = Some(self.next);
+            self.low[v] = self.next;
+            self.next += 1;
+            self.stack.push(v);
+            self.on_stack[v] = true;
+            for &w in &self.edges[v].to_vec() {
+                if self.index[w].is_none() {
+                    self.visit(w);
+                    self.low[v] = self.low[v].min(self.low[w]);
+                } else if self.on_stack[w] {
+                    self.low[v] = self.low[v].min(self.index[w].expect("visited"));
+                }
+            }
+            if Some(self.low[v]) == self.index[v] {
+                let mut scc = Vec::new();
+                loop {
+                    let w = self.stack.pop().expect("on stack");
+                    self.on_stack[w] = false;
+                    scc.push(w);
+                    if w == v {
+                        break;
+                    }
+                }
+                self.sccs.push(scc);
+            }
+        }
+    }
+    let mut t = Tarjan {
+        edges: &edges,
+        index: vec![None; names.len()],
+        low: vec![0; names.len()],
+        on_stack: vec![false; names.len()],
+        stack: Vec::new(),
+        next: 0,
+        sccs: Vec::new(),
+    };
+    for v in 0..names.len() {
+        if t.index[v].is_none() {
+            t.visit(v);
+        }
+    }
+    let mut groups: Vec<Vec<String>> = t
+        .sccs
+        .into_iter()
+        .filter(|scc| scc.len() >= 2)
+        .map(|mut scc| {
+            scc.sort();
+            scc.into_iter().map(|i| names[i].clone()).collect()
+        })
+        .collect();
+    groups.sort();
+    groups
+}
+
+/// The D-52 group def / group cap names for a member list (file order).
+pub fn group_names(members: &[String]) -> (String, String) {
+    let joined = members.join("_");
+    (format!("__grp_{joined}"), format!("Grp_{joined}"))
 }
 
 /// The named caps of a row annotation, in source order (`..`/`..c`
@@ -647,6 +759,135 @@ impl LumoToMir {
         self.flush(frag)
     }
 
+    /// D-52: a mutual group at its first member's position — the
+    /// module fixpoint def followed by one projection per member.
+    fn group_defs(
+        &mut self,
+        ctx: &mut ElabCtx,
+        gi: usize,
+        file: &l::File<'_>,
+    ) -> Option<Vec<String>> {
+        let members = self.groups[gi].clone();
+        let (grp, cap) = group_names(&members);
+        let mut decls: std::collections::BTreeMap<String, l::FnDecl<'_>> =
+            std::collections::BTreeMap::new();
+        for item in file.items() {
+            if let Some(l::ItemBody::FnDecl(f)) = item.body() {
+                if let Some(n) = f.name() {
+                    if members.contains(&n.text) {
+                        decls.insert(n.text.clone(), f);
+                    }
+                }
+            }
+        }
+        let member_set: BTreeSet<String> = members.iter().cloned().collect();
+        let mut clauses: Vec<String> = Vec::new();
+        let mut projections: Vec<String> = Vec::new();
+        for m in &members {
+            let f = decls.get(m)?;
+            if f.generic_params().is_some() || fn_signature_comp_text(f).is_none() {
+                ctx.error(format!(
+                    "mutually recursive fn `{m}` needs a full ground signature \
+                     (typed params, return type, no generics) — D-52"
+                ));
+                return None;
+            }
+            clauses.push(self.group_clause(ctx, &grp, &member_set, f)?);
+            projections.push(self.group_projection(ctx, &grp, f)?);
+        }
+        let refs: Vec<&str> = clauses.iter().map(String::as_str).collect();
+        let bundle = builder::bundle_v(&refs);
+        // First-class member use inside the group would reference a
+        // projection the group def precedes — reject it.
+        let parsed = crate::mir::parser::parse(&bundle);
+        if parsed.errors.is_empty() {
+            for m in &members {
+                if mentions_var(&parsed.root, m) {
+                    ctx.error(format!(
+                        "first-class use of mutual-group member `{m}` inside its \
+                         group — call it fully applied (D-52)"
+                    ));
+                    return None;
+                }
+            }
+        }
+        let fixed = builder::thunk_v(&builder::fix_c(&grp, &builder::ret_c(&bundle)));
+        let ty = builder::u_type_v(&builder::f_type_c(
+            &builder::named_type_v(&cap, None),
+            None,
+        ));
+        let mut defs = vec![builder::def(&grp, &builder::paren_v(&fixed, Some(&ty)))];
+        defs.extend(projections);
+        Some(defs)
+    }
+
+    /// One group member as a bundle clause: the FN_DECL elaboration
+    /// (caps + params + scope) minus the currying, with member calls
+    /// routed through the module (D-52).
+    fn group_clause(
+        &mut self,
+        ctx: &mut ElabCtx,
+        grp: &str,
+        members: &BTreeSet<String>,
+        f: &l::FnDecl<'_>,
+    ) -> Option<String> {
+        let name = f.name()?.text.clone();
+        let caps = row_caps(f.cap_annotation());
+        let mut params: Vec<String> = caps.iter().map(|c| format!("__cap_{c}")).collect();
+        params.extend(
+            f.param_list()?.params().filter_map(|p| p.name().map(|t| t.text.clone())),
+        );
+        let mark = self.scope.len();
+        for p in f.param_list()?.params() {
+            if let (Some(n), Some(ty)) = (p.name(), p.ty()) {
+                if let Some(t) = head_type_name(&ty) {
+                    self.scope.push((n.text.clone(), t));
+                }
+            }
+        }
+        let env_mark = self.cap_env.len();
+        for c in &caps {
+            self.cap_env.push((c.clone(), format!("__cap_{c}")));
+        }
+        let saved = self
+            .current_group
+            .replace((grp.to_owned(), members.clone()));
+        let body = self.elab_body(ctx, f.body()?);
+        self.current_group = saved;
+        self.cap_env.truncate(env_mark);
+        self.scope.truncate(mark);
+        let body = body?;
+        let refs: Vec<&str> = params.iter().map(String::as_str).collect();
+        Some(builder::bundle_clause(&name, &refs, &body.text))
+    }
+
+    /// A member's public def: the curried spine that forces the
+    /// module and selects its clause (D-52).
+    fn group_projection(
+        &mut self,
+        ctx: &mut ElabCtx,
+        grp: &str,
+        f: &l::FnDecl<'_>,
+    ) -> Option<String> {
+        let name = f.name()?.text.clone();
+        let caps = row_caps(f.cap_annotation());
+        let mut params: Vec<String> = caps.iter().map(|c| format!("__cap_{c}")).collect();
+        params.extend(
+            f.param_list()?.params().filter_map(|p| p.name().map(|t| t.text.clone())),
+        );
+        let var = ctx.fresh();
+        let mut sel = Frag::node(MirKind::SEL_C, builder::sel_c(&var, &name));
+        sel.pending.push((var, builder::force_c(&builder::var_v(grp))));
+        let args: Vec<ToFrag> = params
+            .iter()
+            .map(|p| Frag::node(MirKind::VAR_V, builder::var_v(p)))
+            .collect();
+        let call = self.apply(sel, Some(args));
+        let value = self.curry(&params, call);
+        let ty = self.fn_signature_type(f)?;
+        Some(builder::def(&name, &builder::paren_v(&value.text, Some(&ty))))
+    }
+
     /// The innermost lexical capability provider (D-51): a handle
     /// binding or row param, else the default impl (D-44).
     fn cap_provider(&self, cap: &str) -> Option<String> {
@@ -802,6 +1043,13 @@ impl Externs for LumoToMir {
                 }
             }
         }
+        // D-52: mutually recursive groups.
+        self.groups = mutual_groups(root);
+        for (gi, members) in self.groups.iter().enumerate() {
+            for m in members {
+                self.group_of.insert(m.clone(), gi);
+            }
+        }
     }
 
     /// D-38 sort coercion between the two MIR sorts:
@@ -853,6 +1101,15 @@ impl Externs for LumoToMir {
                     defs.push(self.impl_def(ctx, i)?);
                 }
                 l::ItemBody::FnDecl(f) => {
+                    let fname = f.name()?.text.clone();
+                    if let Some(&gi) = self.group_of.get(&fname) {
+                        // D-52: the whole group emits at its first
+                        // member's position; later members skip.
+                        if self.groups[gi][0] == fname {
+                            defs.extend(self.group_defs(ctx, gi, &file)?);
+                        }
+                        continue;
+                    }
                     let frag = elab_node(ctx, self, f.syntax())?;
                     defs.push(frag.text);
                 }
@@ -1218,15 +1475,25 @@ impl Externs for LumoToMir {
     }
 
     /// D-51: a call to a named fn with a declared row threads the
-    /// lexical capability values as leading args.
+    /// lexical capability values as leading args. D-52: a call to a
+    /// mutual-group member (inside the group) routes through the
+    /// module instead of the projection.
     fn rule_call_caps(&mut self, ctx: &mut ElabCtx, node: &FromNodeAlias) -> Option<ToFrag> {
         let pf = l::ExprPostfix::cast(node)?;
         let call_args = pf.call_args()?;
         let l::Expr::IdentExpr(id) = pf.expr()? else { return None };
         let fname = id.name()?.text.clone();
-        let caps = self.fn_rows.get(&fname)?.clone();
+        let group = self
+            .current_group
+            .as_ref()
+            .filter(|(_, ms)| ms.contains(&fname))
+            .map(|(g, _)| g.clone());
+        let caps = self.fn_rows.get(&fname).cloned();
+        if group.is_none() && caps.is_none() {
+            return None;
+        }
         let mut args: Vec<ToFrag> = Vec::new();
-        for cap in &caps {
+        for cap in caps.iter().flatten() {
             let Some(provider) = self.cap_provider(cap) else {
                 ctx.error(format!(
                     "unhandled capability `{cap}` in call to `{fname}` — declare it \
@@ -1240,10 +1507,15 @@ impl Externs for LumoToMir {
             let frag = elab_node(ctx, self, arg.syntax())?;
             args.push(self.to_value(ctx, frag));
         }
-        let callee = Frag::node(
-            MirKind::FORCE_C,
-            builder::force_c(&builder::var_v(&fname)),
-        );
+        let callee = match group {
+            Some(grp) => {
+                let var = ctx.fresh();
+                let mut sel = Frag::node(MirKind::SEL_C, builder::sel_c(&var, &fname));
+                sel.pending.push((var, builder::force_c(&builder::var_v(&grp))));
+                sel
+            }
+            None => Frag::node(MirKind::FORCE_C, builder::force_c(&builder::var_v(&fname))),
+        };
         Some(self.apply(callee, Some(args)))
     }
 
@@ -1276,7 +1548,22 @@ impl Externs for LumoToMir {
                 continue;
             };
             let self_recursive = mentions_var(value.syntax(), &name.text);
+            // D-52 group defs are already `thunk { fix … }` — leave.
+            let already_fixed = |thunk: &m::ThunkV<'_>| {
+                matches!(
+                    thunk.body(),
+                    Some(m::Comp::FixC(f)) if f.name().is_some_and(|n| n.text == name.text)
+                )
+            };
             match (&value, self_recursive) {
+                (m::Value::ThunkV(thunk), true) if already_fixed(thunk) => {
+                    defs.push(crate::mir::printer::canonical(def.syntax()));
+                }
+                (m::Value::ParenV(paren), true)
+                    if matches!(paren.inner(), Some(m::Value::ThunkV(t)) if already_fixed(&t)) =>
+                {
+                    defs.push(crate::mir::printer::canonical(def.syntax()));
+                }
                 (m::Value::ThunkV(thunk), true) => {
                     let body = crate::mir::printer::canonical(thunk.body()?.syntax());
                     let fixed = builder::thunk_v(&builder::fix_c(&name.text, &body));
@@ -1365,6 +1652,29 @@ pub fn lumo_to_mir() -> Box<dyn Externs> {
 /// A Lumo TypeExpr as MIR TypeV text; `None` = not spellable (D-39).
 pub fn type_v_text(ty: &l::TypeExpr<'_>) -> Option<String> {
     LumoToMir::default().type_v(ty)
+}
+
+/// A fully annotated ground fn signature as a MIR comp-type text —
+/// D-51 capability params prepended, no forall (generics = `None`).
+/// The D-52 group-cap seeding shares this with the elab.
+pub fn fn_signature_comp_text(f: &l::FnDecl<'_>) -> Option<String> {
+    if f.generic_params().is_some() {
+        return None;
+    }
+    let mut m = LumoToMir::default();
+    let ret = f.return_type()?;
+    let mut param_types: Vec<String> = Vec::new();
+    for param in f.param_list()?.params() {
+        param_types.push(m.type_v(&param.ty()?)?);
+    }
+    let mut text = builder::f_type_c(&m.type_v(&ret)?, None);
+    for ty in param_types.iter().rev() {
+        text = builder::fn_type_c(&[ty], &text);
+    }
+    for cap in row_caps(f.cap_annotation()).iter().rev() {
+        text = builder::fn_type_c(&[&builder::named_type_v(cap, None)], &text);
+    }
+    Some(text)
 }
 
 /// Like [`type_v_text`], with `Self` reading as `target` (D-48 —

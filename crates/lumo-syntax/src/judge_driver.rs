@@ -119,6 +119,37 @@ fn seed(
         let sem = sem_v(&crate::mir::builder::named_type_v(&cap_name, None))?;
         ctxs.entry("Γ".to_owned()).or_default().push((atom(def_name), sem));
     }
+    // D-52: mutual groups seed their module cap from the members'
+    // declared signatures (same derivation as the elab's projections).
+    let mut fn_decls: Vec<l::FnDecl<'_>> = Vec::new();
+    for item in file.items() {
+        if let Some(l::ItemBody::FnDecl(f)) = item.body() {
+            fn_decls.push(f);
+        }
+    }
+    for members in elab_externs::mutual_groups(root) {
+        let (_, cap_name) = elab_externs::group_names(&members);
+        let mut op_names = Vec::new();
+        for m in &members {
+            op_names.push(atom(m.clone()));
+            let Some(f) =
+                fn_decls.iter().find(|f| f.name().is_some_and(|n| &n.text == m))
+            else {
+                continue;
+            };
+            // Members without full ground sigs stay out of Σ — the
+            // elab errors on them first.
+            let Some(comp) = elab_externs::fn_signature_comp_text(f) else { continue };
+            let sem = sem_c(&comp)?;
+            ctxs.entry("Σ".to_owned()).or_default().push((
+                app("Op", vec![atom(cap_name.clone()), atom(m.clone())]),
+                app("Sig", vec![cons(Vec::new()), sem]),
+            ));
+        }
+        ctxs.entry("Σ".to_owned())
+            .or_default()
+            .push((app("Ops", vec![atom(cap_name)]), set(op_names, None)));
+    }
     Ok(())
 }
 
