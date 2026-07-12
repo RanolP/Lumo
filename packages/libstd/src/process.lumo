@@ -1,0 +1,8 @@
+// Ported from legacy/packages/libstd/src/process.lumo (D-45).
+
+cap Process {
+  fn arg_at(idx: Number): String;
+  fn args_count(): Number;
+  fn exit_process(code: Number);
+  fn panic_with(msg: String)
+}

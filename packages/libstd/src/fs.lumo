@@ -1,0 +1,6 @@
+// Ported from legacy/packages/libstd/src/fs.lumo (D-45).
+
+cap FS {
+  fn read_file(path: String): String;
+  fn write_file(path: String, content: String)
+}

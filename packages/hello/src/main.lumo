@@ -1,0 +1,20 @@
+// Ported from legacy/packages/hello/src/main.lumo (D-45), grown into
+// the stdlib smoke entry: strings, numbers, lists, an FS round-trip,
+// and process args, all through the D-44 default impls (the legacy
+// version installed an explicit handle; defaults make that implicit).
+
+fn main() = {
+  IO.println("Hello" + ", World!");
+  IO.println(StrOps.num_to_string(40 + 1 * 2));
+  IO.println(StrOps.num_to_string(list_length(List.cons(1, List.cons(2, List.cons(3, List.nil))))));
+  FS.write_file("target/stdlib-smoke.txt", "fs round-trip ok");
+  IO.println(FS.read_file("target/stdlib-smoke.txt"));
+  IO.println(StrOps.num_to_string(Process.args_count()));
+  IO.println(if 2 < 3 && 3 <= 3 { "cmp ok" } else { "cmp broken" });
+  IO.println(StrOps.num_to_string((4 - 1) * (10 % 7) + 36 / 6 - -5));
+  IO.println(if "x" == "x" { "streq" } else { "strneq" });
+  IO.println(("hi" + "!").len().to_string());
+  IO.println("  pad  ".trim() + "|" + (21).to_string());
+  IO.println(list_length(List.cons(1, List.cons(2, List.nil)).map(fn(n: Number) = n * 10)).to_string());
+  handle IO with bundle { fn println(m) = IO.println("[quiet] " + m) } in IO.println("handled")
+}

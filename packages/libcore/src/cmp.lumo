@@ -1,0 +1,13 @@
+// Ported from legacy/packages/libcore/src/cmp.lumo (D-45/D-48).
+// `==` desugars to PartialEq.eq via the operand's impl; `<`/`<=`/`>`/
+// `>=` desugar to PartialOrd.cmp plus an Ordering case.
+
+data Ordering { .less, .equal, .greater }
+
+cap PartialEq {
+  fn eq(a: Self, b: Self): Bool
+}
+
+cap PartialOrd {
+  fn cmp(a: Self, b: Self): Ordering
+}

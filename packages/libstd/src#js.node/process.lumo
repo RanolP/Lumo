@@ -1,0 +1,22 @@
+// Ported from legacy/packages/libstd/src#js.node/process.lumo (D-45).
+// Bindings live in runtime/js/prelude.js; `resume` dropped. The legacy
+// `idx + 1` / `- 1` offsets (argv[0] is the interpreter) rewrite to
+// NumOps calls — operator syntax is deferred.
+
+extern fn __argv_at_raw(idx: Number): String;
+extern fn __argv_length_raw(): Number;
+extern fn __exit_process(code: Number);
+extern fn __console_error(msg: String);
+
+fn __argv_at_offset(idx: Number): String / {} = __argv_at_raw(NumOps.add(idx, 1))
+fn __args_count_offset(): Number / {} = NumOps.sub(__argv_length_raw(), 1)
+
+impl Process {
+  fn arg_at(idx: Number): String = __argv_at_offset(idx)
+  fn args_count(): Number = __args_count_offset()
+  fn exit_process(code: Number) = __exit_process(code)
+  fn panic_with(msg: String) = {
+    let _err = __console_error(msg);
+    __exit_process(1)
+  }
+}

@@ -1,0 +1,7 @@
+// Ported from legacy/packages/libcore/src/prelude.lumo (D-45).
+// Host bindings for the extern types live in runtime/js/prelude.js.
+
+extern type String;
+extern type Number;
+
+data Bool { .true, .false }

@@ -1,0 +1,12 @@
+// Ported from legacy/packages/libcore/src/ops.lumo (D-45/D-48).
+// Operator caps; `x + y` desugars to the matching instance impl.
+// (`!`, `!=`, and comparisons desugar structurally over Bool/Ordering,
+// so Not is currently decl-only.)
+
+cap Add { fn add(a: Self, b: Self): Self }
+cap Sub { fn sub(a: Self, b: Self): Self }
+cap Mul { fn mul(a: Self, b: Self): Self }
+cap Div { fn div(a: Self, b: Self): Self }
+cap Mod { fn mod_(a: Self, b: Self): Self }
+cap Neg { fn neg(a: Self): Self }
+cap Not { fn not(a: Self): Self }

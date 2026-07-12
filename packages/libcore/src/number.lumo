@@ -1,0 +1,15 @@
+// Ported from legacy/packages/libcore/src/number.lumo (D-45). The
+// `impl Number: PartialEq/…/Neg` typeclass impls are deferred with
+// `impl T: Cap`.
+
+cap NumOps {
+  fn add(a: Number, b: Number): Number;
+  fn sub(a: Number, b: Number): Number;
+  fn mul(a: Number, b: Number): Number;
+  fn div(a: Number, b: Number): Number;
+  fn mod_(a: Number, b: Number): Number;
+  fn neg(a: Number): Number;
+  fn floor(a: Number): Number;
+  fn eq(a: Number, b: Number): Bool;
+  fn cmp(a: Number, b: Number): Ordering
+}

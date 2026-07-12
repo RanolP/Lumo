@@ -1,0 +1,19 @@
+// Ported from legacy/packages/libcore/src/string.lumo (D-45). The
+// `impl String: Add/PartialEq` typeclass impls and the inherent
+// `impl String`/`impl Number` UFCS blocks are deferred.
+
+cap StrOps {
+  fn len(s: String): Number;
+  fn char_at(s: String, idx: Number): String;
+  fn slice(s: String, start: Number, end: Number): String;
+  fn concat(a: String, b: String): String;
+  fn eq(a: String, b: String): Bool;
+  fn starts_with(s: String, prefix: String): Bool;
+  fn contains(s: String, sub: String): Bool;
+  fn index_of(s: String, sub: String): Number;
+  fn trim(s: String): String;
+  fn char_code_at(s: String, idx: Number): Number;
+  fn from_char_code(code: Number): String;
+  fn replace_all(s: String, from: String, to: String): String;
+  fn num_to_string(n: Number): String
+}

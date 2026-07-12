@@ -1,0 +1,36 @@
+// Ported from legacy/packages/libcore/src#js/string.lumo (D-45).
+// Legacy linked these to globalThis.String/Number methods via
+// #[link]/#[extern] attrs; the bindings now live in
+// runtime/js/prelude.js. `resume` wrappers dropped (D-44).
+
+extern {
+  fn __str_len(s: String): Number;
+  fn __str_char_at(s: String, idx: Number): String;
+  fn __str_slice(s: String, start: Number, end: Number): String;
+  fn __str_concat(a: String, b: String): String;
+  fn __str_eq(a: String, b: String): Bool;
+  fn __str_starts_with(s: String, prefix: String): Bool;
+  fn __str_contains(s: String, sub: String): Bool;
+  fn __str_index_of(s: String, sub: String): Number;
+  fn __str_trim(s: String): String;
+  fn __char_code_at(s: String, idx: Number): Number;
+  fn __from_char_code(code: Number): String;
+  fn __str_replace_all(s: String, from: String, to: String): String;
+  fn __num_to_string(n: Number): String;
+}
+
+impl StrOps {
+  fn len(s: String): Number = __str_len(s)
+  fn char_at(s: String, idx: Number): String = __str_char_at(s, idx)
+  fn slice(s: String, start: Number, end: Number): String = __str_slice(s, start, end)
+  fn concat(a: String, b: String): String = __str_concat(a, b)
+  fn eq(a: String, b: String): Bool = __str_eq(a, b)
+  fn starts_with(s: String, prefix: String): Bool = __str_starts_with(s, prefix)
+  fn contains(s: String, sub: String): Bool = __str_contains(s, sub)
+  fn index_of(s: String, sub: String): Number = __str_index_of(s, sub)
+  fn trim(s: String): String = __str_trim(s)
+  fn char_code_at(s: String, idx: Number): Number = __char_code_at(s, idx)
+  fn from_char_code(code: Number): String = __from_char_code(code)
+  fn replace_all(s: String, from: String, to: String): String = __str_replace_all(s, from, to)
+  fn num_to_string(n: Number): String = __num_to_string(n)
+}
