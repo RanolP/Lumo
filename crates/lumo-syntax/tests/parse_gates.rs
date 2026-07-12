@@ -1,6 +1,7 @@
-//! Migration gate: every real legacy Lumo source file must parse cleanly
-//! with the generated parser, print losslessly, and survive the
-//! canonical-print round-trip.
+//! Parse gates over the real-source corpora in `tests/data/` (inherited
+//! from the pre-rewrite implementation): every source must parse cleanly
+//! with the generated parser; whole programs must also print losslessly
+//! and survive the canonical-print round-trip.
 
 use std::path::{Path, PathBuf};
 
@@ -19,13 +20,13 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The type/ and lto/ fixture *expectations* wait for the M2/M3
-/// engines, but their case sources are Lumo programs — they must parse
-/// today. Cases are `==========`-separated `input --- expected` blocks.
+/// Case sources from the pre-rewrite fixture files (`==========`-
+/// separated `input --- expected` blocks). The unmigrated expectation
+/// buckets (resume, bounds, assoc_types, cap_inference, exhaustiveness)
+/// keep future-feature reference value; their sources must parse today.
 #[test]
-fn legacy_fixture_sources_parse() {
-    let root =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/legacy/fixtures");
+fn fixture_case_sources_parse() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/fixtures");
     let mut files = Vec::new();
     for dir in ["syntax", "type", "lto"] {
         let mut group = Vec::new();
@@ -33,7 +34,7 @@ fn legacy_fixture_sources_parse() {
         files.extend(group);
     }
     files.sort();
-    assert!(!files.is_empty(), "no legacy fixture files under {}", root.display());
+    assert!(!files.is_empty(), "no fixture files under {}", root.display());
 
     let mut failures = Vec::new();
     let mut cases = 0;
@@ -78,7 +79,7 @@ fn legacy_fixture_sources_parse() {
 
     assert!(
         failures.is_empty(),
-        "{} of {cases} legacy fixture sources failed:\n{}",
+        "{} of {cases} fixture case sources failed:\n{}",
         failures.len(),
         failures.join("\n")
     );
@@ -97,15 +98,15 @@ fn collect_ext(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
 }
 
 #[test]
-fn legacy_sources_parse_and_round_trip() {
-    // The gate is the code the legacy compiler actually compiled: the
-    // packages. (The one exclusion, apps/lumoc's ∑/μ/∀ sketch, was
-    // pruned with the rest of legacy — it never parsed.)
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/legacy/packages");
+fn package_sources_parse_and_round_trip() {
+    // Real programs the pre-rewrite compiler actually compiled — the
+    // langue package especially exercises grammar surface the ported
+    // stdlib no longer uses.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/packages");
     let mut files = Vec::new();
     collect(&root, &mut files);
     files.sort();
-    assert!(!files.is_empty(), "no legacy .lumo files under {}", root.display());
+    assert!(!files.is_empty(), "no .lumo files under {}", root.display());
 
     let mut failures = Vec::new();
     for file in &files {
@@ -134,7 +135,7 @@ fn legacy_sources_parse_and_round_trip() {
 
     assert!(
         failures.is_empty(),
-        "{} of {} legacy sources failed:\n{}",
+        "{} of {} package sources failed:\n{}",
         failures.len(),
         files.len(),
         failures.join("\n")
